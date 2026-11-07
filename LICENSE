@@ -1,0 +1,52 @@
+Balatro Overhaul
+Copyright (c) JupiterianSoul. All rights reserved.
+
+This licence covers the Balatro Overhaul: its code, art, sounds, text, launchers,
+installers, patch sets and every other file published in this repository or its
+releases, except the third-party parts listed at the end.
+
+1. What you may do
+
+   - Download, install and play the Balatro Overhaul for your own use, on your own
+     devices, together with a copy of Balatro you own.
+   - Share links to this repository and to its releases.
+   - Make videos, streams, screenshots and reviews of the Overhaul.
+
+2. What you may not do
+
+   Without written permission from the copyright holder, you may not:
+
+   - copy, modify, translate, adapt or decompile the Overhaul's code or assets, in
+     whole or in part, to use them anywhere else;
+   - reuse any part of the code or assets in another mod, game, program or project;
+   - redistribute, re-upload, mirror, sell or rent the Overhaul or any modified
+     version of it, or publish a fork of it outside GitHub's own fork feature;
+   - remove or change this notice.
+
+3. GitHub
+
+   Publishing this repository on GitHub means GitHub's Terms of Service apply to it:
+   GitHub users may view it and fork it on GitHub. That does not grant any right to
+   use, modify or redistribute the code or assets beyond what this licence allows.
+
+4. Balatro
+
+   The Overhaul is an unofficial fan mod. Balatro, its name, logo, art, music and
+   code belong to LocalThunk and Playstack. None of it is covered by this licence,
+   and none of it is included here: the Overhaul is built from your own copy on your
+   own device.
+
+5. Third-party parts
+
+   The parts made by others keep their own licences, whose full texts are in the
+   LICENSES folder: LÖVE 11.5 and its libraries (zlib and others), Steamodded
+   (GNU GPL 3.0, shipped as source), nativefs (MIT), json.lua by rxi (MIT) and the
+   Balatro Mod Index (MIT). Nothing in this licence limits your rights under those
+   licences for those parts.
+
+6. No warranty
+
+   The Overhaul is provided as is, without any warranty. The copyright holder is not
+   liable for any damage or loss of data arising from its use.
+
+For permission requests, open an issue on this repository.
