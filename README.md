@@ -94,7 +94,7 @@ Download the file for your device from the [latest release](https://github.com/J
 
 1. Install Balatro from Google Play and open it once.
 2. Download `BalatroOverhaul-<version>-android.apk` on the phone and open it. Allow installs from your browser or file manager when Android asks.
-3. Open the **Overhaul** app. The first start reads your Balatro and builds the Overhaul (about a minute), then restarts into the game.
+3. Open the **Overhaul Launcher** app. The first start reads your Balatro and builds the Overhaul (about a minute), then restarts into the game.
 
 Samsung: turn Auto Blocker off while you install (Settings > Security and privacy). If Play Protect warns about an unknown developer, tap **More details**, then **Install anyway**.
 

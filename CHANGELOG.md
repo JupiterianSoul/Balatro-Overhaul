@@ -2,6 +2,14 @@
 
 What changed for players in each version. The game shows the same notes in English, French and Spanish under About > Changelog.
 
+## 2.0.3
+
+*Overhaul 2.0 update 3, 2026-11-08*
+
+- **Phone installer fixed.** It works with the Balatro app Google Play installs today (1.8), not only older copies.
+- The phone app is called Overhaul Launcher.
+- The game icon shows Ace and Hologram over the original icon's background, and the Ace is Negative.
+
 ## 2.0.2
 
 *Overhaul 2.0 update 2, 2026-11-07*
