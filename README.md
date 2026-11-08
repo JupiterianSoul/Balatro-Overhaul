@@ -4,7 +4,7 @@
 
 # Balatro Overhaul
 
-**An overhaul of [Balatro](https://www.playbalatro.com/) with new modes, content and online play.**
+**An overhaul of [Balatro](https://www.playbalatro.com/) with new modes, multiplayer, integrated mods support, cross platform and much more !**
 
 [![Latest release](https://img.shields.io/github/v/release/JupiterianSoul/Balatro-Overhaul?include_prereleases&label=version&color=fe5f55)](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/JupiterianSoul/Balatro-Overhaul/total?color=009dff)](https://github.com/JupiterianSoul/Balatro-Overhaul/releases)
