@@ -22,22 +22,24 @@
 > You need to own Balatro. The downloads here don't contain the game, the launcher builds the mod from your own copy.
 
 <div align="center">
-<img src="docs/screenshots/launcher.png" width="49%" alt="The launcher on PC">
-<img src="docs/screenshots/phone-launcher.png" width="49%" alt="The launcher on Android">
+<img src="docs/media/trailer.gif" width="100%" alt="Balatro Overhaul trailer">
+
+<img src="docs/media/title.jpg" width="32%" alt="Title screen"> <img src="docs/media/pvp-blind.jpg" width="32%" alt="A PvP blind online"> <img src="docs/media/battle-royale.jpg" width="32%" alt="Battle Royale">
+<img src="docs/media/forge.jpg" width="32%" alt="Drawing a joker in the Forge"> <img src="docs/media/workshop.jpg" width="32%" alt="The mod Workshop"> <img src="docs/media/casino.jpg" width="32%" alt="The Casino">
 </div>
 
 ## Features
 
 - Online multiplayer: 1v1 and parties up to 8, casual or ranked, with friends or random players, cross platform between PC and mobile. 
 - 4 new stakes after Gold Stake (for the masochists out there /s)
-- Custom runs with lot of customizable settings/rules, plus daily runs, random runs, and a dedicated speedrun mode !
-- The Forge: make your own mods, directly via the game'sown editor, make new content; jokers, decks, tarots and more,as well as sharing them via the Workshop. 
+- Custom runs with lots of customizable settings/rules, plus daily runs, random runs, and a dedicated speedrun mode !
+- The Forge: make your own mods, directly via the game's own editor, make new content; jokers, decks, tarots and more, as well as sharing them via the Workshop. 
 - Integrated Mods support : Workshop with almost all existing mods made by the awesome community, so now mods are for EVERYONE!!
-- The Casino: quests, cosmetics,minigames and more !
+- The Casino: quests, cosmetics, minigames and more !
 - New progression system : XP, levels, quests and 200+ achievements 
-- Lots of QoL changes, including Joker Info, game speed change, higher FPS cap, portrait mode for mobile, multiple input types support (controller,touch controls, keyboard, trackpad...) and way way more features for tou to discover !!
+- Lots of QoL changes, including Joker Info, game speed change, higher FPS cap, portrait mode for mobile, multiple input types support (controller, touch controls, keyboard, trackpad...) and way way more features for you to discover !!
 - English, French and Spanish translations*
-- As well as much more, but the rest is for tou to discover ! Have fun !
+- As well as much more, but the rest is for you to discover ! Have fun !
 
 
 * Some French and Spanish translations are machine translated.
@@ -57,6 +59,11 @@ Get the file for your device from the [latest release](https://github.com/Jupite
 
 It's simple to use : it finds your Balatro, you press **Install**, then **Play**.
 
+<div align="center">
+<img src="docs/screenshots/launcher.png" width="49%" alt="The launcher on PC">
+<img src="docs/screenshots/phone-launcher.png" width="49%" alt="The launcher on Android">
+</div>
+
 <details open>
 <summary><b>Windows</b></summary>
 
@@ -64,7 +71,7 @@ Unzip it anywhere and open `Balatro Overhaul Launcher.exe`. Windows will probabl
 
 If Balatro is on Steam the launcher finds it by itself. If not, drag `Balatro.exe` onto the window (this will be needed if you have the game on the Xbox PC app).
 
-The first time you'll be asked if you want to keep your Balatro progress or start from scratch; Either way both saves get backed up, and your real Balatro save is never touched. Then press **Install** and **Play**. It also adds shortcuts to your desktop, Start menu and Steam.
+The first time you'll be asked if you want to keep your Balatro progress or start from scratch; either way both saves get backed up, and your real Balatro save is never touched. Then press **Install** and **Play**. It also adds shortcuts to your desktop, Start menu and Steam.
 
 </details>
 
@@ -106,7 +113,7 @@ On Samsung, turn off Auto Blocker while you install (Settings > Security and pri
 <details>
 <summary><b>Android, if you only have Balatro on Steam</b></summary>
 
-The PC launcher has an **Android** tab that makes the phone app from your Steam copy. Install the Overhaul on your PC first, then press **Make Android APK**, copy the file to your phone and install it .
+The PC launcher has an **Android** tab that makes the phone app from your Steam copy. Install the Overhaul on your PC first, then press **Make Android APK**, copy the file to your phone and install it.
 
 <p align="center"><img src="docs/screenshots/launcher-android.png" width="60%" alt="The Android tab of the PC launcher"></p>
 
@@ -116,7 +123,7 @@ No iPhone support, and probably never will, sorry :(
 
 ## Updates
 
-When there's a new version available, the game will tell you, and a button will be avilable for you to download the latest version. Same for the launcher. Your saves stay where they are. For multiplayer, everyone needs to be on the same version. 
+When there's a new version available, the game will tell you, and a button will be available for you to download the latest version. Same for the launcher. Your saves stay where they are. For multiplayer, everyone needs to be on the same version. 
 
 ## Saves
 
@@ -140,7 +147,7 @@ Open an [issue](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) and t
 
 ## Support
 
-It's free and it'll stay free. If you want to support me there's a [Patreon](https://www.patreon.com/cw/JupiterianSoul), most of it will be re invested on the server ! Thank you to anyone trying my mod, and/or supporting me via Patreon, this means a lot ^3
+It's free and it'll stay free. If you want to support me there's a [Patreon](https://www.patreon.com/cw/JupiterianSoul), most of it will be reinvested on the server ! Thank you to anyone trying my mod, and/or supporting me via Patreon, this means a lot ^3
 
 ## License
 
@@ -148,7 +155,7 @@ All rights reserved. You can download it, play it and share the link, but you ca
 
 ## Credits
 
-Made by JupiterianSoul. Special Thanks to Samlegeek63 and Monoceros for helping me testing and finding bugs !
+Made by JupiterianSoul. Special thanks to Samlegeek63 and Monoceros for helping me test and find bugs !
 
 Uses LÖVE 11.5, Steamodded, nativefs, json.lua and the Balatro Mod Index. Thanks to Lovely Injector, and to Balatro Multiplayer, which did multiplayer first.
 
