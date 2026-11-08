@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png" width="160" alt="Balatro Overhaul">
+<img src="docs/overhaul-launcher-icon.png" width="160" alt="Balatro Overhaul">
 
 # Balatro Overhaul
 
