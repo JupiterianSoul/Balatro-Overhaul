@@ -14,7 +14,7 @@
 ![Android](https://img.shields.io/badge/Android-supported-3ddc84?logo=android&logoColor=white)
 ![Languages](https://img.shields.io/badge/languages-EN%20%7C%20FR%20%7C%20ES-8a63d2)
 
-[**Download**](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest) &nbsp;·&nbsp; [Install guide](#install) &nbsp;·&nbsp; [Changelog](CHANGELOG.md) &nbsp;·&nbsp; [Report a bug](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) &nbsp;·&nbsp; [Patreon](https://www.patreon.com/cw/JupiterianSoul)
+[**Download**](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest) &nbsp;·&nbsp; [Install guide](#install) &nbsp;·&nbsp; [Changelog](CHANGELOG.md) &nbsp;·&nbsp; [Report a bug](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) &nbsp;·&nbsp; [Ko-fi](https://ko-fi.com/jupiteriansoull)
 
 </div>
 
@@ -147,7 +147,7 @@ Open an [issue](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) and t
 
 ## Support
 
-It's free and it'll stay free. If you want to support me there's a [Patreon](https://www.patreon.com/cw/JupiterianSoul), most of it will be reinvested on the server ! Thank you to anyone trying my mod, and/or supporting me via Patreon, this means a lot ^3
+It's free and it'll stay free. If you want to support me there's a [Ko-fi](https://ko-fi.com/jupiteriansoull), most of it will be reinvested on the server ! Thank you to anyone trying my mod, and/or supporting me via Ko-fi, this means a lot ^3
 
 ## License
 
