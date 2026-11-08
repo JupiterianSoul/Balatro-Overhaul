@@ -22,8 +22,8 @@
 > You need your own copy of Balatro. Nothing you download here contains the game: the Overhaul is built from the copy you bought, on your own device.
 
 <div align="center">
-<img src="docs/screenshots/launcher.png" width="49%" alt="The launcher's Play tab">
-<img src="docs/screenshots/launcher-android.png" width="49%" alt="The launcher's Android tab">
+<img src="docs/screenshots/launcher.png" width="49%" alt="The launcher on PC">
+<img src="docs/screenshots/phone-launcher.png" width="49%" alt="The same launcher on an Android phone">
 </div>
 
 ## What's in it
@@ -94,7 +94,12 @@ Download the file for your device from the [latest release](https://github.com/J
 
 1. Install Balatro from Google Play and open it once.
 2. Download `BalatroOverhaulLauncher-<version>-android.apk` on the phone and open it. Allow installs from your browser or file manager when Android asks.
-3. Open the **Overhaul Launcher** app. The first start reads your Balatro and builds the Overhaul (about a minute), then restarts into the game.
+3. Open the **Overhaul Launcher** app. It's the same launcher as on PC, with the Play, Game, Saves, Settings and About tabs, sized for your thumbs. It finds the Balatro app on its own.
+4. Press **Install**. It reads your Balatro and builds the Overhaul on the phone (about a minute). Then press **Play**.
+
+The app opens on the launcher every time, and **Play** starts the game. The **Saves** tab exports your save as a `.zip` to the phone's Download folder.
+
+<p align="center"><img src="docs/screenshots/phone-launcher-portrait.png" width="30%" alt="The phone launcher held upright"></p>
 
 Samsung: turn Auto Blocker off while you install (Settings > Security and privacy). If Play Protect warns about an unknown developer, tap **More details**, then **Install anyway**.
 
@@ -107,7 +112,9 @@ No Balatro on your phone, but you own it on Steam? The PC launcher can build the
 
 1. Install the Overhaul on your PC with the launcher (see above).
 2. Open the launcher's **Android** tab and press **Make Android APK**. It takes a few seconds and needs nothing else installed.
-3. Copy the `.apk` it made to your phone (the tab shows where it is) and open it there.
+3. Copy the `.apk` it made to your phone (the tab shows where it is) and open it there. It opens on the same launcher, with the Balatro files from your PC already inside.
+
+<p align="center"><img src="docs/screenshots/launcher-android.png" width="60%" alt="The PC launcher's Android tab"></p>
 
 The app is signed with a key made for you on your PC, so later versions install over it and keep your saves.
 
