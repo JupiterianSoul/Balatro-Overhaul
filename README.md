@@ -28,9 +28,18 @@
 
 ## What's in it
 
-I started this because I wanted to play Balatro with my friends. It kind of got out of hand. Here's everything, roughly in order of how much time I spent on it.
+**Multiplayer** is the big one. Play 1v1 or in parties of up to 8, with friends or random people, casual or ranked. In most modes you both play the same boss blind and the lower score loses a life, but there's also Battle Royale, co-op raids, races, and Switcheroo, where mid-match you swap your whole run with your opponent.
 
-### Multiplayer
+**The Forge** lets you make your own jokers. You choose what they do, draw them pixel by pixel, and share them online. It does decks, tarots, vouchers and the rest too.
+
+**The Casino** is where everything outside of runs lives: quests, cosmetics, the Forge, and an arcade with a dozen minigames.
+
+There's also 4 new stakes after Gold, custom runs, daily runs, 242 achievements, a Hand Optimizer that finds your best play, a mod workshop that works on Android, and the whole thing is in English, French and Spanish.
+
+<details>
+<summary><b>The full list</b></summary>
+
+#### Multiplayer
 
 From the title screen you can do a Quick Match against a random person, make a room (public or private) and send the code to your friends, or browse open rooms.
 
@@ -54,7 +63,7 @@ Also: friends list and DMs, lobby chat that keeps working during the run, emotes
 
 Modded rooms are in beta: the room shows what mods it uses and installs the missing ones when you join.
 
-### Solo
+#### Solo
 
 - **Custom runs**: pick your own hands, discards, hand size, money, slots, win ante, deck size (1 to 208 cards), starting jokers, what can show up in the shop, endless mode...
 - **Daily and weekly runs**: same seed for everyone, with a leaderboard.
@@ -68,13 +77,13 @@ Modded rooms are in beta: the room shows what mods it uses and installs the miss
 - **Badges**: beat a boss 10 times and you unlock its badge. Equip it and that boss's effect is turned off for your next run.
 - A few balance changes: Wild Cards can't be debuffed by bosses, Matador gives $2 per discard during a boss, and Blue Stake works differently (shop prices go up $1 per ante cleared and rerolls by $2).
 
-### Progression
+#### Progression
 
 You get XP from playing (hands, antes, bosses, wins, more on higher stakes). There are 100 levels across 7 ranks, from Novice to Legend, and every level gives Balacoin.
 
 On top of that there are 4 daily quests (you can swap one for free), 4 weekly ones, longer "Journeys" that go in stages, and 242 achievements with popups.
 
-### The Casino
+#### The Casino
 
 The Casino is a little map you open from the title screen. Each building is a feature:
 
@@ -84,10 +93,10 @@ The Casino is a little map you open from the title screen. Each building is a fe
 - **The Forge**: make your own jokers. You pick what they do, draw them pixel by pixel, and you can share them online and download other people's. It also does tarots, planets, spectrals, vouchers, decks, enhancements, editions and boosters. The **Deck Creator** is here too.
 - **Library**: the Seed Library
 - **Training Grounds**: Boss Practice
-- **Arcade**: minigames. Blackjack, a slot machine, Poker, High or Low, Find the Ace, Name the Hand, Joker Memory, Whack-a-Joker, Jimbo Run, Beat the Blind, and **Jimbo Jam**, a rhythm game that makes charts out of your own songs from the Jukebox.
+- **Arcade**: minigames. Blackjack, a slot machine, Poker, High or Low, Find the Ace, Name the Hand, Joker Memory, Whack-a-Joker, Jimbo Run, Beat the Blind, and Jimbo Jam (a rhythm game that makes charts out of your own songs from the Jukebox).
 - **Racetrack**: speedruns
 
-### Helpers
+#### Helpers
 
 All of these can be turned off in Settings.
 
@@ -98,19 +107,21 @@ All of these can be turned off in Settings.
 - Stats for your solo and multiplayer games.
 - A bunch of small quality of life stuff: faster pack opening, hotkeys, settings search, sell total, the game pauses when you tab out...
 
-### Mods
+#### Mods
 
 The game has two modes, switched from the title screen: **Normal** (no mods ever load) and **Modded** (your mods load). Each one has its own 3 profiles, so mods can't mess up your main save.
 
 Most Steamodded and Lovely mods work, on Android too. There's a mods menu to turn them on/off, configure and update them, and a **Workshop** to browse and install hundreds of mods from the Balatro Mod Index without leaving the game. You can also just drop a mod `.zip` in your Downloads folder. If a mod crashes the game at startup, it gets turned off next time and the game tells you which one it was.
 
-### Everything else
+#### Everything else
 
 - Works with touch, controller and keyboard/mouse, on PC and phone. On a phone in portrait mode the hand goes in the middle of the screen.
 - A performance mode for slow phones or big modpacks like Cryptid.
 - The whole game is in English, French and Spanish.
 
-The full list of changes is in the [changelog](CHANGELOG.md).
+For what changed in each version, see the [changelog](CHANGELOG.md).
+
+</details>
 
 ## Install
 
