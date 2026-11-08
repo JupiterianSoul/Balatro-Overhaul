@@ -4,7 +4,7 @@
 
 # Balatro Overhaul
 
-**A free fan mod for [Balatro](https://www.playbalatro.com/): online multiplayer, new modes, minigames, your own jokers and a lot more.**
+**A fan mod that adds online multiplayer to [Balatro](https://www.playbalatro.com/), plus a bunch of other stuff.**
 
 [![Latest release](https://img.shields.io/github/v/release/JupiterianSoul/Balatro-Overhaul?include_prereleases&label=version&color=fe5f55)](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/JupiterianSoul/Balatro-Overhaul/total?color=009dff)](https://github.com/JupiterianSoul/Balatro-Overhaul/releases)
@@ -14,153 +14,140 @@
 ![Android](https://img.shields.io/badge/Android-supported-3ddc84?logo=android&logoColor=white)
 ![Languages](https://img.shields.io/badge/languages-EN%20%7C%20FR%20%7C%20ES-8a63d2)
 
-[**Download**](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest) &nbsp;·&nbsp; [Install guide](#install) &nbsp;·&nbsp; [What's new](CHANGELOG.md) &nbsp;·&nbsp; [Report a problem](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) &nbsp;·&nbsp; [Support the server](https://www.patreon.com/cw/JupiterianSoul)
+[**Download**](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest) &nbsp;·&nbsp; [Install guide](#install) &nbsp;·&nbsp; [Changelog](CHANGELOG.md) &nbsp;·&nbsp; [Report a bug](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) &nbsp;·&nbsp; [Patreon](https://www.patreon.com/cw/JupiterianSoul)
 
 </div>
 
 > [!IMPORTANT]
-> You need your own copy of Balatro. Nothing you download here contains the game: the Overhaul is built from the copy you bought, on your own device.
+> You need to own Balatro. The downloads here don't contain the game, the launcher builds the mod from your own copy.
 
 <div align="center">
 <img src="docs/screenshots/launcher.png" width="49%" alt="The launcher on PC">
-<img src="docs/screenshots/phone-launcher.png" width="49%" alt="The same launcher on an Android phone">
+<img src="docs/screenshots/phone-launcher.png" width="49%" alt="The launcher on Android">
 </div>
 
 ## What's in it
 
-**Play together**
-- Online matches against friends or strangers: casual, ranked with seasons, and parties for up to eight players (Battle Royale, Teams, Raid and Race).
-- PvP Boss Blinds, multiplayer jokers, decks and stakes made for versus play, emotes, chat with a word filter, friends and blocking.
-- Replays of every match and live spectating.
+The main thing is multiplayer. You can play with friends or against random people, casual or ranked. There are also parties for up to 8 players (Battle Royale, Teams, Raid, Race), PvP boss blinds, and jokers, decks and stakes that only exist in multiplayer. Matches are saved as replays and you can watch other games live.
 
-**More to play alone**
-- New modes and challenges, a daily and weekly run, quests, achievements and a progression track with rewards.
-- New Overhaul stakes after Gold: Chaos, Apocalypse, Oblivion and Transcendent.
-- The Casino and a set of minigames, including Jimbo Jam, a rhythm game that plays any song you add to your Jukebox.
+Other stuff:
 
-**Make it yours**
-- The Forge: build your own jokers, blinds, decks and more, with your own pixel art, and share them online.
-- A Workshop that installs Steamodded and Lovely mods from the community's mod index, on PC and on Android.
-- A Jukebox for your own music, card skins, palettes, suit colours and table looks.
+- Daily and weekly runs, quests, and over 200 achievements
+- 4 new stakes after Gold: Chaos, Apocalypse, Oblivion and Transcendent
+- A casino with minigames. One of them, Jimbo Jam, is a rhythm game that plays your own songs from the Jukebox.
+- The Forge, to make your own jokers (and blinds, decks...) with your own pixel art and share them
+- Most Steamodded and Lovely mods work, on Android too
+- Touch, controller and keyboard all work, on PC and phone
+- English, French and Spanish
 
-**Quality of life**
-- Touch, controller and keyboard everywhere, a phone layout that fits in portrait and landscape, and an on-screen keyboard.
-- Speed settings, frame rate caps up to 165, sharp scaling on high DPI screens, and the CRT effect like vanilla.
-- Saves you can export, import and move between devices, with automatic backups.
+There's more, the full list is in the [changelog](CHANGELOG.md).
 
 ## Install
 
-Download the file for your device from the [latest release](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest).
+Get the file for your device from the [latest release](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest):
 
 | Device | File | You need |
 |---|---|---|
-| Windows | `BalatroOverhaulLauncher-<version>-windows-x64.zip` | Balatro on Steam |
-| macOS | `BalatroOverhaulLauncher-<version>-macos.zip` | Balatro on Steam |
-| Linux | `BalatroOverhaulLauncher-<version>-linux-x86_64.tar.gz` | Balatro on Steam |
-| Android | `BalatroOverhaulLauncher-<version>-android.apk` | Balatro from Google Play |
+| Windows | `BalatroOverhaulLauncher-2.0-windows-x64.zip` | Balatro on Steam |
+| macOS | `BalatroOverhaulLauncher-2.0-macos.zip` | Balatro on Steam |
+| Linux | `BalatroOverhaulLauncher-2.0-linux-x86_64.tar.gz` | Balatro on Steam |
+| Android | `BalatroOverhaulLauncher-2.0-android.apk` | Balatro from Google Play |
 
-`SHA256SUMS.txt` in each release lets you check your download.
+It's the same launcher everywhere: it finds your Balatro, you press **Install**, then **Play**.
 
 <details open>
 <summary><b>Windows</b></summary>
 
-1. Unzip the launcher anywhere and open `Balatro Overhaul Launcher.exe`. If Windows warns about an unknown publisher, click **More info**, then **Run anyway**.
-2. The launcher finds Balatro in your Steam libraries. If it doesn't, open the **Game** tab and drop `Balatro.exe` on the window, or paste its path.
-3. The first time, it offers to **bring your Balatro progress** or **start fresh**. Both saves are backed up first, and your Balatro save is never changed.
-4. Press **Install**, then **Play**. The launcher adds desktop, Start menu and Steam shortcuts.
+Unzip it anywhere and open `Balatro Overhaul Launcher.exe`. Windows will probably warn you about an unknown publisher, click **More info** then **Run anyway**.
+
+If Balatro is on Steam the launcher finds it by itself. If not, drag `Balatro.exe` onto the window.
+
+The first time, it asks if you want to keep your Balatro progress or start fresh. Either way both saves get backed up, and your real Balatro save is never touched. Then press **Install** and **Play**. It also adds shortcuts to your desktop, Start menu and Steam.
 
 </details>
 
 <details>
 <summary><b>macOS</b></summary>
 
-1. Unzip and drag `Balatro Overhaul Launcher.app` to Applications.
-2. The app isn't signed by Apple: right click it, choose **Open**, then **Open** again. If macOS says it is damaged, run `xattr -cr "/Applications/Balatro Overhaul Launcher.app"` in Terminal.
-3. Then it works like on Windows: it finds Balatro, you press **Install**, then **Play**.
+Unzip and put `Balatro Overhaul Launcher.app` in Applications. The app isn't signed by Apple, so the first time you have to right click it, **Open**, then **Open** again. If macOS says it's damaged, run this in Terminal:
+
+```
+xattr -cr "/Applications/Balatro Overhaul Launcher.app"
+```
+
+After that it works like on Windows.
 
 </details>
 
 <details>
 <summary><b>Linux</b></summary>
 
-1. Unpack the archive and run `./balatro-overhaul-launcher` (or double click it).
-2. It finds Balatro in your Steam libraries (native Steam and Flatpak), checks it, and builds the Overhaul in `~/.local/share/BalatroOverhaulLauncher`.
-3. Press **Install**, then **Play**. The launcher adds Balatro Overhaul and its launcher to your app menu.
+Unpack it and run `./balatro-overhaul-launcher`. It finds Balatro in your Steam library (Flatpak Steam too), and adds the game and the launcher to your app menu after the install.
 
 </details>
 
 <details>
-<summary><b>Android, straight from your phone</b></summary>
+<summary><b>Android</b></summary>
 
-1. Install Balatro from Google Play and open it once.
-2. Download `BalatroOverhaulLauncher-<version>-android.apk` on the phone and open it. Allow installs from your browser or file manager when Android asks.
-3. Open the **Overhaul Launcher** app. It's the same launcher as on PC, with the Play, Game, Saves, Settings and About tabs, sized for your thumbs. It finds the Balatro app on its own.
-4. Press **Install**. It reads your Balatro and builds the Overhaul on the phone (about a minute). Then press **Play**.
+You need Balatro from Google Play, opened at least once.
 
-The app opens on the launcher every time, and **Play** starts the game. The **Saves** tab exports your save as a `.zip` to the phone's Download folder.
+Download the `.apk` on your phone and open it. Android will ask you to allow installs from your browser or file manager. Then open **Overhaul Launcher**, press **Install** (takes about a minute) and **Play**.
 
-<p align="center"><img src="docs/screenshots/phone-launcher-portrait.png" width="30%" alt="The phone launcher held upright"></p>
+It's the same launcher as on PC, so you also get the Saves tab to export or import your saves.
 
-Samsung: turn Auto Blocker off while you install (Settings > Security and privacy). If Play Protect warns about an unknown developer, tap **More details**, then **Install anyway**.
+On Samsung, turn off Auto Blocker while you install (Settings > Security and privacy). If Play Protect complains, tap **More details** then **Install anyway**.
+
+<p align="center"><img src="docs/screenshots/phone-launcher-portrait.png" width="30%" alt="The launcher on a phone in portrait"></p>
 
 </details>
 
 <details>
-<summary><b>Android, built by the PC launcher</b></summary>
+<summary><b>Android, if you only have Balatro on Steam</b></summary>
 
-No Balatro on your phone, but you own it on Steam? The PC launcher can build the phone app from your Steam copy.
+The PC launcher has an **Android** tab that makes the phone app from your Steam copy. Install the Overhaul on your PC first, then press **Make Android APK**, copy the file to your phone and install it.
 
-1. Install the Overhaul on your PC with the launcher (see above).
-2. Open the launcher's **Android** tab and press **Make Android APK**. It takes a few seconds and needs nothing else installed.
-3. Copy the `.apk` it made to your phone (the tab shows where it is) and open it there. It opens on the same launcher, with the Balatro files from your PC already inside.
-
-<p align="center"><img src="docs/screenshots/launcher-android.png" width="60%" alt="The PC launcher's Android tab"></p>
-
-The app is signed with a key made for you on your PC, so later versions install over it and keep your saves.
+<p align="center"><img src="docs/screenshots/launcher-android.png" width="60%" alt="The Android tab of the PC launcher"></p>
 
 </details>
 
-iPhone and iPad aren't supported.
+No iPhone, sorry.
 
 ## Updates
 
-New versions show up on the title screen of the game, on every platform, and in the launcher. Only the Overhaul's own files are downloaded and your saves are never touched. Multiplayer needs everyone on the same version, and the game tells you when a room runs another one.
+When there's a new version, the game tells you on the title screen and installs it. The launcher does too. Your saves stay where they are. For multiplayer, everyone needs to be on the same version.
 
-## Your saves
+## Saves
 
-The Overhaul keeps its own saves, separate from Balatro's.
+The Overhaul has its own saves, separate from Balatro's.
 
-- **Bring your Balatro progress** when the launcher first starts, or later from its **Saves** tab.
-- **Move a save** to another device: Settings > Account > **Export my save** writes one `.zip`. Import it in the game or the launcher, or drop it on the window.
-- **Backups**: before any import, the current save is zipped into a `backups` folder.
-- Exports never contain your settings or your online key, so they're safe to share.
+- To move your save to another device, use **Export my save** (in Settings > Account, or the launcher's Saves tab). It makes one `.zip` you can import on the other side.
+- Before any import, your current save is backed up.
+- Exports don't include your settings or your online key, so you can share them.
 
-## Playing online
+## Online
 
-Online play goes through the Overhaul's own server, run by me, not by LocalThunk or Playstack.
+Multiplayer runs on my own server, not LocalThunk's or Playstack's.
 
-- Your account is your player name and a random key kept on your device. The server keeps your friends, match results, ranked points and replays.
-- Crash reports are on by default and help me fix things fast: the error, the game version, your platform, what you were doing and your mod list. Nothing personal. Turn them off in Settings > Account.
-- No ads, no tracking, nothing is sold. Online play with chat is meant for players aged 13 and over.
-- To have your account and its data deleted, [open an issue](https://github.com/JupiterianSoul/Balatro-Overhaul/issues).
-- The server is free and comes with no guarantee: it can be down, reset or closed.
+Your account is just your name and a random key stored on your device. Crash reports are on by default: they send the error, the version, your platform and your mod list, nothing personal, and you can turn them off in Settings > Account. No ads, no tracking.
 
-## Problems
+If you want your account deleted, open an issue. The server is free, so it can go down from time to time.
 
-[Open an issue](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) with what happened, your device and the version (bottom right of the title screen). If a crash report was sent, it already has the details.
+## Bugs
+
+Open an [issue](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) and tell me what happened, on which device, and the version (bottom right of the title screen).
 
 ## Support
 
-The Overhaul is free and always will be. If you want to help pay for the server, there's a [Patreon](https://www.patreon.com/cw/JupiterianSoul). Thanks either way.
+It's free and it'll stay free. If you want to help pay for the server there's a [Patreon](https://www.patreon.com/cw/JupiterianSoul), no pressure.
 
-## Licence
+## License
 
-The Overhaul's own code, art and text are **all rights reserved**. You may download, install and play it, and share links to this page. You may not copy, modify, redistribute or reuse its code or assets in another project. See [LICENSE](LICENSE) for the full terms, and [LICENSES](LICENSES) for the open source parts it uses, which keep their own licences.
+All rights reserved. You can download it, play it and share the link, but you can't reuse, modify or redistribute the code. Full text in [LICENSE](LICENSE). The open source parts it uses keep their own licenses, see [LICENSES](LICENSES).
 
 ## Credits
 
-Made by JupiterianSoul. Special thanks to Samlegeek63 and Monoceros.
+Made by JupiterianSoul. Thanks to Samlegeek63 and Monoceros.
 
-Built with LÖVE 11.5 (zlib), Steamodded (GNU GPL 3.0, shipped as source with its licence), nativefs (MIT), json.lua by rxi (MIT) and the Balatro Mod Index (MIT). Thanks to Lovely Injector (MIT) for the patch format mods use, and to Balatro Multiplayer (GNU GPL 3.0), the first multiplayer mod for Balatro.
+Uses LÖVE 11.5, Steamodded, nativefs, json.lua and the Balatro Mod Index. Thanks to Lovely Injector, and to Balatro Multiplayer, which did multiplayer first.
 
-The Overhaul is unofficial. It isn't made, endorsed or supported by LocalThunk or Playstack. Balatro, its name, logo, art, music and code belong to them. Buy Balatro to support the people who made it.
+This is a fan mod. It's not made or endorsed by LocalThunk or Playstack, and Balatro belongs to them. Go buy it.
