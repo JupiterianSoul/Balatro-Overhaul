@@ -4,7 +4,7 @@
 
 # Balatro Overhaul
 
-**A fan mod that adds online multiplayer to [Balatro](https://www.playbalatro.com/), plus a bunch of other stuff.**
+**A big fan mod for [Balatro](https://www.playbalatro.com/): online multiplayer, new stakes, a casino, a joker maker, mod support, and a lot more.**
 
 [![Latest release](https://img.shields.io/github/v/release/JupiterianSoul/Balatro-Overhaul?include_prereleases&label=version&color=fe5f55)](https://github.com/JupiterianSoul/Balatro-Overhaul/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/JupiterianSoul/Balatro-Overhaul/total?color=009dff)](https://github.com/JupiterianSoul/Balatro-Overhaul/releases)
@@ -28,19 +28,89 @@
 
 ## What's in it
 
-The main thing is multiplayer. You can play with friends or against random people, casual or ranked. There are also parties for up to 8 players (Battle Royale, Teams, Raid, Race), PvP boss blinds, and jokers, decks and stakes that only exist in multiplayer. Matches are saved as replays and you can watch other games live.
+I started this because I wanted to play Balatro with my friends. It kind of got out of hand. Here's everything, roughly in order of how much time I spent on it.
 
-Other stuff:
+### Multiplayer
 
-- Daily and weekly runs, quests, and over 200 achievements
-- 4 new stakes after Gold: Chaos, Apocalypse, Oblivion and Transcendent
-- A casino with minigames. One of them, Jimbo Jam, is a rhythm game that plays your own songs from the Jukebox.
-- The Forge, to make your own jokers (and blinds, decks...) with your own pixel art and share them
-- Most Steamodded and Lovely mods work, on Android too
-- Touch, controller and keyboard all work, on PC and phone
-- English, French and Spanish
+From the title screen you can do a Quick Match against a random person, make a room (public or private) and send the code to your friends, or browse open rooms.
 
-There's more, the full list is in the [changelog](CHANGELOG.md).
+**1v1 modes**
+- **Rivals**: normal run, but from ante 2 every boss blind is a PvP blind. You both play the same blind, the higher score wins, the loser loses a life.
+- **FaceOff**: same thing, but every blind is PvP.
+- **Ascension**: no PvP at all, whoever gets the furthest wins.
+- **Switcheroo**: at some point you both get ready, there's a 3 second countdown and you swap everything (jokers, deck, money...) except your lives.
+
+**Party modes (up to 8 players)**
+- **Battle Royale**: lowest score on each PvP blind loses a life, last one standing wins.
+- **Teams**: scores of a team add up and the team shares its lives.
+- **Co-op Raid**: everyone works together to beat one big shared boss.
+- **Race**: first one to reach the target ante wins.
+
+**Ranked** always uses the same fixed rules. You win RP, you lose RP, and you climb from Stone to Bronze, Silver, Gold, Platinum, Foiled, Holographic, Polychromed, Negative and finally TRUE JIMBO. Seasons give cosmetics (badges, titles, sleeves, frames...). It's separate from your normal level.
+
+**Rooms** let the host change pretty much everything: lives, which ante PvP starts at, the final ante, the deck, the stake, banned cards, and presets like Classic, Balanced, Vanilla, Sprint or Chaos. Some cards are reworked for multiplayer (you can see which ones in Collection > Reworks), and there are jokers, decks and blinds that only exist in multiplayer.
+
+Also: friends list and DMs, lobby chat that keeps working during the run, emotes, mute/report, games speed up to 4x, and if someone disconnects their seat is kept for 15 minutes so they can rejoin. Every match is saved as a replay (Profile > History) and you can spectate other games live.
+
+Modded rooms are in beta: the room shows what mods it uses and installs the missing ones when you join.
+
+### Solo
+
+- **Custom runs**: pick your own hands, discards, hand size, money, slots, win ante, deck size (1 to 208 cards), starting jokers, what can show up in the shop, endless mode...
+- **Daily and weekly runs**: same seed for everyone, with a leaderboard.
+- **4 new stakes after Gold**:
+  - Chaos: booster packs have one less choice
+  - Apocalypse: boss blinds get an extra effect
+  - Oblivion: one random joker slot is disabled each round
+  - Transcendent: every boss is a finisher boss
+- **Cheats**: turn them on when you start a run and you get a button you can drag anywhere, with money, hands, god mode, any joker, any card, any voucher, hand levels... Cheated runs don't give XP, obviously.
+- **Boss Practice** to train against a specific boss, a **Seed Library**, and **speedruns**.
+- **Badges**: beat a boss 10 times and you unlock its badge. Equip it and that boss's effect is turned off for your next run.
+- A few balance changes: Wild Cards can't be debuffed by bosses, Matador gives $2 per discard during a boss, and Blue Stake works differently (shop prices go up $1 per ante cleared and rerolls by $2).
+
+### Progression
+
+You get XP from playing (hands, antes, bosses, wins, more on higher stakes). There are 100 levels across 7 ranks, from Novice to Legend, and every level gives Balacoin.
+
+On top of that there are 4 daily quests (you can swap one for free), 4 weekly ones, longer "Journeys" that go in stages, and 242 achievements with popups.
+
+### The Casino
+
+The Casino is a little map you open from the title screen. Each building is a feature:
+
+- **Tavern**: quests and your run history
+- **Market**: spend Balacoin on packs of cosmetics. The odds are all shown in the Odds tab, things you don't have yet are 3x more likely, and duplicates turn back into Balacoin. You get a Legendary at least every 40.
+- **Tailor**: equip your stuff. Card backs, table, colours (23 palettes + Polychromatic), profile icon, title, shine, and outfits for Jimbo.
+- **The Forge**: make your own jokers. You pick what they do, draw them pixel by pixel, and you can share them online and download other people's. It also does tarots, planets, spectrals, vouchers, decks, enhancements, editions and boosters. The **Deck Creator** is here too.
+- **Library**: the Seed Library
+- **Training Grounds**: Boss Practice
+- **Arcade**: minigames. Blackjack, a slot machine, Poker, High or Low, Find the Ace, Name the Hand, Joker Memory, Whack-a-Joker, Jimbo Run, Beat the Blind, and **Jimbo Jam**, a rhythm game that makes charts out of your own songs from the Jukebox.
+- **Racetrack**: speedruns
+
+### Helpers
+
+All of these can be turned off in Settings.
+
+- **Hand Optimizer**: tries every hand you could play and scores them with the real game rules (jokers, levels, boss, everything). It shows the best one, a button to select it, and the top 5. If luck is involved it gives a range.
+- **Jimbo Comments**: Jimbo reacts to what's going on in your run (big hands, close calls, rare jokers, PvP...). You can choose how often he talks.
+- **Hologram**: the new mascot. The first time you see something new, Hologram explains it. You can skip it.
+- **Jukebox**: pick the music, or add your own.
+- Stats for your solo and multiplayer games.
+- A bunch of small quality of life stuff: faster pack opening, hotkeys, settings search, sell total, the game pauses when you tab out...
+
+### Mods
+
+The game has two modes, switched from the title screen: **Normal** (no mods ever load) and **Modded** (your mods load). Each one has its own 3 profiles, so mods can't mess up your main save.
+
+Most Steamodded and Lovely mods work, on Android too. There's a mods menu to turn them on/off, configure and update them, and a **Workshop** to browse and install hundreds of mods from the Balatro Mod Index without leaving the game. You can also just drop a mod `.zip` in your Downloads folder. If a mod crashes the game at startup, it gets turned off next time and the game tells you which one it was.
+
+### Everything else
+
+- Works with touch, controller and keyboard/mouse, on PC and phone. On a phone in portrait mode the hand goes in the middle of the screen.
+- A performance mode for slow phones or big modpacks like Cryptid.
+- The whole game is in English, French and Spanish.
+
+The full list of changes is in the [changelog](CHANGELOG.md).
 
 ## Install
 
