@@ -16,7 +16,7 @@ What changed in each version. The game has the same notes in English, French and
 - Random Deck shuffles hand scores, prices, card values and boosters. Lobbies have a Chaos slider.
 - Blue Stake works differently than vanilla: shop items cost $1 more per Ante cleared and rerolls go up by $2. Higher stakes keep it, except Nova and Eclipse.
 - Wild Cards can't be debuffed by Boss Blinds. Matador gives $2 for each discard during a Boss Blind.
-- Stats windows for solo and multiplayer, and a Hand Optimizer that finds your best play.
+- Stats windows for solo and multiplayer.
 - Jimbo comments on your runs.
 - A performance mode if your device struggles.
 - On a phone in portrait, Fill the screen puts your hand in the middle.
