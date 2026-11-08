@@ -28,16 +28,17 @@
 
 ## Features
 
-- Online multiplayer: 1v1 and parties up to 8, casual or ranked, with friends or random players
-- 4 new stakes after Gold Stake
-- Custom runs where you set the rules, plus daily and weekly runs
-- The Forge: make your own jokers, decks, tarots and more, and share them
-- The Casino: quests, cosmetics and minigames
-- XP, levels, quests and 242 achievements
-- Jimbo comments on your runs
-- Mods menu and workshop, works on Android too
-- Touch, controller and keyboard on PC and phone
-- English, French and Spanish
+- Online multiplayer: 1v1 and parties up to 8, casual or ranked, with friends or random players, cross platform between PC and mobile. 
+- 4 new stakes after Gold Stake (for the masochists out there /s)
+- Custom runs where with lot of customizable settings/rules, plus daily runs, random runs, and a dedicated speedrun mode !
+- The Forge: make your own mods, directly via the game'sown editor, make new content; jokers, decks, tarots and more,as well as sharing them via the Workshop. 
+- Integrated Mods support : Workshop with almost all existing mods made by the awesome community, so now mods are for EVERYONE!!
+- The Casino: quests, cosmetics,minigames and more !
+- New progression system : XP, levels, quests and 200+ achievements 
+- Lots of QoL changes, including Joker Info, game speed change, higher FPS cap, portrait mode for mobile, multiple input types support (controller,touch controls, keyboard, trackpad...) and way way more features for tou to discover !!
+- English, French and Spanish translations*
+
+* Some French and Spanish translations are machine translated.
 
 See the [changelog](CHANGELOG.md) for details.
 
