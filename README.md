@@ -22,7 +22,7 @@
 > You need to own Balatro. The downloads here don't contain the game, the launcher builds the mod from your own copy.
 
 <div align="center">
-<img src="docs/media/trailer.gif" width="100%" alt="Balatro Overhaul trailer">
+<a href="https://www.youtube.com/watch?v=-LnaVn4Xgd0"><img src="docs/media/trailer.gif" width="100%" alt="Balatro Overhaul trailer, watch it on YouTube"></a>
 
 <img src="docs/media/title.jpg" width="32%" alt="Title screen"> <img src="docs/media/pvp-blind.jpg" width="32%" alt="A PvP blind online"> <img src="docs/media/battle-royale.jpg" width="32%" alt="Battle Royale">
 <img src="docs/media/forge.jpg" width="32%" alt="Drawing a joker in the Forge"> <img src="docs/media/workshop.jpg" width="32%" alt="The mod Workshop"> <img src="docs/media/casino.jpg" width="32%" alt="The Casino">
