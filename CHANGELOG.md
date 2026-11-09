@@ -2,6 +2,15 @@
 
 Changelog for the updates, first being the latest changes. 
 
+## 2.0.1
+
+*Overhaul 2.0.1 (pre-release), 2026-11-09.*
+
+- **Credits.** The multiplayer is based on [Balatro Multiplayer](https://github.com/Balatro-Multiplayer/BalatroMultiplayer) by Virtualized and the BMP team. They are now credited in large letters in the game's Credits screen and in About.
+- **Android.** Fixed the black curved area that could cover part of the screen on some phones, such as the Pixel 9 Pro.
+- **Android.** The phone app works with any Balatro APK, even when its game files differ a little from the one the Overhaul was made for.
+- The Forge no longer has a Generate art button, and the unused Bot-latro AI provider options are gone.
+
 ## 2.0
 
 *Overhaul 2.0 (pre-release), 2026-11-08. The first public release, so this is everything the Overhaul adds to Balatro.*
