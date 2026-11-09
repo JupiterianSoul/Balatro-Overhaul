@@ -21,6 +21,9 @@
 > [!IMPORTANT]
 > You need to own Balatro. The downloads here don't contain the game, the launcher builds the mod from your own copy.
 
+> [!NOTE]
+> The multiplayer in Balatro Overhaul is based on [Balatro Multiplayer](https://github.com/Balatro-Multiplayer/BalatroMultiplayer) by Virtualized and the BMP team. Thank you for the foundation.
+
 <div align="center">
 <a href="https://www.youtube.com/watch?v=-LnaVn4Xgd0"><img src="docs/media/trailer.gif" width="100%" alt="Balatro Overhaul trailer, watch it on YouTube"></a>
 
@@ -155,6 +158,8 @@ All rights reserved. You can download it, play it and share the link, but you ca
 
 Made by JupiterianSoul. Special thanks to Samlegeek63 and Monoceros for helping me test and find bugs !
 
-Uses LÖVE 11.5, Steamodded, nativefs, json.lua and the Balatro Mod Index. Thanks to Lovely Injector, and to Balatro Multiplayer, which did multiplayer first.
+Uses LÖVE 11.5, Steamodded, nativefs, json.lua and the Balatro Mod Index. Thanks to Lovely Injector.
+
+The multiplayer is based on [Balatro Multiplayer](https://github.com/Balatro-Multiplayer/BalatroMultiplayer) by Virtualized and the BMP team, who did multiplayer first. Thank you.
 
 This is a fan mod. It's not made or endorsed by LocalThunk or Playstack, and Balatro belongs to them. Go buy it.
