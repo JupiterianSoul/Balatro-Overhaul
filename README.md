@@ -152,7 +152,7 @@ It's free and it'll stay free. If you want to support me there's a [Ko-fi](https
 
 ## License
 
-All rights reserved. You can download it, play it and share the link, but you can't reuse, modify or redistribute the code. Full text in [LICENSE](LICENSE). The open source parts it uses keep their own licenses, see [LICENSES](LICENSES).
+All the Overhaul's own code, art and text is free software under the [GNU GPL v3](LICENSE): you can use it, study it, change it and share it, as long as your version stays under the GPL with its source and keeps the credits. It does not cover Balatro, which belongs to LocalThunk and Playstack and is not included here, and the parts made by others keep their own licenses, see [LICENSES](LICENSES).
 
 ## Credits
 
