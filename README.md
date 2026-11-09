@@ -38,11 +38,9 @@
 - The Casino: quests, cosmetics, minigames and more !
 - New progression system : XP, levels, quests and 200+ achievements 
 - Lots of QoL changes, including Joker Info, game speed change, higher FPS cap, portrait mode for mobile, multiple input types support (controller, touch controls, keyboard, trackpad...) and way way more features for you to discover !!
-- English, French and Spanish translations*
+- English, French and Spanish translations
 - As well as much more, but the rest is for you to discover ! Have fun !
 
-
-* Some French and Spanish translations are machine translated.
 
 See the [changelog](CHANGELOG.md) for a more detailed breakdown of all the changes and features made by the Overhaul mod.
 
