@@ -12,7 +12,6 @@ What changed in each version, newest first. The game has the same notes in Engli
 - **The Forge.** Make your own jokers, tarots, planets, spectrals, vouchers, enhancements, seals, editions, tags, blinds, stakes, decks and booster packs. Draw their art in the pixel editor, use them in your runs and share them online.
 - **The Casino.** A new map with eight places: the Tavern, the Market, the Tailor, the Forge, the Library, the Training Grounds, the Arcade and the Racetrack.
 - **Progression.** XP and 100 levels over 7 ranks, daily and weekly quests, Journeys and over 200 achievements. Levels and quests pay Balacoin, which you spend in the Market.
-- **Hologram.** The Overhaul's mascot. Hologram shows you around on first launch and explains each new screen the first time you open it. You can skip or replay the tour.
 
 ### Multiplayer
 
