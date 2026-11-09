@@ -1,6 +1,6 @@
 # Changelog
 
-What changed in each version, newest first. The game has the same notes in English, French and Spanish, under About > Changelog.
+Changelog for the updates, first being the latest changes. 
 
 ## 2.0
 
