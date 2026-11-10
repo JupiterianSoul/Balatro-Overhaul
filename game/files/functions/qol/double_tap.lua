@@ -1,9 +1,14 @@
 local Q = QOL
 local M = Q.feature("double_tap", {})
 
-M.WINDOW = 0.35
+-- Fast double-tap on an already-selected ("promoted") card to play.
+M.WINDOW = 0.25
 
-Q.default("qol_double_tap", true)
+Q.default("qol_double_tap", false)
+
+local function is_selected(card)
+    return card and card.highlighted and true or false
+end
 
 function M.allowed()
     if not (UIK and UIK.touch and UIK.touch()) then return false end
@@ -28,48 +33,136 @@ function M.play_button()
     return M.find(G.buttons.UIRoot)
 end
 
-function M.tap(card, now)
-    if card.area ~= G.hand then M.last = nil return false end
-    local prev = M.last
-    if prev and prev.card == card and now - prev.t <= M.WINDOW then
-        M.last = nil
-        if G.CONTROLLER and G.CONTROLLER.locked then return false end
-        if #G.hand.highlighted == 0 then return false end
-        local btn = M.play_button()
-        if not btn then return false end
-        btn:click()
-        return true
+function M.play_hand()
+    if G.CONTROLLER and G.CONTROLLER.locked then return false end
+    if not (G.hand and G.hand.highlighted and #G.hand.highlighted > 0) then return false end
+    local btn = M.play_button()
+    if btn and btn.click then
+        local ok = pcall(function() btn:click() end)
+        if ok then return true end
     end
-    M.last = {card = card, t = now}
+    if G.FUNCS and G.FUNCS.play_cards_from_highlighted then
+        local ok = pcall(G.FUNCS.play_cards_from_highlighted, {config = {}})
+        return ok and true or false
+    end
     return false
 end
 
-Q.row("Hand", function()
-    if not UIK.touch() then return nil end
-    return Q.toggle('set_qol_double_tap', "Double tap to play", "Tap a card twice to play your selection", 'qol_double_tap')
-end)
-
-local function strings()
-    if not mod_loc_register then return end
-    mod_loc_register{
-        fr = {["Double tap to play"] = "Double appui pour jouer", ["Tap a card twice to play your selection"] = "Touchez une carte deux fois pour jouer la sélection"},
-        es = {["Double tap to play"] = "Doble toque para jugar", ["Tap a card twice to play your selection"] = "Toca una carta dos veces para jugar tu selección"},
-    }
+-- Drop a pending double-tap arm without changing highlight state.
+local function cancel_arm()
+    M.pending_deselect = nil
+    M.last = nil
 end
 
-function M.init()
-    strings()
-    if M._wrapped or not (Card and Card.click) then return end
-    M._wrapped = true
-    local click = Card.click
-    Card.click = function(self, ...)
+function M.flush_pending_deselect()
+    local p = M.pending_deselect
+    M.pending_deselect = nil
+    M.last = nil
+    if not p or not p.card then return end
+    local card = p.card
+    if card.area == G.hand and is_selected(card) then
+        pcall(function()
+            G.hand:remove_from_highlighted(card)
+            play_sound('cardSlide2', nil, 0.3)
+        end)
+    end
+end
+
+function M.tick()
+    if not M.pending_deselect then return end
+    if not M.allowed() then
+        cancel_arm()
+        return
+    end
+    local tnow = G.TIMERS and G.TIMERS.REAL or 0
+    -- Only a lone tap on a selected card (no second tap, no other card) deselects.
+    if tnow - M.pending_deselect.t > M.WINDOW then
+        M.flush_pending_deselect()
+    end
+end
+
+function M.tap(card, tnow)
+    if not card or card.area ~= G.hand then
+        cancel_arm()
+        return false
+    end
+
+    -- Unselected cards: always normal select. Never deselect something else mid-pick.
+    if not is_selected(card) then
+        cancel_arm()
+        return false
+    end
+
+    -- Selected card: same-card double-tap plays.
+    local prev = M.last
+    if prev and prev.card == card and (tnow - prev.t) <= M.WINDOW then
+        cancel_arm()
+        if #G.hand.highlighted < 1 then return false end
+        return M.play_hand()
+    end
+
+    -- Selected card but different from the armed one (or first arm):
+    -- switch the arm; do not deselect the previous card.
+    cancel_arm()
+    M.last = {card = card, t = tnow}
+    M.pending_deselect = {card = card, t = tnow}
+    return true
+end
+
+local function wrap_tap(method_name)
+    local prev = Card[method_name]
+    if type(prev) ~= "function" then return end
+    Card[method_name] = function(self, ...)
         local ok, used = false, false
         if M.allowed() then
             ok, used = pcall(M.tap, self, G.TIMERS and G.TIMERS.REAL or 0)
             if not ok then print("[QoL] double tap: " .. tostring(used)) end
         end
         if ok and used then return end
-        return click(self, ...)
+        return prev(self, ...)
+    end
+end
+
+Q.row("Hand", function()
+    if not UIK.touch() then return nil end
+    return Q.toggle(
+        'set_qol_double_tap',
+        "Double tap to play",
+        "Quick double-tap an already selected card to play",
+        'qol_double_tap'
+    )
+end)
+
+local function strings()
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["Double tap to play"] = "Double appui pour jouer",
+            ["Quick double-tap an already selected card to play"] =
+                "Double appui rapide sur une carte déjà sélectionnée pour jouer",
+        },
+        es = {
+            ["Double tap to play"] = "Doble toque para jugar",
+            ["Quick double-tap an already selected card to play"] =
+                "Doble toque rápido en una carta ya seleccionada para jugar",
+        },
+    }
+end
+
+function M.init()
+    strings()
+    if M._wrapped or not Card then return end
+    M._wrapped = true
+    wrap_tap("single_tap")
+    wrap_tap("click")
+
+    if not M._tick_wrapped and love and love.update then
+        M._tick_wrapped = true
+        local prev_update = love.update
+        love.update = function(dt, ...)
+            if prev_update then prev_update(dt, ...) end
+            pcall(M.tick)
+        end
     end
 end
 

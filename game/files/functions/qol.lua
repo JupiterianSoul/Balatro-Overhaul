@@ -2,7 +2,7 @@ QOL = QOL or {}
 local Q = QOL
 
 Q.modules = Q.modules or {}
-Q.MODULES = {"nav_back", "qol_tab", "hotkeys", "focus_pause", "run_info_tab", "interest_guard", "pause_menu", "collection_pages", "window_memory", "sell_total", "card_rounds", "fast_packs", "double_tap", "settings_search"}
+Q.MODULES = {"nav_back", "qol_tab", "hotkeys", "focus_pause", "run_info_tab", "interest_guard", "pause_menu", "collection_pages", "window_memory", "sell_total", "card_rounds", "fast_packs", "double_tap", "tip_ux", "settings_search"}
 
 function Q.feature(key, module)
     Q.modules[key] = module
