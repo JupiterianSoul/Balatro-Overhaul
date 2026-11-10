@@ -34,10 +34,6 @@ Steamodded is in `assets/smods`, modified, with the list of changes in `assets/s
 
 Balatro belongs to LocalThunk and Playstack. None of its files are in this repository or in the releases: the Overhaul builds from your own copy.
 
-## Removed
-
-The Joker Info overlay, which followed the layout of nh6574's JokerDisplay, was removed from the Overhaul at the author's request.
-
 ## Mods listed in the Workshop
 
 The Workshop shows mods made by other people. They download from their own pages and keep their own licences.
