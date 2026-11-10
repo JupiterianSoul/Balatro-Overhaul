@@ -162,7 +162,7 @@ The source is here, under the GPL v3. Balatro's own files are not: they belong t
 
 ## License
 
-All the Overhaul's own code, art and text is free software under the [GNU GPL v3](LICENSE): you can use it, study it, change it and share it, as long as your version stays under the GPL with its source and keeps the credits. It does not cover Balatro, which belongs to LocalThunk and Playstack and is not included here, and the parts made by others keep their own licenses, see [LICENSES](LICENSES).
+All the Overhaul's own code, art and text is free software under the [GNU GPL v3](LICENSE) (copyright and scope notes in [COPYRIGHT.md](COPYRIGHT.md)): you can use it, study it, change it and share it, as long as your version stays under the GPL with its source and keeps the credits. It does not cover Balatro, which belongs to LocalThunk and Playstack and is not included here, and the parts made by others keep their own licenses, see [LICENSES](LICENSES).
 
 ## Credits
 
