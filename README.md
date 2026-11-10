@@ -24,7 +24,7 @@
 > The codebase currently contains calls to `os.execute` and `io.popen` used for mod installation and file management. In a multiplayer environment, this creates a severe vulnerability that could allow arbitrary code execution on your machine. I'm disabling the downloads for now, and will reactivate them once everything is secure again. For those of you that have already installed it, either uninstall everything, or just don't play in Multiplayer with mods, and DO NOT JOIN MODDED SERVERS AT ANY COST !
 
 
-[!IMPORTANT]
+> [!IMPORTANT]
 > You need to own Balatro. The downloads here don't contain the game, the launcher builds the mod from your own copy.
 
 > [!NOTE]
