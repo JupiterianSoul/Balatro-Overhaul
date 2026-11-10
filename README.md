@@ -174,7 +174,7 @@ These keep their own authors and licences. Full texts are in [LICENSES](LICENSES
 | [Steamodded](https://github.com/Steamodded/smods) | The Steamodded team | GPL v3 | Bundled and modified (changes in `game/files/smods/OVERHAUL_CHANGES.md`) |
 | [Balatro-DeckCreator](https://github.com/adambennett/Balatro-DeckCreator) | adambennett | GPL v3 | The Deck Creator is ported from it |
 | [Cryptid](https://github.com/MathIsFun0/Cryptid) | MathIsFun_ and the Cryptid team | GPL v3 | Some of the Deck Creator's random logic follows it |
-| [nativefs](https://github.com/megagrump/nativefs) | megagrump | MIT | File access, used by Steamodded |
+| [nativefs](https://github.com/EngineerSmith/nativefs) | megagrump, fork by EngineerSmith | MIT | File access, used by Steamodded |
 | [json.lua](https://github.com/rxi/json.lua) | rxi | MIT | JSON |
 | [Balatro Mod Index](https://github.com/skyline69/balatro-mod-index) | Efe and its contributors | MIT | The Workshop's list of mods |
 | [LOVE](https://love2d.org) 11.5 | The LOVE Development Team | zlib and others | The game engine |
