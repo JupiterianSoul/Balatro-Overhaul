@@ -24,6 +24,9 @@
 > [!NOTE]
 > The multiplayer in Balatro Overhaul is based on [Balatro Multiplayer](https://github.com/Balatro-Multiplayer/BalatroMultiplayer) by Virtualized and the BMP team. Thank you for the foundation.
 
+> [!NOTE]
+> **AI disclosure:** this mod was made with the help of Claude (AI). I direct it, test it and always choose what to do, and Claude writes most of the code. Bugs and credit mistakes are possible, this is my first mod. Please report any problem in [Issues](https://github.com/JupiterianSoul/Balatro-Overhaul/issues).
+
 <div align="center">
 <a href="https://www.youtube.com/watch?v=-LnaVn4Xgd0"><img src="docs/media/trailer.gif" width="100%" alt="Balatro Overhaul trailer, watch it on YouTube"></a>
 
