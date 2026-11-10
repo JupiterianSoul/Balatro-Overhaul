@@ -1,8 +1,12 @@
 local Q = QOL
 local M = Q.feature("double_tap", {})
 
--- Fast double-tap on an already-selected ("promoted") card to play.
-M.WINDOW = 0.25
+-- Double-tap window / delayed demote. Keep short so demote feels snappy
+-- but still allows a quick second tap to play instead.
+M.WINDOW = 0.15
+-- Ignore a follow-up selected-tap shortly after promoting a card (ghost
+-- click/single_tap). Longer than WINDOW so a bounce can't arm demote.
+M.PROMOTE_GUARD = 0.2
 
 Q.default("qol_double_tap", false)
 
@@ -48,7 +52,6 @@ function M.play_hand()
     return false
 end
 
--- Drop a pending double-tap arm without changing highlight state.
 local function cancel_arm()
     M.pending_deselect = nil
     M.last = nil
@@ -69,13 +72,15 @@ function M.flush_pending_deselect()
 end
 
 function M.tick()
+    local tnow = G.TIMERS and G.TIMERS.REAL or 0
+    if M._just_promoted and (tnow - M._just_promoted.t) > M.PROMOTE_GUARD then
+        M._just_promoted = nil
+    end
     if not M.pending_deselect then return end
     if not M.allowed() then
         cancel_arm()
         return
     end
-    local tnow = G.TIMERS and G.TIMERS.REAL or 0
-    -- Only a lone tap on a selected card (no second tap, no other card) deselects.
     if tnow - M.pending_deselect.t > M.WINDOW then
         M.flush_pending_deselect()
     end
@@ -87,22 +92,28 @@ function M.tap(card, tnow)
         return false
     end
 
-    -- Unselected cards: always normal select. Never deselect something else mid-pick.
+    -- Unselected: promote. Remember it so a ghost follow-up can't arm demote.
     if not is_selected(card) then
         cancel_arm()
+        M._just_promoted = {card = card, t = tnow}
         return false
+    end
+
+    -- Ghost selected-tap right after we promoted this card: swallow, do not demote.
+    if M._just_promoted and M._just_promoted.card == card and (tnow - M._just_promoted.t) < M.PROMOTE_GUARD then
+        return true
     end
 
     -- Selected card: same-card double-tap plays.
     local prev = M.last
     if prev and prev.card == card and (tnow - prev.t) <= M.WINDOW then
         cancel_arm()
+        M._just_promoted = nil
         if #G.hand.highlighted < 1 then return false end
         return M.play_hand()
     end
 
-    -- Selected card but different from the armed one (or first arm):
-    -- switch the arm; do not deselect the previous card.
+    -- First tap on a selected card: delay demote so a quick second tap can play.
     cancel_arm()
     M.last = {card = card, t = tnow}
     M.pending_deselect = {card = card, t = tnow}
