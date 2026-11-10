@@ -20,9 +20,6 @@ The Balatro Overhaul is free software under the GNU GPL v3 (see [LICENSE](LICENS
 
 Balatro belongs to LocalThunk and Playstack. None of its files are in this repository or in the releases: the Overhaul builds from your own copy.
 
-## Removed
-
-The Joker Info overlay, which followed the layout of nh6574's JokerDisplay, was removed from the Overhaul at the author's request.
 
 ## Mods listed in the Workshop
 
