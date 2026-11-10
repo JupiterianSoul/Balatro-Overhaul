@@ -1,0 +1,356 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 151
+local LS = {}
+
+local TIME_FILE = "loading_time.txt"
+local FRAME_GAP = 1 / 40
+local HAND = 5
+local MIN_SHOW = 2.0
+local OUTRO_MAX = 2.5
+
+local C_RED = { 0.996, 0.373, 0.333, 1 }
+local C_PANEL = { 0.216, 0.259, 0.267, 1 }
+local C_TRACK = { 0.118, 0.153, 0.161, 1 }
+local C_SHADOW = { 0, 0, 0, 0.35 }
+local C_WHITE = { 1, 1, 1, 1 }
+local BG_1 = { 0.871, 0.267, 0.231, 1 }
+local BG_2 = { 0.0, 0.42, 0.706, 1 }
+local BG_3 = { 0.086, 0.137, 0.145, 1 }
+
+local st = {
+    t0 = nil,
+    last_draw = -1,
+    shown = 0,
+    label = "Starting up",
+    expected = nil,
+    fonts = {},
+    hand = nil,
+    dealt = {},
+    shots = {},
+}
+
+local function now() return love.timer.getTime() end
+
+local function image(path)
+    local ok, img = pcall(love.graphics.newImage, path, { mipmaps = true })
+    if not ok then return false end
+    img:setFilter("linear", "linear")
+    return img
+end
+
+local function read_expected()
+    local ok, data = pcall(love.filesystem.read, TIME_FILE)
+    local v = ok and data and tonumber(data)
+    if v and v > 0.5 and v < 600 then return v end
+end
+
+local function font(px)
+    px = math.max(8, math.floor(px + 0.5))
+    if not st.fonts[px] then
+        local ok, f = pcall(love.graphics.newFont, "resources/fonts/m6x11plus.ttf", px)
+        st.fonts[px] = ok and f or love.graphics.getFont()
+    end
+    return st.fonts[px]
+end
+
+local function shader()
+    if st.shader == nil then
+        local s = G and G.SHADERS and G.SHADERS.background
+        if not s then
+            local ok, made = pcall(love.graphics.newShader, "resources/shaders/background.fs")
+            s = ok and made or false
+        end
+        st.shader = s
+    end
+    return st.shader or nil
+end
+
+local function logo()
+    if st.logo == nil then st.logo = image("resources/textures/2x/balatro.png") end
+    return st.logo or nil
+end
+
+local JOKER_CELLS = { {0,0},{1,0},{2,0},{3,0},{4,0},{5,0},{6,0},{7,0},{8,0},{9,0},{0,1},{1,1},{2,1},{3,1},{4,1},{5,1},{6,1},{7,1},{8,1},{9,1},{0,2},{1,2},{2,2},{3,2},{4,2},{5,2},{6,2},{7,2},{8,2},{9,2},{0,3},{1,3},{2,3},{3,3},{4,3},{5,3},{6,3},{7,3},{8,3},{9,3},{0,4},{1,4},{2,4},{3,4},{4,4},{5,4},{6,4},{7,4},{8,4},{9,4},{1,5},{2,5},{3,5},{4,5},{5,5},{6,5},{7,5},{8,5},{9,5},{0,6},{1,6},{2,6},{4,6},{5,6},{6,6},{7,6},{8,6},{9,6},{0,7},{1,7},{2,7},{3,7},{4,7},{5,7},{6,7},{7,7},{8,7},{9,7} }
+
+local function pick_hand()
+    local img = image("resources/textures/2x/Jokers.png")
+    if not img then return false end
+    local iw, ih = img:getDimensions()
+    local cw, ch = iw / 10, ih / 16
+    local rng = love.math.newRandomGenerator(os.time())
+    local pool = {}
+    for i, c in ipairs(JOKER_CELLS) do pool[i] = c end
+    local quads = {}
+    for i = 1, HAND do
+        local j = rng:random(i, #pool)
+        pool[i], pool[j] = pool[j], pool[i]
+        quads[i] = love.graphics.newQuad(pool[i][1] * cw, pool[i][2] * ch, cw, ch, iw, ih)
+    end
+    return { img = img, quads = quads, cw = cw, ch = ch }
+end
+
+local function ace()
+    if st.ace == nil then
+        local base, deck = image("resources/textures/2x/Enhancers.png"), image("resources/textures/2x/8BitDeck.png")
+        if base and deck then
+            local bw, bh = base:getDimensions()
+            local dw, dh = deck:getDimensions()
+            local cw, ch = dw / 13, dh / 4
+            st.ace = {
+                base = base, deck = deck, cw = cw, ch = ch,
+                bq = love.graphics.newQuad(1 * bw / 7, 0, bw / 7, bh / 5, bw, bh),
+                dq = love.graphics.newQuad(12 * cw, 3 * ch, cw, ch, dw, dh),
+            }
+        else
+            st.ace = false
+        end
+    end
+    return st.ace or nil
+end
+
+local function clean_label(label)
+    if type(label) ~= "string" or label == "" then return nil end
+    label = label:gsub("^STEAMODDED %- ", "")
+    local set = label:match("Inject[ei][dn]g? ([%w_]+)")
+    if set then return "Loading " .. set:gsub("_", " ") end
+    return label
+end
+
+local function target_progress(elapsed)
+    if st.expected then return math.min(0.97, elapsed / st.expected) end
+    return 0.97 * (1 - math.exp(-elapsed / 6))
+end
+
+local function ease_out(x)
+    x = math.max(0, math.min(1, x))
+    return 1 - (1 - x) ^ 3
+end
+
+local function draw_text(text, f, cx, y, s)
+    local w = f:getWidth(text)
+    local x = math.floor(cx - w / 2 + 0.5)
+    love.graphics.setFont(f)
+    love.graphics.setColor(0, 0, 0, 0.45)
+    love.graphics.print(text, x, math.floor(y + 2 * s + 0.5))
+    love.graphics.setColor(C_WHITE)
+    love.graphics.print(text, x, math.floor(y + 0.5))
+end
+
+local function draw_background(t, w, h)
+    local sh = shader()
+    if sh then
+        pcall(function()
+            sh:send("time", t * 1.2)
+            sh:send("spin_time", t)
+            sh:send("colour_1", BG_1)
+            sh:send("colour_2", BG_2)
+            sh:send("colour_3", BG_3)
+            sh:send("contrast", 1.6)
+            sh:send("spin_amount", 0.35)
+        end)
+        love.graphics.setShader(sh)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.rectangle("fill", 0, 0, w, h)
+r 3 4413 %20%20%20%20%20%20%20%20 -
+l 123
+    else
+        love.graphics.clear(BG_3)
+    end
+    love.graphics.setColor(0, 0, 0, 0.18)
+    love.graphics.rectangle("fill", 0, 0, w, h)
+end
+
+local function draw_logo(t, w, h, s)
+    local img = logo()
+    if not img then return end
+    local iw, ih = img:getDimensions()
+    local scale = 600 * s / iw
+    local cy = h * 0.29 + math.sin(t * 1.6) * 6 * s
+    local r = math.sin(t * 0.9) * 0.015
+    love.graphics.setColor(0, 0, 0, 0.3)
+    love.graphics.draw(img, w / 2 + 6 * s, cy + 9 * s, r, scale, scale, iw / 2, ih / 2)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(img, w / 2, cy, r, scale, scale, iw / 2, ih / 2)
+    local card = ace()
+    if not card then return end
+    local cs = 0.155 * 600 * s / card.cw
+    local ax, ay = w / 2, cy + 0.02 * 600 * s
+    local ar = r + math.sin(t * 1.3) * 0.04
+    love.graphics.setColor(0, 0, 0, 0.3)
+    love.graphics.draw(card.base, card.bq, ax + 5 * s, ay + 8 * s, ar, cs, cs, card.cw / 2, card.ch / 2)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(card.base, card.bq, ax, ay, ar, cs, cs, card.cw / 2, card.ch / 2)
+    love.graphics.draw(card.deck, card.dq, ax, ay, ar, cs, cs, card.cw / 2, card.ch / 2)
+end
+
+local function draw_hand(t, w, h, s, progress)
+    if st.hand == nil then st.hand = pick_hand() end
+    local hand = st.hand
+    if not hand then return end
+    local card_h = 150 * s
+    local scale = card_h / hand.ch
+    local base_y = h * 0.6
+    for i = 1, HAND do
+        if not st.dealt[i] then
+            if progress >= (i - 0.5) / (HAND + 0.5) and t - (st.last_deal or -1) >= (st.deal_gap or 0.25) then
+                st.dealt[i] = t
+                st.last_deal = t
+            end
+            break
+        end
+    end
+    for i = 1, HAND do
+        local born = st.dealt[i]
+        if born then
+            local k = ease_out((t - born) / 0.45)
+            local off = i - (HAND + 1) / 2
+            local tx = w / 2 + off * 92 * s
+            local ty = base_y + off * off * 7 * s + math.sin(t * 1.7 + i) * 4 * s
+            local tr = off * 0.09 + math.sin(t * 1.3 + i * 1.7) * 0.025
+            local sx, sy = w + hand.cw * scale, h + hand.ch * scale
+            local x = sx + (tx - sx) * k
+            local y = sy + (ty - sy) * k
+            local r = 0.6 + (tr - 0.6) * k
+            love.graphics.setColor(0, 0, 0, 0.3)
+            love.graphics.draw(hand.img, hand.quads[i], x + 5 * s, y + 8 * s, r, scale, scale, hand.cw / 2, hand.ch / 2)
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.draw(hand.img, hand.quads[i], x, y, r, scale, scale, hand.cw / 2, hand.ch / 2)
+        end
+    end
+end
+
+local function draw_bar(t, w, h, s, progress)
+    local bw, bh = math.floor(520 * s), math.floor(36 * s)
+    local x, y = math.floor(w / 2 - bw / 2), math.floor(h * 0.82)
+    local r = 8 * s
+    local pad = math.max(2, math.floor(5 * s))
+    love.graphics.setColor(C_SHADOW)
+    love.graphics.rectangle("fill", x, y + 5 * s, bw, bh, r, r)
+    love.graphics.setColor(C_PANEL)
+    love.graphics.rectangle("fill", x, y, bw, bh, r, r)
+    love.graphics.setColor(C_TRACK)
+    love.graphics.rectangle("fill", x + pad, y + pad, bw - 2 * pad, bh - 2 * pad, r * 0.7, r * 0.7)
+    local fw = math.floor((bw - 2 * pad) * progress)
+    if fw > 2 then
+        love.graphics.setColor(C_RED)
+        love.graphics.rectangle("fill", x + pad, y + pad, fw, bh - 2 * pad, r * 0.7, r * 0.7)
+        love.graphics.setColor(1, 1, 1, 0.18)
+        love.graphics.rectangle("fill", x + pad + 3 * s, y + pad + 2 * s, math.max(0, fw - 6 * s), math.max(1, 3 * s), 2 * s, 2 * s)
+    end
+    local pf = font(26 * s)
+    local pct = string.format("%d%%", math.floor(progress * 100 + 0.5))
+    draw_text(pct, pf, w / 2, y + bh / 2 - pf:getHeight() / 2 - 1 * s, s)
+    local lf = font(30 * s)
+    local dots = string.rep(".", math.floor(t * 2.5) % 4)
+    local label = st.label
+    local lw = lf:getWidth(label)
+    love.graphics.setFont(lf)
+    local lx = math.floor(w / 2 - lw / 2 + 0.5)
+    local ly = math.floor(y + bh + 16 * s)
+    love.graphics.setColor(0, 0, 0, 0.45)
+    love.graphics.print(label .. dots, lx, ly + math.floor(2 * s + 0.5))
+    love.graphics.setColor(C_WHITE)
+    love.graphics.print(label .. dots, lx, ly)
+end
+
+local function shot(progress)
+    local dir = os.getenv("LOADING_SHOT_DIR")
+    if not dir or dir == "" then return end
+    for _, mark in ipairs({ 0.1, 0.5, 0.9 }) do
+        if progress >= mark and not st.shots[mark] then
+            st.shots[mark] = true
+            local path = string.format("%s/loading_%02d.png", dir, math.floor(mark * 100))
+            love.graphics.captureScreenshot(function(img)
+                local ok, data = pcall(function() return img:encode("png") end)
+                if ok and data then
+                    local f = io.open(path, "wb")
+                    if f then f:write(data:getString()) f:close() end
+                end
+            end)
+        end
+    end
+end
+
+local function render(t_now, fade)
+    local t = t_now - st.t0
+    local w, h = love.graphics.getDimensions()
+    local s = math.min(w / 1280, h / 720)
+    local prev_font = love.graphics.getFont()
+r 12 112 %20%20%20%20 -
+l 1
+    love.graphics.push()
+r 19 278 %20%20%20%20 -
+r 3 4413 %20%20%20%20 -
+l 15
+    love.graphics.setScissor()
+    love.graphics.setBlendMode("alpha")
+    love.graphics.clear(0, 0, 0, 1)
+    draw_background(t, w, h)
+    draw_logo(t, w, h, s)
+    draw_hand(t, w, h, s, st.shown)
+    draw_bar(t, w, h, s, st.shown)
+    if fade and fade > 0 then
+        love.graphics.setColor(0, 0, 0, math.min(1, fade))
+        love.graphics.rectangle("fill", 0, 0, w, h)
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+    if prev_font then love.graphics.setFont(prev_font) end
+    love.graphics.pop()
+    shot(st.shown)
+r 12 123 %20%20%20%20 -
+l 51
+end
+
+function LS.draw(label, force)
+    if st.finished then return end
+    local t_now = now()
+    if not st.t0 then
+        st.t0 = t_now
+        st.expected = read_expected()
+    end
+    local nl = clean_label(label)
+    if nl then st.label = nl end
+    if not force and t_now - st.last_draw < FRAME_GAP then return end
+    st.last_draw = t_now
+    if love.event then love.event.pump() end
+    local target = target_progress(t_now - st.t0)
+    st.shown = math.max(st.shown, st.shown + (target - st.shown) * 0.25)
+    render(t_now)
+end
+
+local function outro()
+    local start = now()
+    local from = st.shown
+    st.deal_gap = 0.12
+    st.label = "Ready"
+    local done_at
+    while true do
+        local t_now = now()
+        local u = (t_now - start) / 0.6
+        st.shown = from + (1 - from) * ease_out(u)
+        local all = st.hand == false or st.dealt[HAND] ~= nil
+        if not done_at and u >= 1 and all and t_now - st.t0 >= MIN_SHOW then
+            done_at = math.max(t_now, (st.last_deal or 0) + st.t0 + 0.45)
+        end
+        local fade = done_at and (t_now - done_at - 0.25) / 0.3 or 0
+        if fade >= 1 or t_now - start > OUTRO_MAX then break end
+        if love.event then love.event.pump() end
+        render(t_now, fade)
+        love.timer.sleep(FRAME_GAP / 2)
+    end
+end
+
+function LS.finish()
+    if not st.t0 or st.finished then return end
+    local took = now() - st.t0
+    pcall(love.filesystem.write, TIME_FILE, string.format("%.2f", took))
+    pcall(outro)
+    st.finished = true
+    st.hand, st.ace, st.logo, st.shader = nil, nil, nil, nil
+end
+
+return LS
+end

@@ -1,0 +1,44 @@
+# Files left out of the public release patch set (tools/release/pack_overhaul.sh).
+# One path or glob per line, relative to the repo root, then "# reason".
+# "dir/" drops a whole folder, "*" stays inside one folder, "**" crosses folders.
+# Each stream adds its own lines under its own heading.
+
+## launcher: dev notes and build leftovers
+assets/dexopt/                      # Android build cache
+assets/DEV_CHANGELOG.txt            # dev log
+assets/ERROR_LOG.txt                # dev log
+assets/SESSION_LOG.txt              # dev log
+assets/FEATURES.txt                 # dev notes
+assets/info.txt                     # dev notes
+assets/BUGFIX_PLAN.md               # dev notes
+assets/OPUS_SCRATCHPAD.md           # dev notes
+assets/SMODS_PORT_PLAN.md           # dev notes
+assets/**/.DS_Store                 # macOS junk
+assets/**/*.orig                    # merge leftovers
+assets/**/*.rej                     # merge leftovers
+
+## jukebox: the bundled songs are covers and remixes by other people (PLAN.md decision)
+assets/resources/sounds/jukebox/    # not ours to ship; players add their own music
+
+## art: AI-made atlases (PLAN.md decision: the public release ships no AI art)
+assets/resources/textures/*/MPTraps.png # ai art, release_art.lua builds traps and the Trap Pack from the player's own spectrals
+assets/resources/textures/*/MPJokers.png # ai art, release_art.lua builds MP jokers from the player's own jokers
+assets/resources/textures/*/MPModeJokers.png # ai art, release_art.lua builds mode jokers from the player's own jokers
+assets/resources/textures/*/MPDecks.png # ai art, release_art.lua builds deck backs from the player's own decks
+assets/resources/textures/*/MPBlindChips.png # ai art, release_art.lua builds PvP chips from the player's own boss chips
+assets/resources/textures/*/NemesisChip.png # ai art, release_art.lua builds the Nemesis chip from the player's own boss chips
+assets/resources/textures/*/TavernBacks.png # ai art, release_art.lua builds the backs from the player's own deck backs
+assets/resources/textures/*/TavernPacks.png # ai art, the Tavern shows the vanilla booster each pack names
+assets/resources/textures/*/TavernPortraits.png # ai art, release_art.lua builds the portraits from the player's own jokers
+assets/resources/textures/*/RankFrames.png # built from vanilla sprites by tools/ranked, release_art.lua loads an empty atlas instead
+assets/resources/textures/*/RankSleeves.png # built from vanilla sprites by tools/ranked, release_art.lua loads an empty atlas instead
+assets/resources/textures/*/RankPack.png # built from vanilla sprites by tools/ranked, release_art.lua loads an empty atlas instead
+
+## release: dev markers and notes that must not ship
+assets/dev_build.txt                         # dev marker: leaving it out turns RELEASE_BUILD on (functions/release_flags.lua)
+assets/functions/BalatroV2(WIP).code-workspace  # editor file
+assets/functions/QUEST_TRACKING_NOTE.txt     # dev note
+assets/multiplayer/BUG_AUDIT_REPORT.md       # dev note
+assets/smods/.github/                        # Steamodded repo metadata
+assets/smods/.gitattributes                  # Steamodded repo metadata
+assets/smods/.gitignore                      # Steamodded repo metadata

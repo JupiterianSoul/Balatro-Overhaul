@@ -1,0 +1,347 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 192
+local SUITS = {'Hearts', 'Diamonds', 'Clubs', 'Spades'}
+local BASE = {Hearts = 'f03464', Diamonds = 'f06b3f', Clubs = '235955', Spades = '3c4368'}
+local DECK_ROW = {Hearts = 0, Clubs = 1, Diamonds = 2, Spades = 3}
+local UI_COL = {Hearts = 0, Diamonds = 1, Clubs = 2, Spades = 3}
+
+SUIT_COLOURS = {
+    {key = 'crimson', name = "Crimson", hex = 'b0203a'},
+    {key = 'rust', name = "Rust", hex = 'a8461c'},
+    {key = 'ochre', name = "Ochre", hex = '9c7412'},
+    {key = 'olive', name = "Olive", hex = '5f6e1a'},
+    {key = 'fir', name = "Fir", hex = '1d6b36'},
+    {key = 'pine', name = "Pine", hex = '155e5a'},
+    {key = 'petrol', name = "Petrol", hex = '136f8a'},
+    {key = 'navy', name = "Navy", hex = '23336e'},
+    {key = 'midnight', name = "Midnight", hex = '2a2466'},
+    {key = 'plum', name = "Plum", hex = '5e2470'},
+    {key = 'raspberry', name = "Raspberry", hex = '9c1f5e'},
+    {key = 'black', name = "Black", hex = '2b2b33'},
+    {key = 'red', name = "Red", hex = 'e23b3b'},
+    {key = 'orange', name = "Orange", hex = 'f07a1e'},
+    {key = 'gold', name = "Gold", hex = 'c9a227'},
+    {key = 'moss', name = "Moss", hex = '7a9a1c'},
+    {key = 'green', name = "Green", hex = '2c9a4b'},
+    {key = 'teal', name = "Teal", hex = '1f9e95'},
+    {key = 'cyan', name = "Cyan", hex = '1aa3c8'},
+    {key = 'blue', name = "Blue", hex = '2f6fd6'},
+    {key = 'indigo', name = "Indigo", hex = '4b3fa8'},
+    {key = 'purple', name = "Purple", hex = '8a3fb5'},
+    {key = 'pink', name = "Pink", hex = 'e0569a'},
+    {key = 'brown', name = "Brown", hex = '7a4a2a'},
+    {key = 'coral', name = "Coral", hex = 'f2665a'},
+    {key = 'tangerine', name = "Tangerine", hex = 'ff963c'},
+    {key = 'amber', name = "Amber", hex = 'e6a100'},
+    {key = 'lime', name = "Lime", hex = '8cc43a'},
+    {key = 'mint', name = "Mint", hex = '3cc77a'},
+    {key = 'turquoise', name = "Turquoise", hex = '2ec4b6'},
+    {key = 'sky', name = "Sky", hex = '4cb8e8'},
+    {key = 'cornflower', name = "Cornflower", hex = '5b8def'},
+    {key = 'periwinkle', name = "Periwinkle", hex = '7b74d6'},
+    {key = 'lavender', name = "Lavender", hex = 'a77bd6'},
+    {key = 'magenta', name = "Magenta", hex = 'd63fc4'},
+    {key = 'grey', name = "Grey", hex = '6b7280'},
+}
+
+SUIT_PALETTES = {
+    {key = 'normal', name = "Default"},
+    {key = 'hc', name = "High Contrast"},
+    {key = 'four', name = "Four Colour", colours = {Hearts = 'e23b3b', Diamonds = '2f6fd6', Clubs = '2c9a4b', Spades = '2b2b33'}},
+    {key = 'sunset', name = "Sunset", colours = {Hearts = 'ff6a13', Diamonds = 'e39b00', Clubs = '8e1f4f', Spades = '5a2a82'}},
+    {key = 'ocean', name = "Ocean", colours = {Hearts = 'f08080', Diamonds = '00a08a', Clubs = '1e88e5', Spades = '1a237e'}},
+    {key = 'neon', name = "Neon", colours = {Hearts = 'ff1fd1', Diamonds = 'ff8a00', Clubs = '19c94f', Spades = '7b2ff7'}},
+    {key = 'autumn', name = "Autumn", colours = {Hearts = 'a83226', Diamonds = 'c79a1a', Clubs = '6f7d1a', Spades = '5a3a22'}},
+    {key = 'forest', name = "Forest", colours = {Hearts = '7cb342', Diamonds = '8d6e63', Clubs = '1b5e20', Spades = '2b1d14'}},
+    {key = 'royal', name = "Royal", colours = {Hearts = '8e0038', Diamonds = 'c9a227', Clubs = '7b1fa2', Spades = '1a237e'}},
+    {key = 'candy', name = "Candy", colours = {Hearts = 'ff77b7', Diamonds = '29b6f6', Clubs = '3cc77a', Spades = '9575cd'}},
+    {key = 'night', name = "Night", colours = {Hearts = 'e040fb', Diamonds = '00acc1', Clubs = '5e35b1', Spades = '212121'}},
+    {key = 'retro', name = "Retro", colours = {Hearts = 'e4572e', Diamonds = '2a9d8f', Clubs = 'e6a100', Spades = '7d4e2a'}},
+    {key = 'frost', name = "Frost", colours = {Hearts = 'b39ddb', Diamonds = '29b6f6', Clubs = '4db6ac', Spades = '283593'}},
+    {key = 'custom', name = "Custom"},
+}
+
+local CUSTOM_DEFAULT = {Hearts = 'red', Diamonds = 'orange', Clubs = 'green', Spades = 'black'}
+
+local function find(list, key)
+    for i, v in ipairs(list) do
+        if v.key == key then return v, i end
+    end
+end
+
+function suit_palette_key()
+    local S = G.SETTINGS
+    if S.suit_palette and find(SUIT_PALETTES, S.suit_palette) then return S.suit_palette end
+    return S.colourblind_option and 'hc' or 'normal'
+end
+
+function suit_palette_colours(key)
+    if key == 'custom' then
+        local c = G.SETTINGS.suit_palette_custom or {}
+        local out = {}
+        for _, s in ipairs(SUITS) do
+            out[s] = (find(SUIT_COLOURS, c[s]) or find(SUIT_COLOURS, CUSTOM_DEFAULT[s])).hex
+        end
+        return out
+    end
+    local p = find(SUIT_PALETTES, key)
+    return p and p.colours
+end
+
+local function atlas_path(name)
+    for _, a in ipairs(G.asset_atli or {}) do
+        if a.name == name then return a.path end
+    end
+end
+
+local function hex_rgb(h)
+    return tonumber(h:sub(1, 2), 16)/255, tonumber(h:sub(3, 4), 16)/255, tonumber(h:sub(5, 6), 16)/255
+end
+
+local function signature(colours)
+    return colours and (colours.Hearts .. colours.Diamonds .. colours.Clubs .. colours.Spades) or nil
+end
+
+local function recolour(name, colours, cell)
+    local atlas = G.ASSET_ATLAS and G.ASSET_ATLAS[name]
+    if not atlas or not atlas.image then return end
+    atlas.bom_pal_sig = signature(colours)
+    atlas.bom_orig_image = atlas.bom_orig_image or atlas.image
+    local old = atlas.bom_pal_image
+    atlas.bom_pal_image = nil
+    atlas.image = atlas.bom_orig_image
+    if old then old:release() end
+    local path = colours and atlas_path(name)
+    if not path then return end
+    local ok, data = pcall(love.image.newImageData, path)
+    if not ok or not data then return end
+    local scale = data:getWidth()/atlas.image:getWidth()
+    local tol = 1.5/255
+    for _, s in ipairs(SUITS) do
+        local fr, fg, fb = hex_rgb(BASE[s])
+        local tr, tg, tb = hex_rgb(colours[s])
+        local x, y, w, h = cell(s, scale, data)
+        data:mapPixel(function(_, _, r, g, b, a)
+            if a > 0 and math.abs(r - fr) < tol and math.abs(g - fg) < tol and math.abs(b - fb) < tol then
+                return tr, tg, tb, a
+            end
+            return r, g, b, a
+        end, x, y, w, h)
+    end
+    local img = love.graphics.newImage(data, {mipmaps = true, dpiscale = atlas.bom_orig_image:getDPIScale()})
+    img:setFilter(atlas.bom_orig_image:getFilter())
+    local mf, sharp = atlas.bom_orig_image:getMipmapFilter()
+    if mf then img:setMipmapFilter(mf, sharp) end
+    data:release()
+    atlas.bom_pal_image = img
+    atlas.image = img
+end
+
+local function deck_cell(s, scale, data)
+    local h = math.floor(95*scale + 0.5)
+    return 0, DECK_ROW[s]*h, data:getWidth(), h
+end
+
+local function full_cell(_, _, data)
+    return 0, 0, data:getWidth(), data:getHeight()
+end
+
+local function collab_atlases()
+    local out, seen = {}, {}
+    local chosen = G.SETTINGS.CUSTOM_DECK and G.SETTINGS.CUSTOM_DECK.Collabs or {}
+    for _, s in ipairs(SUITS) do
+        local k = chosen[s]
+        if type(k) == 'string' and k ~= 'default' and not seen[k] then
+            seen[k] = true
+            out[#out + 1] = k .. '_1'
+        end
+    end
+    return out
+end
+
+local function ui_cell(s, scale)
+    local c = math.floor(18*scale + 0.5)
+    return UI_COL[s]*c, c, c, c
+end
+
+function suit_palette_apply(changed)
+    if not G.SETTINGS or not G.C or not G.C.SUITS then return end
+    local key = suit_palette_key()
+    local colours = suit_palette_colours(key)
+    local S = G.SETTINGS
+    if changed then
+        S.suit_palette = key
+        S.colourblind_option = key == 'hc'
+        local want = key == 'hc' and 'hc' or 'lc'
+        local skins = rawget(_G, 'SMODS') and SMODS.DeckSkins
+        if S.colour_palettes and skins then
+            for _, s in ipairs(SUITS) do
+                local skin = skins[S.CUSTOM_DECK and S.CUSTOM_DECK.Collabs and S.CUSTOM_DECK.Collabs[s] or '']
+                if skin and skin.palette_map and skin.palette_map[want] then S.colour_palettes[s] = want end
+            end
+        end
+    end
+    if not colours and not changed and not (G.ASSET_ATLAS and G.ASSET_ATLAS.cards_1 and G.ASSET_ATLAS.cards_1.bom_pal_image) then return end
+    recolour('cards_1', colours, deck_cell)
+    recolour('ui_1', colours, ui_cell)
+    for _, name in ipairs(collab_atlases()) do recolour(name, colours, full_cell) end
+    local proto = G.C['SO_'..(S.colourblind_option and 2 or 1)]
+    for _, s in ipairs(SUITS) do
+        G.C.SUITS[s] = colours and HEX(colours[s]) or proto[s]
+    end
+    if changed then
+        for _, v in pairs(G.I.CARD or {}) do
+            if v.config and v.config.card and v.children.front and v.ability and v.ability.effect ~= 'Stone Card' then
+r 4 872 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 50
+            end
+        end
+    end
+end
+
+function suit_palette_set(i)
+    local p = SUIT_PALETTES[i]
+    if not p then return end
+    G.SETTINGS.suit_palette = p.key
+    if p.key == 'custom' and not G.SETTINGS.suit_palette_custom then
+        G.SETTINGS.suit_palette_custom = {}
+        for _, s in ipairs(SUITS) do G.SETTINGS.suit_palette_custom[s] = CUSTOM_DEFAULT[s] end
+    end
+    suit_palette_apply(true)
+end
+
+function suit_palette_setting_row(save)
+    local names = {}
+    for i, p in ipairs(SUIT_PALETTES) do names[i] = mod_loc(p.name) end
+    local _, cur = find(SUIT_PALETTES, suit_palette_key())
+    return UIK.cycle{id = 'set_suit_palette', label = mod_loc("Suit Colours"), info = mod_loc("Colour of each suit on the cards"), options = names, current = cur or 1,
+        callback = function(i) suit_palette_set(i) if save then save() end UIK.refresh() end}
+end
+
+function suit_palette_custom_rows(items, save)
+    if suit_palette_key() ~= 'custom' then return end
+    local at
+    for i, it in ipairs(items) do
+        if it.uik_o and it.uik_o.id == 'set_suit_palette' then at = i end
+    end
+    if not at then return end
+    local names = {}
+    for i, c in ipairs(SUIT_COLOURS) do names[i] = mod_loc(c.name) end
+    local chosen = suit_palette_colours('custom')
+    for k, s in ipairs(SUITS) do
+        local cur = 1
+        for i, c in ipairs(SUIT_COLOURS) do
+            if c.hex == chosen[s] then cur = i end
+        end
+        table.insert(items, at + k, UIK.cycle{id = 'set_suit_'..s, label = localize(s, 'suits_plural'), options = names, current = cur, colour = HEX(chosen[s]),
+            callback = function(i)
+                G.SETTINGS.suit_palette_custom = G.SETTINGS.suit_palette_custom or {}
+                G.SETTINGS.suit_palette_custom[s] = SUIT_COLOURS[i].key
+                suit_palette_apply(true)
+                if save then save() end
+                UIK.refresh()
+            end})
+    end
+end
+
+r 4 1756 - -
+l 12
+    G.SETTINGS.suit_palette = G.SETTINGS.colourblind_option and 'hc' or 'normal'
+    suit_palette_apply(true)
+end
+
+function suit_palette_ensure(name)
+    local atlas = G.ASSET_ATLAS and G.ASSET_ATLAS[name]
+    if not atlas then return end
+    local colours = suit_palette_colours(suit_palette_key())
+    if atlas.bom_pal_sig ~= signature(colours) then recolour(name, colours, full_cell) end
+end
+
+local change_collab_ref = G.FUNCS.change_collab
+r 4 868 - -
+l 81
+    local r = change_collab_ref(args)
+    for _, name in ipairs(collab_atlases()) do suit_palette_ensure(name) end
+    return r
+end
+
+local set_render_ref = Game.set_render_settings
+function Game:set_render_settings(...)
+    local r = set_render_ref(self, ...)
+    if G.ASSET_ATLAS and G.ASSET_ATLAS.cards_1 then
+        G.ASSET_ATLAS.cards_1.bom_pal_image = nil
+        if G.ASSET_ATLAS.ui_1 then G.ASSET_ATLAS.ui_1.bom_pal_image = nil end
+    end
+    suit_palette_apply()
+    return r
+end
+
+do
+    local fr, es = {}, {}
+    local words = {
+        ["Suit Colours"] = {"Couleurs des enseignes", "Colores de los palos"},
+        ["Colour of each suit on the cards"] = {"Couleur de chaque enseigne sur les cartes", "Color de cada palo en las cartas"},
+        ["Default"] = {"Par défaut", "Predeterminado"},
+        ["High Contrast"] = {"Contraste élevé", "Alto contraste"},
+        ["Four Colour"] = {"Quatre couleurs", "Cuatro colores"},
+        ["Sunset"] = {"Crépuscule", "Atardecer"},
+        ["Ocean"] = {"Océan", "Océano"},
+        ["Neon"] = {"Néon", "Neón"},
+        ["Autumn"] = {"Automne", "Otoño"},
+        ["Forest"] = {"Forêt", "Bosque"},
+        ["Royal"] = {"Royal", "Real"},
+        ["Candy"] = {"Bonbon", "Caramelo"},
+        ["Night"] = {"Nuit", "Noche"},
+        ["Retro"] = {"Rétro", "Retro"},
+        ["Frost"] = {"Givre", "Escarcha"},
+        ["Custom"] = {"Personnalisé", "Personalizado"},
+        ["Rust"] = {"Rouille", "Óxido"},
+        ["Ochre"] = {"Ocre", "Ocre"},
+        ["Olive"] = {"Olive", "Oliva"},
+        ["Fir"] = {"Sapin", "Abeto"},
+        ["Pine"] = {"Pin", "Pino"},
+        ["Petrol"] = {"Pétrole", "Petróleo"},
+        ["Midnight"] = {"Minuit", "Medianoche"},
+        ["Plum"] = {"Prune", "Ciruela"},
+        ["Raspberry"] = {"Framboise", "Frambuesa"},
+        ["Moss"] = {"Mousse", "Musgo"},
+        ["Tangerine"] = {"Mandarine", "Mandarina"},
+        ["Lime"] = {"Citron vert", "Lima"},
+        ["Mint"] = {"Menthe", "Menta"},
+        ["Turquoise"] = {"Turquoise", "Turquesa"},
+        ["Sky"] = {"Ciel", "Cielo"},
+        ["Cornflower"] = {"Bleuet", "Aciano"},
+        ["Periwinkle"] = {"Pervenche", "Pervinca"},
+        ["Lavender"] = {"Lavande", "Lavanda"},
+        ["Magenta"] = {"Magenta", "Magenta"},
+        ["Red"] = {"Rouge", "Rojo"},
+        ["Crimson"] = {"Cramoisi", "Carmesí"},
+        ["Coral"] = {"Corail", "Coral"},
+        ["Orange"] = {"Orange", "Naranja"},
+        ["Amber"] = {"Ambre", "Ámbar"},
+        ["Gold"] = {"Or", "Oro"},
+        ["Green"] = {"Vert", "Verde"},
+        ["Teal"] = {"Sarcelle", "Verde azulado"},
+        ["Cyan"] = {"Cyan", "Cian"},
+        ["Blue"] = {"Bleu", "Azul"},
+        ["Navy"] = {"Marine", "Marino"},
+        ["Indigo"] = {"Indigo", "Índigo"},
+        ["Purple"] = {"Violet", "Morado"},
+        ["Pink"] = {"Rose", "Rosa"},
+        ["Brown"] = {"Marron", "Marrón"},
+        ["Black"] = {"Noir", "Negro"},
+        ["Grey"] = {"Gris", "Gris"},
+    }
+    local have = rawget(_G, 'MOD_TRANSLATIONS') or {}
+    for en, t in pairs(words) do
+        if not (have.fr and have.fr[en]) then fr[en] = t[1] end
+        if not (have.es and have.es[en]) then es[en] = t[2] end
+    end
+    if mod_loc_register then mod_loc_register{fr = fr, es = es} end
+end
+
+require "functions/art/suit_colours_ui"
+end

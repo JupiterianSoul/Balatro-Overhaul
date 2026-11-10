@@ -1,0 +1,12 @@
+BOP 2
+eol lf
+final 1
+base 26
+c 12
+s 2
+e 26 13 - - =3,-37,=40,-1,=19
+c 7
+l 1
+    if request.type == 'kill' then return end
+c 2
+end

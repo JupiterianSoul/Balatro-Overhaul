@@ -1,0 +1,646 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 538
+BO_SPREPLAY = BO_SPREPLAY or {}
+local SR = BO_SPREPLAY
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+SR.V = 1
+SR.DIR = "sp_replays"
+SR.LIVE = "sp_replays/live.jsonl"
+SR.KEEP = 50
+SR.MAX_BYTES = 1000000
+SR.MODES = {solo = true, seeded = true, challenge = true, custom = true, daily = true}
+
+local function RP() return rawget(_G, "bom_replay") end
+local function PB() return rawget(_G, "bom_playback") end
+local function json() return bom_core and bom_core.json end
+local function clock() return (love and love.timer and love.timer.getTime and love.timer.getTime()) or os.clock() end
+local function fs() return require("functions/fast_fs") end
+
+local function playing_back()
+  local P = PB()
+  return P and P.active and P.active() or false
+end
+
+local function rec()
+  local R = RP()
+  return R and R._rec or nil
+end
+
+local function mine(REC)
+  return SR.cur ~= nil and REC ~= nil and REC.local_only and REC.match_id == "sp:" .. SR.cur.id
+end
+
+local function new_id()
+  SR._n = (SR._n or 0) + 1
+  return tostring(os.time()) .. "-" .. tostring(SR._n) .. "-" .. tostring(math.floor(clock() * 1000) % 100000)
+end
+
+local function encode(v)
+  local J = json()
+  if not J then return nil end
+  local ok, s = pcall(J.encode, v)
+  return ok and type(s) == "string" and s or nil
+end
+
+local function decode(s)
+  local J = json()
+  if not (J and type(s) == "string") then return nil end
+  local ok, t = pcall(J.decode, s)
+  return ok and t or nil
+end
+
+local function ensure_dir()
+  pcall(love.filesystem.createDirectory, SR.DIR)
+end
+
+function SR.path(id) return SR.DIR .. "/" .. tostring(id) .. ".json" end
+
+function SR.exists(id)
+  if type(id) ~= "string" or id == "" then return false end
+  local ok, info = pcall(love.filesystem.getInfo, SR.path(id))
+  return ok and info ~= nil
+end
+
+local function pre_run_copy()
+  local p = G.MOD_SETTINGS and G.MOD_SETTINGS.pre_run
+  if type(p) ~= "table" or not p.enabled then return false end
+  local out = {}
+  for k, v in pairs(p) do
+    if type(v) ~= "table" and type(v) ~= "function" then out[k] = v end
+  end
+  return out
+end
+
+local function locked_set()
+  local out = {}
+  for k, v in pairs(G.P_CENTERS or {}) do
+    if type(v) == "table" and v.unlocked == false then out[k] = true end
+  end
+  return out
+end
+
+local function need_set()
+  local out = {}
+  for _, list in ipairs({G.P_CENTER_POOLS and G.P_CENTER_POOLS.Tag or {}, G.P_TAGS or {}}) do
+    for _, t in pairs(list) do
+      local r = type(t) == "table" and t.requires or nil
+      local c = type(r) == "string" and G.P_CENTERS and G.P_CENTERS[r]
+      if c and not c.discovered then out[r] = true end
+    end
+  end
+  return out
+end
+
+local function plain(v, depth)
+  if type(v) ~= "table" then
+    local t = type(v)
+    return (t == "string" or t == "number" or t == "boolean") and v or nil
+  end
+  if (depth or 0) > 4 then return nil end
+  local out = {}
+  for k, x in pairs(v) do
+    if type(k) == "string" or type(k) == "number" then out[k] = plain(x, (depth or 0) + 1) end
+  end
+  return out
+end
+
+local function keys_of(set)
+  local out = {}
+  for k in pairs(set) do out[#out + 1] = k end
+  table.sort(out)
+  return out
+end
+
+function SR.changes(cur)
+  local out = {}
+  for k in pairs(cur.locked or {}) do
+    local c = G.P_CENTERS[k]
+    if not c or c.unlocked ~= false then
+      cur.locked[k] = nil
+      out[#out + 1] = {k = "ul", c = k}
+    end
+  end
+  for k in pairs(cur.need or {}) do
+    local c = G.P_CENTERS[k]
+    if not c or c.discovered then
+      cur.need[k] = nil
+      out[#out + 1] = {k = "dc", c = k}
+    end
+  end
+  table.sort(out, function(a, b) return a.k .. a.c < b.k .. b.c end)
+  return out
+end
+
+local function eligible(g, args)
+  if not g or g.multiplayer or g.bo_practice then return false end
+  if args and args.mp_start then return false end
+  if g.daily and type(g.daily_rules) ~= "table" then return false end
+  if playing_back() then return false end
+  if G.SETTINGS and G.SETTINGS.tutorial_progress then return false end
+  if g.pseudorandom and g.pseudorandom.seed == "TUTORIAL" then return false end
+  local H = rawget(_G, "BO_HISTORY")
+  local mode = H and H.mode_of and H.mode_of(g)
+  return SR.MODES[mode] == true, mode
+end
+
+function SR.append(e)
+  local cur = SR.cur
+  if not cur or cur.off then return end
+  local s = encode(e)
+  if not s then return end
+  cur.bytes = (cur.bytes or 0) + #s + 1
+  if cur.bytes > SR.MAX_BYTES then
+    cur.off = true
+    if G and G.GAME and G.GAME.bo_sprp == cur.id then G.GAME.bo_sprp = nil end
+    SR.release()
+    pcall(love.filesystem.remove, SR.LIVE)
+    return
+  end
+  pcall(function() fs().append(SR.LIVE, s .. "\n") end)
+end
+
+function SR.release()
+  local REC = rec()
+  if mine(REC) then
+    REC.on, REC.armed, REC.local_only, REC.match_id, REC.batch = false, false, nil, nil, nil
+    REC.click, REC.depth, REC.eval_depth = nil, 0, 0
+  end
+end
+
+local function arm(REC, id, buf, last_t)
+  local R = RP()
+  REC.batch = R.new_batcher(0)
+  for i, e in ipairs(buf or {}) do REC.batch.buf[i] = e end
+  REC.t0 = clock() - (tonumber(last_t) or 0) / 1000
+  REC.ge0, REC.ev0 = R.ge, R.evs
+  REC.on, REC.armed, REC.local_only, REC.match_id = true, false, true, "sp:" .. id
+  REC.depth, REC.eval_depth, REC.click, REC.pre = 0, 0, nil, {}
+  REC.hk, REC.rolls = nil, nil
+end
+
+function SR.begin(mode)
+  local R, REC, g = RP(), rec(), G.GAME
+  if not (R and REC and R.new_batcher and R._test and R._test.begin_entry and g) then return end
+  if REC.on and not REC.local_only then return end
+  local id = new_id()
+  ensure_dir()
+  if not encode({h = 1}) then return end
+  local ok = pcall(function() fs().write(SR.LIVE, encode({h = SR.V, id = id}) .. "\n") end)
+  if not ok then return end
+  g.bo_sprp, g.bo_sprp_n = id, 0
+  local locked = locked_set()
+  SR.cur = {id = id, bytes = 0, locked = locked, need = need_set()}
+  arm(REC, id, nil, 0)
+  SR.starting = {mode = mode, ch = mode == "challenge" and tostring(g.challenge) or nil, pre = pre_run_copy(), sv = SR.V, lk = keys_of(locked),
+    rules = mode == "custom" and (plain(g.run_rules) or {}) or nil, dy = mode == "daily" and plain(g.daily_rules) or nil,
+    ff = R.forge_fp and R.forge_fp() or nil}
+  pcall(R._test.begin_entry)
+  SR.starting = nil
+end
+
+function SR.read_live(id)
+  local ok, data = pcall(love.filesystem.read, SR.LIVE)
+  if not ok or type(data) ~= "string" then return nil end
+  local out, head, bytes = {}, nil, 0
+  for line in data:gmatch("[^\n]+") do
+    local t = decode(line)
+    if not head then
+      head = t
+      if not (type(head) == "table" and head.id == id) then return nil end
+    elseif type(t) == "table" and type(t.k) == "string" then
+      out[#out + 1] = t
+      bytes = bytes + #line + 1
+    else
+      break
+    end
+  end
+  if not head then return nil end
+  return out, bytes
+end
+
+function SR.resume()
+  local R, REC, g = RP(), rec(), G.GAME
+  local id = g and g.bo_sprp
+  if not (R and REC and id) then return end
+  if REC.on and not REC.local_only then return end
+  local entries = SR.read_live(id)
+  local n = tonumber(g.bo_sprp_n) or -1
+  if not entries or n < 1 or #entries < n then
+    g.bo_sprp, g.bo_sprp_n = nil, nil
+    return
+  end
+  local keep, lines = {}, {encode({h = SR.V, id = id})}
+  local bytes = 0
+  for i = 1, n do
+    keep[i] = entries[i]
+    local s = encode(entries[i]) or "{}"
+    lines[#lines + 1] = s
+    bytes = bytes + #s + 1
+  end
+  local ok = pcall(function() fs().write(SR.LIVE, table.concat(lines, "\n") .. "\n") end)
+  if not ok then
+    g.bo_sprp, g.bo_sprp_n = nil, nil
+    return
+  end
+  SR.cur = {id = id, bytes = bytes, saved = SR.exists(id) or nil, locked = locked_set(), need = need_set()}
+  arm(REC, id, keep, keep[#keep] and keep[#keep].t)
+end
+
+function SR.stop()
+  local cur = SR.cur
+  if cur and cur.saved and not cur.off then pcall(SR.write_final) end
+  SR.release()
+  SR.cur = nil
+end
+
+function SR.prune()
+  local ok, items = pcall(love.filesystem.getDirectoryItems, SR.DIR)
+  if not ok or type(items) ~= "table" then return end
+  local keep = {}
+  local SP = rawget(_G, "Speedrun")
+  if SP and SP.keep_replays then
+    local okk, k = pcall(SP.keep_replays)
+    if okk and type(k) == "table" then keep = k end
+  end
+  local files = {}
+  for _, f in ipairs(items) do
+    local id = f:match("^(.+)%.json$")
+    if id and not keep[id] then files[#files + 1] = {f = f, t = tonumber(id:match("^(%d+)")) or 0, id = id} end
+  end
+  if #files <= SR.KEEP then return end
+  table.sort(files, function(a, b)
+    if a.t ~= b.t then return a.t > b.t end
+    return a.id > b.id
+  end)
+  for i = SR.KEEP + 1, #files do pcall(love.filesystem.remove, SR.DIR .. "/" .. files[i].f) end
+end
+
+function SR.write_final()
+  local REC = rec()
+  local cur = SR.cur
+  if not (cur and mine(REC) and REC.batch) then return false end
+  local s = encode({v = SR.V, id = cur.id, t = os.time(), x = cur.extra, entries = REC.batch.buf})
+  if not s or #s > SR.MAX_BYTES + 4096 then return false end
+  ensure_dir()
+  local ok = pcall(function() fs().write(SR.path(cur.id), s) end)
+  if ok then cur.saved = true end
+  return ok
+end
+
+function SR.set_extra(k, v)
+  local cur = SR.cur
+  if not cur then return end
+  cur.extra = cur.extra or {}
+  cur.extra[k] = v
+end
+
+function SR.on_record(e, result)
+  local g = G and G.GAME
+  local cur = SR.cur
+  if not (e and g and cur and g.bo_sprp == cur.id and not cur.off) then return end
+  local REC = rec()
+  if not mine(REC) then return end
+  local over = result ~= "win" or G.STATE == G.STATES.GAME_OVER
+  if over and not cur.ended then
+    cur.ended = true
+    RP().push({k = "end", r = result})
+  end
+  if SR.write_final() then
+    e.sprp = cur.id
+    SR.prune()
+  end
+  if over then
+    SR.release()
+    SR.cur = nil
+    pcall(love.filesystem.remove, SR.LIVE)
+  end
+end
+
+function SR.start_entry(entries)
+  if type(entries) ~= "table" then return nil end
+  for _, e in ipairs(entries) do
+    if type(e) == "table" and e.k == "start" then
+      if type(e.seed) ~= "string" or e.seed == "" or #e.seed > 64 then return nil end
+      if e.pre ~= nil and type(e.pre) ~= "table" and e.pre ~= false then return nil end
+      return e
+    end
+  end
+  return nil
+end
+
+function SR.whole(s)
+  if type(s) ~= "string" then return false end
+  local depth, i = 0, 1
+  while true do
+    local p = s:find('[%[%]{}"]', i)
+    if not p then return false end
+    local c = s:sub(p, p)
+    if c == '"' then
+      local q = p + 1
+      while true do
+        local e = s:find('["\\]', q)
+        if not e then return false end
+        if s:sub(e, e) == "\\" then q = e + 2 else i = e + 1 break end
+      end
+    else
+      if c == "{" or c == "[" then
+        depth = depth + 1
+      else
+        depth = depth - 1
+        if depth < 0 then return false end
+      end
+      i = p + 1
+      if depth == 0 then return s:find("^%s*$", i) ~= nil end
+    end
+  end
+end
+
+function SR.load(id)
+  if not SR.exists(id) then return nil end
+  local oki, info = pcall(love.filesystem.getInfo, SR.path(id))
+  if not oki or type(info) ~= "table" or (tonumber(info.size) or 0) > SR.MAX_BYTES * 2 then return nil end
+  local ok, data = pcall(love.filesystem.read, SR.path(id))
+  if not ok or not SR.whole(data) then return nil end
+  local t = decode(data)
+  if type(t) ~= "table" or type(t.entries) ~= "table" then return nil end
+  return t
+end
+
+local function popup(text)
+  local R = RP()
+  if R and R.popup then R.popup(text) end
+end
+
+local function profile_name()
+  local name = "Player"
+  pcall(function() name = G.PROFILES[G.SETTINGS.profile].name or name end)
+  return tostring(name)
+end
+
+function SR.watch(id, hist, from, o)
+  o = o or {}
+  local P = PB()
+  if not P or playing_back() then return false end
+  local t = o.data or SR.load(id)
+  local start = t and SR.start_entry(t.entries)
+  if not start then
+    popup(L("No replay for this run"))
+    return false
+  end
+  SR.stop()
+  SR.save_flags()
+  SR.launch = start
+  SR.watching = {id = id, hist = hist, from = from, sr = o.sr or nil}
+  SR.seen_run = nil
+  local ok = P.start({mode = "replay", id = "sp:" .. tostring(id), header = {kind = "local", players = {{pid = 0, name = o.name and tostring(o.name) or profile_name()}}},
+    streams = {["0"] = t.entries}, pid = 0})
+  if not ok then
+    SR.launch, SR.watching = nil, nil
+    SR.restore_flags()
+    return false
+  end
+  return true
+end
+
+local function find_challenge(id)
+  for _, c in ipairs(G.CHALLENGES or {}) do
+    if tostring(c.id) == tostring(id) then return c end
+  end
+  return nil
+end
+
+function SR.launch_args(args)
+  local st = SR.launch
+  if not (st and playing_back()) then return args end
+  args = args or {}
+  if st.ch and not args.challenge then args.challenge = find_challenge(st.ch) end
+  if type(st.dy) == "table" and not args.bo_daily then args.bo_daily = plain(st.dy) end
+  return args
+end
+
+function SR.save_flags()
+  if SR.flags_saved then return end
+  local saved = {}
+  SR.tut_saved = {G.SETTINGS.tutorial_progress, G.SETTINGS.tutorial_complete}
+  G.SETTINGS.tutorial_progress, G.SETTINGS.tutorial_complete = nil, true
+  for k, v in pairs(G.P_CENTERS or {}) do
+    if type(v) == "table" then saved[k] = {v.unlocked, v.discovered} end
+  end
+  SR.flags_saved = saved
+end
+
+function SR.restore_flags()
+  local saved = SR.flags_saved
+  SR.flags_saved = nil
+  if SR.tut_saved then
+    G.SETTINGS.tutorial_progress, G.SETTINGS.tutorial_complete = SR.tut_saved[1], SR.tut_saved[2]
+    SR.tut_saved = nil
+  end
+  for k, f in pairs(saved or {}) do
+    local c = G.P_CENTERS[k]
+    if c then c.unlocked, c.discovered = f[1], f[2] end
+  end
+end
+
+function SR.apply_start_flags(st)
+  if type(st) ~= "table" or type(st.lk) ~= "table" then return end
+  local lk = {}
+  for _, k in ipairs(st.lk) do lk[k] = true end
+  for k, v in pairs(G.P_CENTERS or {}) do
+    if type(v) == "table" and type(v.unlocked) == "boolean" then v.unlocked = not lk[k] end
+  end
+end
+
+function SR.apply_entry(e)
+  if type(e) ~= "table" or type(e.c) ~= "string" then return end
+  local c = G.P_CENTERS and G.P_CENTERS[e.c]
+  if not c then return end
+  if e.k == "ul" then c.unlocked = true elseif e.k == "dc" then c.discovered = true end
+end
+
+function SR.tick()
+  if SR.watching then
+    if playing_back() then
+      if G.STAGE == G.STAGES.RUN then SR.seen_run = true end
+    else
+      local P = PB()
+      if P then P.back_to_mp = nil end
+      SR.launch = nil
+      if SR.flags_saved then SR.restore_flags() end
+      if G.STATE == G.STATES.MENU and G.STAGE == G.STAGES.MAIN_MENU and not G.screenwipe and G.MAIN_MENU_UI then
+        local w = SR.watching
+        SR.watching = nil
+        local H = rawget(_G, "BO_HISTORY")
+        if H and H.open_detail and w.hist then
+          H.from = w.from
+          pcall(H.open_detail, w.hist)
+        end
+      end
+    end
+  end
+end
+
+function SR.install()
+  local R = RP()
+  if R and not SR._push_wrapped and type(R.push) == "function" then
+    SR._push_wrapped = true
+    local push = R.push
+    R.push = function(e)
+      local REC = rec()
+      local ours = type(e) == "table" and mine(REC) and REC.on
+      if ours and e.k == "start" and SR.starting then
+        for k, v in pairs(SR.starting) do e[k] = v end
+      end
+      if ours and R.ACTION_KINDS and R.ACTION_KINDS[e.k] and SR.cur then
+        for _, c in ipairs(SR.changes(SR.cur)) do
+          push(c)
+          SR.append(c)
+        end
+      end
+      push(e)
+      if ours then SR.append(e) end
+    end
+  end
+  local P = PB()
+  if P and type(P.step) == "function" and not SR._step_wrapped then
+    SR._step_wrapped = true
+    local step = P.step
+    P.step = function(...)
+      if SR.launch and P.active() then
+        local S = P.state()
+        local e = S and S.entries and S.entries[S.i]
+        if e and (e.k == "ul" or e.k == "dc") then SR.apply_entry(e) end
+      end
+      return step(...)
+    end
+  end
+  if P and type(P.stop) == "function" and not SR._stop_wrapped then
+    SR._stop_wrapped = true
+    local stop = P.stop
+    P.stop = function(...)
+      local res = {stop(...)}
+      if SR.flags_saved and not P.active() then pcall(SR.restore_flags) end
+      return unpack(res)
+    end
+  end
+  if type(save_run) == "function" and not SR._save_wrapped and not playing_back() then
+    SR._save_wrapped = true
+    local orig = save_run
+    save_run = function(...)
+      local REC = rec()
+      if G and G.GAME and SR.cur and G.GAME.bo_sprp == SR.cur.id and mine(REC) and REC.batch then
+        G.GAME.bo_sprp_n = #REC.batch.buf
+      end
+      return orig(...)
+    end
+  end
+  if G and G.FUNCS and type(G.FUNCS.start_run) == "function" and not SR._start_wrapped then
+    SR._start_wrapped = true
+    local orig = G.FUNCS.start_run
+r 4 2958 %20%20%20%20 -
+l 100
+      if SR.launch and playing_back() then
+        if e ~= nil then
+          SR.watching, SR.launch = nil, nil
+          local pb = PB()
+          if pb and pb.stop then pcall(pb.stop, true) end
+          if SR.flags_saved then SR.restore_flags() end
+          return orig(e, args)
+        end
+        args = SR.launch_args(args)
+        local BM = rawget(_G, "BoosterManager")
+        local inv = BM and BM.get_inventory
+        if inv then BM.get_inventory = function() return {} end end
+        local res = {pcall(orig, e, args)}
+        if inv then BM.get_inventory = inv end
+        if not res[1] then error(res[2], 0) end
+        return unpack(res, 2)
+      end
+      return orig(e, args)
+    end
+  end
+end
+
+if Game and Game.start_run and not SR._run_wrapped then
+  SR._run_wrapped = true
+  local orig = Game.start_run
+  Game.start_run = function(self, args)
+    args = args or {}
+    local launch = SR.launch and playing_back() and not args.savetext
+    if not launch and not playing_back() then pcall(SR.stop) end
+    local saved_pre, saved_custom, DB, can_score
+    if launch then
+      args = SR.launch_args(args)
+      SR.apply_start_flags(SR.launch)
+      local RR = rawget(_G, "RunRules")
+      if RR and type(SR.launch.rules) == "table" and RR.arm then
+        RR.arm(SR.launch.rules, "custom")
+      elseif RR and RR.disarm then
+        RR.disarm()
+      end
+      DB = type(args.bo_daily) == "table" and rawget(_G, "BO_DAILY_BOARD") or nil
+      can_score = DB and DB.can_score
+      if can_score then DB.can_score = function() return false end end
+      if G.MOD_SETTINGS then
+        saved_pre = {v = G.MOD_SETTINGS.pre_run}
+        G.MOD_SETTINGS.pre_run = type(SR.launch.pre) == "table" and SR.launch.pre or {enabled = false}
+      end
+      if G.CUSTOM_RUN then
+        saved_custom = G.CUSTOM_RUN.enabled
+        G.CUSTOM_RUN.enabled = false
+      end
+    end
+    local res = {pcall(orig, self, args)}
+    if saved_pre then G.MOD_SETTINGS.pre_run = saved_pre.v end
+    if saved_custom ~= nil then G.CUSTOM_RUN.enabled = saved_custom end
+    if can_score then DB.can_score = can_score end
+    if launch and type(args.bo_daily) == "table" and G.GAME and G.GAME.daily then G.GAME.daily = nil end
+    if not res[1] then error(res[2], 0) end
+    if not launch and not playing_back() then
+      pcall(function()
+        if args.savetext then
+          SR.resume()
+        else
+          local ok, mode = eligible(G.GAME, args)
+          if ok then SR.begin(mode) end
+        end
+      end)
+    end
+    return unpack(res, 2)
+  end
+end
+
+if Game and Game.main_menu and not SR._menu_wrapped then
+  SR._menu_wrapped = true
+  local orig = Game.main_menu
+  Game.main_menu = function(...)
+    pcall(SR.stop)
+    return orig(...)
+  end
+end
+
+if Game and Game.update and not SR._update_wrapped then
+  SR._update_wrapped = true
+  local orig = Game.update
+  Game.update = function(self, dt)
+    pcall(SR.install)
+    pcall(SR.tick)
+    return orig(self, dt)
+  end
+end
+
+mod_loc_register{
+  fr = {
+    ["No replay for this run"] = "Pas de replay pour cette partie",
+  },
+  es = {
+    ["No replay for this run"] = "No hay repetición de esta partida",
+  },
+}
+
+return SR
+end

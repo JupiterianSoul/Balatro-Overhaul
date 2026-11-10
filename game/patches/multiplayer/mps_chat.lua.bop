@@ -1,0 +1,517 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 56
+local T = require("multiplayer.mps_state")
+local C = {}
+
+local L = T.L
+local S = T.S
+
+local function touch() return UIK.touch() end
+local function bh() return touch() and 0.62 or 0.5 end
+local function rh() return touch() and 0.72 or 0.6 end
+
+C.REPORT_REASONS = {
+    {key = "insults", label = "Insults or hate"},
+    {key = "spam", label = "Spam"},
+    {key = "cheating", label = "Cheating"},
+    {key = "name", label = "Bad name"},
+    {key = "other", label = "Something else"},
+}
+
+local function win_id()
+    return G.OVERLAY_MENU and UIK and UIK._win and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") and UIK._win.id or nil
+end
+
+function C.is_open() return win_id() == "mps_chat" end
+local function optin_open() return win_id() == "mps_optin" end
+
+local function patch_label(node, ref_table, ref_value)
+    if type(node) ~= "table" then return false end
+    if node.n == G.UIT.T and node.config and node.config.text then
+        node.config.text = nil
+        node.config.ref_table = ref_table
+        node.config.ref_value = ref_value
+        return true
+    end
+    for _, child in ipairs(node.nodes or {}) do
+        if patch_label(child, ref_table, ref_value) then return true end
+    end
+    return false
+end
+
+function C.live_button(node)
+    T.lobby_label()
+    patch_label(node, S.lobby, "label")
+    return node
+end
+
+function C.back_to(target)
+    target = target or S.chat_return
+    if target == "friends" then
+        local F = require("multiplayer.mps_friends")
+        return F.open("messages")
+    end
+    if target == "lobby" or target == "party" or target == "run" then
+        if S.chat.enabled then return C.open_panel(target) end
+    end
+    local B = T.social()
+    if B and B.back_to_origin then return B.back_to_origin() end
+r 4 1375 %20%20%20%20 -
+l 7
+end
+
+local function leave_panel()
+    S.lobby_open = false
+    local from = S.chat_from
+    if from == "lobby" and bom_ui and bom_ui.show_lobby then return bom_ui.show_lobby() end
+    if from == "party" and bom_party and bom_party.show_lobby then return bom_party.show_lobby() end
+r 4 1375 %20%20%20%20 -
+l 31
+end
+
+local function optin_body()
+    local w = touch() and 8.6 or 7.6
+    local c = S.chat
+    local rows = {}
+    local function line(str, colour, scale)
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.4, padding = 0.02}, nodes = {
+            bom_kit.text(bom_kit.fit(str, w - 0.2, scale or bom_kit.dims().small), {scale = scale or bom_kit.dims().small, colour = colour}),
+        }}
+    end
+    if c.allowed == false then
+        line(L("Chat is not available for your account."), G.C.UI.TEXT_LIGHT, bom_kit.dims().scale)
+        line(L("You can still play, add friends and send emotes."), bom_kit.colour("muted"))
+    else
+        line(L("Chat lets you talk with friends and players in your lobby."), G.C.UI.TEXT_LIGHT)
+        line(L("Messages are filtered. You can mute and report players."), bom_kit.colour("muted"))
+        if c.allowed == nil then
+            line(L("Enter your birth year once to turn it on."), bom_kit.colour("muted"))
+            line(L("We only keep whether chat is allowed, never the year."), bom_kit.colour("muted"))
+            rows[#rows + 1] = UIK.stepper{label = L("Birth year"), ref_table = c, ref_value = "year", min = 1900, max = tonumber(os.date("%Y")) or 2026,
+                step = 1, big_step = 10, w = w, wrap = false}
+        end
+    end
+    if S.note then line(S.note, S.note_bad and G.C.RED or G.C.GREEN) end
+    return UIK.stack(rows, {w = w})
+end
+
+function C.open_optin(back, keep_note)
+    S.chat_return = back or S.chat_return
+    if not keep_note then S.note = nil end
+r 4 1381 %20%20%20%20 -
+l 201
+    local footer = {}
+    if S.chat.allowed ~= false then
+        footer[#footer + 1] = UIK.button{label = L("Turn on chat"), button = "mps_chat_optin_go", colour = G.C.GREEN, id = "mps_optin_go", w = 3.2}
+    end
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "mps_optin", compact = true, w = touch() and 8.8 or 7.8,
+        title = L("TEXT CHAT"),
+        tabs = {{key = "main", label = L("Chat"), build = optin_body}},
+        footer = footer,
+        back_func = "mps_chat_optin_back",
+        back_label = S.chat.allowed == false and nil or L("Not now"),
+    }}
+end
+
+local SIDE_W = 4.6
+local GAP_W = 0.3
+local function port() return UIK.portrait and UIK.portrait() end
+local function lines_w() return port() and UIK.W - 0.1 or UIK.W - SIDE_W - GAP_W - 0.1 end
+local function side_w() return port() and UIK.W - 0.1 or SIDE_W end
+
+local function note_h() return 0.45 end
+local function input_h() return touch() and 0.86 or 0.74 end
+local function all_h() return UIK.H - UIK.TOP - note_h() - 0.1 end
+local function side_h() return port() and math.floor(all_h() * 0.36 * 10) / 10 or all_h() end
+local function col_h() return port() and all_h() - side_h() - GAP_W or all_h() end
+local function lines_h() return col_h() - input_h() - 0.1 end
+
+local function is_me(line)
+    return tostring(line.name or "") == tostring(T.my_name() or "")
+end
+
+local function bubble_colour(mine)
+    if mine then return {0.13, 0.4, 0.62, 1} end
+    return {0.25, 0.29, 0.33, 1}
+end
+
+function C.log(items, w, h, o)
+    o = o or {}
+    local d = bom_kit.dims()
+    local scale = d.scale
+    local lh = scale * 1.3
+    local bpad = 0.08
+    local gap = 0.07
+    local head_h = lh + 0.03
+    local inner = w - 0.24
+    local maxb = math.max(1.5, inner * 0.72)
+    local avail = h - 0.3 - (o.typing and lh or 0)
+    local SE = rawget(_G, "social_chat_emotes")
+    local DC = rawget(_G, "social_dm_cards")
+    local blocks, used = {}, 0
+    for i = #items, 1, -1 do
+        local it = items[i]
+        local prev = items[i - 1]
+        local head = not it.mine and (not prev or prev.mine or prev.who ~= it.who)
+        local emote = SE and SE.parse(it.text)
+        local card = not emote and DC and DC.parse(it.text) or nil
+        local lines = (emote or card) and {} or T.wrap(it.text, maxb - 2 * bpad, scale)
+        local need = (emote and SE.size() or card and DC.height(scale) or #lines * lh) + 2 * bpad + gap + (head and head_h or 0)
+        if used + need > avail then break end
+        used = used + need
+        table.insert(blocks, 1, {it = it, head = head, lines = lines, emote = emote, card = card})
+    end
+    if blocks[1] and not blocks[1].it.mine and not blocks[1].head then
+        if used + head_h > avail then table.remove(blocks, 1) else blocks[1].head = true end
+    end
+    local rows = {}
+    if #blocks == 0 then
+        rows[1] = {n = G.UIT.R, config = {align = "cm", minw = inner, minh = 0.5, padding = 0}, nodes = {
+            bom_kit.text(o.empty or L("No messages yet. Say hi!"), {scale = scale, colour = bom_kit.colour("muted")}),
+        }}
+    end
+    for _, b in ipairs(blocks) do
+        local it = b.it
+        local side = it.mine and "cr" or "cl"
+        if b.head then
+            local who = bom_kit.fit(it.who or "?", maxb, scale * 0.92)
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = "cl", minw = inner, minh = head_h, padding = 0}, nodes = {
+                {n = G.UIT.C, config = {minw = 0.08, minh = 0.01, padding = 0}, nodes = {}},
+                bom_kit.text(who, {scale = scale * 0.92, colour = G.C.GOLD}),
+            }}
+        end
+        local lnodes = {b.emote and SE.chip(b.emote, scale) or b.card and DC.node(b.card, scale, math.min(maxb - 2 * bpad, 4.4)) or nil}
+        for _, str in ipairs(b.lines) do
+            lnodes[#lnodes + 1] = {n = G.UIT.R, config = {align = "cl", minh = lh, padding = 0}, nodes = {bom_kit.text(str, {scale = scale})}}
+        end
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = side, minw = inner, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "cl", padding = bpad, r = 0.12, colour = bubble_colour(it.mine), emboss = 0.03}, nodes = lnodes},
+        }}
+        rows[#rows + 1] = {n = G.UIT.R, config = {minw = inner, minh = gap, padding = 0}, nodes = {}}
+    end
+    if o.typing then
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cl", minw = inner, minh = lh, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {minw = 0.08, minh = 0.01, padding = 0}, nodes = {}},
+            bom_kit.text(bom_kit.fit(o.typing, inner - 0.2, scale * 0.9), {scale = scale * 0.9, colour = bom_kit.colour("muted")}),
+        }}
+    end
+    return {n = G.UIT.R, config = {align = #blocks == 0 and "cm" or "bm", minw = w, maxw = w, minh = h, r = 0.12, colour = {0, 0, 0, 0.2}, padding = 0.12}, nodes = {
+        {n = G.UIT.C, config = {align = #blocks == 0 and "cm" or "bm", minw = inner, padding = 0}, nodes = rows},
+    }}
+end
+
+local function lobby_items()
+    local out = {}
+    for _, ln in ipairs(S.lobby.lines) do
+        if not S.lobby.mutes[ln.pid] then
+            out[#out + 1] = {who = ln.name ~= "" and ln.name or "?", text = ln.text, mine = is_me(ln)}
+        end
+    end
+    return out
+end
+
+local function lines_def()
+    return C.log(lobby_items(), lines_w(), lines_h())
+end
+
+local function senders()
+    local seen, out = {}, {}
+    for i = #S.lobby.lines, 1, -1 do
+        local ln = S.lobby.lines[i]
+        if ln.pid ~= nil and not seen[ln.pid] and not is_me(ln) then
+            seen[ln.pid] = true
+            out[#out + 1] = {pid = ln.pid, name = ln.name, last = ln.id}
+        end
+    end
+    table.sort(out, function(a, b) return (tonumber(a.pid) or 0) < (tonumber(b.pid) or 0) end)
+    return out
+end
+
+local function side_def()
+    local d = bom_kit.dims()
+    local inner = side_w() - 0.24
+    local hb = bh()
+    local off_h = touch() and 0.8 or 0.66
+    local head_h = touch() and 0.66 or 0.58
+    local list_h = side_h() - head_h - off_h - 0.5
+    local nodes = {UIK.header(L("Players"), {w = inner})}
+    local rows = {}
+    local list = senders()
+    if #list == 0 then
+        local lines = T.wrap(L("Players who talk show up here."), inner - 0.3, d.small)
+        rows[1] = UIK.note(lines, {w = inner, scale = d.small})
+    end
+    local block_h = rh() + hb + 0.22
+    local max = math.max(1, math.floor(list_h / block_h))
+    local half = (math.min(inner, SIDE_W - 0.24) - 0.3) / 2
+    for i = 1, math.min(#list, max) do
+        local p = list[i]
+        local muted = S.lobby.mutes[p.pid] == true
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = inner, padding = 0.05, r = 0.1, colour = {0, 0, 0, 0.15}}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {
+                {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+                    bom_kit.name_bar(p.name ~= "" and p.name or "?", {w = math.min(inner, SIDE_W - 0.24) - 0.2, h = rh(), colour = bom_kit.colour("name_light"), text_colour = bom_kit.colour("dark_text"), shadow = false}),
+                }},
+                {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+                    T.btn{label = muted and L("Unmute") or L("Mute"), button = "mps_chat_mute", ref_table = {pid = p.pid}, colour = muted and G.C.GREEN or G.C.ORANGE, w = half, h = hb},
+                    {n = G.UIT.C, config = {minw = 0.1}, nodes = {}},
+                    T.btn{label = L("Report"), button = "mps_chat_report", ref_table = {pid = p.pid, id = p.last, name = p.name}, colour = G.C.RED, w = half, h = hb},
+                }},
+            }},
+        }}
+        rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.08, padding = 0}, nodes = {}}
+    end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "tm", minw = inner, minh = list_h, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = inner, padding = 0}, nodes = rows},
+    }}
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = inner, padding = 0.04}, nodes = {
+        UIK.button{label = L("Turn chat off"), button = "mps_chat_off", colour = UIK.C.warn, id = "mps_chat_off", w = inner - 0.1, h = off_h, scale = touch() and 0.42 or 0.38, col = true},
+    }}
+    return {n = G.UIT.R, config = {align = "tm", minw = side_w(), minh = side_h(), r = 0.12, colour = UIK.C.section, padding = 0.12}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = inner, padding = 0}, nodes = nodes},
+    }}
+end
+
+local function panel_body()
+    local W = port() and UIK.W - 0.1 or lines_w() + GAP_W + SIDE_W
+    local text, bad = S.note, S.note_bad
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", minw = W, padding = 0}, nodes = {
+        {n = G.UIT.R, config = {align = "tm", padding = 0}, nodes = {
+            {n = port() and G.UIT.R or G.UIT.C, config = {align = "tm", minw = lines_w(), padding = 0}, nodes = {
+                {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {T.slot("mps_lobby_lines", lines_def)}},
+                {n = G.UIT.R, config = {minh = 0.1, padding = 0}, nodes = {}},
+                require("multiplayer.mps_friends").input_row(S.lobby.input, "text", lines_w(), "mps_chat_send", 60, L("Write a message"), function() C.send() end, "social_chat_emote_lobby"),
+            }},
+            {n = port() and G.UIT.R or G.UIT.C, config = {minw = GAP_W, minh = GAP_W, padding = 0}, nodes = {}},
+            {n = port() and G.UIT.R or G.UIT.C, config = {align = "tm", minw = side_w(), padding = 0}, nodes = {T.slot("mps_lobby_side", side_def)}},
+        }},
+        {n = G.UIT.R, config = {align = "cm", minw = W, minh = note_h(), padding = 0}, nodes = {
+            text and bom_kit.text(bom_kit.fit(text, W - 0.2, bom_kit.dims().small), {scale = bom_kit.dims().small, colour = bad and G.C.RED or G.C.GREEN}) or nil,
+        }},
+    }}}}
+end
+
+function C.open_panel(from)
+    from = from or S.chat_from or "lobby"
+    if not S.chat.enabled then return C.open_optin(from) end
+    S.chat_from = from
+    S.chat_return = from
+    S.note = nil
+    S.lobby_open = true
+    S.lobby.unread = 0
+    T.lobby_label()
+r 4 1381 %20%20%20%20 -
+l 120
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "mps_chat",
+        title = L("LOBBY CHAT"),
+        tabs = {{key = "main", label = L("Chat"), build = panel_body}},
+        back_func = "mps_chat_back",
+    }}
+end
+
+function C.send()
+    local text = tostring(S.lobby.input.text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then return end
+    S.note = nil
+    if T.send({type = "chat_lobby_send", text = text}) then S.lobby.input.text = "" end
+    T.later("chat_panel")
+end
+
+local function report_body()
+    local w = touch() and 7.4 or 6.4
+    local rows = {}
+    local who = S.report and S.report.name or "?"
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.45}, nodes = {
+        bom_kit.text(bom_kit.fit(T.fill("Why are you reporting {name}?", {name = who}), w - 0.2, bom_kit.dims().small), {scale = bom_kit.dims().small}),
+    }}
+    for _, r in ipairs(C.REPORT_REASONS) do
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.05}, nodes = {
+            T.btn{label = L(r.label), button = "mps_chat_report_go", ref_table = {key = r.key}, colour = G.C.RED, w = w - 0.6, h = touch() and 0.78 or 0.64},
+        }}
+    end
+    return UIK.stack(rows, {w = w})
+end
+
+local function open_report(p)
+    S.report = p
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "mps_report", compact = true, w = touch() and 7.6 or 6.6,
+        title = L("REPORT PLAYER"),
+        tabs = {{key = "main", label = L("Report"), build = report_body}},
+        back_func = "mps_chat_report_back",
+    }}
+end
+
+local function on_change(what)
+    local id = win_id()
+    if id == "mps_optin" then
+        if what == "chat" and S.chat.enabled then
+            S.note = nil
+            return C.back_to(S.chat_return)
+        end
+        if what == "chat" or what == "chat_result" then
+            if T.typing() then return end
+            C.open_optin(nil, true)
+        end
+        return
+    end
+    if id ~= "mps_chat" then return end
+    if what == "lobby" then
+        T.swap("mps_lobby_lines", lines_def)
+        T.swap("mps_lobby_side", side_def)
+        S.lobby.unread = 0
+        T.lobby_label()
+        return
+    end
+    if what == "chat" and not S.chat.enabled then return leave_panel() end
+    if what == "chat_panel" or what == "chat_result" or what == "mutes" then
+        if T.typing() then
+            T.swap("mps_lobby_side", side_def)
+            return
+        end
+        UIK.refresh()
+    end
+end
+
+local function in_match_run()
+    if bom_playback and bom_playback.active() then return false end
+    return G and G.STAGES and G.STAGE == G.STAGES.RUN and bom_match and bom_match.is_in_match and bom_match.is_in_match()
+end
+
+function C.tick()
+    local want = in_match_run()
+    if C.run_button and C.run_button.REMOVED then C.run_button = nil end
+    if want and not C.run_button then
+        local t = UIK and UIK.touch and UIK.touch()
+        local node = UIBox_button({button = "mps_chat_open_run", label = {L("Chat")}, colour = G.C.ORANGE,
+            minw = 1.5, minh = t and 0.8 or 0.6, scale = t and 0.4 or 0.34})
+        C.live_button(node)
+        C.run_button = UIBox{
+            definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {node}},
+            config = {align = "cri", offset = {x = -1.8, y = -0.4}, major = G.ROOM_ATTACH},
+        }
+    elseif not want and C.run_button then
+        pcall(function() C.run_button:remove() end)
+        C.run_button = nil
+    end
+    if S.lobby_open and not C.is_open() and not (win_id() == "mps_report") then S.lobby_open = false end
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+local function register_funcs()
+    G.FUNCS.mps_chat_open_lobby = function() C.open_panel("lobby") end
+    G.FUNCS.mps_chat_open_party = function() C.open_panel("party") end
+    G.FUNCS.mps_chat_open_run = function()
+        if G.OVERLAY_MENU then return end
+        C.open_panel("run")
+    end
+    G.FUNCS.mps_chat_optin_friends = function() C.open_optin("friends") end
+    G.FUNCS.mps_chat_optin_go = function()
+        S.note = nil
+        local msg = {type = "chat_optin", enabled = true}
+        if S.chat.allowed == nil then msg.birth_year = math.floor(tonumber(S.chat.year) or 0) end
+        local B = T.social()
+        if B and B.ensure_online then B.ensure_online() end
+        if not T.send(msg) then C.open_optin(nil, true) end
+    end
+    G.FUNCS.mps_chat_optin_back = function()
+        S.note = nil
+        local target = S.chat_return
+        if target == "friends" then return C.back_to("friends") end
+        if target == "lobby" and bom_ui and bom_ui.show_lobby then return bom_ui.show_lobby() end
+        if target == "party" and bom_party and bom_party.show_lobby then return bom_party.show_lobby() end
+r 4 1375 %20%20%20%20%20%20%20%20 -
+l 86
+    end
+    G.FUNCS.mps_chat_back = function() leave_panel() end
+    G.FUNCS.mps_chat_send = function()
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        C.send()
+    end
+    G.FUNCS.mps_chat_off = function()
+        T.send({type = "chat_optin", enabled = false})
+        S.chat.enabled = false
+        leave_panel()
+    end
+    G.FUNCS.mps_chat_mute = function(e)
+        local pid = ref(e).pid
+        if pid == nil then return end
+        local on = not S.lobby.mutes[pid]
+        S.lobby.mutes[pid] = on or nil
+        T.send({type = on and "chat_mute" or "chat_unmute", pid = pid})
+        if T.typing() then
+            T.swap("mps_lobby_lines", lines_def)
+            T.swap("mps_lobby_side", side_def)
+        else
+            UIK.refresh()
+        end
+    end
+    G.FUNCS.mps_chat_report = function(e)
+        local r = ref(e)
+        if not r.id then return end
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        open_report({id = r.id, pid = r.pid, name = r.name})
+    end
+    G.FUNCS.mps_chat_report_go = function(e)
+        local key = ref(e).key
+        if S.report and key then T.send({type = "chat_report", msg_id = S.report.id, reason = key}) end
+        S.report = nil
+        C.open_panel(S.chat_from)
+        T.note(L("Report sent. Thank you."), false)
+        T.later("chat_panel")
+    end
+    G.FUNCS.mps_chat_report_back = function()
+        S.report = nil
+        C.open_panel(S.chat_from)
+    end
+end
+
+local STRINGS = {
+    fr = {
+        ["Insults or hate"] = "Insultes ou haine", ["Spam"] = "Spam", ["Cheating"] = "Triche", ["Bad name"] = "Nom inapproprié",
+        ["Something else"] = "Autre chose", ["Chat is not available for your account."] = "Le chat n'est pas disponible pour votre compte.",
+        ["You can still play, add friends and send emotes."] = "Vous pouvez toujours jouer, ajouter des amis et envoyer des émotes.",
+        ["Chat lets you talk with friends and players in your lobby."] = "Le chat permet de parler avec vos amis et les joueurs de votre salon.",
+        ["Messages are filtered. You can mute and report players."] = "Les messages sont filtrés. Vous pouvez mettre des joueurs en sourdine et les signaler.",
+        ["Enter your birth year once to turn it on."] = "Indiquez une fois votre année de naissance pour l'activer.",
+        ["We only keep whether chat is allowed, never the year."] = "Nous gardons seulement si le chat est autorisé, jamais l'année.",
+        ["Birth year"] = "Année de naissance", ["Turn on chat"] = "Activer le chat", ["TEXT CHAT"] = "CHAT", ["Chat"] = "Chat",
+        ["Not now"] = "Pas maintenant", ["You"] = "Vous", ["No messages yet. Say hi!"] = "Pas encore de message. Dites bonjour !",
+        ["Players"] = "Joueurs", ["Players who talk show up here."] = "Les joueurs qui parlent apparaissent ici.",
+        ["Unmute"] = "Rétablir", ["Mute"] = "Sourdine", ["Report"] = "Signaler", ["Write a message"] = "Écrire un message",
+        ["LOBBY CHAT"] = "CHAT DU SALON", ["Turn chat off"] = "Désactiver le chat",
+        ["Why are you reporting {name}?"] = "Pourquoi signalez-vous {name} ?", ["REPORT PLAYER"] = "SIGNALER UN JOUEUR",
+        ["Report sent. Thank you."] = "Signalement envoyé. Merci.",
+    },
+    es = {
+        ["Insults or hate"] = "Insultos u odio", ["Spam"] = "Spam", ["Cheating"] = "Trampas", ["Bad name"] = "Nombre inapropiado",
+        ["Something else"] = "Otra cosa", ["Chat is not available for your account."] = "El chat no está disponible para tu cuenta.",
+        ["You can still play, add friends and send emotes."] = "Aún puedes jugar, añadir amigos y enviar emotes.",
+        ["Chat lets you talk with friends and players in your lobby."] = "El chat te permite hablar con amigos y con los jugadores de tu sala.",
+        ["Messages are filtered. You can mute and report players."] = "Los mensajes se filtran. Puedes silenciar y denunciar jugadores.",
+        ["Enter your birth year once to turn it on."] = "Indica tu año de nacimiento una vez para activarlo.",
+        ["We only keep whether chat is allowed, never the year."] = "Solo guardamos si el chat está permitido, nunca el año.",
+        ["Birth year"] = "Año de nacimiento", ["Turn on chat"] = "Activar chat", ["TEXT CHAT"] = "CHAT", ["Chat"] = "Chat",
+        ["Not now"] = "Ahora no", ["You"] = "Tú", ["No messages yet. Say hi!"] = "Aún no hay mensajes. ¡Saluda!",
+        ["Players"] = "Jugadores", ["Players who talk show up here."] = "Aquí aparecen los jugadores que hablan.",
+        ["Unmute"] = "Quitar silencio", ["Mute"] = "Silenciar", ["Report"] = "Denunciar", ["Write a message"] = "Escribe un mensaje",
+        ["LOBBY CHAT"] = "CHAT DE LA SALA", ["Turn chat off"] = "Desactivar chat",
+        ["Why are you reporting {name}?"] = "¿Por qué denuncias a {name}?", ["REPORT PLAYER"] = "DENUNCIAR JUGADOR",
+        ["Report sent. Thank you."] = "Denuncia enviada. Gracias.",
+    },
+}
+
+function C.init()
+    register_funcs()
+    T.listen(on_change)
+    if mod_loc_register then mod_loc_register(STRINGS) end
+end
+
+return C
+end

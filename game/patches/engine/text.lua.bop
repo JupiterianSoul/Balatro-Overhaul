@@ -1,0 +1,39 @@
+BOP 2
+eol lf
+final 1
+base 32
+c 2
+l 16
+
+local text_utf8_ok, text_utf8 = pcall(require, 'utf8')
+local letter_cache = setmetatable({}, {__mode = 'k'})
+local function dynatext_letter(font, c)
+    local by_char = letter_cache[font]
+    if not by_char then
+        by_char = {}
+        letter_cache[font] = by_char
+    end
+    local t = by_char[c]
+    if not t then
+        t = love.graphics.newText(font, c)
+        by_char[c] = t
+    end
+    return t
+end
+c 109
+l 1
+                    if text_utf8_ok and not text_utf8.len(c) then c = '?' end
+c 1
+s 1
+l 1
+                    local let_tab = {letter = dynatext_letter(self.font.FONT, c), char = c, scale = old_letter and old_letter.scale or part_scale}
+c 106
+s 1
+l 1
+                    0))*self.font.render_scale/G.TILESIZE/10
+c 13
+s 2
+e 32 234 %20%20%20%20%20%20%20%20 - =106,-3,+%37%2A,=10,-9,+%72%65%6E%64%65%72%5F%73%63%61%6C%65,=1,+%28,=10,+%2A%31%30%29,=2,-4,+%28%31%2E%35,=38,-22,=3
+e 32 235 %20%20%20%20%20%20%20%20 - =121,+%28%28,=1,+%2A%73%65%6C%66%2E%66%6F%6E%74%2E%72%65%6E%64%65%72%5F%73%63%61%6C%65%2F%28%47%2E%54%49%4C%45%53%49%5A%45%2A%31%30%29%29,=98,+%29,=4
+c 80
+end

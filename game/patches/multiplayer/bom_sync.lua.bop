@@ -1,0 +1,247 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 92
+﻿-- ============================================
+-- MULTIPLAYER SYNC — State serialization, real-time boss sync, send/receive
+-- Now delegates PvP resolution to bom_match
+-- ============================================
+
+local bom_sync = {}
+
+local boss_sync_timer = 0
+-- ARCH: Sync interval sourced from mp_config
+local BOSS_SYNC_INTERVAL = mp_config and mp_config.BOSS_SYNC_INTERVAL or 2
+local MAX_ITERATIONS = 100
+
+-- ============================================
+-- UPDATE LOOP — Called every frame during multiplayer
+-- ============================================
+
+function bom_sync.update(dt)
+    if not G then return end
+    if not G.GAME then return end
+    if not G.GAME.multiplayer then return end
+
+    -- Real-time score sync during PvP blind (every 2 seconds)
+    local in_pvp = false
+    if bom_match and bom_match.is_pvp_blind then
+        local ok, r = pcall(bom_match.is_pvp_blind)
+        in_pvp = ok and r
+    else
+        in_pvp = G.GAME.mp_in_boss_blind
+    end
+
+    if in_pvp then
+        boss_sync_timer = boss_sync_timer + (dt or 0)
+        if boss_sync_timer >= BOSS_SYNC_INTERVAL then
+            boss_sync_timer = 0
+            -- Performance Mode disables real-time boss sync
+            if not G.GAME.performance_mode then
+                pcall(function() bom_sync.send_boss_sync() end)
+            end
+        end
+    end
+end
+
+-- ============================================
+-- SEND ROUND END — Summarize state after completing a round
+-- ============================================
+
+function bom_sync.send_round_end()
+    if not G then return end
+    if not G.GAME then return end
+    if not bom_core then return end
+
+    local data = {
+        type = "round_end",
+        ante = 1,
+        score = 0,
+        lives = G.GAME.mp_lives or 5,
+        hand_count = 0,
+        dollars = 0,
+        joker_count = 0,
+        skips = 0,
+        sells_this_ante = 0,
+        sells_total = 0,
+    }
+
+    pcall(function()
+        if G.GAME.round_resets then
+            data.ante = G.GAME.round_resets.ante or 1
+        end
+    end)
+
+    pcall(function()
+        data.score = G.GAME.chips or 0
+    end)
+
+    pcall(function()
+        if G.GAME.current_round then
+            data.hand_count = G.GAME.current_round.hands_left or 0
+        end
+    end)
+
+    pcall(function()
+        data.dollars = G.GAME.dollars or 0
+    end)
+
+    pcall(function()
+        data.skips = G.GAME.skips or 0
+        local stats = G.GAME.mp_custom_stats or {}
+        data.sells_this_ante = stats.sells_this_ante or 0
+        data.sells_total = stats.sells_total or data.sells_this_ante or 0
+    end)
+
+    pcall(function()
+r 13 2531 %20%20%20%20%20%20%20%20 -
+l 147
+            data.joker_count = #G.jokers.cards
+        end
+    end)
+
+    bom_core.send(data)
+end
+
+-- ============================================
+-- SEND BOSS SYNC — Real-time score during PvP blinds
+-- ============================================
+
+function bom_sync.send_boss_sync()
+    if not G then return end
+    if not G.GAME then return end
+    if not bom_core then return end
+
+    local data = {
+        type = "boss_sync",
+        score = 0,
+        hands_used = 0,
+        ante = (G.GAME.round_resets and G.GAME.round_resets.ante) or 1,
+        skips = 0,
+        sells_this_ante = 0,
+        sells_total = 0,
+    }
+
+    pcall(function()
+        data.score = G.GAME.chips or 0
+    end)
+
+    pcall(function()
+        if G.GAME.current_round then
+            data.hands_used = G.GAME.current_round.hands_played or 0
+            data.hands_left = G.GAME.current_round.hands_left
+            data.discards_left = G.GAME.current_round.discards_left
+        end
+    end)
+
+    pcall(function()
+        data.skips = G.GAME.skips or 0
+        local stats = G.GAME.mp_custom_stats or {}
+        data.sells_this_ante = stats.sells_this_ante or 0
+        data.sells_total = stats.sells_total or data.sells_this_ante or 0
+    end)
+
+    bom_core.send(data)
+end
+
+-- ============================================
+-- RECEIVE ROUND END — Update opponent panel with their state
+-- ============================================
+
+function bom_sync.on_round_end(data)
+    if not G then return end
+    if not G.GAME then return end
+    if not data then return end
+
+    pcall(function()
+        if bom_ui and bom_ui.update_opponent_panel then
+            bom_ui.update_opponent_panel(data)
+        end
+    end)
+
+    -- Update opponent lives in match state
+    pcall(function()
+        if bom_match and data.lives then
+            bom_match.on_opponent_life_update(data.lives)
+        end
+    end)
+
+    -- Legacy fallback: if bom_match is not handling PvP, resolve old way
+    if G.GAME.mp_boss_result_pending then
+        -- Check if bom_match is in PvP resolve mode
+        local in_pvp_resolve = false
+        pcall(function()
+            if bom_match and bom_match.get_phase then
+                in_pvp_resolve = (bom_match.get_phase() == "pvp_resolve")
+            end
+        end)
+
+        if not in_pvp_resolve then
+            -- Old-style resolution for backward compat
+            pcall(function()
+                bom_sync.resolve_boss_blind(data.score or 0)
+            end)
+        end
+    end
+end
+
+-- ============================================
+-- RESOLVE BOSS BLIND — Legacy score comparison (kept for backward compat)
+-- New code should use bom_match.resolve_pvp() instead
+-- ============================================
+
+function bom_sync.resolve_boss_blind(opponent_score)
+    if not G then return end
+    if not G.GAME then return end
+
+    G.GAME.mp_boss_result_pending = false
+    local my_score = G.GAME.chips or 0
+
+    if my_score > opponent_score then
+        -- We won the boss blind
+        pcall(function()
+            if bom_ui and bom_ui.show_boss_result then
+                bom_ui.show_boss_result("win")
+            end
+        end)
+        pcall(function()
+            if bom_sabotage and bom_sabotage.show_pick_screen then
+                bom_sabotage.show_pick_screen()
+            end
+        end)
+    elseif my_score < opponent_score then
+        -- We lost the boss blind
+        pcall(function()
+            if bom_ui and bom_ui.show_boss_result then
+                bom_ui.show_boss_result("lose")
+            end
+        end)
+        pcall(function()
+            if bom_match and bom_match.lose_life then
+                bom_match.lose_life("pvp_loss")
+            elseif bom_rewards and bom_rewards.lose_life then
+                bom_rewards.lose_life()
+            end
+        end)
+    else
+        -- Draw
+        pcall(function()
+            if bom_ui and bom_ui.show_boss_result then
+                bom_ui.show_boss_result("draw")
+            end
+        end)
+    end
+end
+
+-- ============================================
+-- RESET — Clean up between matches
+-- ============================================
+
+function bom_sync.reset()
+    boss_sync_timer = 0
+end
+
+mp_log.info("BOM_SYNC", "Multiplayer sync module loaded")
+return bom_sync
+end

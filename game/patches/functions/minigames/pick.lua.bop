@@ -1,0 +1,544 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 373
+local MG = Minigames
+local L = MG.L
+local P = MG.pick or {}
+MG.pick = P
+
+P.ART = {
+    high_low = {card = "H_K"},
+    joker_memory = {center = "j_blueprint"},
+    name_hand = {center = "c_jupiter"},
+    find_ace = {card = "S_A"},
+    blackjack = {card = "S_J"},
+    whack = {center = "j_joker"},
+    slots = {center = "j_lucky_cat"},
+    beat_blind = {center = "c_black_hole"},
+    runner = {center = "j_runner"},
+    rhythm = {center = "j_troubadour"},
+}
+
+P.RULES = {
+    high_low = {"A card is face up.", "Is the next one higher or lower?", "Ties keep your streak going."},
+    joker_memory = {"Flip two cards to match the jokers.", "You have 60 seconds.", "Clear the board for new cards and +5s."},
+    name_hand = {"Five cards flip up.", "Name their hand before the bar runs out.", "It gets faster with every right answer."},
+    find_ace = {"Watch the Ace, then follow the shuffle.", "Tap the card that hides it.", "More and faster swaps every round."},
+    blackjack = {"Get closer to 21 than the house.", "5 hands, 20 chips a hand.", "Blackjack pays 3 to 2."},
+    whack = {"Tap every joker that pops up.", "Never tap a Boss Blind.", "30 seconds."},
+    slots = {"Spin, then tap to stop each reel.", "Three of a kind pays 50, three Jimbos 150.", "10 spins."},
+    beat_blind = {"Score at least the target in 3 hands.", "Each blind you beat levels up a hand.", "Every third blind is a Boss with a twist."},
+    runner = {"Tap, click or Space to jump.", "Stay under the floating blinds.", "Cards give +1 Mult. It speeds up."},
+    rhythm = {"Pick a song and a difficulty.", "Hit each lane as its card reaches the line.", "Arrow keys, tap or the pad."},
+}
+
+P.view = P.view or {}
+
+local max = math.max
+
+local function touch() return UIK.touch() end
+
+local function alive(o) return o and not o.REMOVED end
+
+local function sizes()
+    local t = touch()
+    local ph = UIK.H - 0.2
+    local bh = t and 0.66 or 0.6
+    local n = max(1, #MG.GAMES)
+    if UIK.portrait() then
+        local W = UIK.W
+        local rows = math.ceil(n / 2)
+        local pbh, pg = 0.8, 0.14
+        local lh = rows * pbh + (rows - 1) * pg
+        return {
+            port = true,
+            lw = W,
+            bw = (W - 0.3) / 2,
+            bh = pbh,
+            bs = 0.48,
+            gap = pg,
+            lh = lh,
+            pw = W,
+            ph = UIK.H - 0.2 - lh - UIK.GAP,
+            cw = W,
+            iw = W - 0.2,
+            cs = 1.15,
+            aw = 3.9,
+            ah = 1.0,
+        }
+    end
+    return {
+        lw = 4.3,
+        bw = 3.8,
+        bh = bh,
+        bs = t and 0.45 or 0.42,
+        gap = n > 1 and max(0.04, (ph - n * bh) / (n - 1)) or 0,
+        pw = UIK.W - 4.3 - UIK.GAP,
+        ph = ph,
+        cw = t and 4.0 or 4.4,
+        cs = 1.5,
+        aw = t and 3.9 or 3.6,
+        ah = t and 1.0 or 0.92,
+    }
+end
+
+function P.current()
+    local key = P.cur or MG.last()
+    if not MG.def(key) then key = MG.GAMES[1] and MG.GAMES[1].key end
+    P.cur = key
+    return key
+end
+
+local function sync_box()
+    local o = G.OVERLAY_MENU
+    if o ~= P.box and type(o) == "table" and not o.REMOVED and o.get_UIE_by_ID and o:get_UIE_by_ID("mg_pick_preview") then P.box = o end
+end
+
+function P.is_open()
+    sync_box()
+    return alive(P.box) and P.box == G.OVERLAY_MENU and not P.hidden
+end
+
+local function make_card(area, key)
+    local art = P.ART[key] or {center = "j_joker"}
+    local s = sizes().cs
+    local params = {bypass_discovery_center = true, bypass_discovery_ui = true}
+    local card
+    if art.card and G.P_CARDS[art.card] then
+        card = Card(area.T.x, area.T.y, G.CARD_W * s, G.CARD_H * s, G.P_CARDS[art.card], G.P_CENTERS.c_base, params)
+    else
+        local c = G.P_CENTERS[art.center] or G.P_CENTERS.j_joker
+        card = Card(area.T.x, area.T.y, G.CARD_W * s, G.CARD_H * s, nil, c, params)
+    end
+    card.no_ui = true
+    card.config.focus_args = {type = "none"}
+    area:emplace(card)
+    card:hard_set_T(area.T.x + (area.T.w - card.T.w) / 2, area.T.y + (area.T.h - card.T.h) / 2, card.T.w, card.T.h)
+    return card
+end
+
+G.FUNCS.mg_pick_card = function(e)
+    local area = P.area
+    if not (area and not area.REMOVED) or P.card_key == P.cur then return end
+    if area.T.y > (G.ROOM and G.ROOM.T.h or 12) then return end
+    if not alive(P.box) or math.abs(P.box.VT.y - P.box.T.y) > 0.05 then return end
+    for i = #area.cards, 1, -1 do
+        local c = area.cards[i]
+        area:remove_card(c)
+        c:remove()
+    end
+    local ok, card = pcall(make_card, area, P.cur)
+    P.card_key = P.cur
+    if not ok then print("[Minigames] pick card: " .. tostring(card)) return end
+    card:juice_up(0.35, 0.45)
+    if P.pop_sound then
+        P.pop_sound = nil
+        play_sound("card1", 1.05 + math.random() * 0.1, 0.5)
+    end
+    if P.best_pop then
+        P.best_pop = nil
+        local b = P.box:get_UIE_by_ID("mg_pick_best")
+        if b then b:juice_up(0.4, 0.15) end
+        play_sound("highlight1", 1, 0.5)
+    end
+end
+
+G.FUNCS.mg_pick_row = function(e)
+    local key = e.config.ref_table and e.config.ref_table.key
+    local on = key == P.cur
+    e.config.colour = on and G.C.RED or G.C.BLUE
+    e.config.chosen = on and "vert" or nil
+    local h = e.states.hover.is and true or false
+    if h ~= (e.config.mg_hover or false) then
+        e.config.mg_hover = h
+        if h and not G.CONTROLLER.HID.touch then
+            e:juice_up(0.04, 0.02)
+            play_sound("paper1", 1.1 + math.random() * 0.1, 0.25)
+        end
+    end
+end
+
+G.FUNCS.mg_pick_focus = function(e)
+    local f = P.kb and e.config.mg_focus == P.focus
+    e.config.outline = f and 1.6 or nil
+    e.config.outline_colour = f and G.C.WHITE or nil
+end
+
+local function list_def(sz)
+    local rows = {}
+    if sz.port then
+        for i = 1, #MG.GAMES, 2 do
+            if i > 1 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = sz.gap, minw = 0.1, padding = 0}, nodes = {}} end
+            local row = {}
+            for j = i, math.min(#MG.GAMES, i + 1) do
+                local d = MG.GAMES[j]
+                if j > i then row[#row + 1] = {n = G.UIT.C, config = {minw = sz.lw - 2 * sz.bw, padding = 0}, nodes = {}} end
+                row[#row + 1] = UIK.button{label = L(d.name), button = "mg_pick", ref_table = {key = d.key}, w = sz.bw, h = sz.bh, scale = sz.bs, colour = G.C.BLUE, id = "mg_pick_" .. d.key, func = "mg_pick_row", col = true}
+            end
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = row}
+        end
+        return {n = G.UIT.R, config = {align = "cm", minw = sz.lw, minh = sz.lh, padding = 0, id = "mg_pick_list"}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = rows}}}
+    end
+    for i, d in ipairs(MG.GAMES) do
+        if i > 1 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = sz.gap, minw = 0.1, padding = 0}, nodes = {}} end
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            UIK.button{label = L(d.name), button = "mg_pick", ref_table = {key = d.key}, w = sz.bw, h = sz.bh, scale = sz.bs, colour = G.C.BLUE, id = "mg_pick_" .. d.key, func = "mg_pick_row"},
+        }}
+    end
+    return {n = G.UIT.C, config = {align = "cm", minw = sz.lw, minh = sz.ph, padding = 0, id = "mg_pick_list"}, nodes = rows}
+end
+
+local function best_box(d, sz)
+    local b = MG.best(d.key)
+    local v = b and (d.format and d.format(b) or tostring(b)) or "-"
+    return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = sz.aw, minh = sz.ah, r = 0.1, colour = G.C.BLACK, padding = 0.04, emboss = 0.05, id = "mg_pick_best"}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+                {n = G.UIT.T, config = {text = L("Best") .. " (" .. L(d.score or "Score") .. ")", scale = touch() and 0.34 or 0.32, colour = UIK.C.muted}},
+            }},
+            {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+                {n = G.UIT.T, config = {text = v, scale = 0.6, colour = b and G.C.GOLD or UIK.C.muted, shadow = true}},
+            }},
+        }},
+    }}
+end
+
+local function spacer(h) return {n = G.UIT.R, config = {minh = h, minw = 0.1, padding = 0}, nodes = {}} end
+
+local function preview_def()
+    local sz = sizes()
+    local key = P.current()
+    local d = MG.def(key)
+    local iw = sz.iw or (sz.pw - sz.cw - 0.1)
+    P.area = CardArea(G.ROOM.T.x + G.ROOM.T.w / 2, G.ROOM.T.h + 2, G.CARD_W * sz.cs + 0.2, G.CARD_H * sz.cs + 0.1, {card_limit = 1, type = "title", highlight_limit = 0})
+    P.card_key = nil
+    P.view.on = MG.on(key)
+    local rules, rs, widest = {}, touch() and 0.4 or 0.37, 0
+    for _, line in ipairs(P.RULES[key] or {d.how}) do widest = max(widest, UIK.text_w(L(line), rs)) end
+    if widest > iw - 0.4 then rs = rs * (iw - 0.4) / widest end
+    for _, line in ipairs(P.RULES[key] or {d.how}) do
+        rules[#rules + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+            {n = G.UIT.T, config = {text = L(line), scale = rs, colour = UIK.C.text, shadow = true}},
+        }}
+    end
+    local name = DynaText{string = {L(d.name)}, colours = {G.C.GOLD}, shadow = true, float = true, pop_in = 0, pop_in_rate = 4, silent = true, scale = touch() and 0.8 or 0.75, maxw = iw - 0.4}
+    local info = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {{n = G.UIT.O, config = {object = name}}}},
+        spacer(0.08),
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = rules},
+        spacer(0.22),
+        rawget(_G, "social_mg") and social_mg.best_row(d, sz, best_box) or best_box(d, sz),
+        spacer(0.18),
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", r = 0.15, padding = 0.04, func = "mg_pick_focus", mg_focus = "play", id = "mg_pick_play_wrap"}, nodes = {
+                UIK.button{label = L("Play"), button = "mg_pick_play", w = sz.aw - 0.08, h = sz.ah, scale = touch() and 0.62 or 0.58, colour = G.C.GREEN, id = "mg_pick_play", col = true},
+            }},
+        }},
+        spacer(0.08),
+        {n = G.UIT.R, config = {align = "cm", padding = 0.08, r = 0.1, func = "mg_pick_focus", mg_focus = "switch"}, nodes = {
+            UIK.toggle{id = "mg_pick_on", label = L("Offer while waiting in MP"), w = iw - 0.4, ref_table = P.view, ref_value = "on", callback = function(v) MG.set(key, v) end},
+        }},
+    }
+    if sz.port then
+        table.insert(info, 1, {n = G.UIT.R, config = {align = "cm", minh = G.CARD_H * sz.cs + 0.3, padding = 0, func = "mg_pick_card"}, nodes = {
+            {n = G.UIT.O, config = {object = P.area}},
+        }})
+        return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", minw = sz.pw, minh = sz.ph, r = 0.1, colour = UIK.C.section, padding = 0}, nodes = {
+                {n = G.UIT.C, config = {align = "cm", minw = sz.pw, padding = 0}, nodes = info},
+            }},
+        }}
+    end
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", minw = sz.pw, minh = sz.ph, r = 0.1, colour = UIK.C.section, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minw = sz.cw, minh = sz.ph, padding = 0, func = "mg_pick_card"}, nodes = {
+                {n = G.UIT.O, config = {object = P.area}},
+            }},
+            {n = G.UIT.C, config = {align = "cm", minw = iw, minh = sz.ph, padding = 0}, nodes = info},
+        }},
+    }}
+end
+
+local function body()
+    local sz = sizes()
+    if sz.port then
+        return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", padding = 0, portrait_keep = true}, nodes = {
+                list_def(sz),
+                {n = G.UIT.R, config = {minh = UIK.GAP, minw = 0.1, padding = 0}, nodes = {}},
+                {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+                    {n = G.UIT.O, config = {id = "mg_pick_preview", object = UIBox{definition = preview_def(), config = {offset = {x = 0, y = 0}}}}},
+                }},
+            }},
+        }}
+    end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        list_def(sz),
+        {n = G.UIT.C, config = {minw = UIK.GAP, padding = 0}, nodes = {}},
+        {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {
+            {n = G.UIT.O, config = {id = "mg_pick_preview", object = UIBox{definition = preview_def(), config = {offset = {x = 0, y = 0}}}}},
+        }},
+    }}
+end
+
+function MG.page()
+    P.current()
+    return UIK.window{
+        id = "mg_pick",
+        title = L("MINIGAMES"),
+        tabs = {{key = "pick", label = L("Minigames"), build = body}},
+        back_func = "open_tavern_hub",
+    }
+end
+
+local function rebuild()
+    sync_box()
+    if not alive(P.box) then return end
+    local node = P.box:get_UIE_by_ID("mg_pick_preview")
+    if not node then return end
+    if node.config.object then node.config.object:remove() end
+    node.config.object = UIBox{definition = preview_def(), config = {offset = {x = 0, y = 0}, parent = node, type = "cm"}}
+    node.UIBox:recalculate()
+    local play = P.box:get_UIE_by_ID("mg_pick_play")
+    if play then play:juice_up(0.08, 0.03) end
+end
+P.rebuild = rebuild
+
+function P.choose(key, sound)
+    if not MG.def(key) then return end
+    if key == P.cur then
+        if P.area and P.area.cards[1] then P.area.cards[1]:juice_up(0.2, 0.25) end
+        return
+    end
+    P.cur = key
+    MG.set_last(key)
+    P.pop_sound = true
+    rebuild()
+end
+
+function P.step(dir)
+    local i = 1
+    for j, d in ipairs(MG.GAMES) do if d.key == P.cur then i = j end end
+    local n = #MG.GAMES
+    if n == 0 then return end
+    P.choose(MG.GAMES[(i - 1 + dir) % n + 1].key)
+    play_sound("paper1", 1.05, 0.4)
+end
+
+G.FUNCS.mg_pick = function(e)
+    local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+    if key then P.choose(key) end
+end
+
+local function snap(id)
+    if not (G.CONTROLLER and G.CONTROLLER.HID.controller and alive(P.box)) then return end
+    local n = P.box:get_UIE_by_ID(id)
+    if n then G.CONTROLLER:snap_to{node = n} end
+end
+P.snap = snap
+
+function P.hide()
+    if not alive(P.box) then return end
+    P.hidden = true
+    P.box.alignment.offset.y = 15
+    P.box:align_to_major()
+end
+
+G.FUNCS.mg_pick_play = function()
+    local key = P.current()
+    if not (key and MG.host and MG.host.open) then return end
+    MG.set_last(key)
+    MG.host.open(key, "menu")
+    if MG.host.win then
+        P.playing = true
+        P.best_was = {}
+        for _, d in ipairs(MG.GAMES) do P.best_was[d.key] = MG.best(d.key) or false end
+        P.hide()
+    end
+end
+
+function P.back(last)
+    if not P.playing then return end
+    P.playing = nil
+    P.hidden = nil
+    if not alive(P.box) or P.box ~= G.OVERLAY_MENU then return end
+    if last and MG.def(last) then P.cur = last MG.set_last(last) end
+    P.best_pop = P.best_was and P.best_was[P.cur] ~= nil and P.best_was[P.cur] ~= (MG.best(P.cur) or false) or nil
+    P.card_key = nil
+    rebuild()
+    P.box.alignment.offset.y = 0
+    P.box:align_to_major()
+    P.pop_sound = true
+    snap("mg_pick_play")
+end
+
+G.FUNCS.open_minigames = function()
+    if not MG.available() then return end
+r 4 1381 %20%20%20%20 -
+l 20
+    P.playing, P.hidden, P.kb, P.focus = nil, nil, nil, "list"
+    G.FUNCS.overlay_menu{definition = MG.page()}
+    P.box = G.OVERLAY_MENU
+    snap("mg_pick_" .. tostring(P.cur))
+end
+
+local KEYS = {escape = true, up = true, w = true, down = true, s = true, right = true, d = true, tab = true, left = true, a = true, ["return"] = true, kpenter = true, space = true}
+
+function P.wants(key)
+    return P.is_open() and KEYS[key] == true
+end
+
+function P.sync()
+    if not P.is_open() then return end
+    local f = P.focus or "list"
+    snap(f == "play" and "mg_pick_play" or f == "switch" and "mg_pick_on" or "mg_pick_" .. tostring(P.cur))
+end
+
+function P.key(key)
+    if not P.is_open() then return false end
+r 23 774 %20%20%20%20 -
+l 141
+        G.FUNCS.open_tavern_hub()
+        return true
+    end
+    local f = P.focus or "list"
+    if key == "up" or key == "w" then
+        P.kb = true
+        if f == "list" then P.step(-1) else P.focus = f == "switch" and "play" or "list" play_sound("paper1", 1.2, 0.3) end
+        return true
+    end
+    if key == "down" or key == "s" then
+        P.kb = true
+        if f == "list" then P.step(1) elseif f == "play" then P.focus = "switch" play_sound("paper1", 1.2, 0.3) end
+        return true
+    end
+    if key == "right" or key == "d" or key == "tab" then
+        P.kb = true
+        if f == "list" then P.focus = "play" elseif f == "play" then P.focus = "switch" elseif key == "tab" then P.focus = "list" end
+        play_sound("paper1", 1.2, 0.3)
+        return true
+    end
+    if key == "left" or key == "a" then
+        P.kb = true
+        P.focus = "list"
+        play_sound("paper1", 1.2, 0.3)
+        return true
+    end
+    if key == "return" or key == "kpenter" or key == "space" then
+        P.kb = true
+        if f == "switch" then
+            P.view.on = not P.view.on
+            MG.set(P.cur, P.view.on)
+            play_sound("button", 1, 0.3)
+        else
+            play_sound("button", 1, 0.3)
+            G.FUNCS.mg_pick_play()
+        end
+        return true
+    end
+    return false
+end
+
+local function tavern_buttons(node, list)
+    if type(node) ~= "table" then return list end
+    local c = node.config
+    if node.n == G.UIT.C and c and c.button and c.minh and c.id ~= "overlay_menu_back_button" then list[#list + 1] = c end
+    for _, ch in ipairs(node.nodes or {}) do tavern_buttons(ch, list) end
+    return list
+end
+
+function MG.fit_tavern(def)
+    local list = tavern_buttons(def, {})
+    if #list < 7 then return def end
+    local h = math.min(1, 5.6 / #list)
+    for _, c in ipairs(list) do c.minh = h end
+    return def
+end
+
+if create_UIBox_tavern_hub and not P.tavern_wrapped then
+    P.tavern_wrapped = true
+    local base = create_UIBox_tavern_hub
+    create_UIBox_tavern_hub = function(...)
+        local def = base(...)
+        local ok, err = pcall(MG.fit_tavern, def)
+        if not ok then print("[Minigames] tavern fit: " .. tostring(err)) end
+        return def
+    end
+end
+
+function MG.tavern_button()
+    if not MG.available() then return nil end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+        UIBox_button({label = {L("MINIGAMES")}, button = "open_minigames", minw = 5, minh = 1, colour = G.C.RED}),
+    }}
+end
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {
+            ["Offer while waiting in MP"] = "Proposer en attendant en MP",
+            ["A card is face up."] = "Une carte est visible.",
+            ["Is the next one higher or lower?"] = "La suivante, plus haute ou plus basse ?",
+            ["Ties keep your streak going."] = "Une égalité garde la série.",
+            ["Flip two cards to match the jokers."] = "Trouvez les paires de jokers.",
+            ["You have 60 seconds."] = "Vous avez 60 secondes.",
+            ["Clear the board for new cards and +5s."] = "Plateau vidé : nouvelles cartes, +5 s.",
+            ["Five cards flip up."] = "Cinq cartes se retournent.",
+            ["Name their hand before the bar runs out."] = "Nommez la main avant la fin de la barre.",
+            ["It gets faster with every right answer."] = "Chaque bonne réponse accélère le jeu.",
+            ["Watch the Ace, then follow the shuffle."] = "Regardez l'As, puis suivez le mélange.",
+            ["Tap the card that hides it."] = "Touchez la carte qui le cache.",
+            ["More and faster swaps every round."] = "Plus rapide à chaque manche.",
+            ["Get closer to 21 than the house."] = "Approchez 21 mieux que la banque.",
+            ["5 hands, 20 chips a hand."] = "5 mains, 20 jetons par main.",
+            ["Blackjack pays 3 to 2."] = "Le Blackjack paie 3 pour 2.",
+            ["Tap every joker that pops up."] = "Touchez chaque joker qui surgit.",
+            ["Never tap a Boss Blind."] = "Ne touchez jamais une Blinde Boss.",
+            ["30 seconds."] = "30 secondes.",
+            ["Spin, then tap to stop each reel."] = "Lancez, puis arrêtez chaque rouleau.",
+            ["Three of a kind pays 50, three Jimbos 150."] = "Un brelan paie 50, trois Jimbo 150.",
+            ["10 spins."] = "10 lancers.",
+            ["Score at least the target in 3 hands."] = "Atteignez le score demandé en 3 mains.",
+            ["Each blind you beat levels up a hand."] = "Chaque blinde battue monte une main de niveau.",
+            ["Every third blind is a Boss with a twist."] = "Une blinde sur trois est une Blinde Boss avec sa règle.",
+            ["Tap, click or Space to jump."] = "Touchez, cliquez ou Espace pour sauter.",
+            ["Stay under the floating blinds."] = "Passez sous les blindes qui flottent.",
+            ["Cards give +1 Mult. It speeds up."] = "Les cartes donnent +1 Multi. Ça accélère.",
+        },
+        es = {
+            ["Offer while waiting in MP"] = "Ofrecer al esperar en MP",
+            ["A card is face up."] = "Hay una carta boca arriba.",
+            ["Is the next one higher or lower?"] = "¿La siguiente es más alta o más baja?",
+            ["Ties keep your streak going."] = "Un empate mantiene la racha.",
+            ["Flip two cards to match the jokers."] = "Encuentra las parejas de comodines.",
+            ["You have 60 seconds."] = "Tienes 60 segundos.",
+            ["Clear the board for new cards and +5s."] = "Tablero vacío: cartas nuevas y +5 s.",
+            ["Five cards flip up."] = "Cinco cartas se voltean.",
+            ["Name their hand before the bar runs out."] = "Nombra la mano antes de que acabe la barra.",
+            ["It gets faster with every right answer."] = "Va más rápido con cada acierto.",
+            ["Watch the Ace, then follow the shuffle."] = "Mira el As y sigue la mezcla.",
+            ["Tap the card that hides it."] = "Toca la carta que lo esconde.",
+            ["More and faster swaps every round."] = "Más cambios y más rápidos cada ronda.",
+            ["Get closer to 21 than the house."] = "Acércate más a 21 que la banca.",
+            ["5 hands, 20 chips a hand."] = "5 manos, 20 fichas por mano.",
+            ["Blackjack pays 3 to 2."] = "El Blackjack paga 3 a 2.",
+            ["Tap every joker that pops up."] = "Toca cada comodín que aparezca.",
+            ["Never tap a Boss Blind."] = "Nunca toques una ciega jefe.",
+            ["30 seconds."] = "30 segundos.",
+            ["Spin, then tap to stop each reel."] = "Gira y toca para parar cada rodillo.",
+            ["Three of a kind pays 50, three Jimbos 150."] = "Un trío paga 50, tres Jimbos 150.",
+            ["10 spins."] = "10 giros.",
+            ["Score at least the target in 3 hands."] = "Alcanza la puntuación pedida en 3 manos.",
+            ["Each blind you beat levels up a hand."] = "Cada ciega vencida sube una mano de nivel.",
+            ["Every third blind is a Boss with a twist."] = "Una de cada tres ciegas es una ciega jefe con su regla.",
+            ["Tap, click or Space to jump."] = "Toca, haz clic o Espacio para saltar.",
+            ["Stay under the floating blinds."] = "Pasa bajo las ciegas que flotan.",
+            ["Cards give +1 Mult. It speeds up."] = "Las cartas dan +1 Multi. Cada vez más rápido.",
+        },
+    }
+end
+
+return P
+end

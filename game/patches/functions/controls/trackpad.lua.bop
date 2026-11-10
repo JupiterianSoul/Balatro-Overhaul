@@ -1,0 +1,468 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 174
+local C = Controls
+local T = {}
+
+T.DEFAULTS = {scroll = "focus", swipe = "move", two_tap = "back", drag = "off"}
+T.CHOICES = {
+    scroll = {"focus", "off"},
+    swipe = {"move", "focus", "off"},
+    two_tap = {"back", "run_info", "speed", "off"},
+    drag = {"off", "on"},
+}
+T.GAP = 0.09
+T.IDLE = 0.25
+T.MOVE_PX = 10
+T.acc = {x = 0, y = 0}
+T.last_t = 0
+T.last_step = 0
+T.moved = 0
+T.steps = 0
+
+function T.bind(g)
+    local b = G.SETTINGS and G.SETTINGS.trackpad_binds
+    local v = type(b) == "table" and b[g] or nil
+    for _, c in ipairs(T.CHOICES[g] or {}) do if c == v then return v end end
+    return T.DEFAULTS[g]
+end
+
+function T.set_bind(g, v)
+    if not T.CHOICES[g] then return end
+    local b = type(G.SETTINGS.trackpad_binds) == "table" and G.SETTINGS.trackpad_binds or {}
+    G.SETTINGS.trackpad_binds = b
+    b[g] = v
+end
+
+function T.reset_binds()
+    G.SETTINGS.trackpad_binds = nil
+end
+
+local function kp()
+    return Extras and Extras.modules and Extras.modules.keyboard_play
+end
+
+local function playback()
+    local pb = rawget(_G, "bom_playback")
+    return pb and pb.active and pb.active()
+end
+
+function T.minigame()
+    local mg = rawget(_G, "Minigames")
+    local h = mg and mg.host
+    return h and h.win and not h.closing and true or false
+end
+
+function T.can()
+    local c = G.CONTROLLER
+    if not (c and C.trackpad_on()) then return false end
+    if c.text_input_hook or c.screen_keyboard then return false end
+    if c.locks and c.locks.frame then return false end
+    if playback() then return false end
+    return true
+end
+
+function T.focus_shown()
+    local c = G.CONTROLLER
+    return c and c.HID.controller and c.HID.keyboard and c.focused and c.focused.target ~= nil or false
+end
+
+local function pad(button, half)
+    local c = G.CONTROLLER
+    local K = kp()
+    if K then K.from_kb = true end
+    if half ~= "up" then
+        local ok, err = pcall(love.gamepadpressed, c.keyboard_controller, button)
+        if not ok then print("[Trackpad] " .. tostring(err)) end
+    end
+    if half ~= "down" then pcall(love.gamepadreleased, c.keyboard_controller, button) end
+    if K then K.from_kb = nil end
+    T.moved = 0
+end
+T.pad = pad
+
+local function is_card(n)
+    return type(n) == "table" and n.is and Card and n:is(Card) and not n.REMOVED
+end
+
+local function in_row(n)
+    return is_card(n) and n.area and (n.area == G.jokers or n.area == G.consumeables)
+end
+
+function T.single_hand_card()
+    if G.STATE ~= G.STATES.SELECTING_HAND or not G.hand then return nil end
+    local h = G.hand.highlighted
+    if h and #h == 1 and is_card(h[1]) and h[1].area == G.hand then return h[1] end
+end
+
+function T.selected_card()
+    local c = G.CONTROLLER
+    local f = c.focused and c.focused.target
+    if in_row(f) and f.highlighted then return f end
+    local h = c.hovering and c.hovering.target
+    if in_row(h) and h.highlighted then return h end
+    for _, a in ipairs({G.jokers, G.consumeables}) do
+        local x = a and a.highlighted and a.highlighted[1]
+        if in_row(x) then return x end
+    end
+end
+
+local function scroll_list_open()
+    local function walk(node, depth)
+        if type(node) ~= "table" or depth > 30 then return false end
+        if node.config and node.config.scroll_mult then return true end
+        for _, ch in pairs(node.children or {}) do
+            if walk(ch, depth + 1) then return true end
+        end
+        return false
+    end
+    return G.OVERLAY_MENU and walk(G.OVERLAY_MENU.UIRoot, 0) or false
+end
+
+local function focusable(n)
+    local c = G.CONTROLLER
+    local d = 0
+    while type(n) == "table" and d < 12 do
+        if n.states and c:is_node_focusable(n) then return n end
+        n = n.parent
+        d = d + 1
+    end
+end
+
+function T.show_focus()
+    if T.focus_shown() then return false end
+    local c = G.CONTROLLER
+    local n = focusable(c.hovering and c.hovering.target)
+    if not n then return false end
+    local K = kp()
+    c:set_gamepad(c.keyboard_controller)
+    if K then K.from_kb = true end
+    c:set_HID_flags("button", "dpup")
+    if K then K.from_kb = nil end
+    local cc = c.cursor_context
+    if cc and cc.stack and cc.layer then cc.stack[cc.layer] = nil end
+    c.interrupt.stack = false
+    c.interrupt.focus = false
+    c:snap_to{node = n}
+    T.moved = 0
+    return true
+end
+
+local function step_row(f, dir)
+    local cards = f.area.cards
+    local i
+    for k, v in ipairs(cards) do if v == f then i = k break end end
+    local n = i and cards[i + dir]
+    if n then G.CONTROLLER:snap_to{node = n} end
+    T.moved = 0
+    return true
+end
+
+function T.scroll(dir)
+    if T.bind("scroll") == "off" then return false end
+    if T.show_focus() then return true end
+    local f = G.CONTROLLER.focused.target
+    if is_card(f) and f.area and f.area.cards and not G.OVERLAY_MENU then return step_row(f, dir) end
+    pad(dir < 0 and "dpup" or "dpdown")
+    return true
+end
+
+function T.next_tab(dir)
+    local e = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("tab_shoulders")
+    local first = e and e.children[1] and e.children[1].children[1]
+    if not (first and e.UIBox) then return false end
+    local choices = {}
+    for _, v in ipairs(e.UIBox:get_group(nil, first.config.group) or {}) do
+        if v.config.choice and v.config.button then choices[#choices + 1] = v end
+    end
+r 23 1323 %20%20%20%20 -
+r 23 1324 %20%20%20%20%20%20%20%20 -
+l 54
+            local loop = not (e.config.focus_args and e.config.focus_args.no_loop)
+            local n = choices[k + dir] or (loop and choices[dir > 0 and 1 or #choices]) or nil
+            if n and n ~= v then n:click() end
+            return true
+        end
+    end
+    return false
+end
+
+function T.swipe(dir)
+    local mode = T.bind("swipe")
+    if mode == "off" then return false end
+    local K = kp()
+    if mode == "move" and not G.OVERLAY_MENU and K and K.move_card then
+        local card = T.selected_card() or T.single_hand_card()
+        if card then
+            K.move_card(card, dir)
+            return true
+        end
+    end
+    if T.next_tab(dir) then return true end
+    if T.show_focus() then return true end
+    pad(dir < 0 and "dpleft" or "dpright")
+    return true
+end
+
+function T.wheel(x, y)
+    if not T.can() then return false end
+    if T.minigame() then return true end
+    if y ~= 0 and math.abs(y) >= math.abs(x) and scroll_list_open() then return false end
+    local now = love.timer.getTime()
+    if now - T.last_t > T.IDLE then T.acc.x, T.acc.y = 0, 0 end
+    T.last_t = now
+    T.acc.x = math.max(-1, math.min(1, T.acc.x + (x or 0)))
+    T.acc.y = math.max(-1, math.min(1, T.acc.y + (y or 0)))
+    local horiz = math.abs(T.acc.x) > math.abs(T.acc.y)
+    local v = horiz and T.acc.x or T.acc.y
+    if math.abs(v) < 1 then return true end
+    if now - T.last_step < T.GAP then return true end
+    T.acc.x, T.acc.y = 0, 0
+    T.last_step = now
+    T.steps = T.steps + 1
+    if horiz then T.swipe(v > 0 and 1 or -1) else T.scroll(v > 0 and -1 or 1) end
+    return true
+end
+
+function T.back()
+    local c = G.CONTROLLER
+    local reg = c.button_registry and c.button_registry.b
+    local r = reg and reg[1]
+    if r and r.node and not r.node.REMOVED and not r.node.under_overlay and r.menu == (G.OVERLAY_MENU ~= nil) then
+        r.node:click()
+        return true
+    end
+r 23 214 %20%20%20%20 -
+l 15
+        pcall(c.key_press_update, c, "escape")
+        return true
+    end
+    return false
+end
+
+function T.two_tap()
+    if not T.can() then return false end
+    local act = T.bind("two_tap")
+    if act == "off" then return false end
+    if T.minigame() and G.FUNCS.mg_close then
+        G.FUNCS.mg_close()
+        return true
+    end
+    if G.hand and G.hand.highlighted and G.hand.highlighted[1] and not G.SETTINGS.paused then return false end
+r 3 349 %20%20%20%20 -
+l 189
+        for _, a in ipairs({G.jokers, G.consumeables, G.shop_jokers, G.shop_vouchers, G.shop_booster, G.pack_cards}) do
+            if a and a.highlighted and a.highlighted[1] then
+                a:unhighlight_all()
+                return true
+            end
+        end
+    end
+    if act == "speed" and not G.OVERLAY_MENU then
+        local H = QOL and QOL.modules and QOL.modules.hotkeys
+        if not H then return false end
+        if not QOL.on("qol_speed_key") then pcall(play_sound, "cancel") return true end
+        if C.refuse("speed_key") then return true end
+        if H.speed_allowed() then H.cycle_speed(false) else pcall(play_sound, "cancel") end
+        return true
+    end
+    if act == "run_info" and not G.OVERLAY_MENU and G.STAGE == G.STAGES.RUN and G.FUNCS.run_info then
+        G.FUNCS.run_info({config = {}})
+        return true
+    end
+    if act == "back" or G.OVERLAY_MENU then return T.back() end
+    return false
+end
+
+function T.to_pointer()
+    local cp = G.CONTROLLER.cursor_position
+    T.moved = 0
+    if not (cp and cp.x and cp.y) then return nil end
+    pcall(love.mouse.setPosition, cp.x, cp.y)
+    if T._mm then T._mm(cp.x, cp.y, 0, 0, false) end
+    return cp.x, cp.y
+end
+
+function T.on_mode(m)
+    T.acc.x, T.acc.y = 0, 0
+    if T.tap_down then
+        T.tap_down = nil
+        pad("a", "up")
+    end
+    T.restore_drag()
+end
+
+function T.sweep_on()
+    if not (C.trackpad_on() and T.bind("drag") == "off") then return false end
+    if G.SETTINGS.drag_select == false or G.STATE ~= G.STATES.SELECTING_HAND or G.OVERLAY_MENU then return false end
+    return G.hand ~= nil and not playback()
+end
+
+function T.toggle(card)
+    local h = G.hand.highlighted or {}
+    for _, x in ipairs(h) do
+        if x == card then
+            G.hand:remove_from_highlighted(card)
+            return
+        end
+    end
+    local limit = G.hand.config and G.hand.config.highlighted_limit or 5
+    if #h < limit then G.hand:add_to_highlighted(card, false) end
+end
+
+function T.sweep_step(ctrl)
+    local s = T.sweep
+    if not s then return end
+    if not T.sweep_on() or not ctrl.is_cursor_down then
+        T.sweep = nil
+        return
+    end
+    for _, node in ipairs(ctrl.collision_list or {}) do
+        if is_card(node) and node.area == G.hand then
+            if node ~= s.start and not s.active then
+                s.active = true
+                s.visited[s.start] = true
+                pcall(play_sound, "card1", 1, 0.6)
+                pcall(T.toggle, s.start)
+            end
+            if s.active and not s.visited[node] then
+                s.visited[node] = true
+                pcall(T.toggle, node)
+            end
+            break
+        end
+    end
+end
+
+function T.restore_drag()
+    local n = T.undrag
+    T.undrag = nil
+    if n and n.states and n.states.drag and n.states.drag.can == false then n.states.drag.can = true end
+end
+
+function T.init()
+    if T._wrapped or not (Controller and Controller.L_cursor_press) then return end
+    T._wrapped = true
+
+    local wheel = love.wheelmoved
+    love.wheelmoved = function(x, y, ...)
+        local ok, used = pcall(T.wheel, x, y)
+        if ok and used then return end
+        if not ok then print("[Trackpad] " .. tostring(used)) end
+        if wheel then return wheel(x, y, ...) end
+    end
+
+    local mp = love.mousepressed
+    love.mousepressed = function(x, y, button, touch, ...)
+        if not touch and C.trackpad_on() then
+            if button == 1 and T.can() and T.focus_shown() and not T.minigame() then
+                local f = G.CONTROLLER.focused.target
+                if is_card(f) and f.area ~= G.hand then
+                    local fx, fy = T.to_pointer()
+                    if fx then x, y = fx, fy end
+                    return mp(x, y, button, touch, ...)
+                end
+                T.tap_down = true
+                pad("a", "down")
+                return
+            end
+            if button == 2 then
+                local ok, used = pcall(T.two_tap)
+                if ok and used then return end
+                local r = mp(x, y, button, touch, ...)
+                if DRAG_SELECT and T.bind("drag") == "off" then DRAG_SELECT._rclick_down = false end
+                return r
+            end
+        end
+        return mp(x, y, button, touch, ...)
+    end
+
+    local mr = love.mousereleased
+    love.mousereleased = function(x, y, button, ...)
+        if button == 1 and T.tap_down then
+            T.tap_down = nil
+            pad("a", "up")
+            return
+        end
+        return mr(x, y, button, ...)
+    end
+
+    local mm = love.mousemoved
+    T._mm = mm
+    love.mousemoved = function(x, y, dx, dy, istouch, ...)
+        if not istouch and C.trackpad_on() and T.focus_shown() and not T.tap_down and not T.minigame() then
+            T.moved = T.moved + math.abs(dx or 0) + math.abs(dy or 0)
+            if T.moved < T.MOVE_PX then return end
+            local cp = G.CONTROLLER.cursor_position
+            T.moved = 0
+            if cp and cp.x and cp.y then
+                pcall(love.mouse.setPosition, cp.x, cp.y)
+                x, y = cp.x, cp.y
+            end
+        end
+        return mm(x, y, dx, dy, istouch, ...)
+    end
+
+    local press = Controller.L_cursor_press
+    Controller.L_cursor_press = function(self, x, y, ...)
+        T.restore_drag()
+        local r = press(self, x, y, ...)
+        if C.trackpad_on() and T.bind("drag") == "off" and self.HID.mouse then
+            local t = self.cursor_down and self.cursor_down.target
+            if is_card(t) and t.states.drag.can then
+                t.states.drag.can = false
+                T.undrag = t
+                T.down_xy = {x = x, y = y}
+            end
+            T.sweep = nil
+            if is_card(t) and t.area == G.hand and T.sweep_on() then T.sweep = {start = t, visited = {}} end
+        end
+        return r
+    end
+
+    local upd = Controller.update
+    if type(upd) == "function" then
+        Controller.update = function(self, dt, ...)
+            local r = upd(self, dt, ...)
+            if T.sweep then
+                local ok, err = pcall(T.sweep_step, self)
+                if not ok then T.sweep = nil print("[Trackpad] sweep: " .. tostring(err)) end
+            end
+            return r
+        end
+    end
+
+    local release = Controller.L_cursor_release
+    Controller.L_cursor_release = function(self, x, y, ...)
+        local s = T.sweep
+        T.sweep = nil
+        if s and s.active then
+            T.restore_drag()
+            T.down_xy = nil
+            local r = release(self, x, y, ...)
+r 23 1046 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 21
+            return r
+        end
+        local t = T.undrag
+        if t and T.down_xy and x and y and self.hovering and self.hovering.target == t then
+            x, y = T.down_xy.x, T.down_xy.y
+        end
+        local r = release(self, x, y, ...)
+        T.restore_drag()
+        T.down_xy = nil
+        return r
+    end
+
+    local K = kp()
+    if K and K.enabled and not K._controls_wrapped then
+        K._controls_wrapped = true
+        local en = K.enabled
+        K.enabled = function() return C.keys_on() and en() end
+    end
+end
+
+return T
+end

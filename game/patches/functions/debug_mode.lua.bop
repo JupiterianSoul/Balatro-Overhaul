@@ -1,0 +1,1696 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 89
+-- ============================================
+-- DEBUG MODE for Balatro V10.5
+-- PIN Protection
+-- Unlock All Function + Debug Tools
+-- ============================================
+
+-- ===== DEBUG CONSTANTS =====
+
+local DEBUG_CONFIG = {
+  pin_sha = "7d8187b5e28cb20ef28a72825a76badfa7178bd8d2c4e6ada4e722562e1c12c1",
+  enabled = false,
+  unlock_all_triggered = false,
+}
+
+-- ===== DEBUG MANAGER =====
+
+DebugManager = {
+  initialized = false,
+  unlocked = false,
+  entered_pin = "",
+}
+
+-- Initialize debug system
+function DebugManager.init()
+  if DebugManager.initialized then return true end
+  if not G then return false end
+
+  DebugManager.initialized = true
+  print("[DEBUG] Debug system initialized!")
+  return true
+end
+
+local function pin_ok(entered_pin)
+  if type(entered_pin) ~= "string" or not (love.data and love.data.hash) then return false end
+  return love.data.encode("string", "hex", love.data.hash("sha256", entered_pin)) == DEBUG_CONFIG.pin_sha
+end
+
+-- Verify PIN
+function DebugManager.verify_pin(entered_pin)
+  if not entered_pin then return false end
+
+  if pin_ok(entered_pin) then
+    DebugManager.unlocked = true
+    DEBUG_CONFIG.enabled = true
+    print("[DEBUG] Debug mode unlocked with PIN!")
+    return true
+  end
+  return false
+end
+
+-- Check if debug mode is active
+function DebugManager.is_enabled()
+  return DEBUG_CONFIG.enabled and DebugManager.unlocked
+end
+
+-- ===== UNLOCK ALL FUNCTION =====
+-- Ultra crash-proof version V13.0 - Dynamically unlocks 100%
+
+function debug_stake_count()
+  if G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and #G.P_CENTER_POOLS.Stake > 0 then return #G.P_CENTER_POOLS.Stake end
+  return G.sticker_map and #G.sticker_map or 12
+end
+
+function unlock_all_content(profile)
+  profile = profile or (G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile])
+  if not profile then return false end
+  profile.joker_usage = type(profile.joker_usage) == "table" and profile.joker_usage or {}
+  profile.deck_usage = type(profile.deck_usage) == "table" and profile.deck_usage or {}
+  profile.consumeable_usage = type(profile.consumeable_usage) == "table" and profile.consumeable_usage or {}
+  profile.voucher_usage = type(profile.voucher_usage) == "table" and profile.voucher_usage or {}
+  profile.stake_progress = type(profile.stake_progress) == "table" and profile.stake_progress or {}
+  profile.challenge_progress = type(profile.challenge_progress) == "table" and profile.challenge_progress or {}
+  profile.challenge_progress.unlocked = profile.challenge_progress.unlocked or {}
+  profile.challenge_progress.completed = profile.challenge_progress.completed or {}
+  local function open(v)
+    if type(v) ~= "table" then return end
+    v.unlocked = true
+    v.discovered = true
+    v.alerted = true
+  end
+  local S = rawget(_G, "SMODS")
+  local tables = {G.P_CENTERS, G.P_BLINDS, G.P_TAGS, G.P_SEALS, G.P_STAKES}
+  if S then
+    for _, name in ipairs({"Stickers", "Seals", "Stakes", "Blinds", "Tags", "Centers", "Editions", "Enhancements", "Consumables", "Vouchers", "Boosters", "Backs"}) do
+      if type(S[name]) == "table" then tables[#tables + 1] = S[name] end
+    end
+  end
+  for _, t in ipairs(tables) do
+    if type(t) == "table" then
+r 12 154 %20%20%20%20%20%20 -
+l 268
+        if type(v) == "table" and not v.wip then open(v) end
+      end
+    end
+  end
+  for _, pool in pairs(G.P_CENTER_POOLS or {}) do
+    if type(pool) == "table" then
+      for _, v in ipairs(pool) do if type(v) == "table" and not v.wip then open(v) end end
+    end
+  end
+  for _, b in pairs(G.P_BLINDS or {}) do if type(b) == "table" then b.defeated = true end end
+  local stakes = {}
+  for i, st in ipairs((G.P_CENTER_POOLS or {}).Stake or {}) do stakes[#stakes + 1] = {i = i, key = st.key} end
+  if #stakes == 0 then for i = 1, debug_stake_count() do stakes[#stakes + 1] = {i = i} end end
+  for i = 1, math.max(#stakes, debug_stake_count()) do profile.stake_progress[i] = true end
+  local conv = rawget(_G, "convert_usage_entry")
+  local function all_wins(usage, key, center)
+    local u = usage[key]
+    if type(u) ~= "table" then
+      u = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+      if S then u.wins_by_key, u.losses_by_key = {}, {} end
+      usage[key] = u
+    end
+    u.count = math.max(tonumber(u.count) or 0, 1)
+    u.wins = type(u.wins) == "table" and u.wins or {}
+    u.losses = type(u.losses) == "table" and u.losses or {}
+    if S then
+      u.wins_by_key = type(u.wins_by_key) == "table" and u.wins_by_key or {}
+      u.losses_by_key = type(u.losses_by_key) == "table" and u.losses_by_key or {}
+      if conv then pcall(conv, u) end
+    end
+    for _, st in ipairs(stakes) do
+      if st.key and u.wins_by_key then
+        u.wins_by_key[st.key] = math.max(tonumber(u.wins_by_key[st.key]) or 0, 1)
+      end
+      if not S or st.i <= 8 then u.wins[st.i] = math.max(tonumber(u.wins[st.i]) or 0, 1) end
+    end
+  end
+  for key, c in pairs(G.P_CENTERS or {}) do
+    if type(c) == "table" and not c.wip then
+      if c.set == "Joker" then all_wins(profile.joker_usage, key, c)
+      elseif c.set == "Back" and not c.omit then all_wins(profile.deck_usage, key, c)
+      elseif c.set == "Voucher" then
+        profile.voucher_usage[key] = profile.voucher_usage[key] or {count = 1, order = c.order or 0}
+      elseif c.consumeable then
+        profile.consumeable_usage[key] = profile.consumeable_usage[key] or {count = 1, order = c.order or 0}
+      end
+    end
+  end
+  if G.CHALLENGES then
+    profile.challenges_unlocked = #G.CHALLENGES
+    for _, ch in pairs(G.CHALLENGES) do
+      if type(ch) == "table" and ch.id then profile.challenge_progress.unlocked[ch.id] = true end
+    end
+  end
+  if G.P_LOCKED then for i = #G.P_LOCKED, 1, -1 do G.P_LOCKED[i] = nil end end
+  return true
+end
+
+function unlock_all_debug()
+  print("\n" .. string.rep("=", 50))
+  print("    UNLOCK ALL DEBUG FUNCTION V14.0")
+  print(string.rep("=", 50))
+
+  if not G then
+    print("[DEBUG] G is nil!")
+    return false
+  end
+
+  local profile = nil
+  if G.PROFILES and G.SETTINGS and G.SETTINGS.profile then
+    profile = G.PROFILES[G.SETTINGS.profile]
+  end
+  if not profile then
+    print("[DEBUG] No profile found!")
+    return false
+  end
+
+  print("[DEBUG] Profile found, starting full 100% unlock...")
+
+  local ok, error_msg = pcall(function()
+    -- Ensure ALL required profile subtables exist
+    if type(profile.progression) ~= "table" then profile.progression = {} end
+    if type(profile.joker_usage) ~= "table" then profile.joker_usage = {} end
+    if type(profile.consumeable_usage) ~= "table" then profile.consumeable_usage = {} end
+    if type(profile.voucher_usage) ~= "table" then profile.voucher_usage = {} end
+    if type(profile.deck_usage) ~= "table" then profile.deck_usage = {} end
+    if type(profile.stake_progress) ~= "table" then profile.stake_progress = {} end
+    if type(profile.achievements) ~= "table" then profile.achievements = {} end
+    if type(profile.challenge_progress) ~= "table" then profile.challenge_progress = {} end
+    if type(profile.challenge_progress.unlocked) ~= "table" then profile.challenge_progress.unlocked = {} end
+    if type(profile.challenge_progress.completed) ~= "table" then profile.challenge_progress.completed = {} end
+    if type(profile.career_stats) ~= "table" then profile.career_stats = {} end
+    if type(profile.high_scores) ~= "table" then profile.high_scores = {} end
+    if type(profile.high_scores.collection) ~= "table" then profile.high_scores.collection = {amt = 0, tot = 0} end
+    if type(profile.progress) ~= "table" then profile.progress = {} end
+    if type(profile.hand_usage) ~= "table" then profile.hand_usage = {} end
+
+    -- Mark profile as debug_unlocked (does NOT disable achievements/progression)
+    profile.debug_unlocked = true
+
+    -- 1) PROGRESSION STATS
+    print("[DEBUG] Step 1: Setting progression stats...")
+    profile.progression.level = 100
+    profile.progression.xp = 0
+    profile.progression.total_xp = 500000
+    profile.progression.total_wins = 100
+    profile.progression.total_runs = 500
+    profile.progression.balacoin = 50000
+    profile.progression.total_balacoin_earned = 100000
+    profile.progression.total_quests_completed = 100
+    profile.progression.highest_stake_beaten = debug_stake_count()
+
+    -- 2) UNLOCK ALL 13 STAKES
+    print("[DEBUG] Step 2: Unlocking all 13 stakes...")
+    for i = 1, debug_stake_count() do
+      profile.stake_progress[i] = true
+    end
+
+    -- 3) DISCOVER + UNLOCK ALL P_CENTERS (jokers, consumables, vouchers, decks, editions, etc.)
+    print("[DEBUG] Step 3: Discovering all P_CENTERS...")
+    if G.P_CENTERS then
+      local count = 0
+      for key, center in pairs(G.P_CENTERS) do
+        count = count + 1
+
+        center.unlocked = true
+        center.discovered = true
+        center.alerted = true
+
+        -- Track usage for collection
+        if center.set == 'Joker' then
+          if not profile.joker_usage[key] then
+            profile.joker_usage[key] = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+          end
+          if not profile.joker_usage[key].wins then profile.joker_usage[key].wins = {} end
+          -- Unlock all 12 stakes for each joker
+          for s = 1, debug_stake_count() do
+            profile.joker_usage[key].wins[s] = profile.joker_usage[key].wins[s] or 1
+          end
+        elseif center.set == 'Tarot' or center.set == 'Planet' or center.set == 'Spectral' then
+          if not profile.consumeable_usage[key] then
+            profile.consumeable_usage[key] = {count = 1, order = center.order or 0}
+          end
+        elseif center.set == 'Voucher' then
+          if not profile.voucher_usage[key] then
+            profile.voucher_usage[key] = {count = 1, order = center.order or 0}
+          end
+        elseif center.set == 'Back' and not center.omit then
+          if not profile.deck_usage[key] then
+            profile.deck_usage[key] = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+          end
+          if not profile.deck_usage[key].wins then profile.deck_usage[key].wins = {} end
+          -- Unlock all 12 stakes for each deck
+          for s = 1, debug_stake_count() do
+            profile.deck_usage[key].wins[s] = profile.deck_usage[key].wins[s] or 1
+          end
+        end
+      end
+      print("[DEBUG] Processed " .. tostring(count) .. " P_CENTERS")
+    end
+
+    -- Clear P_LOCKED since everything is now unlocked
+    if G.P_LOCKED then
+      for i = #G.P_LOCKED, 1, -1 do
+        G.P_LOCKED[i] = nil
+      end
+    end
+
+    -- 4) DISCOVER ALL BLINDS
+    print("[DEBUG] Step 4: Discovering all blinds...")
+    if G.P_BLINDS then
+      for key, blind in pairs(G.P_BLINDS) do
+        blind.unlocked = true
+        blind.discovered = true
+        blind.alerted = true
+        blind.defeated = true
+      end
+    end
+
+    -- 5) DISCOVER ALL TAGS
+    print("[DEBUG] Step 5: Discovering all tags...")
+    if G.P_TAGS then
+      for _, tag in pairs(G.P_TAGS) do
+        tag.unlocked = true
+        tag.discovered = true
+        tag.alerted = true
+      end
+    end
+
+    -- 6) DISCOVER ALL SEALS
+    print("[DEBUG] Step 6: Discovering all seals...")
+    if G.P_SEALS then
+      for _, seal in pairs(G.P_SEALS) do
+        seal.unlocked = true
+        seal.discovered = true
+        seal.alerted = true
+      end
+    end
+
+    local S = rawget(_G, "SMODS")
+    if S and S.Stickers then
+      for _, sticker in pairs(S.Stickers) do
+        if type(sticker) == "table" then
+          sticker.unlocked = true
+          sticker.discovered = true
+          sticker.alerted = true
+        end
+      end
+    end
+
+    -- 7) UNLOCK ALL STAKES in G.P_STAKES
+    print("[DEBUG] Step 7: Unlocking all stakes in G.P_STAKES...")
+    if G.P_STAKES then
+      for _, stake in pairs(G.P_STAKES) do
+        stake.unlocked = true
+        stake.discovered = true
+        stake.alerted = true
+      end
+    end
+
+    -- 8) UNLOCK ALL CHALLENGES
+    print("[DEBUG] Step 8: Unlocking all challenges...")
+    if G.CHALLENGES then
+      profile.challenges_unlocked = #G.CHALLENGES
+      for _, challenge in pairs(G.CHALLENGES) do
+        if challenge.id then
+          profile.challenge_progress.unlocked[challenge.id] = true
+          profile.challenge_progress.completed[challenge.id] = true
+        end
+      end
+    end
+
+    -- 9) CAREER STATS
+    print("[DEBUG] Step 9: Setting career stats...")
+    profile.career_stats.c_wins = math.max(profile.career_stats.c_wins or 0, 200)
+    profile.career_stats.c_rounds = math.max(profile.career_stats.c_rounds or 0, 1000)
+    profile.career_stats.c_hands_played = math.max(profile.career_stats.c_hands_played or 0, 5000)
+    profile.career_stats.c_cards_played = math.max(profile.career_stats.c_cards_played or 0, 5000)
+    profile.career_stats.c_cards_discarded = math.max(profile.career_stats.c_cards_discarded or 0, 5000)
+    profile.career_stats.c_shop_dollars_spent = math.max(profile.career_stats.c_shop_dollars_spent or 0, 10000)
+    profile.career_stats.c_tarots_bought = math.max(profile.career_stats.c_tarots_bought or 0, 200)
+    profile.career_stats.c_planets_bought = math.max(profile.career_stats.c_planets_bought or 0, 200)
+    profile.career_stats.c_shop_rerolls = math.max(profile.career_stats.c_shop_rerolls or 0, 200)
+
+    -- 10) UNLOCK ALL ACHIEVEMENTS
+    print("[DEBUG] Step 10: Unlocking all achievements...")
+    if G.ACHIEVEMENTS then
+      for ach_id, ach in pairs(G.ACHIEVEMENTS) do
+        ach.earned = true
+      end
+    end
+    -- Also unlock mod achievements
+    pcall(function()
+      if AchievementManager and AchievementManager.achievements and AchievementManager.player_data then
+        if not AchievementManager.player_data.achievements then AchievementManager.player_data.achievements = {} end
+        for ach_id, ach in pairs(AchievementManager.achievements) do
+          if not AchievementManager.player_data.achievements[ach_id] then
+            AchievementManager.player_data.achievements[ach_id] = {}
+          end
+          AchievementManager.player_data.achievements[ach_id].unlocked = true
+          AchievementManager.player_data.achievements[ach_id].progress = ach.progress_required or 1
+          AchievementManager.player_data.achievements[ach_id].unlock_date = os.time() or 0
+        end
+        pcall(function() AchievementManager.save_data() end)
+      end
+    end)
+    -- Mirror into settings
+    pcall(function()
+r 13 1682 %20%20%20%20%20%20 -
+l 136
+      if G.ACHIEVEMENTS then
+        for ach_id, _ in pairs(G.ACHIEVEMENTS) do
+          G.SETTINGS.ACHIEVEMENTS_EARNED[ach_id] = true
+        end
+      end
+    end)
+
+    -- 11) COSMETICS (safe - check globals exist first)
+    print("[DEBUG] Step 11: Unlocking cosmetics...")
+    if type(profile.progression.unlocked_titles) ~= "table" then
+      profile.progression.unlocked_titles = {}
+    end
+    if type(profile.progression.unlocked_banners) ~= "table" then
+      profile.progression.unlocked_banners = {}
+    end
+    if type(profile.progression.unlocked_badges) ~= "table" then
+      profile.progression.unlocked_badges = {}
+    end
+    if type(profile.progression.unlocked_borders) ~= "table" then
+      profile.progression.unlocked_borders = {}
+    end
+
+    local function safe_unlock_cosmetics(source_table, target_array)
+      if not source_table or type(source_table) ~= "table" then return end
+      local existing = {}
+      for _, v in ipairs(target_array) do existing[v] = true end
+      local count = 0
+      for _, v in pairs(source_table) do
+        count = count + 1
+        if count > 500 then break end
+        if type(v) == "table" and v.id and not existing[v.id] then
+          table.insert(target_array, v.id)
+          existing[v.id] = true
+        end
+      end
+    end
+
+    safe_unlock_cosmetics(_G.TITLES, profile.progression.unlocked_titles)
+    safe_unlock_cosmetics(_G.BANNERS, profile.progression.unlocked_banners)
+    safe_unlock_cosmetics(_G.BADGES, profile.progression.unlocked_badges)
+    safe_unlock_cosmetics(_G.BORDERS, profile.progression.unlocked_borders)
+
+    -- 12) UNLOCK DECK SKINS (customize deck + ProfileRewardsManager)
+    print("[DEBUG] Step 12: Unlocking deck skins...")
+    pcall(function()
+      if not profile.CUSTOM_DECK then profile.CUSTOM_DECK = {} end
+      if not profile.CUSTOM_DECK.Collabs then
+        profile.CUSTOM_DECK.Collabs = {Spades='default', Hearts='default', Clubs='default', Diamonds='default'}
+      end
+      if not profile.progression.unlocked_decks then profile.progression.unlocked_decks = {} end
+      if G.COLLABS and G.COLLABS.options then
+        local existing = {}
+        for _, v in ipairs(profile.progression.unlocked_decks) do existing[v] = true end
+        for suit, options in pairs(G.COLLABS.options) do
+          for _, collab_key in ipairs(options) do
+            if collab_key ~= 'default' and not existing[collab_key] then
+              table.insert(profile.progression.unlocked_decks, collab_key)
+              existing[collab_key] = true
+            end
+          end
+        end
+      end
+    end)
+
+    -- 13) UNLOCK PROFILE ICONS (joker-based)
+    print("[DEBUG] Step 13: Unlocking profile icons...")
+    pcall(function()
+      if type(profile.progression.unlocked_icons) ~= "table" then
+        profile.progression.unlocked_icons = {}
+      end
+      local joker_pool = G.P_CENTER_POOLS and G.P_CENTER_POOLS["Joker"]
+      if joker_pool then
+        local existing = {}
+        for _, v in ipairs(profile.progression.unlocked_icons) do existing[v] = true end
+        for _, center in ipairs(joker_pool) do
+          if center.key and not existing[center.key] then
+            table.insert(profile.progression.unlocked_icons, center.key)
+          end
+        end
+      end
+    end)
+
+    -- 14) UNLOCK ALL SHOP CONTENT (Color Sets, Icon Effects)
+    print("[DEBUG] Step 14: Unlocking all shop content...")
+    pcall(function()
+      if not AshCardManager then return end
+      pcall(function() AshCardManager.init() end)
+      local profile = G.PROFILES[G.SETTINGS.profile]
+      if not profile then return end
+      if not profile.progression then profile.progression = {} end
+      local prog = profile.progression
+      local function add_unique(arr, id)
+        for _, v in ipairs(arr) do if v == id then return end end
+        table.insert(arr, id)
+      end
+      -- Unlock all color sets
+      if not prog.owned_color_sets then prog.owned_color_sets = {} end
+      if SHOP_COLOR_SETS then
+        for _, set in ipairs(SHOP_COLOR_SETS) do add_unique(prog.owned_color_sets, set.id) end
+      end
+      if SHOP_POLYCHROMATIC then add_unique(prog.owned_color_sets, "polychromatic") end
+      print("[DEBUG] All color sets unlocked")
+      -- Unlock all icon effects
+      if not prog.owned_icon_effects then prog.owned_icon_effects = {} end
+      if SHOP_ICON_EFFECTS then
+        for _, eff in ipairs(SHOP_ICON_EFFECTS) do add_unique(prog.owned_icon_effects, eff.id) end
+      end
+      print("[DEBUG] All icon effects unlocked")
+      if G and G.save_progress then G:save_progress() end
+    end)
+
+    -- 15) UNLOCK ALL JIMBO SKINS
+    print("[DEBUG] Step 15: Unlocking all Jimbo skins...")
+    pcall(function()
+      if JimboSkinManager_unlock_all then
+        JimboSkinManager_unlock_all()
+        print("[DEBUG] All Jimbo skins unlocked")
+      end
+    end)
+
+    -- 16) SAVE
+    pcall(unlock_all_content, profile)
+
+    print("[DEBUG] Step 16: Scheduling save...")
+    pcall(function()
+      G:save_progress()
+      print("[DEBUG] Save via G:save_progress() SUCCESS")
+    end)
+    pcall(function()
+      G:save_settings()
+      print("[DEBUG] Save via G:save_settings() SUCCESS")
+    end)
+
+    -- 17) Refresh tallies so collection shows 100%
+    print("[DEBUG] Step 17: Refreshing tallies...")
+    pcall(function()
+r 4 240 %20%20%20%20%20%20 -
+l 88
+      G.PROGRESS = nil
+      if set_discover_tallies then set_discover_tallies() end
+    end)
+    pcall(function()
+      if set_profile_progress then set_profile_progress() end
+    end)
+
+    print("\n" .. string.rep("=", 50))
+    print("    UNLOCK ALL COMPLETE - 100%!")
+    print(string.rep("=", 50) .. "\n")
+  end)
+
+  if not ok then
+    print("[DEBUG] ERROR in unlock_all: " .. tostring(error_msg))
+  end
+
+  DEBUG_CONFIG.unlock_all_triggered = true
+  return ok
+end
+
+-- ===== DEBUG UI =====
+
+local DebugUI = {
+  pin_input = "",
+  pin_display = "______",
+}
+
+-- Create numpad for PIN entry
+local function create_debug_numpad()
+  local numpad_rows = {
+    {"1", "2", "3"},
+    {"4", "5", "6"},
+    {"7", "8", "9"},
+    {"C", "0", "OK"},
+  }
+
+  local rows = {}
+  for _, row_data in ipairs(numpad_rows) do
+    local row_nodes = {}
+    for _, digit in ipairs(row_data) do
+      local button_color = G.C.GREY
+      local button_func = 'debug_pin_digit'
+
+      if digit == "C" then
+        button_color = G.C.RED
+        button_func = 'debug_pin_clear'
+      elseif digit == "OK" then
+        button_color = G.C.GREEN
+        button_func = 'debug_pin_submit'
+      end
+
+      table.insert(row_nodes, {
+        n = G.UIT.C,
+        config = {
+          align = "cm", padding = 0.05, r = 0.1, minw = 0.8, minh = 0.8,
+          colour = button_color, button = button_func, hover = true, shadow = true,
+          ref_value = digit
+        },
+        nodes = {
+          {n = G.UIT.T, config = {text = digit, scale = 0.45, colour = G.C.WHITE}}
+        }
+      })
+    end
+    table.insert(rows, {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = row_nodes})
+  end
+
+  return {n = G.UIT.C, config = {align = "cm", padding = 0.1}, nodes = rows}
+end
+
+-- Create simple debug PIN entry with numpad
+function create_UIBox_debug_pin()
+  -- Safe init with pcall
+  pcall(function() DebugManager.init() end)
+  DebugUI.pin_input = ""
+  DebugUI.pin_display = "______"
+
+  -- Ensure all required globals exist
+  if not G then return {n=G.UIT.ROOT, config={align = "cm"}, nodes={}} end
+  if not G.C then return {n=G.UIT.ROOT, config={align = "cm"}, nodes={}} end
+  if not G.UIT then return {n=G.UIT.ROOT, config={align = "cm"}, nodes={}} end
+  if not G.ROOM then return {n=G.UIT.ROOT, config={align = "cm"}, nodes={}} end
+
+  -- Use pcall for the entire UI creation
+  local success, result = pcall(function()
+    return create_UIBox_generic_options({
+      back_func = 'exit_overlay_menu',
+      contents = {
+        -- Title
+r 15 723 %20%20%20%20%20%20%20%20 -
+l 3
+          {n=G.UIT.T, config={text = mod_loc("DEBUG MODE"), scale = 0.55, colour = G.C.RED, shadow = true}}
+        }},
+        -- Warning
+r 15 71 %20%20%20%20%20%20%20%20 -
+l 3
+          {n=G.UIT.T, config={text = mod_loc("Enter 6-digit PIN to unlock"), scale = 0.3, colour = G.C.WHITE}}
+        }},
+        -- PIN Display
+r 15 723 %20%20%20%20%20%20%20%20 -
+l 5
+          {n = G.UIT.C, config = {align = "cm", padding = 0.15, r = 0.1, colour = G.C.BLACK, minw = 3, minh = 0.8}, nodes = {
+            {n = G.UIT.O, config = {id = 'debug_pin_display', object = DynaText({string = {{ref_table = DebugUI, ref_value = "pin_display"}}, colours = {G.C.WHITE}, scale = 0.6, silent = true})}}
+          }}
+        }},
+        -- Numpad
+r 15 723 %20%20%20%20%20%20%20%20 -
+l 3
+          create_debug_numpad()
+        }},
+        -- Hint
+r 15 71 %20%20%20%20%20%20%20%20 -
+l 11
+          {n=G.UIT.T, config={text = mod_loc("(Hint: Check DEV_CHANGELOG.txt)"), scale = 0.22, colour = G.C.L_BLACK}}
+        }},
+      }
+    })
+  end)
+
+  if success then
+    return result
+  else
+    -- Return minimal UI on error
+    return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.BLACK}, nodes={
+r 7 297 %20%20%20%20%20%20 -
+l 143
+        {n=G.UIT.T, config={text = mod_loc("Debug UI Error"), scale = 0.5, colour = G.C.RED}}
+      }}
+    }}
+  end
+end
+
+-- Create debug menu (after PIN verified) - PAGINATED
+local DebugMenuPage = 1
+
+function create_UIBox_debug_menu()
+  if not G or not G.C or not G.UIT or not G.ROOM then
+    return {n=G.UIT.ROOT, config={align = "cm"}, nodes={}}
+  end
+
+  if not DebugManager.is_enabled() then
+    return create_UIBox_debug_pin()
+  end
+
+  local page = DebugMenuPage or 1
+  if page < 1 then page = 1 end
+  if page > 3 then page = 3 end
+
+  local success, result = pcall(function()
+    local page_contents = {}
+
+    -- Title (always shown)
+    table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.06}, nodes={
+      {n=G.UIT.T, config={text = mod_loc("DEBUG TOOLS"), scale = 0.5, colour = G.C.GREEN, shadow = true}}
+    }})
+
+    -- UNLOCK ALL Button (always shown)
+    table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+      UIBox_button({label = {mod_loc("UNLOCK EVERYTHING")}, button = 'debug_unlock_all', minw = 5.5, minh = 0.85, colour = G.C.GREEN, col = true}),
+    }})
+
+    if page == 1 then
+      -- PAGE 1: Collection
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+        {n=G.UIT.T, config={text = mod_loc("-- Collection --"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE}}
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Jokers")}, button = 'debug_unlock_jokers', minw = 3.3, minh = 0.55, colour = G.C.BLUE, col = true}),
+        UIBox_button({label = {mod_loc("Tarots")}, button = 'debug_unlock_tarots', minw = 3.3, minh = 0.55, colour = G.C.GREEN, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Planets")}, button = 'debug_unlock_planets', minw = 3.3, minh = 0.55, colour = G.C.BLUE, col = true}),
+        UIBox_button({label = {mod_loc("Spectrals")}, button = 'debug_unlock_spectrals', minw = 3.3, minh = 0.55, colour = G.C.GREEN, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Vouchers")}, button = 'debug_unlock_vouchers', minw = 3.3, minh = 0.55, colour = G.C.ORANGE, col = true}),
+        UIBox_button({label = {mod_loc("Editions/Seals")}, button = 'debug_unlock_editions', minw = 3.3, minh = 0.55, colour = G.C.BLUE, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Decks")}, button = 'debug_unlock_decks', minw = 3.3, minh = 0.55, colour = G.C.GREEN, col = true}),
+        UIBox_button({label = {mod_loc("Stakes (All 13)")}, button = 'debug_unlock_stakes', minw = 3.3, minh = 0.55, colour = G.C.YELLOW, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Blinds")}, button = 'debug_unlock_blinds', minw = 3.3, minh = 0.55, colour = G.C.RED, col = true}),
+        UIBox_button({label = {mod_loc("Tags")}, button = 'debug_unlock_tags', minw = 3.3, minh = 0.55, colour = G.C.GREEN, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Challenges")}, button = 'debug_unlock_challenges', minw = 3.3, minh = 0.55, colour = G.C.ORANGE, col = true}),
+        UIBox_button({label = {mod_loc("Achievements")}, button = 'debug_unlock_achievements', minw = 3.3, minh = 0.55, colour = G.C.YELLOW, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+        {n=G.UIT.T, config={text = mod_loc("-- Stake Win Stickers --"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE}}
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Joker Stake Wins")}, button = 'debug_set_joker_stake_wins', minw = 3.3, minh = 0.55, colour = G.C.PURPLE, col = true}),
+        UIBox_button({label = {mod_loc("Deck Stake Wins")}, button = 'debug_set_deck_stake_wins', minw = 3.3, minh = 0.55, colour = G.C.PURPLE, col = true}),
+      }})
+
+    elseif page == 2 then
+      -- PAGE 2: Shop Content + Customization
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+        {n=G.UIT.T, config={text = mod_loc("-- Shop Content --"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE}}
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Color Sets")}, button = 'debug_unlock_color_sets', minw = 3.3, minh = 0.55, colour = G.C.GOLD, col = true}),
+        UIBox_button({label = {mod_loc("Icon Effects")}, button = 'debug_unlock_icon_effects', minw = 3.3, minh = 0.55, colour = G.C.BLUE, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+        {n=G.UIT.T, config={text = mod_loc("-- Customization --"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE}}
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Deck Skins")}, button = 'debug_unlock_skins', minw = 3.3, minh = 0.55, colour = G.C.GREEN, col = true}),
+        UIBox_button({label = {mod_loc("Profile Icons")}, button = 'debug_unlock_icons', minw = 3.3, minh = 0.55, colour = G.C.BLUE, col = true}),
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("Badges")}, button = 'debug_unlock_badges', minw = 3.3, minh = 0.55, colour = G.C.YELLOW, col = true}),
+        UIBox_button({label = {mod_loc("Titles/Banners")}, button = 'debug_unlock_titles', minw = 3.3, minh = 0.55, colour = G.C.GREEN, col = true}),
+      }})
+
+    elseif page == 3 then
+      -- PAGE 3: Currency + Tools
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+        {n=G.UIT.T, config={text = mod_loc("-- Currency --"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE}}
+      }})
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        UIBox_button({label = {mod_loc("+10000 Balacoin")}, button = 'debug_add_balacoin', minw = 3.3, minh = 0.55, colour = G.C.MONEY, col = true}),
+        UIBox_button({label = {mod_loc("+50000 XP")}, button = 'debug_add_xp', minw = 3.3, minh = 0.55, colour = G.C.BLUE, col = true}),
+      }})
+      if BOM_DEBUG_BUILD then
+        table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+          {n=G.UIT.T, config={text = mod_loc("-- Ranked --"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE}}
+        }})
+        table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+          UIBox_button({label = {mod_loc("Max RP")}, button = 'debug_ranked_max', minw = 3.3, minh = 0.55, colour = G.C.PURPLE, col = true}),
+        }})
+      end
+      table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.06}, nodes={
+        UIBox_button({label = {mod_loc("Lock Debug Mode")}, button = 'debug_reset', minw = 4, minh = 0.65, colour = G.C.RED, col = true}),
+      }})
+    end
+
+    -- Page navigation (always shown)
+    table.insert(page_contents, {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+      {n=G.UIT.C, config={align="cm", padding=0.03, r=0.08, minw=0.8, minh=0.4,
+        colour = page > 1 and G.C.BLUE or G.C.L_BLACK,
+        hover = page > 1, button = page > 1 and "debug_page_prev" or nil}, nodes={
+        {n=G.UIT.T, config={text="<", scale=0.35, colour = page > 1 and G.C.WHITE or G.C.UI.TEXT_INACTIVE}}
+      }},
+      {n=G.UIT.C, config={align="cm", minw=2}, nodes={
+        {n=G.UIT.T, config={text=page .. " / 3", scale=0.3, colour=G.C.WHITE}}
+      }},
+      {n=G.UIT.C, config={align="cm", padding=0.03, r=0.08, minw=0.8, minh=0.4,
+        colour = page < 3 and G.C.BLUE or G.C.L_BLACK,
+        hover = page < 3, button = page < 3 and "debug_page_next" or nil}, nodes={
+        {n=G.UIT.T, config={text=">", scale=0.35, colour = page < 3 and G.C.WHITE or G.C.UI.TEXT_INACTIVE}}
+      }},
+    }})
+
+    return create_UIBox_generic_options({
+      back_func = 'exit_overlay_menu',
+      minw = 8,
+      contents = page_contents
+    })
+  end)
+
+  if success then
+    return result
+  else
+    return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.BLACK}, nodes={
+r 7 297 %20%20%20%20%20%20 -
+l 47
+        {n=G.UIT.T, config={text = mod_loc("Debug Menu Error"), scale = 0.5, colour = G.C.RED}}
+      }}
+    }}
+  end
+end
+
+-- ===== BUTTON CALLBACKS =====
+
+-- Numpad digit pressed
+G.FUNCS.debug_pin_digit = function(e)
+  local digit = e.config.ref_value
+  if not digit then return end
+
+  if #DebugUI.pin_input < 6 then
+    DebugUI.pin_input = DebugUI.pin_input .. digit
+    -- Update display with asterisks
+    DebugUI.pin_display = string.rep("*", #DebugUI.pin_input) .. string.rep("_", 6 - #DebugUI.pin_input)
+    pcall(function() play_sound('button', 0.6, 0.7) end)
+  end
+end
+
+-- Clear PIN input
+G.FUNCS.debug_pin_clear = function(e)
+  DebugUI.pin_input = ""
+  DebugUI.pin_display = "______"
+  pcall(function() play_sound('cancel', 0.8, 0.5) end)
+end
+
+-- Submit PIN
+G.FUNCS.debug_pin_submit = function(e)
+  print("[DEBUG] PIN submitted")
+
+  if pin_ok(DebugUI.pin_input) then
+    -- Correct PIN!
+    print("[DEBUG] PIN CORRECT! Unlocking debug mode...")
+    DebugManager.unlocked = true
+    DEBUG_CONFIG.enabled = true
+
+    pcall(function() play_sound('timpani', 1.0, 0.5) end)
+
+    -- Close current menu and open debug menu
+    if G and G.FUNCS and G.FUNCS.exit_overlay_menu then
+      pcall(function() G.FUNCS.exit_overlay_menu() end)
+    end
+
+    -- Open debug menu after short delay
+    if G and G.E_MANAGER and Event then
+r 1 112 %20%20%20%20%20%20 -
+l 5
+        trigger = 'after',
+        delay = 0.3,
+        func = function()
+          pcall(function()
+            if G.FUNCS and G.FUNCS.overlay_menu then
+r 4 1382 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 18
+                definition = create_UIBox_debug_menu()
+              }
+            end
+          end)
+          return true
+        end
+      }))
+    end
+  else
+    -- Wrong PIN!
+    print("[DEBUG] PIN INCORRECT!")
+    pcall(function() play_sound('cancel', 1.0, 0.5) end)
+
+    -- Flash red and clear
+    DebugUI.pin_display = mod_loc("WRONG!")
+
+    -- Clear after delay
+    if G and G.E_MANAGER and Event then
+r 1 112 %20%20%20%20%20%20 -
+l 24
+        trigger = 'after',
+        delay = 0.8,
+        func = function()
+          DebugUI.pin_input = ""
+          DebugUI.pin_display = "______"
+          return true
+        end
+      }))
+    else
+      DebugUI.pin_input = ""
+      DebugUI.pin_display = "______"
+    end
+  end
+end
+
+-- Legacy function (redirects to PIN entry)
+G.FUNCS.debug_try_unlock = function(e)
+  -- This now just opens the PIN entry screen
+  G.FUNCS.open_debug_menu(e)
+end
+
+-- Open debug menu
+G.FUNCS.open_debug_menu = function(e)
+  local success, err = pcall(function()
+r 4 1381 %20%20%20%20 -
+l 10
+    pcall(function() DebugManager.init() end)
+
+    local menu_def = nil
+    if DebugManager.is_enabled() then
+      menu_def = create_UIBox_debug_menu()
+    else
+      menu_def = create_UIBox_debug_pin()
+    end
+
+    if menu_def then
+r 4 1382 %20%20%20%20%20%20 -
+l 15
+        definition = menu_def
+      }
+    end
+  end)
+  if not success then
+    print("[DEBUG] Error in open_debug_menu: " .. tostring(err))
+  end
+end
+
+-- Open debug menu overlay from settings tab (keeps debug state)
+G.FUNCS.open_debug_menu_overlay = function(e)
+  if not DebugManager or not DebugManager.is_enabled or not DebugManager.is_enabled() then return end
+  pcall(function()
+    local menu_def = create_UIBox_debug_menu()
+    if menu_def then
+r 4 1382 %20%20%20%20%20%20 -
+l 148
+        definition = menu_def
+      }
+    end
+  end)
+end
+
+-- Unlock All - ULTRA SAFE VERSION V13.0
+G.FUNCS.debug_unlock_all = function(e)
+  print("\n" .. string.rep("*", 50))
+  print("    DEBUG UNLOCK ALL BUTTON PRESSED")
+  print(string.rep("*", 50))
+
+  -- Multiple layers of protection
+  local success = false
+  local err_msg = nil
+
+  -- First check if function even exists
+  if type(unlock_all_debug) ~= "function" then
+    print("[DEBUG] ERROR - unlock_all_debug function not found!")
+    pcall(function() play_sound('cancel', 1.0, 0.5) end)
+    return
+  end
+
+  print("[DEBUG] unlock_all_debug function exists, calling...")
+
+  -- Call with pcall
+  success, err_msg = pcall(function()
+    unlock_all_debug()
+  end)
+
+  if success then
+    print("[DEBUG] SUCCESS - Unlock All completed!")
+    pcall(function() play_sound('timpani', 1.0, 0.5) end)
+
+    -- Show success via safe attention_text (do NOT pass cover=true, it must be a UI object or nil)
+    pcall(function()
+      if attention_text then
+        local major = G.ROOM_ATTACH or G.play or G.hand
+        if major then
+          attention_text{text = mod_loc("ALL CONTENT UNLOCKED!"), scale = 1.5, hold = 3, backdrop_colour = G.C.GREEN, align = 'cm', major = major, offset = {x = 0, y = -2}}
+        end
+      end
+    end)
+  else
+    print("[DEBUG] FAILED - Unlock All error: " .. tostring(err_msg))
+    pcall(function() play_sound('cancel', 1.0, 0.5) end)
+
+    -- Show error notification
+    pcall(function()
+      if attention_text then
+        local major = G.ROOM_ATTACH or G.play or G.hand
+        if major then
+          attention_text{text = mod_loc("UNLOCK FAILED! Check logs."), scale = 1, hold = 3, backdrop_colour = G.C.RED, align = 'cm', major = major, offset = {x = 0, y = -2}}
+        end
+      end
+    end)
+  end
+
+  print(string.rep("*", 50) .. "\n")
+end
+
+-- Add Balacoin
+G.FUNCS.debug_add_balacoin = function(e)
+  if not DebugManager.is_enabled() then
+    print("[DEBUG] Debug mode not enabled, cannot add balacoin")
+    return
+  end
+
+  print("[DEBUG] Adding 10000 Balacoin...")
+
+  -- Direct profile access
+  if G and G.PROFILES and G.SETTINGS and G.SETTINGS.profile then
+    local profile = G.PROFILES[G.SETTINGS.profile]
+    if profile then
+      if not profile.progression then profile.progression = {} end
+      profile.progression.balacoin = (profile.progression.balacoin or 0) + 10000
+      profile.progression.total_balacoin_earned = (profile.progression.total_balacoin_earned or 0) + 10000
+      print("[DEBUG] New Balacoin: " .. tostring(profile.progression.balacoin))
+      pcall(function() play_sound('coin3', 1.0, 0.5) end)
+
+      -- Save
+      pcall(function() G:save_progress() end)
+    end
+  end
+end
+
+-- Add XP
+G.FUNCS.debug_ranked_max = function(e)
+  if not (BOM_DEBUG_BUILD and DebugManager.is_enabled() and bom_ranked and bom_core) then return end
+  local function go()
+    bom_ranked.send({type = "ranked_test_set", rp = 3000, all = true})
+    pcall(function() play_sound('highlight1', 1.0, 0.5) end)
+  end
+  if bom_core.is_connected() then go() else bom_core.connect(go, {silent = true}) end
+end
+
+G.FUNCS.debug_add_xp = function(e)
+  if not DebugManager.is_enabled() then
+    print("[DEBUG] Debug mode not enabled, cannot add XP")
+    return
+  end
+
+  print("[DEBUG] Adding 50000 XP...")
+
+  -- Use award_xp function if available (handles level up)
+  if award_xp then
+    print("[DEBUG] Using award_xp function")
+    award_xp(50000, "debug_bonus")
+    pcall(function() play_sound('highlight1', 1.0, 0.5) end)
+  else
+    -- Fallback: Direct add
+    print("[DEBUG] award_xp not found, using direct add")
+    if G and G.PROFILES and G.SETTINGS and G.SETTINGS.profile then
+      local profile = G.PROFILES[G.SETTINGS.profile]
+      if profile then
+        if not profile.progression then profile.progression = {} end
+        local old_xp = profile.progression.xp or 0
+        local old_level = profile.progression.level or 1
+
+        profile.progression.xp = old_xp + 50000
+        profile.progression.total_xp = (profile.progression.total_xp or 0) + 50000
+
+        -- Simple level up check
+        local xp_per_level = 1000
+        while profile.progression.xp >= xp_per_level * (profile.progression.level or 1) do
+          profile.progression.xp = profile.progression.xp - (xp_per_level * profile.progression.level)
+          profile.progression.level = (profile.progression.level or 1) + 1
+          print("[DEBUG] LEVEL UP! New level: " .. tostring(profile.progression.level))
+        end
+
+        print("[DEBUG] XP: " .. tostring(old_xp) .. " -> " .. tostring(profile.progression.xp))
+        print("[DEBUG] Level: " .. tostring(old_level) .. " -> " .. tostring(profile.progression.level))
+
+        pcall(function() play_sound('highlight1', 1.0, 0.5) end)
+
+        -- Save
+        pcall(function() G:save_progress() end)
+      end
+    end
+  end
+end
+
+-- Reset Debug Mode
+G.FUNCS.debug_reset = function(e)
+  DebugManager.unlocked = false
+  DEBUG_CONFIG.enabled = false
+  DebugUI.pin_input = ""
+  play_sound('cancel', 1.0, 0.5)
+r 4 1375 %20%20 -
+l 19
+end
+
+-- ===== HELPER: show debug success text =====
+local function debug_notify(text)
+  pcall(function() play_sound('timpani', 1.0, 0.5) end)
+  pcall(function()
+    if attention_text then
+      local major = G.ROOM_ATTACH or G.play or G.hand
+      if major then
+        attention_text{text = text, scale = 1.2, hold = 2, backdrop_colour = G.C.GREEN, align = 'cm', major = major, offset = {x = 0, y = -2}}
+      end
+    end
+  end)
+end
+
+local function debug_save_and_refresh()
+  pcall(function() G:save_progress() end)
+  pcall(function() G:save_settings() end)
+  pcall(function()
+r 4 240 %20%20%20%20 -
+l 43
+    if set_discover_tallies then set_discover_tallies() end
+  end)
+  pcall(function()
+    if set_profile_progress then set_profile_progress() end
+  end)
+end
+
+local function get_debug_profile()
+  if G and G.PROFILES and G.SETTINGS and G.SETTINGS.profile then
+    return G.PROFILES[G.SETTINGS.profile]
+  end
+  return nil
+end
+
+-- ===== PER-CATEGORY UNLOCK FUNCTIONS =====
+
+-- Unlock Jokers
+G.FUNCS.debug_unlock_jokers = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.joker_usage) ~= "table" then profile.joker_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Joker' then
+          center.unlocked = true
+          center.discovered = true
+          center.alerted = true
+          if not profile.joker_usage[key] then
+            profile.joker_usage[key] = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+          end
+          if not profile.joker_usage[key].wins then profile.joker_usage[key].wins = {} end
+          for s = 1, debug_stake_count() do
+            profile.joker_usage[key].wins[s] = profile.joker_usage[key].wins[s] or 1
+          end
+        end
+      end
+    end
+    -- Remove jokers from P_LOCKED
+    if G.P_LOCKED then
+      for i = #G.P_LOCKED, 1, -1 do
+        if G.P_LOCKED[i] and G.P_LOCKED[i].set == 'Joker' then
+r 13 1621 %20%20%20%20%20%20%20%20%20%20 -
+l 31
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL JOKERS UNLOCKED!"))
+    print("[DEBUG] All Jokers unlocked")
+  end)
+end
+
+-- Unlock Tarots
+G.FUNCS.debug_unlock_tarots = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.consumeable_usage) ~= "table" then profile.consumeable_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Tarot' then
+          center.unlocked = true
+          center.discovered = true
+          center.alerted = true
+          if not profile.consumeable_usage[key] then
+            profile.consumeable_usage[key] = {count = 1, order = center.order or 0}
+          end
+        end
+      end
+    end
+    if G.P_LOCKED then
+      for i = #G.P_LOCKED, 1, -1 do
+        if G.P_LOCKED[i] and G.P_LOCKED[i].set == 'Tarot' then
+r 13 1621 %20%20%20%20%20%20%20%20%20%20 -
+l 31
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL TAROTS UNLOCKED!"))
+    print("[DEBUG] All Tarots unlocked")
+  end)
+end
+
+-- Unlock Planets
+G.FUNCS.debug_unlock_planets = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.consumeable_usage) ~= "table" then profile.consumeable_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Planet' then
+          center.unlocked = true
+          center.discovered = true
+          center.alerted = true
+          if not profile.consumeable_usage[key] then
+            profile.consumeable_usage[key] = {count = 1, order = center.order or 0}
+          end
+        end
+      end
+    end
+    if G.P_LOCKED then
+      for i = #G.P_LOCKED, 1, -1 do
+        if G.P_LOCKED[i] and G.P_LOCKED[i].set == 'Planet' then
+r 13 1621 %20%20%20%20%20%20%20%20%20%20 -
+l 31
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL PLANETS UNLOCKED!"))
+    print("[DEBUG] All Planets unlocked")
+  end)
+end
+
+-- Unlock Spectrals
+G.FUNCS.debug_unlock_spectrals = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.consumeable_usage) ~= "table" then profile.consumeable_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Spectral' then
+          center.unlocked = true
+          center.discovered = true
+          center.alerted = true
+          if not profile.consumeable_usage[key] then
+            profile.consumeable_usage[key] = {count = 1, order = center.order or 0}
+          end
+        end
+      end
+    end
+    if G.P_LOCKED then
+      for i = #G.P_LOCKED, 1, -1 do
+        if G.P_LOCKED[i] and G.P_LOCKED[i].set == 'Spectral' then
+r 13 1621 %20%20%20%20%20%20%20%20%20%20 -
+l 31
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL SPECTRALS UNLOCKED!"))
+    print("[DEBUG] All Spectrals unlocked")
+  end)
+end
+
+-- Unlock Vouchers
+G.FUNCS.debug_unlock_vouchers = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.voucher_usage) ~= "table" then profile.voucher_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Voucher' then
+          center.unlocked = true
+          center.discovered = true
+          center.alerted = true
+          if not profile.voucher_usage[key] then
+            profile.voucher_usage[key] = {count = 1, order = center.order or 0}
+          end
+        end
+      end
+    end
+    if G.P_LOCKED then
+      for i = #G.P_LOCKED, 1, -1 do
+        if G.P_LOCKED[i] and G.P_LOCKED[i].set == 'Voucher' then
+r 13 1621 %20%20%20%20%20%20%20%20%20%20 -
+l 35
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL VOUCHERS UNLOCKED!"))
+    print("[DEBUG] All Vouchers unlocked")
+  end)
+end
+
+-- Unlock Decks
+G.FUNCS.debug_unlock_decks = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.deck_usage) ~= "table" then profile.deck_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Back' and not center.omit then
+          center.unlocked = true
+          center.discovered = true
+          center.alerted = true
+          if not profile.deck_usage[key] then
+            profile.deck_usage[key] = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+          end
+          if not profile.deck_usage[key].wins then profile.deck_usage[key].wins = {} end
+          for s = 1, debug_stake_count() do
+            profile.deck_usage[key].wins[s] = profile.deck_usage[key].wins[s] or 1
+          end
+        end
+      end
+    end
+    if G.P_LOCKED then
+      for i = #G.P_LOCKED, 1, -1 do
+        if G.P_LOCKED[i] and G.P_LOCKED[i].set == 'Back' then
+r 13 1621 %20%20%20%20%20%20%20%20%20%20 -
+l 194
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL DECKS UNLOCKED!"))
+    print("[DEBUG] All Decks unlocked")
+  end)
+end
+
+-- Unlock Stakes (all 13 in G.P_STAKES + profile)
+G.FUNCS.debug_unlock_stakes = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.stake_progress) ~= "table" then profile.stake_progress = {} end
+    for i = 1, debug_stake_count() do
+      profile.stake_progress[i] = true
+    end
+    if G.P_STAKES then
+      for _, stake in pairs(G.P_STAKES) do
+        stake.unlocked = true
+        stake.discovered = true
+        stake.alerted = true
+      end
+    end
+    -- Also mark all decks as having won all stakes
+    if type(profile.deck_usage) ~= "table" then profile.deck_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Back' and not center.omit then
+          if not profile.deck_usage[key] then
+            profile.deck_usage[key] = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+          end
+          if not profile.deck_usage[key].wins then profile.deck_usage[key].wins = {} end
+          for s = 1, debug_stake_count() do
+            profile.deck_usage[key].wins[s] = profile.deck_usage[key].wins[s] or 1
+          end
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL STAKES UNLOCKED!"))
+    print("[DEBUG] All Stakes unlocked")
+  end)
+end
+
+-- Set Joker Stake Wins (all 12 stakes for every joker)
+G.FUNCS.debug_set_joker_stake_wins = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.joker_usage) ~= "table" then profile.joker_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Joker' then
+          if not profile.joker_usage[key] then
+            profile.joker_usage[key] = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+          end
+          if not profile.joker_usage[key].wins then profile.joker_usage[key].wins = {} end
+          for s = 1, debug_stake_count() do
+            profile.joker_usage[key].wins[s] = math.max(profile.joker_usage[key].wins[s] or 0, 1)
+          end
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL JOKER STAKE WINS SET!"))
+    print("[DEBUG] All joker stake wins set (1-12)")
+  end)
+end
+
+-- Set Deck Stake Wins (all 12 stakes for every deck)
+G.FUNCS.debug_set_deck_stake_wins = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.deck_usage) ~= "table" then profile.deck_usage = {} end
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Back' and not center.omit then
+          if not profile.deck_usage[key] then
+            profile.deck_usage[key] = {count = 1, order = center.order or 0, wins = {}, losses = {}}
+          end
+          if not profile.deck_usage[key].wins then profile.deck_usage[key].wins = {} end
+          for s = 1, debug_stake_count() do
+            profile.deck_usage[key].wins[s] = math.max(profile.deck_usage[key].wins[s] or 0, 1)
+          end
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL DECK STAKE WINS SET!"))
+    print("[DEBUG] All deck stake wins set (1-12)")
+  end)
+end
+
+-- Unlock Blinds
+G.FUNCS.debug_unlock_blinds = function(e)
+  if not DebugManager.is_enabled() then return end
+  pcall(function()
+    if G.P_BLINDS then
+      for _, blind in pairs(G.P_BLINDS) do
+        blind.unlocked = true
+        blind.discovered = true
+        blind.alerted = true
+        blind.defeated = true
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL BLINDS UNLOCKED!"))
+    print("[DEBUG] All Blinds unlocked")
+  end)
+end
+
+-- Unlock Tags
+G.FUNCS.debug_unlock_tags = function(e)
+  if not DebugManager.is_enabled() then return end
+  pcall(function()
+    if G.P_TAGS then
+      for _, tag in pairs(G.P_TAGS) do
+        tag.unlocked = true
+        tag.discovered = true
+        tag.alerted = true
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL TAGS UNLOCKED!"))
+    print("[DEBUG] All Tags unlocked")
+  end)
+end
+
+-- Unlock Editions (Foil, Holographic, Polychrome, Negative, etc.)
+G.FUNCS.debug_unlock_editions = function(e)
+  if not DebugManager.is_enabled() then return end
+  pcall(function()
+    if G.P_CENTERS then
+      for key, center in pairs(G.P_CENTERS) do
+        if center.set == 'Edition' or center.set == 'Enhanced' or center.set == 'Seal' then
+          center.unlocked = true
+          center.discovered = true
+          center.alerted = true
+        end
+      end
+    end
+    if G.P_SEALS then
+      for _, seal in pairs(G.P_SEALS) do
+        seal.unlocked = true
+        seal.discovered = true
+        seal.alerted = true
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL EDITIONS UNLOCKED!"))
+    print("[DEBUG] All Editions/Seals unlocked")
+  end)
+end
+
+-- Unlock Challenges
+G.FUNCS.debug_unlock_challenges = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if type(profile.challenge_progress) ~= "table" then profile.challenge_progress = {} end
+    if type(profile.challenge_progress.unlocked) ~= "table" then profile.challenge_progress.unlocked = {} end
+    if type(profile.challenge_progress.completed) ~= "table" then profile.challenge_progress.completed = {} end
+    if G.CHALLENGES then
+      profile.challenges_unlocked = #G.CHALLENGES
+      for _, challenge in pairs(G.CHALLENGES) do
+        if challenge.id then
+          profile.challenge_progress.unlocked[challenge.id] = true
+          profile.challenge_progress.completed[challenge.id] = true
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL CHALLENGES UNLOCKED!"))
+    print("[DEBUG] All Challenges unlocked & completed")
+  end)
+end
+
+-- Unlock Achievements (both vanilla and mod)
+G.FUNCS.debug_unlock_achievements = function(e)
+  if not DebugManager.is_enabled() then return end
+  pcall(function()
+    -- Vanilla achievements
+    if G.ACHIEVEMENTS then
+      for ach_id, ach in pairs(G.ACHIEVEMENTS) do
+        ach.earned = true
+      end
+    end
+r 13 1682 %20%20%20%20 -
+l 133
+    if G.ACHIEVEMENTS then
+      for ach_id, _ in pairs(G.ACHIEVEMENTS) do
+        G.SETTINGS.ACHIEVEMENTS_EARNED[ach_id] = true
+      end
+    end
+    -- Mod achievements
+    if AchievementManager and AchievementManager.achievements and AchievementManager.player_data then
+      if not AchievementManager.player_data.achievements then AchievementManager.player_data.achievements = {} end
+      for ach_id, ach in pairs(AchievementManager.achievements) do
+        if not AchievementManager.player_data.achievements[ach_id] then
+          AchievementManager.player_data.achievements[ach_id] = {}
+        end
+        AchievementManager.player_data.achievements[ach_id].unlocked = true
+        AchievementManager.player_data.achievements[ach_id].progress = ach.progress_required or 1
+        AchievementManager.player_data.achievements[ach_id].unlock_date = os.time() or 0
+      end
+      pcall(function() AchievementManager.save_data() end)
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL ACHIEVEMENTS UNLOCKED!"))
+    print("[DEBUG] All Achievements unlocked")
+  end)
+end
+
+-- Unlock Deck Skins (customize deck)
+G.FUNCS.debug_unlock_skins = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if not profile.CUSTOM_DECK then profile.CUSTOM_DECK = {} end
+    if not profile.CUSTOM_DECK.Collabs then
+      profile.CUSTOM_DECK.Collabs = {Spades='default', Hearts='default', Clubs='default', Diamonds='default'}
+    end
+    -- Unlock all collab deck skins via ProfileRewardsManager
+    if not profile.progression then profile.progression = {} end
+    if not profile.progression.unlocked_decks then profile.progression.unlocked_decks = {} end
+    if G.COLLABS and G.COLLABS.options then
+      local existing = {}
+      for _, v in ipairs(profile.progression.unlocked_decks) do existing[v] = true end
+      for suit, options in pairs(G.COLLABS.options) do
+        for _, collab_key in ipairs(options) do
+          if collab_key ~= 'default' and not existing[collab_key] then
+            table.insert(profile.progression.unlocked_decks, collab_key)
+            existing[collab_key] = true
+          end
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL DECK SKINS UNLOCKED!"))
+    print("[DEBUG] All Deck Skins unlocked (ProfileRewardsManager)")
+  end)
+end
+
+-- Helper for cosmetic unlocks
+local function safe_unlock_cosmetic(source_table, target_array)
+  if not source_table or type(source_table) ~= "table" then return end
+  local existing = {}
+  for _, v in ipairs(target_array) do existing[v] = true end
+  for _, v in pairs(source_table) do
+    if type(v) == "table" and v.id and not existing[v.id] then
+      table.insert(target_array, v.id)
+      existing[v.id] = true
+    end
+  end
+end
+
+-- Unlock Profile Icons (joker-based icons)
+G.FUNCS.debug_unlock_icons = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if not profile.progression then profile.progression = {} end
+    if type(profile.progression.unlocked_icons) ~= "table" then profile.progression.unlocked_icons = {} end
+    -- Profile icons = joker keys from G.P_CENTER_POOLS.Joker
+    local joker_pool = G.P_CENTER_POOLS and G.P_CENTER_POOLS["Joker"]
+    if joker_pool then
+      local existing = {}
+      for _, v in ipairs(profile.progression.unlocked_icons) do existing[v] = true end
+      for _, center in ipairs(joker_pool) do
+        if center.key and not existing[center.key] then
+          table.insert(profile.progression.unlocked_icons, center.key)
+          existing[center.key] = true
+        end
+      end
+    end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL PROFILE ICONS UNLOCKED!"))
+    print("[DEBUG] All Profile Icons unlocked (joker-based)")
+  end)
+end
+
+-- Unlock Badges (cosmetic)
+G.FUNCS.debug_unlock_badges = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if not profile.progression then profile.progression = {} end
+    -- Cosmetic badges
+    if type(profile.progression.unlocked_badges) ~= "table" then profile.progression.unlocked_badges = {} end
+    safe_unlock_cosmetic(_G.BADGES, profile.progression.unlocked_badges)
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL BADGES UNLOCKED!"))
+    print("[DEBUG] All Badges unlocked (cosmetic + boss)")
+  end)
+end
+
+-- Unlock Titles, Banners & Borders
+G.FUNCS.debug_unlock_titles = function(e)
+  if not DebugManager.is_enabled() then return end
+  local profile = get_debug_profile()
+  if not profile then return end
+  pcall(function()
+    if not profile.progression then profile.progression = {} end
+    if type(profile.progression.unlocked_titles) ~= "table" then profile.progression.unlocked_titles = {} end
+    if type(profile.progression.unlocked_banners) ~= "table" then profile.progression.unlocked_banners = {} end
+    if type(profile.progression.unlocked_borders) ~= "table" then profile.progression.unlocked_borders = {} end
+    safe_unlock_cosmetic(_G.TITLES, profile.progression.unlocked_titles)
+    safe_unlock_cosmetic(_G.BANNERS, profile.progression.unlocked_banners)
+    safe_unlock_cosmetic(_G.BORDERS, profile.progression.unlocked_borders)
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL TITLES/BANNERS UNLOCKED!"))
+    print("[DEBUG] All Titles, Banners & Borders unlocked")
+  end)
+end
+
+-- ===== DEBUG PAGE NAVIGATION (instant refresh) =====
+
+local function refresh_debug_menu()
+  pcall(function()
+r 23 214 %20%20%20%20 -
+l 74
+      local of = G.OVERLAY_MENU; G.OVERLAY_MENU = nil; of:remove()
+    end
+  end)
+  pcall(function()
+    G.FUNCS.overlay_menu{definition = create_UIBox_debug_menu()}
+  end)
+end
+
+G.FUNCS.debug_page_prev = function(e)
+  DebugMenuPage = math.max(1, (DebugMenuPage or 1) - 1)
+  refresh_debug_menu()
+end
+
+G.FUNCS.debug_page_next = function(e)
+  DebugMenuPage = math.min(3, (DebugMenuPage or 1) + 1)
+  refresh_debug_menu()
+end
+
+-- ===== SHOP CONTENT UNLOCK CALLBACKS =====
+
+G.FUNCS.debug_unlock_color_sets = function(e)
+  if not DebugManager.is_enabled() then return end
+  pcall(function()
+    pcall(function() AshCardManager.init() end)
+    local profile = G.PROFILES[G.SETTINGS.profile]
+    if not profile or not profile.progression then return end
+    local prog = profile.progression
+    if not prog.owned_color_sets then prog.owned_color_sets = {} end
+    local function add_unique(arr, id)
+      for _, v in ipairs(arr) do if v == id then return end end
+      table.insert(arr, id)
+    end
+    if SHOP_COLOR_SETS then
+      for _, set in ipairs(SHOP_COLOR_SETS) do add_unique(prog.owned_color_sets, set.id) end
+    end
+    if SHOP_POLYCHROMATIC then add_unique(prog.owned_color_sets, "polychromatic") end
+    if G and G.save_progress then G:save_progress() end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL COLOR SETS UNLOCKED!"))
+    print("[DEBUG] All Color Sets unlocked")
+  end)
+end
+
+G.FUNCS.debug_unlock_icon_effects = function(e)
+  if not DebugManager.is_enabled() then return end
+  pcall(function()
+    pcall(function() AshCardManager.init() end)
+    local profile = G.PROFILES[G.SETTINGS.profile]
+    if not profile or not profile.progression then return end
+    local prog = profile.progression
+    if not prog.owned_icon_effects then prog.owned_icon_effects = {} end
+    local function add_unique(arr, id)
+      for _, v in ipairs(arr) do if v == id then return end end
+      table.insert(arr, id)
+    end
+    if SHOP_ICON_EFFECTS then
+      for _, eff in ipairs(SHOP_ICON_EFFECTS) do add_unique(prog.owned_icon_effects, eff.id) end
+    end
+    if G and G.save_progress then G:save_progress() end
+    debug_save_and_refresh()
+    debug_notify(mod_loc("ALL ICON EFFECTS UNLOCKED!"))
+    print("[DEBUG] All Icon Effects unlocked")
+  end)
+end
+
+-- ===== EXPORTS =====
+_G.DEBUG_CONFIG = DEBUG_CONFIG
+_G.DebugManager = DebugManager
+_G.DebugUI = DebugUI
+_G.unlock_all_debug = unlock_all_debug
+_G.create_UIBox_debug_pin = create_UIBox_debug_pin
+_G.create_UIBox_debug_menu = create_UIBox_debug_menu
+
+print("[DEBUG] Debug Mode v16.0 loaded - Full unlock + stake fix edition!")
+end

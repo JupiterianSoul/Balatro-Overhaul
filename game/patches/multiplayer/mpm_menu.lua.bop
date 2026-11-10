@@ -1,0 +1,609 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 148
+local M = {}
+
+M.active = M.active or false
+M.unread = M.unread or 0
+M.bell = M.bell or {text = "0"}
+M.bell_colour = M.bell_colour or {0, 0, 0, 0.3}
+M.info = M.info or {}
+M.daily = M.daily or {}
+M.daily_status = M.daily_status or {}
+
+local PLAY_W = 6.8
+local DAILY_W = 10.4
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function kit() return rawget(_G, "bom_kit") end
+
+local function on_menu()
+    return G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU
+end
+
+local function connected()
+    return bom_core and bom_core.is_connected and bom_core.is_connected()
+end
+
+local function in_room()
+    local ok, phase = pcall(function() return bom_match.get_phase() end)
+    return ok and phase ~= nil and bom_match.PHASE and phase ~= bom_match.PHASE.NONE
+end
+
+function M.is_active() return M.active == true end
+
+function M.send(msg)
+    if not connected() then return false end
+    return bom_core.send(msg)
+end
+
+function M.with_connection(fn, on_fail)
+    if connected() then return fn() end
+    if not (bom_core and bom_core.connect) then
+        if on_fail then on_fail() end
+        return
+    end
+    bom_core.connect(fn, {silent = true, on_fail = function() if on_fail then on_fail() end end})
+end
+
+function M.tagline_text()
+    return L("MULTIPLAYER")
+end
+
+function M.left_specs()
+    return {
+        {id = "mpm_profile_button", button = "mpm_open_profile", colour = G.C.PALE_GREEN, label = L("PROFILE")},
+        {id = "collection_button", button = "mpm_open_collection", colour = G.C.ORANGE, label = L("COLLECTION")},
+        {id = "mpm_friends_button", button = "mpm_open_friends", colour = G.C.GREEN, label = L("FRIENDS")},
+    }
+end
+
+function M.right_specs(quit_func)
+    local out = {
+        {id = "mpm_single_button", button = "mpm_exit", colour = G.C.GREEN, label = L("SINGLEPLAYER")},
+        {button = "options", colour = G.C.ORANGE, label = localize("b_options_cap")},
+    }
+    if G.F_QUIT_BUTTON then out[3] = {button = quit_func or "quit", colour = G.C.RED, label = localize("b_quit_cap")} end
+    return out
+end
+
+function M.tile_button(o)
+    local w, h = o.w, o.h
+    local inner = math.max(0.4, w - 0.2)
+    local rows = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0, minw = w, maxw = inner}, nodes = {
+            {n = G.UIT.T, config = {text = o.label, scale = o.scale or 0.5, colour = o.text_colour or G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+    }
+    if o.sub or o.sub_ref then
+        local sc = o.sub_scale or 0.3
+        local tcfg = {scale = sc, colour = o.sub_colour or G.C.UI.TEXT_LIGHT, shadow = true}
+        if o.sub_ref then tcfg.ref_table = o.sub_ref; tcfg.ref_value = "text" else tcfg.text = o.sub end
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0, minh = sc * 1.4, maxw = inner}, nodes = {{n = G.UIT.T, config = tcfg}}}
+    end
+    if o.band then
+        local sc = o.band_scale or 0.28
+        local bh = sc * 1.35
+        rows[1].config.minh = math.max(0, h - 2 * bh)
+        table.insert(rows, 1, {n = G.UIT.R, config = {align = "cr", minw = w, minh = bh, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minw = o.band_w or 1.0, minh = bh, r = 0.1, colour = G.C.GOLD}, nodes = {
+                {n = G.UIT.T, config = {text = o.band, scale = sc, colour = G.C.UI.TEXT_DARK}},
+            }},
+        }})
+        rows[#rows + 1] = {n = G.UIT.R, config = {minw = w, minh = bh, padding = 0}}
+    end
+    if o.sticker then
+        local sc = o.sticker_scale or 0.28
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minw = o.sticker_w or 1.0, minh = sc * 1.35, r = 0.06, colour = G.C.GOLD, emboss = 0.03}, nodes = {
+                {n = G.UIT.T, config = {text = o.sticker, scale = sc, colour = G.C.UI.TEXT_DARK}},
+            }},
+        }}
+    end
+    return {n = o.row and G.UIT.R or G.UIT.C, config = {align = "cm"}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", padding = 0, r = 0.1, hover = true, shadow = true, colour = o.colour or G.C.BLUE,
+            button = (not o.disabled) and o.button or nil, ref_table = o.ref_table, minw = w, minh = h, id = o.id, focus_args = o.focus_args, mid = o.mid}, nodes = rows},
+    }}
+end
+
+function M.mods_button(minw, minh, scale)
+    return M.tile_button{id = "mods_button", button = "mpm_open_mods", colour = G.C.BLUE, w = minw, h = minh, label = L("MODS"), scale = scale,
+        band = L("BETA"), band_scale = math.max(0.26, scale * 0.36), band_w = math.max(1.0, scale * 1.4)}
+end
+
+function M.big_specs()
+    return {
+        {id = "main_menu_play", button = "mpm_open_play", label = localize("b_play_cap")},
+        {mods = true},
+        {id = "mpm_ranked_button", button = "mp_open_ranked", label = L("RANKED")},
+    }
+end
+
+function M.bell_row(panel_w)
+    local t = touch()
+    local h = t and 0.62 or 0.5
+    local cw = t and 0.62 or 0.5
+    local lw = t and 2.0 or 1.7
+    M.set_unread(M.unread)
+    local node = {n = G.UIT.C, config = {align = "cm", r = 0.1, hover = true, shadow = true, colour = G.C.L_BLACK, button = "mpm_open_inbox", id = "mpm_bell", minh = h, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = lw, maxw = lw, minh = h}, nodes = {
+            {n = G.UIT.T, config = {text = L("ALERTS"), scale = t and 0.36 or 0.32, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = cw, minh = h - 0.12, r = 0.08, colour = M.bell_colour}, nodes = {
+            {n = G.UIT.T, config = {ref_table = M.bell, ref_value = "text", scale = t and 0.34 or 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+        {n = G.UIT.C, config = {minw = 0.06}},
+    }}
+    return {n = G.UIT.R, config = {align = "cr", minw = panel_w, padding = 0.06}, nodes = {node}}
+end
+
+function M.set_unread(n)
+    n = math.max(0, math.floor(tonumber(n) or 0))
+    M.unread = n
+    M.bell.text = n > 9 and "9+" or tostring(n)
+    local src = n > 0 and (G and G.C and G.C.RED) or {0, 0, 0, 0.3}
+    for i = 1, 4 do M.bell_colour[i] = src[i] or 1 end
+end
+
+function M.rebuild()
+    if not (on_menu() and G.MAIN_MENU_UI and G.ROOM_ATTACH) then return end
+    if G.collection_alert then G.collection_alert:remove(); G.collection_alert = nil end
+r 15 2219 %20%20%20%20 -
+l 3
+    G.MAIN_MENU_UI:remove()
+    G.MAIN_MENU_UI = UIBox{definition = create_UIBox_main_menu_buttons(), config = {align = "bmi", offset = {x = 0, y = 10}, major = G.ROOM_ATTACH, bond = "Weak"}}
+    G.MAIN_MENU_UI.alignment.offset.y = main_menu_bar_offset()
+r 13 759 %20%20%20%20 -
+l 52
+    G.MAIN_MENU_UI:hard_set_VT()
+    if G.SETTINGS.paused then
+        G.MAIN_MENU_UI.created_on_pause = false
+        G.MAIN_MENU_UI.UIRoot:set_created_on_pause(false, true)
+    end
+    if not G.OVERLAY_MENU then G.CONTROLLER:snap_to{node = G.MAIN_MENU_UI:get_UIE_by_ID("main_menu_play")} end
+    if title_tagline_attach then pcall(title_tagline_attach, "swap") end
+    if title_fan_mode then pcall(title_fan_mode, M.active == true) end
+end
+
+function M.rebuild_soon()
+    if not (G.E_MANAGER and Event) then return M.rebuild() end
+    G.E_MANAGER:add_event(Event({blocking = false, blockable = false, pause_force = true, timer = "REAL", func = function()
+        M.rebuild()
+        return true
+    end}))
+end
+
+local function after_enter()
+    pcall(function()
+        if bom_rejoin and bom_rejoin.has_match_session() and not bom_rejoin.prompt and not bom_rejoin.checking then
+            bom_rejoin.check_rejoin()
+        end
+    end)
+    pcall(function()
+        if G.FUNCS.trigger_sub_showcase_multiplayer then G.FUNCS.trigger_sub_showcase_multiplayer() end
+    end)
+    pcall(function()
+        local hook = rawget(_G, "mps_on_menu")
+        if type(hook) == "function" then hook(true) end
+    end)
+end
+
+function M.enter()
+    if not on_menu() then return false end
+    local was = M.active
+    M.active = true
+    if not was then M.rebuild_soon() end
+    play_sound("cardSlide1", 1.1, 0.5)
+    after_enter()
+    return true
+end
+
+function M.exit()
+    pcall(function() if bom_ranked_ui and bom_ranked_ui.queue_cancel then bom_ranked_ui.queue_cancel(true) end end)
+    local so = rawget(_G, "social_online")
+    if not in_room() and not (so and so.keep and so.keep()) then pcall(function() bom_core.disconnect() end) end
+    pcall(function()
+        local hook = rawget(_G, "mps_on_menu")
+        if type(hook) == "function" then hook(false) end
+    end)
+    M.active = false
+r 4 1825 %20%20%20%20 -
+l 95
+    M.rebuild_soon()
+    play_sound("cardSlide2", 1, 0.5)
+end
+
+local function fmt_left(sec)
+    sec = math.max(0, math.floor(tonumber(sec) or 0))
+    local d = math.floor(sec / 86400)
+    local h = math.floor((sec % 86400) / 3600)
+    local m = math.floor((sec % 3600) / 60)
+    if d > 0 then return tostring(d) .. L("d") .. " " .. tostring(h) .. L("h") end
+    if h > 0 then return tostring(h) .. L("h") .. " " .. tostring(m) .. L("m") end
+    return tostring(math.max(1, m)) .. L("m")
+end
+M.fmt_left = fmt_left
+
+function M.daily_left(kind)
+    local d = M.daily[kind]
+    if not (d and tonumber(d.ends_at)) then return nil end
+    return tonumber(d.ends_at) / 1000 - os.time()
+end
+
+function M.daily_sub(kind)
+    local d = M.daily[kind]
+    local st = M.daily_status[kind]
+    if not d then
+        if st == "offline" then return L("Offline") end
+        return L("Loading...")
+    end
+    local name = d.ruleset and d.ruleset.name and L(d.ruleset.name) or ""
+    local left = M.daily_left(kind)
+    local tail = left and (fmt_left(left) .. " " .. L("left")) or ""
+    if name ~= "" and tail ~= "" then return name .. ", " .. tail end
+    return name ~= "" and name or tail
+end
+
+function M.request_daily(force)
+    for _, kind in ipairs({"daily", "weekly"}) do
+        local d = M.daily[kind]
+        local left = M.daily_left(kind)
+        if force or not d or not left or left <= 0 then
+            M.daily_status[kind] = "loading"
+        end
+    end
+    M.with_connection(function()
+        for _, kind in ipairs({"daily", "weekly"}) do
+            if M.daily_status[kind] == "loading" then M.send({type = "daily_get", kind = kind}) end
+        end
+    end, function()
+        for _, kind in ipairs({"daily", "weekly"}) do
+            if M.daily_status[kind] == "loading" then M.daily_status[kind] = "offline" end
+        end
+        M.refresh_if("mpm_play")
+    end)
+end
+
+function M.refresh_if(id)
+    if UIK and UIK._win and UIK._win.id == id and G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") then UIK.refresh() end
+end
+
+local function column(rows, w)
+    local nodes = {}
+    for _, r in ipairs(rows) do
+        if r then nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.06}, nodes = {r}} end
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = w, padding = 0.04}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = nodes}}}
+end
+M.column = column
+
+function M.play_body()
+    local t = touch()
+    local w = PLAY_W - 0.6
+    local bh = t and 1.0 or 0.86
+    local function full(label, button, colour, id)
+        return UIK.button{label = label, button = button, colour = colour, w = w, h = bh, id = id, col = true}
+    end
+    local gap = 0.2
+    local hw = (w - gap) / 2
+    local th = t and 1.3 or 1.15
+    local dailies = {n = G.UIT.C, config = {align = "cm"}, nodes = {
+        M.tile_button{id = "mpm_daily", button = "mpm_daily", ref_table = {kind = "daily"}, colour = G.C.PURPLE, w = hw, h = th, label = L("DAILY"),
+            scale = t and 0.5 or 0.45, sub = M.daily_sub("daily"), sub_scale = t and 0.3 or 0.27},
+        {n = G.UIT.C, config = {minw = gap}},
+        M.tile_button{id = "mpm_weekly", button = "mpm_daily", ref_table = {kind = "weekly"}, colour = G.C.PURPLE, w = hw, h = th, label = L("WEEKLY"),
+            scale = t and 0.5 or 0.45, sub = M.daily_sub("weekly"), sub_scale = t and 0.3 or 0.27},
+    }}
+    return column({
+        full(L("BROWSE ROOMS"), "mpm_browse", G.C.BLUE, "mpm_browse"),
+        full(L("CREATE ROOM"), "mpm_create", G.C.ORANGE, "mpm_create"),
+        full(L("JOIN WITH CODE"), "mpm_join", G.C.GREEN, "mpm_join"),
+        {n = G.UIT.C, config = {minh = 0.06, minw = w, colour = {1, 1, 1, 0.1}}},
+        dailies,
+    }, w)
+end
+
+function M.open_play()
+r 4 1381 %20%20%20%20 -
+l 162
+    G.FUNCS.overlay_menu{definition = UIK.window{zoom = false, id = "mpm_play", compact = true, w = PLAY_W, title = L("PLAY"),
+        tabs = {{key = "play", label = L("Play"), build = M.play_body}}, back_func = "exit_overlay_menu"}}
+    G.BOM_MP_MENU = G.OVERLAY_MENU
+    M.request_daily(false)
+end
+
+local function deck_name(name)
+    if type(name) ~= "string" or name == "" then return L("Red Deck") end
+    local out = name
+    pcall(function()
+        for _, v in ipairs(G.P_CENTER_POOLS.Back or {}) do
+            if v.name == name or v.key == name then
+                local n = localize{type = "name_text", set = "Back", key = v.key}
+                if n and n ~= "ERROR" then out = n end
+                break
+            end
+        end
+    end)
+    return out
+end
+
+local function stake_name(n)
+    n = tonumber(n) or 1
+    local out = tostring(n)
+    pcall(function()
+        local c = G.P_CENTER_POOLS.Stake[n]
+        local name = c and localize{type = "name_text", key = c.key, set = "Stake"}
+        if name and name ~= "ERROR" then out = name end
+    end)
+    return out
+end
+
+local function on_off(v) return v and L("On") or L("Off") end
+
+local function layer_text(ids)
+    if type(ids) ~= "table" or #ids == 0 then return L("None") end
+    local names = {}
+    local layers = rawget(_G, "bom_layers")
+    for _, id in ipairs(ids) do
+        local name = nil
+        if layers and layers.name then pcall(function() name = layers.name(id) end) end
+        if name then names[#names + 1] = name end
+    end
+    if #names == 0 then return tostring(#ids) end
+    return table.concat(names, ", ")
+end
+
+local function mode_text(mode)
+    mode = mode or "nemesis"
+    local out = mode
+    pcall(function() out = bom_browse.mode_name(mode) end)
+    return L(out)
+end
+
+function M.rule_pairs(rs)
+    rs = type(rs) == "table" and rs or {}
+    local s = type(rs.settings) == "table" and rs.settings or {}
+    local mode = rs.mode or s.mode or "nemesis"
+    local pvp = mode == "faceoff" and s.showdown_starting_antes or s.pvp_start_round
+    local bans = 0
+    for _, list in pairs(type(rs.bans) == "table" and rs.bans or {}) do
+        if type(list) == "table" then bans = bans + #list end
+    end
+    local mp_stake, mp_base = nil, nil
+    pcall(function()
+        if bom_stakes.valid(s.mp_stake) then mp_stake, mp_base = bom_stakes.name(s.mp_stake), bom_stakes.base(s.mp_stake) end
+    end)
+    local out = {
+        {L("Mode"), mode_text(mode)},
+        {L("Lives"), tostring(s.starting_lives or 4)},
+        {L("PvP from ante"), pvp and tostring(pvp) or "-"},
+        {L("Final ante"), tostring(tonumber(s.win_ante) or 8)},
+        {L("Ready timer"), s.timer and (tostring(s.timer_base_seconds or 120) .. " s") or L("Off")},
+        {L("Deck"), deck_name(s.deck)},
+        {L("Stake"), stake_name(mp_base or s.stake)},
+        {L("Shared queue"), on_off(s.the_order)},
+        {L("MP cards"), on_off(s.multiplayer_jokers ~= false)},
+        {L("Hide opponent score"), on_off(s.hide_opp_score)},
+        {L("Score preview"), on_off(s.allow_score_preview ~= false)},
+        {L("Layers"), layer_text(rs.layers or s.layers)},
+        {L("Banned cards"), tostring(bans)},
+    }
+    if mp_stake then table.insert(out, 8, {L("MP stake"), mp_stake}) end
+    return out
+end
+
+local function rule_cell(label, value, w)
+    local k = kit()
+    local d = k.dims()
+    local h = d.row_h + 0.04
+    local vw = math.min(3.2, w * 0.46)
+    local lw = w - vw - 0.3
+    local ls, lsc = k.fit(label, lw, d.scale)
+    local vs, vsc = k.fit(value, vw - 0.2, d.scale)
+    return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, minh = h + 0.08, r = 0.1, colour = {0, 0, 0, 0.15}, padding = 0.04}, nodes = {
+        {n = G.UIT.C, config = {align = "cl", minw = lw, maxw = lw, minh = h}, nodes = {k.text(ls, {scale = lsc, colour = G.C.UI.TEXT_LIGHT})}},
+        {n = G.UIT.C, config = {minw = 0.1}},
+        k.pill(vs, {w = vw, h = h, colour = G.C.BLACK, scale = vsc}),
+    }}
+end
+
+function M.rule_grid(pairs_list, w)
+    local gap = 0.16
+    local cw = (w - gap) / 2
+    local rows = {}
+    for i = 1, #pairs_list, 2 do
+        local a, b = pairs_list[i], pairs_list[i + 1]
+        if #rows > 0 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.08}} end
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {
+            rule_cell(a[1], a[2], cw),
+            {n = G.UIT.C, config = {minw = gap}},
+            b and rule_cell(b[1], b[2], cw) or {n = G.UIT.C, config = {minw = cw}},
+        }}
+    end
+    return rows
+end
+
+function M.ruleset_view(rs, w, extra)
+    local k = kit()
+    local d = k.dims()
+    local nodes = {}
+    if rs and rs.name then
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {k.text(L(rs.name), {scale = d.scale + 0.14, colour = G.C.GOLD})}}
+        if rs.desc then nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", maxw = w}, nodes = {k.text(L(rs.desc), {scale = d.small, colour = UIK.C.muted, shadow = false})}} end
+    end
+    for _, line in ipairs(extra or {}) do
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", maxw = w}, nodes = {k.text(line, {scale = d.small, colour = G.C.UI.TEXT_LIGHT})}}
+    end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {minh = 0.14}}
+    for _, r in ipairs(M.rule_grid(M.rule_pairs(rs), w)) do nodes[#nodes + 1] = r end
+    return {n = G.UIT.R, config = {align = "tm", minw = w, padding = 0.04}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = nodes}}}
+end
+
+function M.message(text, colour, w, h)
+    return {n = G.UIT.R, config = {align = "cm", minw = w or UIK.W, minh = h or 2}, nodes = {UIK.text(text, {colour = colour or G.C.UI.TEXT_LIGHT})}}
+end
+
+local function daily_start_fn()
+    local D = rawget(_G, "bom_daily")
+    return D and type(D.start) == "function" and D.start or nil
+end
+
+function M.daily_body(kind)
+    local w = DAILY_W - 0.6
+    local d = M.daily[kind]
+    if not d then
+        local st = M.daily_status[kind]
+        return M.message(st == "offline" and L("Could not reach the server.") or L("Loading..."), st == "offline" and G.C.RED or nil, w, 3)
+    end
+    local left = M.daily_left(kind)
+    local extra = {}
+    if left then extra[#extra + 1] = L("Ends in") .. " " .. fmt_left(left) end
+    return M.ruleset_view(d.ruleset or {}, w, extra)
+end
+
+function M.open_daily(kind)
+    kind = kind == "weekly" and "weekly" or "daily"
+    M.daily_open = kind
+    local footer = nil
+    if daily_start_fn() and M.daily[kind] then
+        footer = {UIK.button{label = L("PLAY"), button = "mpm_daily_start", ref_table = {kind = kind}, colour = G.C.GREEN, id = "mpm_daily_start"}}
+    end
+r 4 1381 %20%20%20%20 -
+l 60
+    G.FUNCS.overlay_menu{definition = UIK.window{zoom = false, id = "mpm_daily", compact = true, w = DAILY_W,
+        title = kind == "weekly" and L("WEEKLY") or L("DAILY"),
+        tabs = {{key = kind, label = "", build = function() return M.daily_body(kind) end}},
+        back_func = "mpm_open_play", footer = footer}}
+end
+
+function M.on_daily(d)
+    if type(d) ~= "table" or (d.kind ~= "daily" and d.kind ~= "weekly") then return end
+    M.daily[d.kind] = d
+    M.daily_status[d.kind] = "ok"
+    M.refresh_if("mpm_play")
+    if M.daily_open == d.kind and UIK and UIK._win and UIK._win.id == "mpm_daily" then
+        M.open_daily(d.kind)
+    end
+end
+
+function M.on_menu_info(d)
+    if type(d) ~= "table" then return end
+    M.info = d
+    M.info.at = love and love.timer and love.timer.getTime() or 0
+    local RU = rawget(_G, "bom_ranked_ui")
+    if RU and RU.on_menu_info then pcall(RU.on_menu_info, d) end
+end
+
+function M.request_info()
+    M.with_connection(function() M.send({type = "menu_info"}) end)
+end
+
+local function open_or(name, fallback, e)
+    local f = G.FUNCS[name]
+    if f then return f(e) end
+    if fallback and G.FUNCS[fallback] then return G.FUNCS[fallback](e) end
+end
+
+function M.register()
+    if not (G and G.FUNCS) then return end
+    if not M.legacy_open and G.FUNCS.open_multiplayer_menu then M.legacy_open = G.FUNCS.open_multiplayer_menu end
+    G.FUNCS.mpm_enter = function()
+        if not M.enter() and M.legacy_open then M.legacy_open() end
+    end
+    G.FUNCS.open_multiplayer_menu = function(e)
+        if not on_menu() then
+            if M.legacy_open then return M.legacy_open(e) end
+            return
+        end
+        local was = M.active
+        M.active = true
+        if not was then M.rebuild_soon() end
+        M.open_play()
+        if not was then after_enter() end
+    end
+    G.FUNCS.mpm_exit = function() M.exit() end
+    G.FUNCS.mpm_open_play = function() M.open_play() end
+    G.FUNCS.mpm_browse = function()
+        if bom_browse and bom_browse.show then bom_browse.show() end
+    end
+    G.FUNCS.mpm_create = function()
+        if bom_browse and bom_browse.show_create then bom_browse.show_create() end
+    end
+    G.FUNCS.mpm_join = function()
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 71
+        G.FUNCS.overlay_menu{definition = create_UIBox_join_room_input({title = L("JOIN WITH CODE"), back = "mpm_open_play"})}
+    end
+    G.FUNCS.mpm_daily = function(e)
+        local kind = e and e.config and e.config.ref_table and e.config.ref_table.kind or "daily"
+        local D = rawget(_G, "bom_daily")
+        if D and type(D.open) == "function" then return D.open(kind) end
+        M.open_daily(kind)
+        if not M.daily[kind] then M.request_daily(true) end
+    end
+    G.FUNCS.mpm_daily_start = function(e)
+        local kind = e and e.config and e.config.ref_table and e.config.ref_table.kind or "daily"
+        local start = daily_start_fn()
+        if start then start(kind, M.daily[kind]) end
+    end
+    G.FUNCS.mpm_open_friends = function(e)
+        if G.FUNCS.mps_open_friends then return G.FUNCS.mps_open_friends(e) end
+        return open_or("mp_open_friends", nil, e)
+    end
+    G.FUNCS.mpm_open_inbox = function(e)
+        if G.FUNCS.mps_open_inbox then return G.FUNCS.mps_open_inbox(e) end
+    end
+    G.FUNCS.mpm_open_profile = function(e)
+        local P = rawget(_G, "mpm_profile")
+        if P and P.open then P.open() end
+    end
+    G.FUNCS.mpm_open_collection = function(e)
+        local C = rawget(_G, "mpm_collection")
+        if C and C.open then C.open() end
+    end
+    G.FUNCS.mpm_open_mods = function(e)
+        local MM = rawget(_G, "mpm_mods")
+        if MM and MM.open then return MM.open() end
+        return open_or("mods_button", nil, e)
+    end
+end
+
+function M.init()
+    M.register()
+    if bom_events and bom_events.register then
+        bom_events.register("daily_ruleset", function(d) M.on_daily(d); return true end)
+        bom_events.register("menu_info", function(d) M.on_menu_info(d); return true end)
+    end
+    if mod_loc_register then
+        mod_loc_register{
+            fr = {
+                ["MULTIPLAYER"] = "MULTIJOUEUR", ["PROFILE"] = "PROFIL", ["COLLECTION"] = "COLLECTION", ["FRIENDS"] = "AMIS", ["SINGLEPLAYER"] = "SOLO",
+                ["RANKED"] = "CLASSÉ", ["MODS"] = "MODS", ["BETA"] = "BÊTA", ["ALERTS"] = "ALERTES", ["PLAY"] = "JOUER", ["Play"] = "Jouer",
+                ["BROWSE ROOMS"] = "PARCOURIR LES SALLES", ["CREATE ROOM"] = "CRÉER UNE SALLE", ["JOIN WITH CODE"] = "REJOINDRE AVEC CODE",
+                ["DAILY"] = "QUOTIDIEN", ["WEEKLY"] = "HEBDO", ["Loading..."] = "Chargement...", ["Offline"] = "Hors ligne", ["left"] = "restant",
+                ["Ends in"] = "Se termine dans", ["d"] = "j", ["h"] = "h", ["m"] = "min", ["Could not reach the server."] = "Serveur injoignable.",
+                ["Mode"] = "Mode", ["Lives"] = "Vies", ["PvP from ante"] = "JcJ dès la mise initiale", ["Final ante"] = "Dernière mise initiale", ["Ready timer"] = "Minuteur",
+                ["Deck"] = "Jeu", ["Stake"] = "Mise", ["MP stake"] = "Mise MP", ["Shared queue"] = "File commune", ["MP cards"] = "Cartes MP", ["Hide opponent score"] = "Score adverse caché",
+                ["Score preview"] = "Aperçu du score", ["Layers"] = "Couches", ["Banned cards"] = "Cartes interdites",
+                ["On"] = "Oui", ["Off"] = "Non", ["None"] = "Aucune", ["Red Deck"] = "Jeu rouge",
+            },
+            es = {
+                ["MULTIPLAYER"] = "MULTIJUGADOR", ["PROFILE"] = "PERFIL", ["COLLECTION"] = "COLECCIÓN", ["FRIENDS"] = "AMIGOS", ["SINGLEPLAYER"] = "UN JUGADOR",
+                ["RANKED"] = "CLASIFICATORIA", ["MODS"] = "MODS", ["BETA"] = "BETA", ["ALERTS"] = "AVISOS", ["PLAY"] = "JUGAR", ["Play"] = "Jugar",
+                ["BROWSE ROOMS"] = "BUSCAR SALAS", ["CREATE ROOM"] = "CREAR SALA", ["JOIN WITH CODE"] = "UNIRSE CON CÓDIGO",
+                ["DAILY"] = "DIARIO", ["WEEKLY"] = "SEMANAL", ["Loading..."] = "Cargando...", ["Offline"] = "Sin conexión", ["left"] = "restante",
+                ["Ends in"] = "Termina en", ["d"] = "d", ["h"] = "h", ["m"] = "min", ["Could not reach the server."] = "No se pudo conectar.",
+                ["Mode"] = "Modo", ["Lives"] = "Vidas", ["PvP from ante"] = "JcJ desde la apuesta inicial", ["Final ante"] = "Última apuesta inicial", ["Ready timer"] = "Temporizador",
+                ["Deck"] = "Baraja", ["Stake"] = "Pozo", ["MP stake"] = "Pozo MP", ["Shared queue"] = "Cola común", ["MP cards"] = "Cartas MP", ["Hide opponent score"] = "Ocultar puntuación rival",
+                ["Score preview"] = "Vista previa", ["Layers"] = "Capas", ["Banned cards"] = "Cartas vetadas",
+                ["On"] = "Sí", ["Off"] = "No", ["None"] = "Ninguna", ["Red Deck"] = "Baraja roja",
+            },
+        }
+    end
+end
+
+return M
+end

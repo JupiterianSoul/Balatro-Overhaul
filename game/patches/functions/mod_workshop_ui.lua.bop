@@ -1,0 +1,1287 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 255
+local W = ModWorkshop
+local loc = W.loc
+
+local SIDE_W = 3.0
+local CARD_W, CARD_H = 3.0, 3.0
+local COLS, ROWS = 3, 2
+local PAGE_SIZE = COLS * ROWS
+local CARD_K = 1
+local DESC_LINES = 13
+local DESC_W = 7.0
+local DESC_SCALE = 0.3
+local DESC_LINE_H = 0.33
+
+W.TAB_W = SIDE_W + COLS * (CARD_W + 0.12) + 0.4
+W.TAB_H = 7.5
+
+local function port() return rawget(_G, 'UIK') ~= nil and UIK.portrait() or false end
+
+function W.layout()
+  if port() then
+    local top = G.MODS_MENU and G.MODS_MENU.mp_only and 0.8 or 0
+    SIDE_W = 7.8
+    W.TAB_W = 7.9
+    COLS, ROWS = 2, 2
+    PAGE_SIZE = COLS * ROWS
+    CARD_W = (W.TAB_W - 0.1) / COLS - 0.28
+    CARD_H = 3.0
+    W.TAB_H = 12.6 - top
+    CARD_K = math.max(1, math.min(CARD_W / 3, CARD_H / 2.3))
+    DESC_SCALE = 0.33
+    DESC_LINE_H = 0.36
+    DESC_W = 7.4
+    return
+  end
+  COLS, ROWS = 3, 2
+  PAGE_SIZE = COLS * ROWS
+  local uw, uh, ui = 21, 11.8, 1
+  if love.graphics and G.TILESIZE and G.window_prev and ui_size_fit then
+    local w, h = love.graphics.getDimensions()
+    local ts = G.TILESIZE * ui_size_fit(w, h)
+    uw, uh, ui = w / ts, h / ts, G.UI_SIZE or 1
+  end
+  SIDE_W = _G._IS_DESKTOP == false and 4.2 or 3.0
+  local fill = window_fill and window_fill() or 0.85
+  W.TAB_W = math.max(SIDE_W + 9.76, math.min(18.5, uw * fill - 0.9, uw * 0.97 / ui - 0.9))
+  local top = G.MODS_MENU and G.MODS_MENU.mp_only and 0.8 or 0
+  W.TAB_H = math.max(7.5 - top, math.min(10, uh * fill - 3.3 - top, uh * 0.97 / ui - 3.3 - top))
+  local grid_w = W.TAB_W - SIDE_W - 0.55
+  CARD_W = grid_w / COLS - 0.28
+  CARD_H = (W.TAB_H - 0.9) / ROWS - 0.28
+  CARD_K = math.max(1, math.min(CARD_W / 3, CARD_H / 2.3))
+  local kd = math.max(1, math.min(1.3, W.TAB_H / 7.5))
+  DESC_SCALE = 0.3 * kd
+  DESC_LINE_H = 0.33 * kd
+  DESC_W = W.TAB_W - 5.4 - 0.9
+end
+
+local CATEGORIES = {
+  {key = nil, label = "All categories"},
+  {key = "Content", label = "Content"},
+  {key = "Joker", label = "Joker"},
+  {key = "Quality of Life", label = "Quality of Life"},
+  {key = "Technical", label = "Technical"},
+  {key = "Resource Packs", label = "Resource Packs"},
+  {key = "API", label = "API"},
+  {key = "Extension", label = "Extension"},
+  {key = "Miscellaneous", label = "Miscellaneous"},
+}
+
+local CAT_TEXT = {
+  fr = {["Content"] = "Contenu", ["Joker"] = "Jokers", ["Quality of Life"] = "Confort", ["Technical"] = "Technique",
+    ["Resource Packs"] = "Packs de textures", ["Extension"] = "Extension", ["Miscellaneous"] = "Divers", ["API"] = "API"},
+  es = {["Content"] = "Contenido", ["Joker"] = "Comodín", ["Quality of Life"] = "Comodidad", ["Technical"] = "Técnico",
+    ["Resource Packs"] = "Packs de texturas", ["Extension"] = "Extensión", ["Miscellaneous"] = "Varios", ["API"] = "API"},
+}
+
+local function cat_text(c)
+  local lang = G.SETTINGS and G.SETTINGS.language or "en-us"
+  if lang == "es_ES" or lang == "es_419" then lang = "es" end
+  return (CAT_TEXT[lang] and CAT_TEXT[lang][c]) or loc(c)
+end
+
+local function cat_colour(c)
+  if c == "Content" then return G.C.RED end
+  if c == "Joker" then return G.C.SECONDARY_SET.Planet end
+  if c == "Quality of Life" then return G.C.GREEN end
+  if c == "Technical" then return G.C.BLUE end
+  if c == "Resource Packs" then return G.C.PURPLE end
+  if c == "API" then return G.C.GOLD end
+  if c == "Extension" then return G.C.ORANGE end
+  return G.C.GREY
+end
+
+local SORTS = {"Updated", "Name", "Author", "Most popular", "Most downloaded", "Most liked"}
+local SORT_FIELD = {[4] = "pop", [5] = "downloads", [6] = "likes"}
+local SHOWS = {"All", "Installed", "Updates"}
+
+local function M() return G.MODS_MENU end
+
+local function text_w(s, scale)
+  local f = G.LANG.font
+  local ok, w = pcall(f.FONT.getWidth, f.FONT, s)
+  if not ok then
+    local t = s:gsub("[\128-\255]+", function(run) return run:match("^[\194-\244][\128-\191]*") and "?" or "" end)
+    w = f.FONT:getWidth(t)
+  end
+  return w * f.squish * scale * f.FONTSCALE / G.TILESIZE
+end
+
+local function fit(s, scale, maxw, min_scale)
+  local w = text_w(s, scale)
+  if w <= maxw then return s, scale end
+  local s2 = math.max(min_scale, scale * maxw / w)
+  if text_w(s, s2) <= maxw then return s, s2 end
+  local cut = #s
+  while cut > 1 and text_w(s:sub(1, cut) .. "...", s2) > maxw do cut = cut - 1 end
+  while cut > 1 and s:byte(cut + 1) and s:byte(cut + 1) >= 128 and s:byte(cut + 1) < 192 do cut = cut - 1 end
+  return s:sub(1, cut):gsub("%s+$", "") .. "...", s2
+end
+
+local EM_DASH = "\226\128\148"
+local EN_DASH = "\226\128\147"
+
+local function clean_text(s)
+  s = tostring(s or "")
+  s = s:gsub(EM_DASH, "-"):gsub(EN_DASH, "-")
+  s = s:gsub("\226\128\152", "'"):gsub("\226\128\153", "'"):gsub("\226\128\156", '"'):gsub("\226\128\157", '"')
+  s = s:gsub("\226\128\162", "-"):gsub("\226\128\166", "...")
+  s = s:gsub("[\240-\247][\128-\191][\128-\191][\128-\191]", "")
+  s = s:gsub("[\224-\239][\128-\191][\128-\191]", "")
+  s = s:gsub("\r", "")
+  return s
+end
+W.clean_text = clean_text
+
+local function strip_markdown(md)
+  local s = clean_text(md)
+  s = s:gsub("<!%-%-.-%-%->", "")
+  s = s:gsub("```[^\n]*", "")
+  s = s:gsub("!%[[^%]]*%]%([^%)]*%)", "")
+  s = s:gsub("%[!%[[^%]]*%]%([^%)]*%)%]%([^%)]*%)", "")
+  s = s:gsub("%[([^%]]*)%]%([^%)]*%)", "%1")
+  s = s:gsub("<br%s*/?>", "\n")
+  s = s:gsub("<[^>\n]+>", "")
+  s = s:gsub("&nbsp;", " "):gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"')
+  local out = {}
+  for line in (s .. "\n"):gmatch("([^\n]*)\n") do
+    line = line:gsub("^%s*#+%s*", "")
+    line = line:gsub("^%s*>%s?", "")
+    line = line:gsub("^(%s*)[%*%-%+]%s+", "%1- ")
+    line = line:gsub("%*%*", ""):gsub("__", ""):gsub("`", "")
+    line = line:gsub("(%s)%*(%S)", "%1%2"):gsub("(%S)%*(%s)", "%1%2"):gsub("^%*(%S)", "%1"):gsub("(%S)%*$", "%1")
+    line = line:gsub("^%s*|?%s*:?%-%-+.*$", "")
+    line = line:gsub("%s+$", "")
+    if line:match("^%s*[-=_*]+%s*$") then line = "" end
+    out[#out + 1] = line
+  end
+  s = table.concat(out, "\n"):gsub("\n\n\n+", "\n\n"):gsub("^\n+", ""):gsub("\n+$", "")
+  return s
+end
+W.strip_markdown = strip_markdown
+
+local function wrap(text, scale, maxw)
+  local lines = {}
+  for para in (text .. "\n"):gmatch("([^\n]*)\n") do
+    if para == "" then
+      if #lines > 0 and lines[#lines] ~= "" then lines[#lines + 1] = "" end
+    else
+      local indent = para:match("^(%s*%- )") and "  " or ""
+      local cur = ""
+      for word in para:gmatch("%S+") do
+        local try = cur == "" and word or (cur .. " " .. word)
+        if text_w(try, scale) <= maxw or cur == "" then
+          cur = try
+          while text_w(cur, scale) > maxw and #cur > 1 do
+            local cut = #cur
+            while cut > 1 and text_w(cur:sub(1, cut), scale) > maxw do cut = cut - 1 end
+            lines[#lines + 1] = cur:sub(1, cut)
+            cur = indent .. cur:sub(cut + 1)
+          end
+        else
+          lines[#lines + 1] = cur
+          cur = indent .. word
+        end
+      end
+      if cur ~= "" then lines[#lines + 1] = cur end
+    end
+  end
+  while lines[#lines] == "" do lines[#lines] = nil end
+  return lines
+end
+W.wrap = wrap
+
+local PH_W, PH_H = 384, 216
+local ph_cache, ph_order, ph_shader, ph_figures = {}, {}, nil, nil
+
+local function ph_jokers()
+  if ph_figures then return ph_figures end
+  local list = {}
+  for _, c in pairs(G.P_CENTERS or {}) do
+    if c.set == "Joker" and c.pos and not c.mod and not c.atlas and c.order then list[#list + 1] = {order = c.order, pos = c.pos} end
+  end
+  table.sort(list, function(a, b) return a.order < b.order end)
+  if #list == 0 then list = {{order = 1, pos = {x = 0, y = 0}}} end
+  ph_figures = list
+  return list
+end
+
+local function ph_hash(s)
+  local h = 5381
+  for i = 1, #s do h = (h * 33 + s:byte(i)) % 4294967296 end
+  return h
+end
+
+local function hsv(h, s, v)
+  local i = math.floor(h * 6) % 6
+  local f = h * 6 - math.floor(h * 6)
+  local p, q, t = v * (1 - s), v * (1 - f * s), v * (1 - (1 - f) * s)
+  if i == 0 then return v, t, p elseif i == 1 then return q, v, p elseif i == 2 then return p, v, t
+  elseif i == 3 then return p, q, v elseif i == 4 then return t, p, v end
+  return v, p, q
+end
+
+local function placeholder_atlas(entry)
+  local key = tostring(entry.key)
+  if ph_cache[key] then return ph_cache[key] end
+  local jokers = G.ASSET_ATLAS and G.ASSET_ATLAS["Joker"]
+  if not (jokers and jokers.image and love.graphics.newCanvas) then return nil end
+  if not ph_shader then
+    local ok, sh = pcall(love.graphics.newShader, [[
+      extern vec3 dark;
+      vec4 effect(vec4 c, Image t, vec2 uv, vec2 sc) {
+        vec4 px = Texel(t, uv);
+        float l = dot(px.rgb, vec3(0.299, 0.587, 0.114));
+        return vec4(mix(dark, c.rgb, smoothstep(0.15, 0.85, l)), c.a * px.a);
+      }
+    ]])
+    if not ok then return nil end
+    ph_shader = sh
+  end
+  local h = ph_hash(key .. "|" .. tostring(entry.title))
+  local hue = (h % 360) / 360
+  local figs = ph_jokers()
+  local fig = figs[math.floor(h / 360) % #figs + 1].pos
+  local rays = 8 + math.floor(h / 2160) % 5 * 2
+  local spin = (math.floor(h / 10800) % 100) / 100 * math.pi
+  local tilt = ((math.floor(h / 1080000) % 21) - 10) / 100
+  local ok, canvas = pcall(love.graphics.newCanvas, PH_W, PH_H)
+  if not ok or not canvas then return nil end
+  canvas:setFilter("linear", "linear")
+  local r1, g1, b1 = hsv(hue, 0.6, 0.62)
+  local r2, g2, b2 = hsv((hue + 0.06) % 1, 0.7, 0.3)
+  local r3, g3, b3 = hsv(hue, 0.35, 0.95)
+  love.graphics.push("all")
+  love.graphics.setCanvas(canvas)
+r 19 278 %20%20 -
+l 23
+  love.graphics.clear(r2, g2, b2, 1)
+  local mesh = love.graphics.newMesh({
+    {0, 0, 0, 0, r1, g1, b1, 1}, {PH_W, 0, 1, 0, r1, g1, b1, 1},
+    {PH_W, PH_H, 1, 1, r2, g2, b2, 1}, {0, PH_H, 0, 1, r2, g2, b2, 1},
+  }, "fan", "static")
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.draw(mesh)
+  local cx, cy, rr = PH_W * 0.5, PH_H * 0.42, PH_W
+  love.graphics.setColor(1, 1, 1, 0.07)
+  for i = 0, rays - 1 do
+    local a = spin + i * 2 * math.pi / rays
+    local b = a + math.pi / rays
+    love.graphics.polygon("fill", cx, cy, cx + math.cos(a) * rr, cy + math.sin(a) * rr, cx + math.cos(b) * rr, cy + math.sin(b) * rr)
+  end
+  local quad = love.graphics.newQuad(fig.x * jokers.px, fig.y * jokers.py, jokers.px, jokers.py, jokers.image:getDimensions())
+  local fs = (PH_H * 0.84) / jokers.py
+  local dr, dg, db = hsv(hue, 0.75, 0.16)
+  love.graphics.setShader(ph_shader)
+  ph_shader:send("dark", {dr, dg, db})
+  love.graphics.setColor(0, 0, 0, 0.4)
+  love.graphics.draw(jokers.image, quad, cx + 7, PH_H * 0.5 + 7, tilt, fs, fs, jokers.px / 2, jokers.py / 2)
+  love.graphics.setColor(r3, g3, b3, 1)
+  love.graphics.draw(jokers.image, quad, cx, PH_H * 0.5, tilt, fs, fs, jokers.px / 2, jokers.py / 2)
+r 3 4413 %20%20 -
+r 12 112 %20%20 -
+l 204
+  love.graphics.pop()
+  local atlas = {name = "workshop_ph_" .. key, image = canvas, px = PH_W, py = PH_H, type = "asset_atli"}
+  ph_cache[key] = atlas
+  ph_order[#ph_order + 1] = key
+  if #ph_order > 32 then ph_cache[table.remove(ph_order, 1)] = nil end
+  return atlas
+end
+
+local function thumb_node(entry, w, h)
+  local atlas = W.thumb(entry) or placeholder_atlas(entry)
+  if atlas then
+    G.ASSET_ATLAS[atlas.name] = atlas
+    local sprite = Sprite(0, 0, w, h, atlas, {x = 0, y = 0})
+    sprite.states.drag.can = false
+    sprite.states.hover.can = false
+    sprite.states.collide.can = false
+    sprite:define_draw_steps({{shader = 'dissolve'}})
+    return {n=G.UIT.R, config={align = "cm", r = 0.08, colour = G.C.BLACK, minw = w, minh = h}, nodes={
+      {n=G.UIT.O, config={object = sprite}},
+    }}
+  end
+  local c = cat_colour(entry.categories and entry.categories[1])
+  return {n=G.UIT.R, config={align = "cm", r = 0.08, colour = darken(c, 0.35), minw = w, minh = h, emboss = 0.04}, nodes={}}
+end
+
+local function pill(text, colour, scale)
+  return {n=G.UIT.C, config={align = "cm", r = 0.08, colour = colour, minw = text_w(text, scale) + 0.2, minh = scale + 0.16}, nodes={
+    {n=G.UIT.T, config={text = text, scale = scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+  }}
+end
+
+local function compat_label(entry, long)
+  local cs, reason, _, pname = W.compat_for(entry)
+  if not cs then return nil end
+  local base = cs == "ok" and "Tested" or cs == "issue" and "Known issue" or "Does not work"
+  local colour = cs == "ok" and G.C.GREEN or cs == "issue" and G.C.ORANGE or G.C.RED
+  return long and (loc(base .. " on") .. " " .. pname) or loc(base), colour, reason, cs
+end
+W.compat_label = compat_label
+
+local function compat_pill(entry, scale, maxw, long)
+  local text, colour = compat_label(entry, long)
+  if not text then return nil end
+  if not long then text = string.upper(text) end
+  local t, sc = fit(text, scale, maxw - 0.2, scale * 0.75)
+  return pill(t, colour, sc)
+end
+
+local function badge_info(entry)
+  local s, st = W.entry_status(entry)
+  if s == "busy" then
+    local p = st.total and st.total > 0 and math.floor(100 * st.got / st.total) or nil
+    return st.stage == "install" and loc("Installing") or (p and (p .. "%") or loc("Downloading")), G.C.BLUE
+  elseif s == "deps" then
+    return string.upper(loc("Needs mods")), G.C.ORANGE
+  elseif s == "installed" then
+    if not W.entry_enabled(entry) then return string.upper(loc("Off")), G.C.UI.BACKGROUND_INACTIVE end
+    return string.upper(loc("Installed")), G.C.GREEN
+  elseif s == "update" then
+    return string.upper(loc("Update")), G.C.ORANGE
+  elseif s == "builtin" then
+    return string.upper(loc("Built in")), G.C.UI.BACKGROUND_INACTIVE
+  elseif s == "none" and W.link_broken(entry) then
+    return string.upper(loc("Broken link")), G.C.RED
+  elseif st and st.stage == "error" then
+    return loc("Failed"), G.C.RED
+  end
+end
+
+local function status_pill(entry, scale)
+  local text, colour = badge_info(entry)
+  if not text then return nil end
+  local ref = {entry = entry, text = text}
+  return {n=G.UIT.C, config={align = "cm", r = 0.08, colour = colour, minw = math.max(text_w(text, scale), text_w("100%", scale)) + 0.2, minh = scale + 0.16,
+    func = 'workshop_badge', ref_table = ref}, nodes={
+    {n=G.UIT.T, config={ref_table = ref, ref_value = 'text', scale = scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+  }}
+end
+
+G.FUNCS.workshop_badge = function(e)
+  local ref = e.config.ref_table
+  if not (ref and ref.entry) then return end
+  local text, colour = badge_info(ref.entry)
+  if text and text ~= ref.text then ref.text = text end
+  if colour then e.config.colour = colour end
+end
+
+local function card(entry)
+  local k = CARD_K
+  local tw = CARD_W - 0.16
+  local th = math.min(tw * 9 / 16, CARD_H - 1.04 * k - 0.45)
+  local badge = status_pill(entry, 0.24 * k)
+  local cw = badge and tw / 2 or tw * 0.9
+  local compat = compat_pill(entry, 0.24 * k, cw)
+  local title, title_scale = fit(clean_text(entry.title), 0.36 * k, tw - 0.1, 0.28 * k)
+  local author, author_scale = fit(loc("by") .. " " .. clean_text(entry.author), 0.26 * k, tw - 0.1, 0.22 * k)
+  return {n=G.UIT.C, config={align = "tm", padding = 0.06}, nodes={
+    {n=G.UIT.R, config={align = "tm", minw = CARD_W, maxw = CARD_W, minh = CARD_H, r = 0.1, padding = 0.08, colour = G.C.BLACK, emboss = 0.05,
+      hover = true, shadow = true, button = "workshop_open", ref_table = {key = entry.key}}, nodes={
+      {n=G.UIT.R, config={align = "cm", minw = tw}, nodes={thumb_node(entry, th * 16 / 9, th)}},
+      {n=G.UIT.R, config={align = "cm", minh = 0.42 * k, maxw = tw}, nodes={
+        {n=G.UIT.T, config={text = title, scale = title_scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+      }},
+      {n=G.UIT.R, config={align = "cm", minh = 0.26 * k, maxw = tw}, nodes={
+        {n=G.UIT.T, config={text = author, scale = author_scale, colour = G.C.UI.TEXT_INACTIVE}},
+      }},
+      {n=G.UIT.R, config={align = "cm", minh = 0.36 * k}, nodes={
+        {n=G.UIT.C, config={align = "cl", minw = cw, maxw = cw}, nodes={
+          compat or {n=G.UIT.T, config={text = entry.version ~= "" and clean_text(entry.version) or " ", scale = 0.26 * k, colour = G.C.GOLD, maxw = tw / 2 - 0.05}},
+        }},
+        {n=G.UIT.C, config={align = "cr", minw = tw - cw}, nodes={badge}},
+      }},
+    }},
+  }}
+end
+
+local function matches(entry, q, cat, show)
+  if cat then
+    local found = false
+    for _, c in ipairs(entry.categories or {}) do if c == cat then found = true end end
+    if not found then return false end
+  end
+  if show ~= 1 then
+    local s = W.entry_status(entry)
+    if show == 2 and not (s == "installed" or s == "update" or s == "builtin") then return false end
+    if show == 3 and s ~= "update" then return false end
+  end
+  if q ~= "" then
+    local hay = entry._hay
+    if not hay then
+      hay = (entry.title .. " " .. entry.author .. " " .. entry.key .. " " .. table.concat(entry.categories or {}, " ")):lower()
+      entry._hay = hay
+    end
+    for word in q:gmatch("%S+") do
+      if not hay:find(word, 1, true) then return false end
+    end
+  end
+  return true
+end
+
+function W.filtered()
+  local idx = W.load_index()
+  local m = M()
+  local q = tostring(m.search or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+  local cat = CATEGORIES[m.ws_cat or 1].key
+  local show = m.ws_show or 1
+  local list = {}
+  for _, e in ipairs(idx.mods) do
+    if matches(e, q, cat, show) then list[#list + 1] = e end
+  end
+  local sort = m.ws_sort or 1
+  table.sort(list, function(a, b)
+    if sort == 1 and (a.updated or 0) ~= (b.updated or 0) then return (a.updated or 0) > (b.updated or 0) end
+    local f = SORT_FIELD[sort]
+    if f and (a[f] or -1) ~= (b[f] or -1) then return (a[f] or -1) > (b[f] or -1) end
+    if sort == 3 then
+      local x, y = a.author:lower(), b.author:lower()
+      if x ~= y then return x < y end
+    end
+    local x, y = a.title:lower(), b.title:lower()
+    if x ~= y then return x < y end
+    return a.key < b.key
+  end)
+  return list
+end
+
+local function net_line()
+  local idx = W.load_index()
+  if W.net.refreshing then
+    local p = W.net.refresh_progress
+    return loc("Updating the list...") .. (p and (" " .. math.floor(p * 100) .. "%") or ""), G.C.UI.TEXT_LIGHT
+  end
+  if W.net.failed then return loc("Offline: saved list"), G.C.RED end
+  local t = idx.refreshed or idx.built
+  return loc("Mod list from") .. " " .. os.date("%Y-%m-%d", t or 0), G.C.UI.TEXT_INACTIVE
+end
+
+function W.grid_def()
+  local m = M()
+  local list = W.filtered()
+  m.ws_count = #list
+  local pages = math.max(1, math.ceil(#list / PAGE_SIZE))
+  m.ws_pages = pages
+  m.ws_page = math.min(math.max(1, m.ws_page or 1), pages)
+  m.ws_count_text = #list .. " " .. loc("mods")
+  local rows = {}
+  local first = (m.ws_page - 1) * PAGE_SIZE
+  for r = 1, ROWS do
+    local cols = {}
+    for c = 1, COLS do
+      local e = list[first + (r - 1) * COLS + c]
+      if e then
+        cols[#cols + 1] = card(e)
+      else
+        cols[#cols + 1] = {n=G.UIT.C, config={align = "cm", minw = CARD_W + 0.28, minh = CARD_H + 0.28}, nodes={}}
+      end
+    end
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm"}, nodes=cols}
+  end
+  if #list == 0 then
+    rows = {{n=G.UIT.R, config={align = "cm", minw = COLS * (CARD_W + 0.28), minh = ROWS * (CARD_H + 0.28)}, nodes={
+      {n=G.UIT.T, config={text = loc("No mods found"), scale = 0.45, colour = G.C.UI.TEXT_INACTIVE}},
+    }}}
+  end
+r 15 1173 %20%20 -
+l 12
+    {n=G.UIT.R, config={align = "cm"}, nodes=rows},
+  }}
+end
+
+function W.footer_def()
+  local m = M()
+  local pages = m.ws_pages or 1
+  local page_options = {}
+  for i = 1, pages do page_options[i] = localize('k_page') .. ' ' .. i .. '/' .. pages end
+  local status, status_colour = net_line()
+  m.ws_net_text = status
+  if port() then
+r 15 1173 %20%20%20%20 -
+l 14
+      {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+        create_option_cycle({options = page_options, w = 3.2, h = 0.6, scale = 0.75, cycle_shoulders = false,
+          opt_callback = 'workshop_page', current_option = m.ws_page, colour = G.C.RED, no_pips = true, focus_args = {snap_to = true}}),
+      }},
+      {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+        {n=G.UIT.C, config={align = "cl", minw = 3.8}, nodes={
+          {n=G.UIT.T, config={ref_table = m, ref_value = 'ws_count_text', scale = 0.36, colour = G.C.UI.TEXT_LIGHT}},
+        }},
+        {n=G.UIT.C, config={align = "cr", minw = 3.8}, nodes={
+          {n=G.UIT.T, config={ref_table = m, ref_value = 'ws_net_text', scale = 0.32, colour = status_colour, maxw = 3.8, func = 'workshop_net_line'}},
+        }},
+      }},
+    }}
+  end
+r 15 1173 %20%20 -
+l 28
+    {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+      {n=G.UIT.C, config={align = "cl", minw = 2.6}, nodes={
+        {n=G.UIT.T, config={ref_table = m, ref_value = 'ws_count_text', scale = 0.36, colour = G.C.UI.TEXT_LIGHT}},
+      }},
+      {n=G.UIT.C, config={align = "cm", minw = 4.2}, nodes={
+        create_option_cycle({options = page_options, w = 3.2, h = 0.5, scale = 0.7, cycle_shoulders = false,
+          opt_callback = 'workshop_page', current_option = m.ws_page, colour = G.C.RED, no_pips = true, focus_args = {snap_to = true}}),
+      }},
+      {n=G.UIT.C, config={align = "cr", minw = 2.6}, nodes={
+        {n=G.UIT.T, config={ref_table = m, ref_value = 'ws_net_text', scale = 0.3, colour = status_colour, maxw = 2.6, func = 'workshop_net_line'}},
+      }},
+    }},
+  }}
+end
+
+local function footer_sig(m)
+  return tostring(m.ws_pages) .. ":" .. tostring(m.ws_page)
+end
+
+G.FUNCS.workshop_net_line = function(e)
+  local m = M()
+  if not m then return end
+  local text, colour = net_line()
+  if text ~= m.ws_net_text then m.ws_net_text = text end
+  e.config.colour = colour
+end
+
+local function replace_object(e, def)
+r 4 1218 %20%20 -
+l 132
+  e.config.object = UIBox{definition = def, config = {offset = {x = 0, y = 0}, parent = e}}
+end
+
+local function set_grid(e)
+  if not (e and e.config and e.config.object) then return end
+  local m = M()
+  replace_object(e, W.grid_def())
+  local footer = e.UIBox:get_UIE_by_ID('workshop_footer')
+  if footer and m.ws_footer_keep then
+    m.ws_footer_keep = nil
+    footer.config.ws_sig = footer_sig(m)
+  end
+  if footer and footer.config.object and footer.config.ws_sig ~= footer_sig(m) then
+    footer.config.ws_sig = footer_sig(m)
+    replace_object(footer, W.footer_def())
+  end
+  e.UIBox:recalculate()
+end
+
+function W.rebuild_grid()
+  M().ws_dirty = true
+end
+
+G.FUNCS.workshop_watch = function(e)
+  local m = M()
+  if not m then return end
+  local now = love.timer.getTime()
+  if m.search ~= m.ws_last_search then
+    m.ws_last_search = m.search
+    m.ws_search_at = now + 0.3
+  end
+  if m.ws_search_at and now >= m.ws_search_at then
+    m.ws_search_at = nil
+    m.ws_page = 1
+    m.ws_dirty = true
+  end
+  if W.changed then W.changed = false; m.ws_dirty = true end
+  if W.thumbs_changed and now - (m.ws_thumb_at or 0) > 0.4 then
+    W.thumbs_changed = false
+    m.ws_thumb_at = now
+    m.ws_dirty = true
+  end
+  if m.ws_dirty then
+    m.ws_dirty = false
+    m.ws_gen = (m.ws_gen or 0) + 1
+  end
+  if e.config.ws_gen ~= m.ws_gen then
+    e.config.ws_gen = m.ws_gen
+    set_grid(e)
+  end
+end
+
+G.FUNCS.workshop_page = function(args)
+  if not (args and args.cycle_config) then return end
+  M().ws_page = args.cycle_config.current_option
+  M().ws_footer_keep = true
+  M().ws_dirty = true
+end
+
+G.FUNCS.workshop_sort = function(args)
+  if not (args and args.cycle_config) then return end
+  M().ws_sort = args.cycle_config.current_option
+  M().ws_page = 1
+  M().ws_dirty = true
+end
+
+G.FUNCS.workshop_show = function(args)
+  if not (args and args.cycle_config) then return end
+  M().ws_show = args.cycle_config.current_option
+  M().ws_page = 1
+  M().ws_dirty = true
+end
+
+local function walk(node, fn)
+  if not node then return end
+  fn(node)
+  for _, c in pairs(node.children or {}) do walk(c, fn) end
+end
+
+G.FUNCS.workshop_cat = function(e)
+  local ref = e and e.config and e.config.ref_table
+  if not ref then return end
+  M().ws_cat = ref.i
+  M().ws_page = 1
+  M().ws_dirty = true
+  local box = e.UIBox
+  W.later(function()
+    walk(box and box.UIRoot, function(v)
+      if v.config and v.config.button == 'workshop_cat' and v.config.ref_table then
+        v.config.chosen = (v.config.ref_table.i == M().ws_cat) and 'vert' or nil
+      end
+    end)
+  end, 1)
+end
+
+G.FUNCS.workshop_refresh = function(e)
+  W.refresh(true)
+  M().ws_dirty = true
+end
+
+function W.workshop_tab()
+  local m = M()
+  W.layout()
+  W.load_index()
+  W.refresh(false)
+  m.search = m.search or ""
+  m.ws_last_search = m.search
+  local cats = {}
+  local phone = not _G._IS_DESKTOP
+  if port() then return W.workshop_tab_port(m) end
+  for i, c in ipairs(CATEGORIES) do
+    local current = (m.ws_cat or 1) == i
+    local btn = UIBox_button({button = 'workshop_cat', label = {c.key and cat_text(c.key) or loc(c.label)}, ref_table = {i = i},
+      minw = phone and (SIDE_W - 0.2) / 2 or SIDE_W - 0.1, maxw = phone and (SIDE_W - 0.3) / 2 or nil, minh = phone and 0.66 or 0.44, scale = phone and 0.36 or 0.32, colour = c.key and cat_colour(c.key) or G.C.RED,
+      chosen = current and 'vert' or nil, col = true})
+    if phone and i > 1 and #cats > 0 and #cats[#cats].nodes == 1 and (i - 1) % 2 == 1 then
+      cats[#cats].nodes[2] = {n=G.UIT.C, config={align = "cm", minw = 0.06}, nodes={}}
+      cats[#cats].nodes[3] = btn
+    else
+      cats[#cats + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={btn}}
+    end
+  end
+  local sort_options, show_options = {}, {}
+  for i, s in ipairs(SORTS) do sort_options[i] = loc(s) end
+  for i, s in ipairs(SHOWS) do show_options[i] = loc(s) end
+  local side = {n=G.UIT.C, config={align = "tm", minw = SIDE_W, padding = 0.04}, nodes={
+    {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+      create_text_input({ref_table = m, ref_value = 'search', max_length = 18, w = SIDE_W - 0.15, h = _G._IS_DESKTOP and 0.55 or 0.7, text_scale = 0.32,
+        extended_corpus = true, prompt_text = loc("Search mods"), id = 'workshop_search', keyboard_offset = 1,
+        callback = function() m.ws_search_at = 0 end}),
+    }},
+    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes=cats},
+r 7 297 %20%20%20%20 -
+l 3
+      create_option_cycle({options = sort_options, w = SIDE_W - 0.6, h = _G._IS_DESKTOP and 0.5 or 0.72, scale = 0.7, opt_callback = 'workshop_sort',
+        current_option = m.ws_sort or 1, colour = G.C.BLUE, no_pips = true}),
+    }},
+r 7 297 %20%20%20%20 -
+l 12
+      create_option_cycle({options = show_options, w = SIDE_W - 0.6, h = _G._IS_DESKTOP and 0.5 or 0.72, scale = 0.7, opt_callback = 'workshop_show',
+        current_option = m.ws_show or 1, colour = G.C.BLUE, no_pips = true}),
+    }},
+    {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+      UIBox_button({button = 'workshop_refresh', label = {loc("Refresh")}, minw = SIDE_W - 0.1, minh = _G._IS_DESKTOP and 0.45 or 0.72, scale = 0.32, colour = G.C.GREEN, col = true}),
+    }},
+  }}
+  local grid = UIBox{definition = W.grid_def(), config = {offset = {x = 0, y = 0}}}
+  local footer = UIBox{definition = W.footer_def(), config = {offset = {x = 0, y = 0}}}
+  return {n=G.UIT.ROOT, config={align = "tm", colour = G.C.CLEAR, minw = W.TAB_W, minh = W.TAB_H}, nodes={
+    side,
+    {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+r 15 246 %20%20%20%20 -
+r 7 297 %20%20%20%20%20%20 -
+l 2
+        {n=G.UIT.O, config={id = 'workshop_grid', func = 'workshop_watch', ws_gen = m.ws_gen, object = grid}},
+      }},
+r 7 297 %20%20%20%20%20%20 -
+l 26
+        {n=G.UIT.O, config={id = 'workshop_footer', ws_sig = footer_sig(m), object = footer}},
+      }},
+    }},
+  }}
+end
+
+function W.workshop_tab_port(m)
+  local cw = (SIDE_W - 0.3) / 3
+  local cats, line = {}, nil
+  for i, c in ipairs(CATEGORIES) do
+    if (i - 1) % 3 == 0 then
+      line = {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={}}
+      cats[#cats + 1] = line
+    else
+      line.nodes[#line.nodes + 1] = {n=G.UIT.C, config={align = "cm", minw = 0.06}, nodes={}}
+    end
+    line.nodes[#line.nodes + 1] = UIBox_button({button = 'workshop_cat', label = {c.key and cat_text(c.key) or loc(c.label)}, ref_table = {i = i},
+      minw = cw, maxw = cw - 0.1, minh = 0.66, scale = 0.36, colour = c.key and cat_colour(c.key) or G.C.RED,
+      chosen = (m.ws_cat or 1) == i and 'vert' or nil, col = true})
+  end
+  local sort_options, show_options = {}, {}
+  for i, s in ipairs(SORTS) do sort_options[i] = loc(s) end
+  for i, s in ipairs(SHOWS) do show_options[i] = loc(s) end
+  local rw = 1.9
+  local top = {n=G.UIT.C, config={align = "tm", minw = SIDE_W, padding = 0.04}, nodes={
+    {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+r 15 229 %20%20%20%20%20%20 -
+l 8
+        create_text_input({ref_table = m, ref_value = 'search', max_length = 18, w = SIDE_W - rw - 0.35, h = 0.7, text_scale = 0.34,
+          extended_corpus = true, prompt_text = loc("Search mods"), id = 'workshop_search', keyboard_offset = 1,
+          callback = function() m.ws_search_at = 0 end}),
+      }},
+      {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+      UIBox_button({button = 'workshop_refresh', label = {loc("Refresh")}, minw = rw, minh = 0.7, scale = 0.36, colour = G.C.GREEN, col = true}),
+    }},
+    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes=cats},
+r 7 297 %20%20%20%20 -
+r 15 229 %20%20%20%20%20%20 -
+l 3
+        create_option_cycle({options = sort_options, w = SIDE_W / 2 - 1.3, h = 0.72, scale = 0.8, opt_callback = 'workshop_sort',
+          current_option = m.ws_sort or 1, colour = G.C.BLUE, no_pips = true}),
+      }},
+r 15 229 %20%20%20%20%20%20 -
+l 10
+        create_option_cycle({options = show_options, w = SIDE_W / 2 - 1.3, h = 0.72, scale = 0.8, opt_callback = 'workshop_show',
+          current_option = m.ws_show or 1, colour = G.C.BLUE, no_pips = true}),
+      }},
+    }},
+  }}
+  local grid = UIBox{definition = W.grid_def(), config = {offset = {x = 0, y = 0}}}
+  local footer = UIBox{definition = W.footer_def(), config = {offset = {x = 0, y = 0}}}
+  return {n=G.UIT.ROOT, config={align = "tm", colour = G.C.CLEAR, minw = W.TAB_W, minh = W.TAB_H}, nodes={
+    {n=G.UIT.R, config={align = "cm"}, nodes={top}},
+    {n=G.UIT.R, config={align = "cm", minh = 0.1}, nodes={}},
+r 7 297 %20%20%20%20 -
+l 2
+      {n=G.UIT.O, config={id = 'workshop_grid', func = 'workshop_watch', ws_gen = m.ws_gen, object = grid}},
+    }},
+r 7 297 %20%20%20%20 -
+l 287
+      {n=G.UIT.O, config={id = 'workshop_footer', ws_sig = footer_sig(m), object = footer}},
+    }},
+  }}
+end
+
+local function segments(key_fn, n, w)
+  local nodes = {}
+  local seg_w = (w - (n - 1) * 0.04) / n
+  for i = 1, n do
+    nodes[#nodes + 1] = {n=G.UIT.C, config={align = "cm", minw = seg_w, minh = 0.18, r = 0.04, colour = G.C.UI.BACKGROUND_INACTIVE,
+      func = 'workshop_seg', ref_table = {i = i, n = n, get = key_fn}}, nodes={}}
+    if i < n then nodes[#nodes + 1] = {n=G.UIT.C, config={minw = 0.04}, nodes={}} end
+  end
+  return {n=G.UIT.R, config={align = "cm"}, nodes=nodes}
+end
+W.segments = segments
+
+G.FUNCS.workshop_seg = function(e)
+  local ref = e.config.ref_table
+  local p = ref.get and ref.get() or 0
+  local lit
+  if p < 0 then
+    local head = math.floor(love.timer.getTime() * 10) % (ref.n + 3)
+    lit = ref.i <= head and ref.i > head - 3
+  else
+    lit = p >= (ref.i - 0.5) / ref.n
+  end
+  e.config.colour = lit and G.C.GREEN or G.C.UI.BACKGROUND_INACTIVE
+end
+
+local function fmt_mb(b)
+  return string.format("%.1f MB", (b or 0) / 1048576)
+end
+
+local function entry_progress(entry)
+  local st = W.state[entry.key]
+  if not st then return 0 end
+  if st.stage == "done" then return 1 end
+  if st.stage == "install" then return 1 end
+  if st.stage == "download" then
+    if st.total and st.total > 0 then return math.min(1, st.got / st.total) end
+    return -1
+  end
+  return 0
+end
+
+local function status_text(entry)
+  local st = W.state[entry.key]
+  if not st then return "" end
+  if st.stage == "download" then
+    if st.total and st.total > 0 then
+      return loc("Downloading") .. " " .. math.floor(100 * st.got / st.total) .. "%  (" .. fmt_mb(st.got) .. " / " .. fmt_mb(st.total) .. ")"
+    end
+    return loc("Downloading") .. "  " .. fmt_mb(st.got)
+  elseif st.stage == "install" then
+    return loc("Installing") .. "..."
+  elseif st.stage == "error" then
+    return loc("Failed") .. ": " .. tostring(st.err or "")
+  elseif st.stage == "done" then
+    local L = rawget(_G, "MODLOADER")
+    return (L and L.modded) and loc("Restart to apply") or loc("Installed")
+  end
+  return ""
+end
+
+local LEFT_W = 5.4
+local ACT_H = 3.9
+local MENU_KEY = 'mods_menu'
+W.MENU_KEY = MENU_KEY
+
+function W.show(def)
+  G.FUNCS.overlay_menu({definition = def, key = MENU_KEY})
+end
+
+local function action_button(label, button, colour, w, ref)
+  return UIBox_button({button = button, label = {label}, colour = colour, minw = w, minh = _G._IS_DESKTOP and 0.7 or 0.85, scale = 0.42, col = true, ref_table = ref})
+end
+
+local function button_row(...)
+  return {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={...}}
+end
+
+local function local_loaded_note(entry)
+  local L = rawget(_G, "MODLOADER")
+  if not (L and L.modded) then return nil end
+  local m = W.find_local(entry)
+  if m and m.enabled ~= m.loaded then return loc("Restart to apply") end
+end
+
+local function page_status(entry)
+  local st = W.state[entry.key]
+  if st and st.stage == "done" then return local_loaded_note(entry) or loc("Installed") end
+  if st and st.stage ~= "deps" and st.stage ~= "warn" then return status_text(entry) end
+  return local_loaded_note(entry) or ""
+end
+
+local function dep_parts(deps)
+  local parts = {}
+  for _, d in ipairs(deps) do
+    local name = clean_text(d.name) .. (d.range and (" " .. d.range) or "")
+    if d.wrong and not d.have then
+      name = name .. " (" .. loc("you have") .. " " .. clean_text(tostring(d.wrong.version or "?")):gsub("^[vV]", "") .. ")"
+      if d.index_has then
+        name = name .. " (" .. loc("Workshop has") .. " " .. clean_text(tostring(d.index_has)):gsub("^[vV]", "") .. ")"
+      elseif not d.entry and not d.fixed then name = name .. " (" .. loc("not in the Workshop") .. ")" end
+    elseif d.index_has then
+      name = name .. " (" .. loc("Workshop has") .. " " .. clean_text(tostring(d.index_has)):gsub("^[vV]", "") .. ")"
+    elseif not (d.entry or d.have) then
+      name = name .. " (" .. loc("not in the Workshop") .. ")"
+    end
+    parts[#parts + 1] = name
+  end
+  return parts
+end
+
+local function dep_names(deps)
+  return table.concat(dep_parts(deps), ", ")
+end
+
+local function actions_def(entry)
+  local m = M()
+  local s, st = W.entry_status(entry)
+  local ref = {key = entry.key}
+  local w = LEFT_W
+  local half = (w - 0.12) / 2
+  local rows = {}
+  if s == "builtin" then
+    rows[#rows + 1] = button_row(action_button(loc("Built in"), 'nil', G.C.UI.BACKGROUND_INACTIVE, w, ref))
+  elseif s == "busy" then
+    rows[#rows + 1] = button_row(action_button(st.stage == "install" and loc("Installing") or loc("Downloading"), 'nil', G.C.UI.BACKGROUND_INACTIVE, w, ref))
+    if st.stage == "download" then
+      rows[#rows + 1] = button_row(action_button(loc("Cancel"), 'workshop_cancel', G.C.RED, w, ref))
+    end
+  elseif s == "deps" then
+    local parts = dep_parts(st.deps or {})
+    if #parts > 4 then
+      local extra = #parts - 3
+      for i = #parts, 4, -1 do parts[i] = nil end
+      parts[4] = "+" .. extra .. " " .. loc("more")
+    end
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.4}, nodes={
+      {n=G.UIT.T, config={text = loc("This mod needs") .. ":", scale = 0.36, colour = G.C.ORANGE, shadow = true}},
+    }}
+    for _, part in ipairs(parts) do
+      local line, line_scale = fit(part, 0.32, w - 0.1, 0.26)
+      rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.3}, nodes={
+        {n=G.UIT.T, config={text = line, scale = line_scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+      }}
+    end
+    rows[#rows + 1] = {n=G.UIT.R, config={minh = 0.08}, nodes={}}
+    rows[#rows + 1] = button_row(
+      action_button(loc("Install all"), 'workshop_deps_yes', G.C.GREEN, half, ref),
+      {n=G.UIT.C, config={minw = 0.12}, nodes={}},
+      action_button(loc("Cancel"), 'workshop_deps_no', G.C.RED, half, ref))
+  elseif s == "warn" then
+    local pname = select(4, W.compat_for(entry))
+    local head, head_scale = fit(loc("Does not work on") .. " " .. tostring(pname), 0.36, w - 0.1, 0.28)
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.4}, nodes={
+      {n=G.UIT.T, config={text = head, scale = head_scale, colour = G.C.RED, shadow = true}},
+    }}
+    local lines = wrap(clean_text(tostring(st.reason or "")), 0.3, w - 0.1)
+    for i = 1, math.min(#lines, 4) do
+      rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.28}, nodes={
+        {n=G.UIT.T, config={text = lines[i], scale = 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+      }}
+    end
+    rows[#rows + 1] = {n=G.UIT.R, config={minh = 0.08}, nodes={}}
+    rows[#rows + 1] = button_row(
+      action_button(loc("Install anyway"), 'workshop_warn_yes', G.C.ORANGE, half, ref),
+      {n=G.UIT.C, config={minw = 0.12}, nodes={}},
+      action_button(loc("Cancel"), 'workshop_warn_no', G.C.RED, half, ref))
+  elseif s == "none" and W.nexus_page(entry) then
+    rows[#rows + 1] = button_row(action_button(loc("Open on Nexus Mods"), 'workshop_open_nexus', G.C.BLUE, w, ref))
+    for _, line in ipairs(wrap(loc("nexus_note"), 0.3, w - 0.1)) do
+      rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.28}, nodes={
+        {n=G.UIT.T, config={text = line, scale = 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+      }}
+    end
+  elseif s == "none" and W.link_broken(entry) then
+    rows[#rows + 1] = button_row(action_button(loc("Download link broken"), 'nil', G.C.UI.BACKGROUND_INACTIVE, w, ref))
+  elseif s == "none" then
+    rows[#rows + 1] = button_row(action_button(loc("Install"), 'workshop_install', G.C.GREEN, w, ref))
+  else
+    if s == "update" then
+      rows[#rows + 1] = button_row(action_button(loc("Update"), 'workshop_install', G.C.ORANGE, w, ref))
+    end
+    if W.entry_enabled(entry) then
+      rows[#rows + 1] = button_row(action_button(loc("Disable"), 'workshop_disable', G.C.UI.BACKGROUND_INACTIVE, w, ref))
+    else
+      rows[#rows + 1] = button_row(action_button(loc("Enable"), 'workshop_enable', G.C.GREEN, w, ref))
+    end
+    rows[#rows + 1] = button_row(action_button(loc("Uninstall"), 'workshop_uninstall', G.C.RED, w, ref))
+  end
+  if entry.repo and entry.repo:match("^https?://") then
+    rows[#rows + 1] = button_row(action_button(loc("Open page"), 'workshop_open_repo', G.C.BLUE, w, ref))
+  end
+  if st and st.stage ~= "deps" and st.stage ~= "warn" then
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.06}, nodes={segments(function() return entry_progress(entry) end, 20, w)}}
+  else
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.3}, nodes={}}
+  end
+  m.ws_status = page_status(entry)
+  rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.32}, nodes={
+    {n=G.UIT.T, config={ref_table = m, ref_value = 'ws_status', scale = 0.3, colour = G.C.UI.TEXT_LIGHT, maxw = w}},
+  }}
+  return {n=G.UIT.ROOT, config={align = "tm", colour = G.C.CLEAR, minw = w, minh = ACT_H}, nodes={
+    {n=G.UIT.C, config={align = "tm"}, nodes=rows},
+  }}
+end
+
+local function actions_sig(entry)
+  local s, st = W.entry_status(entry)
+  local L = rawget(_G, "MODLOADER")
+  local lm = s ~= "none" and s ~= "busy" and W.find_local(entry)
+  return s .. tostring(st and st.stage) .. tostring(st and st.deps and #st.deps) .. tostring(lm and W.entry_enabled(entry))
+    .. tostring(lm and lm.loaded) .. tostring(L and L.modded)
+end
+
+local function notes_def(entry)
+  local right_w = DESC_W + 0.3
+  local notes = {}
+  local lm = select(3, W.entry_status(entry))
+  if lm and lm.version then
+    notes[#notes + 1] = loc("Installed") .. ": v" .. clean_text(tostring(lm.version)):gsub("^[vV]", "")
+  end
+  local deps = W.deps_for(entry)
+  local missing = false
+  if #deps > 0 then
+    for _, d in ipairs(deps) do if d.missing then missing = true end end
+    notes[#notes + 1] = loc("Needs") .. ": " .. dep_names(deps)
+  end
+  local text = #notes > 0 and table.concat(notes, "   ") or " "
+  local scale
+  text, scale = fit(text, 0.28, right_w, 0.22)
+  return {n=G.UIT.ROOT, config={align = "cl", colour = G.C.CLEAR, minw = right_w, minh = 0.3}, nodes={
+    {n=G.UIT.T, config={text = text, scale = scale, colour = missing and G.C.ORANGE or G.C.GREEN}},
+  }}
+end
+
+local function notes_sig(entry)
+  local s, _, lm = W.entry_status(entry)
+  local parts = {s, tostring(lm and lm.version)}
+  for _, d in ipairs(W.deps_for(entry)) do parts[#parts + 1] = d.id .. tostring(d.missing) end
+  return table.concat(parts, "|")
+end
+
+local function thumb_def(entry)
+  return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.CLEAR}, nodes={thumb_node(entry, LEFT_W, LEFT_W * 9 / 16)}}
+end
+
+local function thumb_sig(entry)
+  local t = W.thumbs[entry.key]
+  return tostring(t ~= nil and t ~= false and t ~= "loading")
+end
+
+local BOXES = {
+  thumb = {def = thumb_def, sig = thumb_sig},
+  actions = {def = actions_def, sig = actions_sig},
+  notes = {def = notes_def, sig = notes_sig},
+}
+
+function W.poke()
+  W.poke_gen = (W.poke_gen or 0) + 1
+end
+
+local function box_node(kind, entry, align)
+  local b = BOXES[kind]
+  local object = UIBox{definition = b.def(entry), config = {offset = {x = 0, y = 0}}}
+  return {n=G.UIT.R, config={align = align or "cm"}, nodes={
+    {n=G.UIT.O, config={func = 'workshop_box', ws_box = kind, ws_entry = entry, ws_sig = b.sig(entry), ws_poke = W.poke_gen, object = object}},
+  }}
+end
+
+G.FUNCS.workshop_box = function(e)
+  local m = M()
+  local entry = m and m.ws_entry
+  if not entry or e.config.ws_entry ~= entry or not e.config.object then return end
+  if e.config.ws_box == "actions" then m.ws_status = page_status(entry) end
+  local now = love.timer.getTime()
+  if e.config.ws_poke == W.poke_gen and (e.config.ws_at or 0) > now then return end
+  e.config.ws_poke = W.poke_gen
+  e.config.ws_at = now + 0.2
+  local b = BOXES[e.config.ws_box]
+  if e.config.ws_box == "thumb" then W.thumb(entry) end
+  local sig = b.sig(entry)
+  if sig == e.config.ws_sig then return end
+  e.config.ws_sig = sig
+r 4 1218 %20%20 -
+l 11
+  e.config.object = UIBox{definition = b.def(entry), config = {offset = {x = 0, y = 0}, parent = e}}
+  e.UIBox:recalculate()
+end
+
+function W.mod_page(entry)
+  local m = M()
+  m.ws_entry = entry
+  local right_w = DESC_W + 0.3
+
+  local left = {n=G.UIT.C, config={align = "tm", minw = LEFT_W}, nodes={
+    box_node("thumb", entry),
+r 15 6188 %20%20%20%20 -
+l 84
+    box_node("actions", entry),
+  }}
+
+  local pills = {}
+  local compat = compat_pill(entry, 0.28, right_w / 2, true)
+  if compat then
+    pills[#pills + 1] = compat
+    pills[#pills + 1] = {n=G.UIT.C, config={minw = 0.08}, nodes={}}
+  end
+  local _, compat_colour, compat_reason, compat_status = compat_label(entry)
+  local reason_row
+  if compat_status and compat_status ~= "ok" and compat_reason and compat_reason ~= "" then
+    local rtext = clean_text(compat_reason)
+    local rs = 0.28
+    local rlines = wrap(rtext, rs, right_w - 0.1)
+    if #rlines > 2 then
+      rs = 0.22
+      rlines = wrap(rtext, rs, right_w - 0.1)
+    end
+    local reason_nodes = {}
+    for i = 1, math.min(#rlines, 2) do
+      local line = rlines[i]
+      if i == 2 and #rlines > 2 then line = fit(line .. "...", rs, right_w - 0.1, rs) end
+      reason_nodes[#reason_nodes + 1] = {n=G.UIT.R, config={align = "cm", minh = rs + 0.04}, nodes={
+        {n=G.UIT.T, config={text = line, scale = rs, colour = compat_colour}},
+      }}
+    end
+    reason_row = {n=G.UIT.R, config={align = "cm", minw = right_w}, nodes={
+      {n=G.UIT.C, config={align = "cm"}, nodes=reason_nodes},
+    }}
+  end
+  if entry.version ~= "" then
+    pills[#pills + 1] = pill("v" .. clean_text(entry.version):gsub("^[vV]", ""), G.C.GOLD, 0.28)
+    pills[#pills + 1] = {n=G.UIT.C, config={minw = 0.08}, nodes={}}
+  end
+  for _, c in ipairs(entry.categories or {}) do
+    pills[#pills + 1] = pill(cat_text(c), cat_colour(c), 0.28)
+    pills[#pills + 1] = {n=G.UIT.C, config={minw = 0.08}, nodes={}}
+  end
+
+  local desc = strip_markdown(entry.desc or "")
+  if desc == "" then desc = clean_text(entry.title) end
+  local lines = wrap(desc, DESC_SCALE, DESC_W - 0.1)
+  local pages = math.max(1, math.ceil(#lines / DESC_LINES))
+  m.ws_desc_page = math.min(math.max(1, m.ws_desc_page or 1), pages)
+  local desc_rows = {}
+  local first = (m.ws_desc_page - 1) * DESC_LINES
+  for i = first + 1, math.min(first + DESC_LINES, #lines) do
+    desc_rows[#desc_rows + 1] = {n=G.UIT.R, config={align = "cl", minh = DESC_LINE_H}, nodes={
+      {n=G.UIT.T, config={text = lines[i] ~= "" and lines[i] or " ", scale = DESC_SCALE, colour = G.C.UI.TEXT_LIGHT}},
+    }}
+  end
+  local desc_pages = {}
+  for i = 1, pages do desc_pages[i] = localize('k_page') .. ' ' .. i .. '/' .. pages end
+
+  local page_title, page_title_scale = fit(clean_text(entry.title), 0.6, right_w, 0.4)
+  local source_names = {}
+  for i, name in ipairs(W.source_names(entry)) do source_names[i] = loc(name) end
+  local right = {n=G.UIT.C, config={align = "tl", minw = right_w}, nodes={
+    {n=G.UIT.R, config={align = "cl", minh = 0.6}, nodes={
+      {n=G.UIT.T, config={text = page_title, scale = page_title_scale, colour = G.C.WHITE, shadow = true}},
+    }},
+    {n=G.UIT.R, config={align = "cl", minh = 0.36}, nodes={
+      {n=G.UIT.T, config={text = loc("by") .. " " .. clean_text(entry.author), scale = 0.34, colour = G.C.UI.TEXT_LIGHT, maxw = right_w}},
+    }},
+    {n=G.UIT.R, config={align = "cl", minh = 0.32}, nodes={
+      {n=G.UIT.T, config={text = (#source_names > 1 and loc("Sources") or loc("Source")) .. ": " .. table.concat(source_names, ", "), scale = 0.3, colour = G.C.UI.TEXT_LIGHT, maxw = right_w}},
+    }},
+    {n=G.UIT.R, config={align = "cl", padding = 0.04}, nodes=pills},
+    reason_row or {n=G.UIT.R, config={}, nodes={}},
+    box_node("notes", entry, "cl"),
+    {n=G.UIT.R, config={align = "tl", colour = G.C.BLACK, r = 0.1, emboss = 0.05, padding = 0.12, minw = right_w, minh = DESC_LINES * DESC_LINE_H + 0.24}, nodes={
+      {n=G.UIT.C, config={align = "tl"}, nodes=desc_rows},
+    }},
+    pages > 1 and {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+      create_option_cycle({options = desc_pages, w = 3, h = 0.45, scale = 0.65, opt_callback = 'workshop_desc_page',
+        current_option = m.ws_desc_page, colour = G.C.RED, no_pips = true}),
+    }} or nil,
+  }}
+
+  if port() then
+    return create_UIBox_generic_options({
+      back_func = 'workshop_back',
+      contents = {
+r 15 246 %20%20%20%20%20%20%20%20 -
+l 1
+          {n=G.UIT.R, config={align = "cm"}, nodes={left}},
+r 15 722 %20%20%20%20%20%20%20%20%20%20 -
+l 8
+          {n=G.UIT.R, config={align = "cm"}, nodes={right}},
+        }},
+      },
+    })
+  end
+  return create_UIBox_generic_options({
+    back_func = 'workshop_back',
+    contents = {
+r 15 1648 %20%20%20%20%20%20 -
+l 88
+        left,
+        {n=G.UIT.C, config={minw = 0.3}, nodes={}},
+        right,
+      }},
+    },
+  })
+end
+
+G.FUNCS.workshop_desc_page = function(args)
+  if not (args and args.cycle_config) then return end
+  M().ws_desc_page = args.cycle_config.current_option
+  local entry = M().ws_entry
+  if entry then W.show(W.mod_page(entry)) end
+end
+
+local function entry_from(e)
+  local ref = e and e.config and e.config.ref_table
+  local idx = W.load_index()
+  return ref and ref.key and idx.by_key[ref.key]
+end
+
+G.FUNCS.workshop_open = function(e)
+  local entry = entry_from(e)
+  if not entry then return end
+  M().ws_desc_page = 1
+  W.show(W.mod_page(entry))
+end
+
+G.FUNCS.workshop_back = function(e)
+  M().ws_entry = nil
+  M().tab = "workshop"
+  W.invalidate_local()
+  W.show(create_UIBox_mods_menu())
+end
+
+local function entry_action(fn)
+  return function(e)
+    local entry = entry_from(e)
+    if not entry then return end
+    fn(entry)
+    W.poke()
+  end
+end
+
+G.FUNCS.workshop_install = entry_action(function(entry) W.request_install(entry) end)
+G.FUNCS.workshop_deps_yes = entry_action(function(entry) W.deps_answer(entry, true) end)
+G.FUNCS.workshop_deps_no = entry_action(function(entry) W.deps_answer(entry, false) end)
+G.FUNCS.workshop_warn_yes = entry_action(function(entry) W.warn_answer(entry, true) end)
+G.FUNCS.workshop_warn_no = entry_action(function(entry) W.warn_answer(entry, false) end)
+G.FUNCS.workshop_enable = entry_action(function(entry) W.enable_entry(entry, true) end)
+G.FUNCS.workshop_disable = entry_action(function(entry) W.enable_entry(entry, false) end)
+G.FUNCS.workshop_uninstall = entry_action(function(entry) W.uninstall(entry) end)
+G.FUNCS.workshop_cancel = entry_action(function(entry) W.cancel(entry) end)
+
+G.FUNCS.workshop_open_nexus = function(e)
+  local entry = entry_from(e)
+  local page = entry and W.nexus_page(entry)
+  if page then love.system.openURL(page) end
+end
+
+G.FUNCS.workshop_open_repo = function(e)
+  local entry = entry_from(e)
+  if entry and entry.repo and entry.repo:match("^https?://") then love.system.openURL(entry.repo) end
+end
+
+function W.required_def(req)
+  local rows = {}
+  for _, row in ipairs(req.rows) do
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+      {n=G.UIT.R, config={align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = 9}, nodes={
+        {n=G.UIT.C, config={align = "cl", minw = 3.6, maxw = 3.6}, nodes={
+          {n=G.UIT.T, config={text = clean_text(row.name), scale = 0.4, colour = G.C.UI.TEXT_LIGHT, shadow = true, maxw = 3.6}},
+        }},
+        {n=G.UIT.C, config={align = "cl", minw = 1.4, maxw = 1.4}, nodes={
+          {n=G.UIT.T, config={text = row.version and ("v" .. clean_text(row.version):gsub("^[vV]", "")) or "", scale = 0.3, colour = G.C.GOLD, maxw = 1.4}},
+        }},
+        {n=G.UIT.C, config={align = "cm", minw = 3.6}, nodes={
+          {n=G.UIT.R, config={align = "cm"}, nodes={segments(function() return W.row_progress(row) end, 12, 3.4)}},
+          {n=G.UIT.R, config={align = "cm", minh = 0.3}, nodes={
+            {n=G.UIT.T, config={ref_table = row, ref_value = 'status', scale = 0.28, colour = G.C.UI.TEXT_LIGHT, maxw = 3.4}},
+          }},
+        }},
+      }},
+    }}
+  end
+  return create_UIBox_generic_options({
+    no_back = true,
+    contents = {
+r 15 723 %20%20%20%20%20%20 -
+l 3
+        {n=G.UIT.T, config={text = loc("Installing required mods"), scale = 0.55, colour = G.C.WHITE, shadow = true}},
+      }},
+      {n=G.UIT.R, config={align = "cm"}, nodes=rows},
+r 15 723 %20%20%20%20%20%20 -
+l 15
+        UIBox_button({button = 'workshop_required_cancel', label = {loc("Cancel")}, colour = G.C.RED, minw = 4, minh = 0.7, scale = 0.45}),
+      }},
+    },
+  })
+end
+
+G.FUNCS.workshop_required_cancel = function(e)
+  W.cancel_required()
+end
+
+function W.open_required_ui(req)
+  G.FUNCS.overlay_menu({definition = W.required_def(req), key = G.OVERLAY_MENU and G.OVERLAY_MENU_KEY or 'mods_required'})
+end
+
+function W.close_required_ui(req, ok)
+r 4 1825 %20%20 -
+l 1
+end
+end

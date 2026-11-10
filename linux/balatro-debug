@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -u
+
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+game="$here/OverhaulDebug.love"
+bun="@BUN@"
+port=3460
+pid_file="$here/server.pid"
+saves="${XDG_DATA_HOME:-$HOME/.local/share}/love"
+release_env="$HOME/.config/balatro-overhaul/release.env"
+
+command -v love >/dev/null || { echo "LÖVE 11.5 is not installed (sudo pacman -S love)"; exit 1; }
+[[ -f "$game" ]] || { echo "Missing $game"; exit 1; }
+[[ -x "$bun" ]] || bun="$(command -v bun || true)"
+
+running=$(pgrep -fc "^love $game" || true)
+identity="OverhaulDebug"
+if (( running > 0 )); then
+    identity="OverhaulDebug$((running + 1))"
+    if [[ ! -d "$saves/$identity" && -d "$saves/OverhaulDebug" ]]; then
+        cp -r "$saves/OverhaulDebug" "$saves/$identity"
+    fi
+fi
+update_dir="$saves/$identity/update"
+
+apply_update() {
+    local new="$update_dir/game.love" sum="$update_dir/game.love.sha256"
+    rm -f "$update_dir/restart"
+    [[ -f "$new" && -f "$sum" ]] || return 0
+    pgrep -f "^love $game" >/dev/null && return 0
+    if [[ "$(cut -d' ' -f1 "$sum")" == "$(sha256sum "$new" | cut -d' ' -f1)" ]]; then
+        mv -f "$new" "$game.new" && mv -f "$game.new" "$game" && echo "Installed the downloaded update"
+    else
+        echo "Downloaded update does not match its checksum, discarded"
+    fi
+    rm -f "$new" "$sum"
+}
+apply_update
+
+if ! ss -ltn 2>/dev/null | grep -q "127.0.0.1:$port "; then
+    if [[ -n "$bun" ]]; then
+        env_args=()
+        [[ -f "$release_env" ]] && env_args=(--env-file="$release_env")
+        R2_PREFIX=debug/ MP_TEST_RANKED_RP=1 PORT=$port setsid "$bun" "${env_args[@]}" run "$here/server/src/index.ts" > "$here/server.log" 2>&1 < /dev/null &
+        echo $! > "$pid_file"
+        for _ in $(seq 1 50); do
+            ss -ltn 2>/dev/null | grep -q "127.0.0.1:$port " && break
+            sleep 0.1
+        done
+    else
+        echo "bun not found: multiplayer will not connect"
+    fi
+fi
+
+cleanup() {
+    if [[ -f "$pid_file" ]] && ! pgrep -f "^love $game" >/dev/null; then
+        kill "$(cat "$pid_file")" 2>/dev/null
+        rm -f "$pid_file"
+    fi
+}
+trap cleanup EXIT
+
+love_windows() {
+    hyprctl clients -j 2>/dev/null | python3 -c '
+import json, sys
+for c in json.load(sys.stdin):
+    if c["title"] == "Balatro Debug":
+        print(c["pid"], c["workspace"]["id"])
+' 2>/dev/null
+}
+
+while true; do
+    SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}" OVERHAUL_UPDATER=1 OVERHAUL_IDENTITY="$identity" OVERHAUL_LAUNCHER="$here/balatro-debug" love "$game" "$@" &
+    love_pid=$!
+
+    if [[ "${OVERHAUL_AUTO_MP:-}" == "1" ]] && command -v hyprctl >/dev/null; then
+        read -r other_pid target_ws < <(love_windows | awk -v me="$love_pid" '$1 != me {print $1, $2; exit}')
+        if [[ -n "${target_ws:-}" ]]; then
+            hyprctl dispatch "hl.dsp.window.fullscreen_state({ window = \"pid:$other_pid\", internal = 0, client = 0 })" >/dev/null
+            for _ in $(seq 1 600); do
+                if love_windows | awk -v me="$love_pid" '$1 == me {f=1} END {exit !f}'; then
+                    hyprctl dispatch "hl.dsp.window.move({ window = \"pid:$love_pid\", workspace = \"$target_ws\", follow = false })" >/dev/null
+                    break
+                fi
+                kill -0 "$love_pid" 2>/dev/null || break
+                sleep 0.1
+            done
+        fi
+    fi
+
+    wait "$love_pid"
+    [[ -f "$update_dir/restart" ]] || break
+    apply_update
+done

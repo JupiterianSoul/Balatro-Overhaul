@@ -1,0 +1,256 @@
+BOP 2
+eol lf
+final 0
+base 0
+r 57 1 - -
+r 57 2 %09 -
+l 1
+#else
+r 57 4 %09 -
+l 3
+#endif
+
+extern MY_HIGHP_OR_MEDIUMP vec2 jimbo;
+r 59 8 - -
+r 57 7 - -
+r 59 10 - -
+r 59 11 - -
+l 1
+extern bool shadow;
+r 59 13 - -
+r 59 14 - -
+l 1
+
+r 59 16 - -
+l 1
+{
+r 59 18 %20%20%20%20 -
+r 59 19 %20%20%20%20%20%20%20%20 -
+l 2
+    }
+
+r 59 22 %20%20%20%20 -
+l 1
+
+r 59 24 %09 -
+r 59 25 %09 -
+r 59 26 %20%20%20%20 -
+l 1
+	
+r 59 28 %09 -
+r 59 29 %09 -
+r 59 30 %09 -
+l 1
+
+r 59 32 %20%20%20%20 -
+r 59 33 %20%20%20%20%20%20%20%20 -
+r 59 34 %20%20%20%20%20%20%20%20 -
+r 59 35 %20%20%20%20 -
+l 1
+
+r 59 37 %20%20%20%20 -
+r 59 38 %20%20%20%20 -
+r 59 39 %20%20%20%20 -
+r 59 40 %20%20%20%20 -
+r 59 41 %20%20%20%20 -
+l 1
+
+r 59 43 %20%20%20%20 -
+r 59 44 %20%20%20%20%20%20%20%20 -
+r 59 45 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 59 46 %20%20%20%20%20%20%20%20 -
+r 59 47 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+        }
+    }
+
+r 59 51 %20%20%20%20 -
+l 2
+}
+
+r 60 55 - -
+l 1
+{
+e 65 57 %09 - +%4D%59%5F%48%49%47%48%50%5F%4F%52%5F%4D%45%44%49%55%4D%50%20,=26
+r 60 58 %09 -
+r 60 59 %09 -
+r 60 60 %09 -
+l 6
+	return s;
+}
+
+vec4 RGB(vec4 c)
+{
+	if (c.y < 0.0001)
+r 60 67 %09%09 -
+l 1
+
+e 65 69 %09 - +%4D%59%5F%48%49%47%48%50%5F%4F%52%5F%4D%45%44%49%55%4D%50%20,=61
+e 65 70 %09 - +%4D%59%5F%48%49%47%48%50%5F%4F%52%5F%4D%45%44%49%55%4D%50%20,=25
+r 60 71 %09 -
+l 4
+}
+
+vec4 HSL(vec4 c)
+{
+e 65 76 %09 - +%4D%59%5F%48%49%47%48%50%5F%4F%52%5F%4D%45%44%49%55%4D%50%20,=37
+e 65 77 %09 - +%4D%59%5F%48%49%47%48%50%5F%4F%52%5F%4D%45%44%49%55%4D%50%20,=38
+e 65 78 %09 - +%4D%59%5F%48%49%47%48%50%5F%4F%52%5F%4D%45%44%49%55%4D%50%20,=26
+e 65 10 %09 - -7,=27,-1,+%73%75%6D%20%3D%20%68,=1,-2,+%67%68%2B%6C%6F%77,=1
+l 1
+
+e 65 81 %09 - +%4D%59%5F%48%49%47%48%50%5F%4F%52%5F%4D%45%44%49%55%4D%50%20,=39
+l 3
+	if (delta == .0)
+		return hsl;
+
+r 60 85 %09 -
+l 2
+
+	if (high == c.r)
+r 60 88 %09%09 -
+r 60 89 %09 -
+r 60 90 %09%09 -
+l 1
+	else
+r 60 92 %09%09 -
+l 1
+
+r 60 94 %09 -
+l 45
+	return hsl;
+}
+
+#define HP MY_HIGHP_OR_MEDIUMP
+
+HP float field_of(HP vec2 uv, HP float scale, HP float t)
+{
+    HP vec2 floored_uv = (floor((uv*texture_details.ba)))/texture_details.ba;
+    HP vec2 c = (floored_uv - 0.5) * scale;
+    HP vec2 f1 = c + 50.*vec2(sin(-t / 143.6340), cos(-t / 99.4324));
+    HP vec2 f2 = c + 50.*vec2(cos( t / 53.1532),  cos( t / 61.4532));
+    HP vec2 f3 = c + 50.*vec2(sin(-t / 87.53218), sin(-t / 49.0000));
+    return (1.+ (cos(length(f1) / 19.483) + sin(length(f2) / 33.155) * cos(f2.y / 15.73) +
+        cos(length(f3) / 27.193) * sin(f3.x / 21.92) ))/2.;
+}
+
+HP vec3 foil_fx(HP vec4 tex, HP vec2 uv)
+{
+    HP vec2 auv = uv - vec2(0.5, 0.5);
+    auv.x = auv.x*texture_details.b/texture_details.a;
+    HP float low = min(tex.r, min(tex.g, tex.b));
+    HP float high = max(tex.r, max(tex.g, tex.b));
+    HP float delta = min(high, max(0.5, 1. - low));
+    HP float fac = max(min(2.*sin((length(90.*auv) + jimbo.r*2.) + 3.*(1.+0.8*cos(length(113.1121*auv) - jimbo.r*3.121))) - 1. - max(5.-length(90.*auv), 0.), 1.), 0.);
+    HP vec2 rotater = vec2(cos(jimbo.r*0.1221), sin(jimbo.r*0.3512));
+    HP float angle = dot(rotater, auv)/(length(rotater)*max(length(auv), 0.0001));
+    HP float fac2 = max(min(5.*cos(jimbo.g*0.3 + angle*3.14*(2.2+0.9*sin(jimbo.r*1.65 + 0.2*jimbo.g))) - 4. - max(2.-length(20.*auv), 0.), 1.), 0.);
+    HP float fac3 = 0.3*max(min(2.*sin(jimbo.r*5. + uv.x*3. + 3.*(1.+0.5*cos(jimbo.r*7.))) - 1., 1.), -1.);
+    HP float fac4 = 0.3*max(min(2.*sin(jimbo.r*6.66 + uv.y*3.8 + 3.*(1.+0.5*cos(jimbo.r*3.414))) - 1., 1.), -1.);
+    HP float maxfac = max(max(fac, max(fac2, max(fac3, max(fac4, 0.0)))) + 2.2*(fac+fac2+fac3+fac4), 0.);
+    HP vec3 o = vec3(tex.r-delta + delta*maxfac*0.3, tex.g-delta + delta*maxfac*0.3, tex.b + delta*maxfac*1.9);
+    HP float a = min(tex.a, 0.3*tex.a + 0.9*min(0.5, maxfac*0.1));
+    return mix(tex.rgb, clamp(o, 0., 1.), clamp(a/max(tex.a, 0.001), 0., 1.));
+}
+
+HP vec3 holo_fx(HP vec4 tex, HP vec2 uv)
+{
+    HP vec4 hsl = HSL(0.5*tex + 0.5*vec4(0.,0.,1.,tex.a));
+    HP float field = field_of(uv, 250., jimbo.g*7.221 + time);
+    HP float res = (.5 + .5* cos( (jimbo.r) * 2.612 + ( field + -.5 ) *3.14));
+    HP float low = min(tex.r, min(tex.g, tex.b));
+    HP float high = max(tex.r, max(tex.g, tex.b));
+    HP float delta = 0.2+0.3*(high- low) + 0.1*high;
+    HP float gridsize = 0.79;
+    HP float fac = 0.5*max(max(max(0., 7.*abs(cos(uv.x*gridsize*20.))-6.),max(0., 7.*cos(uv.y*gridsize*45. + uv.x*gridsize*20.)-6.)), max(0., 7.*cos(uv.y*gridsize*45. - uv.x*gridsize*20.)-6.));
+r 67 124 %20%20%20%20 -
+l 1
+    hsl.y = hsl.y*1.3;
+r 67 126 %20%20%20%20 -
+l 49
+    return ((1.-delta)*tex + delta*RGB(hsl)*vec4(0.9,0.8,1.2,tex.a)).rgb;
+}
+
+HP vec3 poly_fx(HP vec4 tex, HP vec2 uv)
+{
+    HP float low = min(tex.r, min(tex.g, tex.b));
+    HP float high = max(tex.r, max(tex.g, tex.b));
+    HP float sat = 1. - max(0., 0.05*(1.1-(high - low)));
+    HP vec4 hsl = HSL(vec4(tex.r*sat, tex.g*sat, tex.b, tex.a));
+    HP float field = field_of(uv, 50., jimbo.g*2.221 + time);
+    HP float res = (.5 + .5* cos( (jimbo.r) * 2.612 + ( field + -.5 ) *3.14));
+    hsl.x = hsl.x + res + jimbo.g*0.04;
+    hsl.y = min(0.6, hsl.y+0.5);
+    return RGB(hsl).rgb;
+}
+
+HP vec3 neg_fx(HP vec4 tex, HP vec2 uv)
+{
+    HP vec4 s = HSL(tex);
+    s.b = 1. - s.b;
+    s.r = -s.r + 0.2;
+    HP vec3 base = (RGB(s) + 0.8*vec4(79./255., 99./255., 103./255., 0.)).rgb;
+    HP float low = min(tex.r, min(tex.g, tex.b));
+    HP float high = max(tex.r, max(tex.g, tex.b));
+    HP float delta = high-low -0.1;
+    HP float t = jimbo.r;
+    HP float fac = 0.8 + 0.9*sin(11.*uv.x+4.32*uv.y + t*12. + cos(t*5.3 + uv.y*4.2 - uv.x*4.));
+    HP float fac2 = 0.5 + 0.5*sin(8.*uv.x+2.32*uv.y + t*5. - cos(t*2.3 + uv.x*8.2));
+    HP float fac3 = 0.5 + 0.5*sin(10.*uv.x+5.32*uv.y + t*6.111 + sin(t*5.3 + uv.y*3.2));
+    HP float fac4 = 0.5 + 0.5*sin(3.*uv.x+2.32*uv.y + t*8.111 + sin(t*1.3 + uv.y*11.2));
+    HP float fac5 = sin(0.9*16.*uv.x+5.32*uv.y + t*12. + cos(t*5.3 + uv.y*4.2 - uv.x*4.));
+    HP float maxfac = 0.7*max(max(fac, max(fac2, max(fac3,0.0))) + (fac+fac2+fac3*fac4), 0.);
+    HP vec3 sh = tex.rgb*0.5 + vec3(0.4, 0.4, 0.8);
+    sh.r = sh.r-delta + delta*maxfac*(0.7 + fac5*0.27) - 0.1;
+    sh.g = sh.g-delta + delta*maxfac*(0.7 - fac5*0.27) - 0.1;
+    sh.b = sh.b-delta + delta*maxfac*0.7 - 0.1;
+    HP float a = 0.5*max(min(1., max(0.,0.3*max(low*0.2, delta)+ min(max(maxfac*0.1,0.), 0.4)) ), 0.) + 0.15*maxfac*(0.1+delta);
+    return mix(clamp(base, 0., 1.), clamp(sh, 0., 1.), clamp(a, 0., 1.));
+}
+
+HP vec3 edition(HP float k, HP vec4 tex, HP vec2 uv)
+{
+    if (k < 0.5) return tex.rgb;
+    if (k < 1.5) return foil_fx(tex, uv);
+    if (k < 2.5) return holo_fx(tex, uv);
+    if (k < 3.5) return poly_fx(tex, uv);
+    return neg_fx(tex, uv);
+}
+
+r 58 18 - -
+l 11
+{
+    HP vec4 tex = Texel(texture, texture_coords);
+    HP vec2 uv = (((texture_coords)*(image_details)) - texture_details.xy*texture_details.ba)/texture_details.ba;
+    HP float s = jimbo.g / 2.;
+    HP float cur = mod(floor(s), 5.);
+    HP float nxt = mod(cur + 1., 5.);
+    HP float f = smoothstep(0., 1., fract(s));
+    HP vec3 c = mix(edition(cur, tex, uv), edition(nxt, tex, uv), f);
+    return dissolve_mask(vec4(c, tex.a)*colour, texture_coords, uv);
+}
+
+r 57 138 - -
+r 57 139 - -
+r 57 140 - -
+l 2
+
+#ifdef VERTEX
+r 57 142 - -
+l 2
+{
+    if (hovering <= 0.){
+r 57 145 %20%20%20%20%20%20%20%20 -
+l 1
+    }
+r 59 91 %20%20%20%20 -
+r 57 148 %20%20%20%20 -
+r 59 93 %20%20%20%20 -
+r 57 150 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+
+r 57 152 %20%20%20%20 -
+l 2
+}
+#endif
+end

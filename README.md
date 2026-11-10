@@ -150,6 +150,16 @@ Open an [issue](https://github.com/JupiterianSoul/Balatro-Overhaul/issues) and t
 
 It's free and it'll stay free. If you want to support me there's a [Ko-fi](https://ko-fi.com/jupiteriansoull), most of it will be reinvested on the server ! Thank you to anyone trying my mod, and/or supporting me via Ko-fi, this means a lot ^3
 
+## Source code
+
+The source is here, under the GPL v3. Balatro's own files are not: they belong to LocalThunk and Playstack.
+
+- `game/`: the Overhaul's patch set. New files in full, and edits to Balatro's files as patches that hold only the Overhaul's lines. See [game/README.md](game/README.md).
+- `server/`: the multiplayer server (Bun).
+- `tools/release/`: the launcher, the patcher that applies `game/` to your own copy of Balatro, and the packaging scripts.
+- `tools/`: bots, tests and other tools.
+- `linux/`: the TLS tunnel used on Linux.
+
 ## License
 
 All the Overhaul's own code, art and text is free software under the [GNU GPL v3](LICENSE): you can use it, study it, change it and share it, as long as your version stays under the GPL with its source and keeps the credits. It does not cover Balatro, which belongs to LocalThunk and Playstack and is not included here, and the parts made by others keep their own licenses, see [LICENSES](LICENSES).
@@ -158,7 +168,7 @@ All the Overhaul's own code, art and text is free software under the [GNU GPL v3
 
 Made by JupiterianSoul. Special thanks to Samlegeek63 and Monoceros for helping me test and find bugs !
 
-Uses LÖVE 11.5, Steamodded, nativefs, json.lua and the Balatro Mod Index. Thanks to Lovely Injector.
+Uses LÖVE 11.5, Steamodded, nativefs, json.lua and the Balatro Mod Index. Thanks to Lovely Injector. The Deck Creator is ported from Balatro-DeckCreator by adambennett, and some of its random logic follows Cryptid. Every project the Overhaul is built on, with its author and licence, is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The multiplayer is based on [Balatro Multiplayer](https://github.com/Balatro-Multiplayer/BalatroMultiplayer) by Virtualized and the BMP team, who did multiplayer first. Thank you.
 

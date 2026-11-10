@@ -1,0 +1,183 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 31
+local Q = QOL
+local M = Q.feature("pause_menu", {})
+
+Q.default("qol_quick_restart", true)
+Q.default("qol_confirm_leave", true)
+
+function M.can_restart()
+    return Q.on("qol_quick_restart") and Q.solo() and G.GAME.pseudorandom ~= nil
+end
+
+function M.swap(args, button)
+    if args.id == 'restart_button' and M.can_restart() then
+        local a, b = {}, {label = {mod_loc("Restart")}, button = 'qol_restart', minw = 2.4, col = true, id = 'qol_restart_button'}
+        for k, v in pairs(args) do a[k] = v end
+        a.minw, a.col = 2.4, true
+        return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {button(a), {n = G.UIT.C, config = {minw = 0.2}}, button(b)}}
+    end
+    if args.button == 'go_to_menu' and Q.in_run() and Q.on("qol_confirm_leave") then
+        args.button = 'qol_leave_run'
+    end
+end
+
+local function button_of(node)
+    local c = type(node) == 'table' and type(node.nodes) == 'table' and node.nodes[1]
+    return type(c) == 'table' and c.config and c.config.button
+end
+
+function M.pair(node, button, depth)
+    depth = depth or 0
+    if type(node) ~= 'table' or type(node.nodes) ~= 'table' or depth > 8 then return false end
+    local stats, coll
+r 24 255 %20%20%20%20 -
+l 43
+        local b = button_of(v)
+        if b == 'high_scores' then stats = k elseif b == 'your_collection' then coll = k end
+    end
+    if stats and coll then
+        local first, second = coll < stats and coll or stats, coll < stats and stats or coll
+        node.nodes[first] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            button{label = {localize('b_stats')}, button = 'high_scores', minw = 2.4, col = true},
+            {n = G.UIT.C, config = {minw = 0.2}},
+            button{label = {localize('b_collection')}, button = 'your_collection', minw = 2.4, col = true, id = 'your_collection'}}}
+        node.nodes[second] = nil
+        return true
+    end
+    for _, v in pairs(node.nodes) do
+        if M.pair(v, button, depth + 1) then return true end
+    end
+    return false
+end
+
+local function text_row(text, scale, colour)
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.04, maxw = 7}, nodes = {
+        {n = G.UIT.T, config = {text = text, scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}}}}
+end
+
+local function dialog(title, lines, buttons)
+    local nodes = {text_row(title, 0.6, G.C.GOLD), {n = G.UIT.R, config = {minh = 0.08}}}
+    for _, l in ipairs(lines) do nodes[#nodes + 1] = text_row(l, 0.4) end
+    local row = {}
+    for i, b in ipairs(buttons) do
+        if i > 1 then row[#row + 1] = {n = G.UIT.C, config = {minw = 0.2}} end
+        row[#row + 1] = UIBox_button{label = {b.label}, button = b.button, colour = b.colour, minw = 3.4, minh = 0.8, col = true, id = b.id, focus_args = i == 1 and {snap_to = true} or nil}
+    end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.15}, nodes = row}
+    return create_UIBox_generic_options{back_func = 'options', contents = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1, minw = 7.5}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = nodes}}}}}
+end
+
+function M.restart(same)
+    if not M.can_restart() then return end
+    local RO = rawget(_G, "RunOrigin")
+    local o = RO and RO.current and RO.current()
+    if o and RO.start(o, same) then return end
+    local g = G.GAME
+    if not g.won and not g.seeded and not g.challenge then
+r 23 900 %20%20%20%20%20%20%20%20 -
+l 2
+    end
+    G:save_settings()
+r 23 904 %20%20%20%20 -
+r 23 905 %20%20%20%20 -
+l 2
+    G.run_setup_seed = g.seeded
+    G.challenge_tab = g.challenge and g.challenge_tab or nil
+r 23 908 %20%20%20%20 -
+l 4
+    if same then G.forced_seed = g.pseudorandom.seed end
+    G.forced_stake = g.stake
+    G.FUNCS.start_setup_run()
+    G.forced_stake = nil
+r 23 913 %20%20%20%20 -
+l 84
+    G.forced_seed = nil
+end
+
+local function strings()
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {["Restart"] = "Recommencer", ["Restart this run?"] = "Recommencer cette partie ?", ["Same deck and stake"] = "Même jeu et même mise",
+            ["Same seed"] = "Même seed", ["New seed"] = "Nouvelle seed", ["Same seed makes it a seeded run"] = "Même seed en fait une partie avec seed",
+            ["Leave this run?"] = "Quitter cette partie ?", ["Your run is saved, Continue brings you back"] = "Votre partie est sauvegardée, Continuer vous y ramène",
+            ["You leave the match"] = "Vous quittez le match",
+            ["Quick restart"] = "Recommencer vite", ["Restart button in the pause menu"] = "Bouton Recommencer dans la pause",
+            ["Confirm leaving"] = "Confirmer le départ", ["Main Menu in the pause menu asks first"] = "Menu principal en pause : confirmation d'abord"},
+        es = {["Restart"] = "Reiniciar", ["Restart this run?"] = "¿Reiniciar esta partida?", ["Same deck and stake"] = "Misma baraja y mismo pozo",
+            ["Same seed"] = "Mismo código", ["New seed"] = "Nuevo código", ["Same seed makes it a seeded run"] = "Mismo código la vuelve una partida con código",
+            ["Leave this run?"] = "¿Salir de esta partida?", ["Your run is saved, Continue brings you back"] = "Tu partida se guarda, Continuar te devuelve",
+            ["You leave the match"] = "Sales de la partida",
+            ["Quick restart"] = "Reinicio rápido", ["Restart button in the pause menu"] = "Botón Reiniciar en la pausa",
+            ["Confirm leaving"] = "Confirmar salida", ["Main Menu in the pause menu asks first"] = "Menú principal en la pausa pide confirmación"},
+    }
+end
+
+Q.row("Run", function()
+    return Q.toggle('set_qol_quick_restart', "Quick restart", "Restart button in the pause menu", 'qol_quick_restart')
+end)
+Q.row("Run", function()
+    return Q.toggle('set_qol_confirm_leave', "Confirm leaving", "Main Menu in the pause menu asks first", 'qol_confirm_leave')
+end)
+
+function M.init()
+    strings()
+    if M._wrapped or not (G and G.FUNCS and create_UIBox_options and UIBox_button) then return end
+    M._wrapped = true
+    local build = create_UIBox_options
+    local button = UIBox_button
+    create_UIBox_options = function(...)
+        M.building = true
+        local ok, t = pcall(build, ...)
+        M.building = false
+        if not ok then error(t, 0) end
+        if G.STAGE == G.STAGES.RUN then pcall(M.pair, t, button) end
+        return t
+    end
+    UIBox_button = function(args)
+        if M.building and type(args) == "table" then
+            local ok, r = pcall(M.swap, args, button)
+            if ok and r then return r end
+        end
+        return button(args)
+    end
+    G.FUNCS.qol_restart = function()
+        if not M.can_restart() then return end
+        local lines = {mod_loc("Same deck and stake")}
+        if not G.GAME.seeded then lines[2] = mod_loc("Same seed makes it a seeded run") end
+        local buttons = {
+            {label = mod_loc("Same seed"), button = 'qol_restart_same', colour = G.C.BLUE, id = 'qol_restart_same'},
+            {label = mod_loc("New seed"), button = 'qol_restart_new', colour = G.C.RED, id = 'qol_restart_new'}}
+        local RO = rawget(_G, "RunOrigin")
+        local o = RO and RO.current and RO.current()
+        if o then
+            lines = {RO.mode_label(o), RO.setup_line(o), RO.note(o)}
+            buttons = {}
+            for _, c in ipairs(RO.choices(o)) do
+                local same = c.key == 'same'
+                buttons[#buttons + 1] = {label = c.label, button = same and 'qol_restart_same' or 'qol_restart_new', colour = same and G.C.BLUE or G.C.RED, id = same and 'qol_restart_same' or 'qol_restart_new'}
+            end
+        end
+        G.FUNCS.overlay_menu{definition = dialog(mod_loc("Restart this run?"), lines, buttons)}
+    end
+    G.FUNCS.qol_restart_same = function() M.restart(true) end
+    G.FUNCS.qol_restart_new = function() M.restart(false) end
+    G.FUNCS.qol_leave_run = function()
+        local mp = G.GAME and G.GAME.multiplayer
+        G.FUNCS.overlay_menu{definition = dialog(mod_loc("Leave this run?"),
+            {mp and mod_loc("You leave the match") or mod_loc("Your run is saved, Continue brings you back")},
+            {{label = localize('b_main_menu'), button = 'qol_leave_yes', colour = G.C.RED, id = 'qol_leave_yes'}})}
+    end
+    G.FUNCS.qol_leave_yes = function(e)
+        G.FUNCS.go_to_menu(e)
+    end
+end
+
+strings()
+
+return M
+end

@@ -1,0 +1,536 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 468
+local C = {}
+
+C.page = C.page or {}
+
+local PREFIX = {jokers = "j_mp_", decks = "b_mp_", stakes = "stake_mp_", traps = "c_mp_trap", blinds = "bl_mp_"}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function kit() return rawget(_G, "bom_kit") end
+local function modes() return rawget(_G, "bom_mode_content") end
+
+local function keep(list, keyf)
+    local MC = modes()
+    if not (MC and MC.filter_keep) then return list end
+    local out = {}
+    for _, v in ipairs(list) do if MC.filter_keep(keyf(v)) then out[#out + 1] = v end end
+    return out
+end
+
+local function txt(s, scale, colour)
+    return {n = G.UIT.T, config = {text = tostring(s), scale = scale, colour = colour or G.C.WHITE, shadow = true}}
+end
+
+local function row(nodes, o)
+    o = o or {}
+    return {n = G.UIT.R, config = {align = o.align or "cm", minw = o.w, maxw = o.maxw, minh = o.h, padding = o.padding or 0.02, colour = o.colour, r = o.r}, nodes = nodes}
+end
+
+local function col(nodes, o)
+    o = o or {}
+    return {n = G.UIT.C, config = {align = o.align or "cm", minw = o.w, maxw = o.maxw, minh = o.h, padding = o.padding or 0, colour = o.colour, r = o.r, emboss = o.emboss}, nodes = nodes}
+end
+
+local function starts(s, p) return type(s) == "string" and s:sub(1, #p) == p end
+
+local function by_order(list)
+    table.sort(list, function(a, b)
+        local oa, ob = tonumber(a.order) or 1e9, tonumber(b.order) or 1e9
+        if oa ~= ob then return oa < ob end
+        return tostring(a.key) < tostring(b.key)
+    end)
+    return list
+end
+
+function C.jokers()
+    local out = {}
+    for k, v in pairs(G.P_CENTERS or {}) do
+        if starts(k, PREFIX.jokers) and v.set == "Joker" and not v.mp_hidden and not (ReleaseFlags and ReleaseFlags.ai_hidden(v)) and (v.key or k) == k then out[#out + 1] = v end
+    end
+    return by_order(out)
+end
+
+function C.traps()
+    local out = {}
+    for k, v in pairs(G.P_CENTERS or {}) do
+        if (v.set == "Trap" or starts(k, PREFIX.traps)) and not v.mp_hidden and (v.key or k) == k then out[#out + 1] = v end
+    end
+    return by_order(out)
+end
+
+function C.decks()
+    local out, seen = {}, {}
+    for _, v in ipairs(G.P_CENTER_POOLS and G.P_CENTER_POOLS.Back or {}) do
+        if starts(v.key, PREFIX.decks) and not (ReleaseFlags and ReleaseFlags.ai_hidden(v)) then out[#out + 1] = v end
+        seen[v.key] = true
+    end
+    for k, v in pairs(G.P_CENTERS or {}) do
+        if starts(k, PREFIX.decks) and v.set == "Back" and not seen[k] and not (ReleaseFlags and ReleaseFlags.ai_hidden(v)) and (v.key or k) == k then out[#out + 1] = v end
+    end
+    return by_order(out)
+end
+
+function C.stakes()
+    local out, seen = {}, {}
+    local S = rawget(_G, "bom_stakes")
+    for _, v in ipairs(S and S.list and S.list() or {}) do
+        out[#out + 1] = {center = {key = v.key, name = v.name, pos = v.pos, atlas = v.atlas or "chips", order = v.order}}
+        seen[v.key] = true
+    end
+    for i, v in ipairs(G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake or {}) do
+        if starts(v.key, PREFIX.stakes) and not seen[v.key] then out[#out + 1] = {center = v, index = i} end
+    end
+    return out
+end
+
+C.BLIND_ART = {
+    rows = {{25, "e03a3a", 0.08}, {26, "d85f23"}, {27, "2f86b8"}, {28, "8a41b7"}, {29, "e29f29", -0.12}, {29, "3f9e4f", nil, "ring"}},
+    nemesis = {25, "e03a3a", 0.08},
+    frames = 21, size = 34,
+}
+
+local function hex_rgb(h)
+    return tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255
+end
+
+local function hls(r, g, b)
+    local mx, mn = math.max(r, g, b), math.min(r, g, b)
+    local l = (mx + mn) / 2
+    if mx == mn then return 0, l, 0 end
+    local d = mx - mn
+    local s = l > 0.5 and d / (2 - mx - mn) or d / (mx + mn)
+    local h
+    if mx == r then h = (g - b) / d + (g < b and 6 or 0)
+    elseif mx == g then h = (b - r) / d + 2
+    else h = (r - g) / d + 4 end
+    return h / 6, l, s
+end
+
+local function hue2(p, q, t)
+    if t < 0 then t = t + 1 end
+    if t > 1 then t = t - 1 end
+    if t < 1 / 6 then return p + (q - p) * 6 * t end
+    if t < 1 / 2 then return q end
+    if t < 2 / 3 then return p + (q - p) * (2 / 3 - t) * 6 end
+    return p
+end
+
+local function rgb(h, l, s)
+    if s == 0 then return l, l, l end
+    local q = l < 0.5 and l * (1 + s) or l + s - l * s
+    local p = 2 * l - q
+    return hue2(p, q, h + 1 / 3), hue2(p, q, h), hue2(p, q, h - 1 / 3)
+end
+
+local function tint_row(out, src, oy, sy, w, ch, colour, lift, style)
+    local th, tl, ts = hls(hex_rgb(colour))
+    for y = 0, ch - 1 do
+        for x = 0, w - 1 do
+            local r, g, b, a = src:getPixel(x, sy + y)
+            if a > 0 then
+                local h, l, sat = hls(r, g, b)
+                local chroma = math.max(r, g, b) - math.min(r, g, b)
+                if style == "ring" then
+                    if chroma > 0.12 then r, g, b = rgb(th, math.min(0.94, 0.62 + l * 0.35), 0.35)
+                    elseif l > 0.6 then r, g, b = rgb(th, math.min(0.85, l * 0.55), math.max(ts, 0.6)) end
+                elseif chroma > 0.12 then r, g, b = rgb(th, math.min(0.85, l + (lift or 0)), math.max(sat, math.min(ts, 0.75))) end
+            end
+            out:setPixel(x, oy + y, r, g, b, a)
+        end
+    end
+end
+
+function C.build_blind_art(scale, rows)
+    local s = scale or 1
+    local A = C.BLIND_ART
+    local ok, src = pcall(love.image.newImageData, "resources/textures/" .. s .. "x/BlindChips.png")
+    if not ok or not src then return nil end
+    local ch, w = A.size * s, A.size * s * A.frames
+    local out = love.image.newImageData(w, ch * #rows)
+    for i, r in ipairs(rows) do tint_row(out, src, (i - 1) * ch, r[1] * ch, w, ch, r[2], r[3], r[4]) end
+    src:release()
+    return out
+end
+
+local function swap_atlas(name, data, s)
+    local at = G.ANIMATION_ATLAS and G.ANIMATION_ATLAS[name]
+    if not (at and data) then return end
+    local old = at.image
+    local img = love.graphics.newImage(data, {mipmaps = true, dpiscale = s})
+    if old then
+        img:setFilter(old:getFilter())
+        local mf, sharp = old:getMipmapFilter()
+        if mf then img:setMipmapFilter(mf, sharp) end
+    end
+    at.image = img
+end
+
+function C.register_blind_art()
+    if not (G and G.ANIMATION_ATLAS and G.SETTINGS and love and love.graphics) then return end
+    local s = (G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.texture_scaling) or 2
+    swap_atlas("mp_blind_chips", C.build_blind_art(s, C.BLIND_ART.rows), s)
+    swap_atlas("mp_nemesis_chip", C.build_blind_art(s, {C.BLIND_ART.nemesis}), s)
+    local nem = G.P_BLINDS and G.P_BLINDS.bl_mp_nemesis
+    if nem and G.ANIMATION_ATLAS.mp_nemesis_chip then
+        nem.atlas, nem.pos = "mp_nemesis_chip", {x = 0, y = 0}
+        nem.boss_colour = HEX and HEX(C.BLIND_ART.nemesis[2]) or nem.boss_colour
+    end
+end
+
+function C.blinds()
+    local out = {}
+    for k, v in pairs(G.P_BLINDS or {}) do
+        if starts(k, PREFIX.blinds) then out[#out + 1] = {key = k, order = v.order, blind = v} end
+    end
+    return by_order(out)
+end
+
+local function reworks_module()
+    local RW = rawget(_G, "bom_reworks")
+    return RW and type(RW.available) == "function" and RW or nil
+end
+
+function C.reworks()
+    local RW = reworks_module()
+    if not RW then return {} end
+    local ok, list = pcall(RW.available)
+    local out = {}
+    for _, e in ipairs(ok and type(list) == "table" and list or {}) do
+        local key = type(e) == "table" and e.key or e
+        if type(key) == "string" and G.P_CENTERS[key] then out[#out + 1] = key end
+    end
+    return out
+end
+
+local function rework_lines(key)
+    local RW = reworks_module()
+    local fn = RW and (RW.mp_text or RW.collection_text)
+    if not fn then return {} end
+    local ok, res = pcall(fn, key)
+    if not ok or type(res) ~= "table" then return {} end
+    local lines = res.lines or res.text or res
+    local out = {}
+    for _, l in ipairs(type(lines) == "table" and lines or {}) do
+        if type(l) == "string" and l ~= "" then out[#out + 1] = l end
+    end
+    return out
+end
+
+local with_pager_ref
+
+local function empty(text, h)
+    return row({txt(text or L("Nothing here yet. New ones arrive with updates."), 0.4, G.C.UI.TEXT_LIGHT)}, {w = UIK.W, h = h or (UIK.H - UIK.TOP)})
+end
+
+local function empty_paged(key, text)
+    C.page[key] = 1
+    return with_pager_ref(key, {empty(text, UIK.H - UIK.TOP - (touch() and 1.0 or 0.85) - 0.2)}, 1)
+end
+
+local function pages_of(key, n, per)
+    local pages = math.max(1, math.ceil(n / per))
+    C.page[key] = math.max(1, math.min(pages, C.page[key] or 1))
+    return pages, (C.page[key] - 1) * per
+end
+
+local function with_pager(key, nodes, pages)
+    local body = {row({col(nodes, {align = "tm"})}, {align = "tm", h = UIK.H - UIK.TOP - (touch() and 1.0 or 0.85)})}
+    local MC = modes()
+    if MC and MC.filter_label then
+        local tw = touch() and 4.4 or 4.0
+        body[#body + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            col({UIK.pager{prev = "mpm_coll_mode_prev", next = "mpm_coll_mode_next", text = MC.filter_label(), text_w = tw}}),
+            col({}, {w = 0.6}),
+            col({UIK.pager{prev = "mpm_coll_prev", next = "mpm_coll_next", prev_ref = {key = key}, next_ref = {key = key}, text_w = tw,
+                text = tostring(C.page[key]) .. " / " .. tostring(pages), prev_disabled = C.page[key] <= 1, next_disabled = C.page[key] >= pages}}),
+        }}
+    elseif pages > 1 then
+        body[#body + 1] = UIK.pager{prev = "mpm_coll_prev", next = "mpm_coll_next", prev_ref = {key = key}, next_ref = {key = key},
+            text = tostring(C.page[key]) .. " / " .. tostring(pages), prev_disabled = C.page[key] <= 1, next_disabled = C.page[key] >= pages}
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = body}}}
+end
+
+with_pager_ref = with_pager
+
+local function card_area(n)
+    return CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, n * G.CARD_W, 0.95 * G.CARD_H,
+        {card_limit = n, type = "title", highlight_limit = 0, collection = true, mpm_modes = true})
+end
+
+local SEEN = {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true}
+
+local function add_card(area, center, params)
+    pcall(function()
+        local card = Card(area.T.x + area.T.w / 2, area.T.y, G.CARD_W, G.CARD_H, nil, center, params)
+        area:emplace(card)
+    end)
+end
+
+local function card_grid(key, centers)
+    centers = keep(centers, function(v) return v.key end)
+    if #centers == 0 then return empty_paged(key, L("No cards of this kind in this mode.")) end
+    local port = UIK.portrait and UIK.portrait()
+    local per_row, rows_n = port and 4 or 5, port and 4 or 2
+    local pages, first = pages_of(key, #centers, per_row * rows_n)
+    local nodes = {}
+    for r = 1, rows_n do
+        local a = first + (r - 1) * per_row + 1
+        if a > #centers then break end
+        local area = card_area(per_row)
+        for i = a, math.min(#centers, a + per_row - 1) do add_card(area, centers[i]) end
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.07, no_fill = true}, nodes = {{n = G.UIT.O, config = {object = area}}}}
+    end
+    return with_pager(key, {{n = G.UIT.R, config = {align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.05}, nodes = nodes}}, pages)
+end
+
+local function tab_all()
+    local w = 8
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - UIK.TOP}, nodes = {
+        UIK.section(L("Your collection"), {
+            row({txt(L("Multiplayer shares your single-player unlocks."), 0.36, G.C.UI.TEXT_LIGHT)}, {padding = 0.06}),
+            row({txt(L("The other tabs show the cards that only exist in multiplayer."), 0.32, UIK.C.muted)}, {padding = 0.04}),
+            UIK.button_bar({UIK.button{label = L("OPEN CARD COLLECTION"), button = "mpm_coll_vanilla", colour = G.C.ORANGE, w = 5.2}}),
+        }, {w = w, col = true}),
+    }}
+end
+
+local function sprite_node(atlas, pos, w, h)
+    local A = G.ASSET_ATLAS and G.ASSET_ATLAS[atlas]
+    if not (A and pos) then return nil end
+    local spr = Sprite(0, 0, w, h, A, pos)
+    spr.states.drag.can = false
+    return {n = G.UIT.O, config = {object = spr}}
+end
+
+local function name_of(set, key, fallback)
+    local out = fallback or key
+    pcall(function()
+        local n = localize{type = "name_text", set = set, key = key}
+        if n and n ~= "ERROR" then out = n end
+    end)
+    return out
+end
+
+local function desc_lines(set, key, vars)
+    local out = {}
+    pcall(function()
+        local lines = localize{type = "raw_descriptions", set = set, key = key, vars = vars or {}}
+        for _, l in ipairs(type(lines) == "table" and lines or {}) do out[#out + 1] = tostring(l) end
+    end)
+    return out
+end
+
+local function modes_row(key, maxw)
+    local MC = modes()
+    if not (MC and MC.modes_text and key) then return nil end
+    return row({txt(MC.modes_text(key), 0.28, UIK.C.muted)}, {maxw = maxw})
+end
+
+local function info_tile(icon, title, lines, w, h, key)
+    local nodes = {row({txt(title, 0.4, G.C.GOLD)}, {maxw = w - 1.6})}
+    for _, l in ipairs(lines) do nodes[#nodes + 1] = row({txt(l, 0.3, G.C.UI.TEXT_LIGHT)}, {maxw = w - 1.6}) end
+    nodes[#nodes + 1] = modes_row(key, w - 1.6)
+    return col({
+        col({icon or {n = G.UIT.C, config = {minw = 1.2}}}, {w = 1.3}),
+        col(nodes, {w = w - 1.5, align = "cm"}),
+    }, {w = w, h = h, r = 0.1, colour = {0, 0, 0, 0.18}, padding = 0.08})
+end
+
+local function tile_grid(key, tiles, per_row, rows_n)
+    if #tiles == 0 then return empty_paged(key, L("No cards of this kind in this mode.")) end
+    local pages, first = pages_of(key, #tiles, per_row * rows_n)
+    local items = {}
+    for i = first + 1, math.min(#tiles, first + per_row * rows_n) do items[#items + 1] = tiles[i]() end
+    return with_pager(key, {UIK.grid(items, per_row, {padding = 0.08})}, pages)
+end
+
+local function tab_blinds()
+    local w, h = (UIK.W - 0.8) / ((UIK.portrait and UIK.portrait()) and 1 or 2), touch() and 2.1 or 1.9
+    local tiles = {}
+    for _, b in ipairs(keep(C.blinds(), function(v) return v.key end)) do
+        tiles[#tiles + 1] = function()
+            local K = kit()
+            local icon = K and K.blind_icon(b.key, 1.0)
+            return info_tile(icon, name_of("Blind", b.key, b.blind.name), desc_lines("Blind", b.key, b.blind.vars), w, h, b.key)
+        end
+    end
+    return tile_grid("blinds", tiles, 2, 2)
+end
+
+local function desc_box(set, key, w)
+    local lines = {}
+    pcall(function() localize{type = "descriptions", set = set, key = key, nodes = lines, vars = {}} end)
+    if #lines == 0 then return nil end
+    local rows = {}
+    for _, l in ipairs(lines) do rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = l} end
+    return {n = G.UIT.C, config = {align = "cm", minw = w, r = 0.1, padding = 0.06, emboss = 0.05, colour = G.C.WHITE}, nodes = rows}
+end
+
+local function tab_stakes()
+    local w, h = (UIK.W - 0.8) / ((UIK.portrait and UIK.portrait()) and 1 or 2), touch() and 2.1 or 1.9
+    local tiles = {}
+    for _, s in ipairs(keep(C.stakes(), function(v) return v.center.key end)) do
+        tiles[#tiles + 1] = function()
+            local icon = nil
+            pcall(function()
+                local spr
+                if s.index then spr = get_stake_sprite(s.index, 0.8)
+                else
+                    local BS = rawget(_G, "bom_stakes")
+                    spr = BS and BS.sprite and BS.sprite(s.center.key, 0.8)
+                    if not spr then
+                        spr = Sprite(0, 0, 0.8, 0.8, G.ASSET_ATLAS[s.center.atlas or "chips"] or G.ASSET_ATLAS["chips"], s.center.pos)
+                        spr.states.drag.can = false
+                    end
+                end
+                if spr then icon = {n = G.UIT.O, config = {object = spr}} end
+            end)
+            local right = {row({txt(name_of("Stake", s.center.key, s.center.name), 0.4, G.C.GOLD)}, {maxw = w - 1.6})}
+            local box = desc_box("Stake", s.center.key, w - 1.7)
+            if box then right[#right + 1] = row({box}) else
+                for _, l in ipairs(desc_lines("Stake", s.center.key)) do right[#right + 1] = row({txt(l, 0.3, G.C.UI.TEXT_LIGHT)}, {maxw = w - 1.6}) end
+            end
+            right[#right + 1] = modes_row(s.center.key, w - 1.6)
+            return col({
+                col({icon or {n = G.UIT.C, config = {minw = 1.2}}}, {w = 1.3}),
+                col(right, {w = w - 1.5, align = "cm"}),
+            }, {w = w, h = h, r = 0.1, colour = {0, 0, 0, 0.18}, padding = 0.08})
+        end
+    end
+    return tile_grid("stakes", tiles, 2, 2)
+end
+
+local function tab_decks()
+    local w, h = (UIK.W - 0.8) / ((UIK.portrait and UIK.portrait()) and 1 or 2), 2.6
+    local tiles = {}
+    for _, center in ipairs(keep(C.decks(), function(v) return v.key end)) do
+        tiles[#tiles + 1] = function()
+            local icon = sprite_node(center.atlas or "centers", center.pos, G.CARD_W * 0.62, G.CARD_H * 0.62)
+            local ui = nil
+            pcall(function()
+                local back = Back(center)
+                ui = {n = G.UIT.C, config = {align = "cm", minw = w - 2.0, minh = 1.4, r = 0.1, emboss = 0.05, padding = 0.05, colour = G.C.WHITE}, nodes = {
+                    {n = G.UIT.O, config = {object = UIBox{definition = back:generate_UI(), config = {offset = {x = 0, y = 0}}}}},
+                }}
+            end)
+            local right = {row({txt(name_of("Back", center.key, center.name), 0.4, G.C.GOLD)})}
+            if ui then right[#right + 1] = row({ui}) end
+            right[#right + 1] = modes_row(center.key, w - 1.7)
+            return col({
+                col({icon or {n = G.UIT.C, config = {minw = 1.3}}}, {w = 1.5}),
+                col(right, {w = w - 1.7}),
+            }, {w = w, h = h, r = 0.1, colour = {0, 0, 0, 0.18}, padding = 0.08})
+        end
+    end
+    return tile_grid("decks", tiles, 2, 2)
+end
+
+local function tab_reworks()
+    local keys = keep(C.reworks(), function(v) return v end)
+    if #keys == 0 then return empty_paged("reworks", L("No reworked cards right now.")) end
+    local w = (UIK.W - 0.8) / 2
+    local tiles = {}
+    for _, key in ipairs(keys) do
+        tiles[#tiles + 1] = function()
+            local center = G.P_CENTERS[key]
+            local area = card_area(1)
+            local RW = reworks_module()
+            if RW and RW.preview then RW.preview(key, function() add_card(area, center, SEEN) end) else add_card(area, center, SEEN) end
+            local made = area.cards and area.cards[#area.cards]
+            if made then made.mp_rw_preview = key end
+            local lines = rework_lines(key)
+            local right = {row({txt(name_of(center.set, key, center.name), 0.4, G.C.GOLD)}), row({txt(L("Multiplayer version"), 0.28, UIK.C.muted)})}
+            for _, l in ipairs(lines) do right[#right + 1] = row({txt(l, 0.3, G.C.UI.TEXT_LIGHT)}, {maxw = w - G.CARD_W - 0.5}) end
+            right[#right + 1] = modes_row(key, w - G.CARD_W - 0.5)
+            return col({
+                col({{n = G.UIT.O, config = {object = area}}}, {w = G.CARD_W + 0.1}),
+                col(right, {w = w - G.CARD_W - 0.3, align = "cl"}),
+            }, {w = w, r = 0.1, colour = {0, 0, 0, 0.18}, padding = 0.08})
+        end
+    end
+    return tile_grid("reworks", tiles, 2, 2)
+end
+
+function C.window(tab)
+    local tabs = {
+        {key = "all", label = L("All cards"), build = tab_all},
+        {key = "jokers", label = L("Jokers"), build = function() return card_grid("jokers", C.jokers()) end},
+        {key = "decks", label = L("Decks"), build = tab_decks},
+        {key = "stakes", label = L("Stakes"), build = tab_stakes},
+        {key = "traps", label = L("Traps"), build = function() return card_grid("traps", C.traps()) end},
+        {key = "blinds", label = L("Blinds"), build = tab_blinds},
+    }
+    if reworks_module() then tabs[#tabs + 1] = {key = "reworks", label = L("Reworks"), build = tab_reworks} end
+    return UIK.window{zoom = false, id = "mpm_collection", title = L("COLLECTION"), tab = tab, tabs = tabs, back_func = "mpm_coll_back"}
+end
+
+function C.open(tab)
+r 4 1381 %20%20%20%20 -
+l 17
+    G.FUNCS.overlay_menu{definition = C.window(tab)}
+end
+
+function C.init()
+    pcall(C.register_blind_art)
+    if Game and Game.set_render_settings and not C.render_hooked then
+        C.render_hooked = true
+        local orig_render = Game.set_render_settings
+        Game.set_render_settings = function(self, ...)
+            local r = orig_render(self, ...)
+            pcall(C.register_blind_art)
+            return r
+        end
+    end
+    G.FUNCS.mpm_coll_back = function()
+        local m = rawget(_G, "mpm_menu")
+        if m and m.active then return G.FUNCS.exit_overlay_menu() end
+r 4 1375 %20%20%20%20%20%20%20%20 -
+l 41
+    end
+    G.FUNCS.mpm_coll_vanilla = function(e)
+        if G.FUNCS.your_collection then G.FUNCS.your_collection(e) end
+    end
+    G.FUNCS.mpm_coll_mode_prev = function()
+        local MC = modes()
+        if MC and MC.filter_step then MC.filter_step(-1); UIK.refresh() end
+    end
+    G.FUNCS.mpm_coll_mode_next = function()
+        local MC = modes()
+        if MC and MC.filter_step then MC.filter_step(1); UIK.refresh() end
+    end
+    G.FUNCS.mpm_coll_prev = function(e)
+        local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+        if key then C.page[key] = (C.page[key] or 1) - 1; UIK.refresh() end
+    end
+    G.FUNCS.mpm_coll_next = function(e)
+        local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+        if key then C.page[key] = (C.page[key] or 1) + 1; UIK.refresh() end
+    end
+    if mod_loc_register then
+        mod_loc_register{
+            fr = {["COLLECTION"] = "COLLECTION", ["All cards"] = "Toutes", ["Jokers"] = "Jokers", ["Decks"] = "Jeux", ["Stakes"] = "Mises", ["Traps"] = "Pièges",
+                ["Blinds"] = "Blindes", ["Reworks"] = "Refontes", ["Your collection"] = "Votre collection",
+                ["Multiplayer shares your single-player unlocks."] = "Le multijoueur reprend vos déblocages du mode solo.",
+                ["The other tabs show the cards that only exist in multiplayer."] = "Les autres onglets montrent les cartes propres au multijoueur.",
+                ["OPEN CARD COLLECTION"] = "OUVRIR LA COLLECTION", ["Nothing here yet. New ones arrive with updates."] = "Rien pour l'instant. Les nouveautés arrivent avec les mises à jour.",
+                ["No reworked cards right now."] = "Aucune carte refondue pour l'instant.", ["Multiplayer version"] = "Version multijoueur",
+                ["No cards of this kind in this mode."] = "Aucune carte de ce type dans ce mode."},
+            es = {["COLLECTION"] = "COLECCIÓN", ["All cards"] = "Todas", ["Jokers"] = "Comodines", ["Decks"] = "Barajas", ["Stakes"] = "Pozos", ["Traps"] = "Trampas",
+                ["Blinds"] = "Ciegas", ["Reworks"] = "Cambios", ["Your collection"] = "Tu colección",
+                ["Multiplayer shares your single-player unlocks."] = "El multijugador comparte tus desbloqueos de un jugador.",
+                ["The other tabs show the cards that only exist in multiplayer."] = "Las otras pestañas muestran las cartas exclusivas del multijugador.",
+                ["OPEN CARD COLLECTION"] = "ABRIR LA COLECCIÓN", ["Nothing here yet. New ones arrive with updates."] = "Nada por ahora. Llegan novedades con las actualizaciones.",
+                ["No reworked cards right now."] = "No hay cartas cambiadas por ahora.", ["Multiplayer version"] = "Versión multijugador",
+                ["No cards of this kind in this mode."] = "No hay cartas de este tipo en este modo."},
+        }
+    end
+end
+
+return C
+end

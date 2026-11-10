@@ -1,0 +1,542 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 398
+﻿local function custom_runs_init()
+  if not G or not RunRules then return false end
+  if G.CUSTOM_RUN and G.CUSTOM_RUN.values then return true end
+  local last = G.SETTINGS and G.SETTINGS.custom_run_last
+  G.CUSTOM_RUN = {
+    enabled = false,
+    values = RunRules.normalize(last),
+    browse = {key = 'starting_jokers', page = 1, count_text = "", page_text = ""},
+  }
+  return true
+end
+
+local function V() return G.CUSTOM_RUN.target or G.CUSTOM_RUN.values end
+
+local PRESETS = {
+  {key = 'classic', label = "Classic", values = {}},
+  {key = 'easy', label = "Easy", values = {hands = 5, discards = 4, joker_slots = 6, dollars = 10, interest_cap = 50, blind_pct = 75}},
+  {key = 'hard', label = "Hard", values = {hands = 3, discards = 2, dollars = 0, blind_pct = 150, blind_growth = 2, price_pct = 125,
+    eternal_stickers = true, perishable_stickers = true, rental_stickers = true}},
+  {key = 'chaos', label = "Chaos", values = {number_randomizer = true, erratic = true, random_jokers = 2, random_prices = true, flipped_cards = 4,
+    tag_every_ante = true, edition_rate = 4, enhancement = 'random', seal = 'random', shop_spectrals = 'shop'}},
+  {key = 'rich', label = "Rich", values = {dollars = 50, interest_amount = 2, interest_cap = 100, money_per_discard = 1, reroll_step = 0}},
+  {key = 'short', label = "Short run", values = {win_ante = 4, hand_level = 2, random_tags = 2}},
+}
+
+local function find_preset(key)
+  for _, p in ipairs(PRESETS) do if p.key == key then return p end end
+end
+
+local function user_presets()
+  G.SETTINGS.custom_run_presets = G.SETTINGS.custom_run_presets or {}
+  return G.SETTINGS.custom_run_presets
+end
+
+local function set_values(t)
+  local v = RunRules.normalize(t)
+  local cur = V()
+  for k in pairs(cur) do cur[k] = nil end
+  for k, x in pairs(v) do cur[k] = x end
+end
+
+local function pool_items(pool)
+  local out = {}
+  if pool == 'Blind' then
+    for k, v in pairs(G.P_BLINDS or {}) do
+      if v.boss then
+        local name = v.name or k
+        pcall(function() name = localize{type = 'name_text', set = 'Blind', key = k} or name end)
+        out[#out + 1] = {key = k, name = name}
+      end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+  elseif pool == 'Tag' then
+    for _, v in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Tag) or {}) do
+      local name = v.name or v.key
+      pcall(function() name = localize{type = 'name_text', set = 'Tag', key = v.key} or name end)
+      out[#out + 1] = {key = v.key, name = name}
+    end
+  else
+    for _, v in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS[pool]) or {}) do
+      if not v.omit then out[#out + 1] = v end
+    end
+  end
+  return out
+end
+
+local function list_has(list, key)
+  for i, k in ipairs(list) do if k == key then return i end end
+end
+
+local function browse_limit(key)
+  if key == 'starting_jokers' then
+    local back = G.P_CENTERS and G.P_CENTERS[V().back]
+    local bonus = back and back.config and back.config.joker_slot or 0
+    return math.max(0, V().joker_slots + bonus)
+  end
+  return nil
+end
+
+local function refresh_counts()
+  local st = G.CUSTOM_RUN.browse
+  local list = V()[st.key] or {}
+  local lim = browse_limit(st.key)
+  st.count_text = tostring(#list) .. (lim and (" / " .. lim) or "") .. " " .. mod_loc("chosen")
+end
+
+local CARDS_PER_ROW, CARD_ROWS = 5, 2
+
+local function fill_areas()
+  local st = G.CUSTOM_RUN.browse
+  local def = RunRules.by_key[st.key]
+  local pool = pool_items(def.pool)
+  local per = CARDS_PER_ROW * CARD_ROWS
+  local pages = math.max(1, math.ceil(#pool / per))
+  st.page = math.max(1, math.min(st.page or 1, pages))
+  st.page_text = mod_loc("Page") .. " " .. st.page .. " / " .. pages
+  for j, area in ipairs(G.cr_browse_areas or {}) do
+    for i = #area.cards, 1, -1 do
+      local c = area:remove_card(area.cards[i])
+      if c then c:remove() end
+    end
+    for i = 1, CARDS_PER_ROW do
+      local center = pool[(st.page - 1) * per + (j - 1) * CARDS_PER_ROW + i]
+      if center then
+        local card = Card(area.T.x + area.T.w / 2, area.T.y, G.CARD_W * 0.8, G.CARD_H * 0.8, G.P_CARDS.empty, center,
+          {bypass_discovery_center = true, bypass_discovery_ui = true})
+        card.states.click.can = true
+        card.highlighted = list_has(V()[st.key], center.key) and true or false
+        local function toggle()
+          if G.CUSTOM_RUN.readonly then play_sound('cancel'); return end
+          local list = V()[st.key]
+          local idx = list_has(list, center.key)
+          if idx then
+            table.remove(list, idx)
+            card.highlighted = false
+            play_sound('cardSlide1')
+          else
+            local lim = browse_limit(st.key)
+            if lim and #list >= lim then
+              play_sound('cancel')
+              return
+            end
+            list[#list + 1] = center.key
+            card.highlighted = true
+            play_sound('cardSlide1')
+          end
+          card:juice_up(0.3, 0.3)
+          refresh_counts()
+        end
+        card.click = toggle
+        card.single_tap = toggle
+        area:emplace(card)
+      end
+    end
+  end
+  refresh_counts()
+end
+
+G.FUNCS.cr_browse_prev = function()
+  local st = G.CUSTOM_RUN.browse
+  st.page = (st.page or 1) - 1
+  if st.page < 1 then st.page = 999 end
+  fill_areas()
+end
+
+G.FUNCS.cr_browse_next = function()
+  local st = G.CUSTOM_RUN.browse
+  local def = RunRules.by_key[st.key]
+  local pages = math.max(1, math.ceil(#pool_items(def.pool) / (CARDS_PER_ROW * CARD_ROWS)))
+  st.page = (st.page or 1) + 1
+  if st.page > pages then st.page = 1 end
+  fill_areas()
+end
+
+G.FUNCS.cr_browse_clear = function()
+  if G.CUSTOM_RUN.readonly then return end
+  local st = G.CUSTOM_RUN.browse
+  V()[st.key] = {}
+  play_sound('cancel')
+  if RunRules.by_key[st.key].pool == 'Tag' or RunRules.by_key[st.key].pool == 'Blind' then
+    UIK.refresh()
+  else
+    fill_areas()
+  end
+end
+
+local function build_card_browser()
+  local st = G.CUSTOM_RUN.browse
+  for _, a in ipairs(G.cr_browse_areas or {}) do pcall(function() a:remove() end) end
+  G.cr_browse_areas = {}
+  local area_nodes = {}
+  for j = 1, CARD_ROWS do
+    local area = CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, CARDS_PER_ROW * G.CARD_W * 0.85, 0.85 * G.CARD_H,
+      {card_limit = CARDS_PER_ROW, type = 'title', highlight_limit = 0, collection = true})
+    G.cr_browse_areas[j] = area
+    area_nodes[#area_nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02, no_fill = true}, nodes = {
+      {n = G.UIT.O, config = {object = area}}
+    }}
+  end
+  fill_areas()
+  return {n = G.UIT.C, config = {align = "cm", minw = UIK.W}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", r = 0.1, colour = UIK.C.section, padding = 0.04}, nodes = area_nodes},
+    UIK.pager{prev = 'cr_browse_prev', next = 'cr_browse_next', ref_table = st, ref_value = 'page_text', side_w = 3, side_ref_table = st, side_ref_value = 'count_text', w = UIK.W},
+  }}
+end
+
+local function build_list_browser()
+  local st = G.CUSTOM_RUN.browse
+  local def = RunRules.by_key[st.key]
+  local list = V()[st.key]
+  local items = {}
+  for _, it in ipairs(pool_items(def.pool)) do
+    local sel = {on = list_has(list, it.key) and true or false}
+    items[#items + 1] = UIK.toggle{label = it.name, ref_table = sel, ref_value = 'on', id = 'cr_pick_' .. it.key, disabled = G.CUSTOM_RUN.readonly,
+      callback = function(on)
+        local cur = V()[st.key]
+        local idx = list_has(cur, it.key)
+        if on and not idx then cur[#cur + 1] = it.key end
+        if not on and idx then table.remove(cur, idx) end
+        refresh_counts()
+      end}
+  end
+  refresh_counts()
+  return {n = G.UIT.C, config = {align = "cm", minw = UIK.W}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", minw = UIK.W, padding = 0.04}, nodes = {
+      {n = G.UIT.T, config = {ref_table = st, ref_value = 'count_text', scale = 0.36, colour = UIK.C.gold, shadow = true}},
+    }},
+    {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.flow{id = 'cr_pick_' .. st.key, items = items, cols = 3}}},
+  }}
+end
+
+local function open_browser(key, target, back_func, readonly)
+  if not custom_runs_init() then return end
+  G.CUSTOM_RUN.target = target
+  G.CUSTOM_RUN.readonly = readonly and true or false
+  local st = G.CUSTOM_RUN.browse
+  if st.key ~= key then st.page = 1 end
+  st.key = key
+  local def = RunRules.by_key[key]
+  local text_list = def.pool == 'Tag' or def.pool == 'Blind'
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = 'cr_browse',
+    title = mod_loc(def.label),
+    tabs = {{key = 'pick', label = mod_loc(def.label), build = text_list and build_list_browser or build_card_browser}},
+    back_func = back_func or 'cr_open_config',
+    footer = {UIK.button{label = mod_loc("Clear"), button = 'cr_browse_clear', colour = UIK.C.danger, disabled = readonly}},
+  }}
+end
+
+RunRules.open_picker = open_browser
+
+for _, d in ipairs(RunRules.list()) do
+  if d.kind == 'list' then
+    G.FUNCS['cr_browse_' .. d.key] = function() open_browser(d.key) end
+  end
+end
+
+local function list_actions(category)
+  local out = {}
+  for _, d in ipairs(RunRules.list(category)) do
+    if d.kind == 'list' then
+      local n = #(V()[d.key] or {})
+      out[#out + 1] = UIK.action{
+        label = mod_loc(d.label),
+        info = n > 0 and (n .. " " .. mod_loc("chosen")) or mod_loc("None"),
+        button_label = mod_loc("Choose"),
+        button = 'cr_browse_' .. d.key,
+        colour = d.ban and UIK.C.danger or UIK.C.accent,
+      }
+    end
+  end
+  return out
+end
+
+local function rule_tab(cat)
+  return function()
+    local items = {}
+    if cat == 'items' or cat == 'bans' then
+      for _, r in ipairs(list_actions(cat)) do items[#items + 1] = r end
+    end
+    for _, r in ipairs(RunRules.rows(V(), cat)) do items[#items + 1] = r end
+    if cat == 'bans' then
+      items[#items + 1] = UIK.action{label = mod_loc("Every ban"), button_label = mod_loc("Clear all"), button = 'cr_clear_bans', colour = UIK.C.danger}
+    end
+    return UIK.flow{id = 'cr_' .. cat, items = items}
+  end
+end
+
+G.FUNCS.cr_clear_bans = function()
+  for _, b in ipairs(RunRules.BAN_LISTS) do V()[b.key] = {} end
+  play_sound('cancel')
+  UIK.refresh()
+end
+
+local function apply_preset(key)
+  local p = find_preset(key)
+  if not p then return end
+  set_values(p.values)
+  play_sound('card1')
+  UIK.refresh()
+end
+
+local function slot_save(slot)
+  user_presets()[slot] = RunRules.diff(V())
+  G:save_settings()
+  play_sound('card1')
+  UIK.refresh()
+end
+
+local function slot_load(slot)
+  local saved = user_presets()[slot]
+  if not saved then play_sound('cancel'); return end
+  set_values(saved)
+  play_sound('card1')
+  UIK.refresh()
+end
+
+for _, p in ipairs(PRESETS) do
+  G.FUNCS['cr_preset_' .. p.key] = function() apply_preset(p.key) end
+end
+for slot = 1, 3 do
+  G.FUNCS['cr_slot_save_' .. slot] = function() slot_save(slot) end
+  G.FUNCS['cr_slot_load_' .. slot] = function() slot_load(slot) end
+end
+
+G.FUNCS.cr_reset = function()
+  set_values({})
+  play_sound('cancel')
+  UIK.refresh()
+end
+
+local function build_overview()
+  local presets, slots = {}, {}
+  for _, p in ipairs(PRESETS) do
+    presets[#presets + 1] = {label = mod_loc(p.label), button = 'cr_preset_' .. p.key, colour = UIK.C.accent, id = 'cr_preset_' .. p.key}
+  end
+  local up = user_presets()
+  for slot = 1, 3 do
+    local saved = up[slot]
+    local n = saved and #RunRules.describe(saved) or 0
+    slots[slot] = {label = mod_loc("Slot") .. " " .. slot .. (saved and (" (" .. n .. ")") or ""), muted = not saved,
+      load = {label = mod_loc("Load"), button = 'cr_slot_load_' .. slot, disabled = not saved, id = 'cr_load_' .. slot},
+      save = {label = mod_loc("Save"), button = 'cr_slot_save_' .. slot, id = 'cr_save_' .. slot}}
+  end
+  return UIK.overview{
+    presets_title = mod_loc("Presets"), presets = presets,
+    slots_title = mod_loc("Your presets"), slots = slots,
+    changes_title = mod_loc("Changes from a normal run"), lines = RunRules.describe(V()),
+    empty_text = mod_loc("Same rules as a normal run"), more_text = mod_loc("and") .. " %d " .. mod_loc("more"),
+  }
+end
+
+local function config_tabs()
+  local tabs = {{key = 'overview', label = mod_loc("Overview"), build = build_overview}}
+  for _, c in ipairs(RunRules.CATEGORIES) do
+    tabs[#tabs + 1] = {key = c.key, label = mod_loc(c.label), build = rule_tab(c.key)}
+  end
+  return tabs
+end
+
+G.FUNCS.cr_open_config = function()
+  if not custom_runs_init() then return end
+  G.CUSTOM_RUN.target = nil
+  G.CUSTOM_RUN.readonly = false
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = 'cr',
+    title = mod_loc("CUSTOM RUN"),
+    tabs = config_tabs(),
+    back_func = 'cr_back_to_run_setup',
+    footer = {
+      UIK.button{label = mod_loc("Reset"), button = 'cr_reset', colour = UIK.C.danger, id = 'cr_reset'},
+      UIK.button{label = mod_loc("START"), button = 'start_custom_run', colour = UIK.C.ok, id = 'cr_start'},
+    },
+  }}
+end
+
+G.FUNCS.cr_back_to_run_setup = function()
+  G._cr_select_custom_tab = true
+  G.FUNCS.overlay_menu{definition = G.UIDEF.run_setup()}
+end
+
+G.UIDEF.custom_run_tab = function()
+  if not custom_runs_init() then
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+      {n = G.UIT.T, config = {text = mod_loc("Loading..."), scale = 0.4, colour = G.C.WHITE}}
+    }}
+  end
+  local lines = RunRules.describe(V())
+  local shown = {}
+  if #lines == 0 then
+    shown[1] = mod_loc("Same rules as a normal run")
+  else
+    for i = 1, math.min(#lines, 6) do shown[i] = lines[i] end
+    if #lines > 6 then shown[#shown + 1] = mod_loc("and") .. " " .. (#lines - 6) .. " " .. mod_loc("more") end
+  end
+  return {n = G.UIT.ROOT, config = {align = "cm", padding = 0.1, colour = G.C.CLEAR, minh = 5.2, minw = 7}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {
+      UIK.text(mod_loc("Custom Run"), {scale = 0.5, colour = UIK.C.title, shadow = true}),
+    }},
+    {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+      UIK.text(mod_loc("Your own rules, deck, shop and jokers"), {scale = 0.34, colour = UIK.C.muted}),
+    }},
+    {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+      UIK.section(mod_loc("Current rules"), {UIK.note(shown, {w = 6.4})}, {w = 6.6}),
+    }},
+    UIK.button_bar({
+      UIK.button{label = mod_loc("Configure"), button = 'cr_open_config', colour = UIK.C.accent, id = 'cr_configure'},
+      UIK.button{label = mod_loc("START"), button = 'start_custom_run', colour = UIK.C.ok, id = 'cr_start_tab'},
+    }, {w = 7}),
+  }}
+end
+
+G.FUNCS.start_custom_run = function()
+  if not custom_runs_init() then return end
+  local v = RunRules.normalize(V())
+  G.SETTINGS.custom_run_last = RunRules.diff(v)
+  pcall(function() G:save_settings() end)
+  G.CUSTOM_RUN.enabled = true
+r 4 1375 %20%20 -
+l 24
+  RunRules.start(v, {rules_source = 'custom'})
+end
+
+local _cr_win_game = win_game
+function win_game(...)
+  if G.GAME and G.GAME.run_rules_source == 'custom' and trigger_custom_run_achievement then
+    pcall(trigger_custom_run_achievement)
+  end
+  return _cr_win_game(...)
+end
+
+local _cr_original_run_setup = G.UIDEF.run_setup
+
+G.UIDEF.run_setup = function(from_game_over)
+  custom_runs_init()
+  if RunRules then RunRules.disarm() end
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
+
+  local _select_custom = G._cr_select_custom_tab
+  G._cr_select_custom_tab = nil
+  local _select_bot = BOT and BOT.ui and BOT.ui.select_tab and G.UIDEF.botlatro_tab and true or false
+  if BOT and BOT.ui then BOT.ui.select_tab = nil end
+  if _select_bot then _select_custom = true end
+
+r 15 5225 %20%20 -
+r 15 5299 %20%20 -
+r 15 5300 %20%20 -
+l 1
+
+r 15 5302 %20%20 -
+r 15 5303 %20%20 -
+l 3
+
+  local tabs = {
+    {
+r 15 5309 %20%20%20%20%20%20 -
+l 1
+      chosen = (not _select_custom) and (not _challenge_chosen) and (not _can_continue),
+r 15 5311 %20%20%20%20%20%20 -
+r 15 5312 %20%20%20%20%20%20 -
+l 3
+    },
+  }
+
+r 15 2244 %20%20 -
+l 1
+    table.insert(tabs, {
+r 15 5315 %20%20%20%20%20%20 -
+l 1
+      chosen = (not _select_custom) and (not _challenge_chosen) and _can_continue,
+r 15 5311 %20%20%20%20%20%20 -
+r 15 5318 %20%20%20%20%20%20 -
+r 15 5319 %20%20%20%20%20%20 -
+l 3
+    })
+  else
+    table.insert(tabs, {
+r 15 5321 %20%20%20%20%20%20 -
+r 15 5322 %20%20%20%20%20%20 -
+r 15 5323 %20%20%20%20%20%20 -
+l 4
+      chosen = (not _select_custom) and _challenge_chosen
+    })
+  end
+
+r 15 2244 %20%20 -
+l 1
+    table.insert(tabs, {
+r 15 5321 %20%20%20%20%20%20 -
+r 15 5322 %20%20%20%20%20%20 -
+r 15 5323 %20%20%20%20%20%20 -
+l 64
+      chosen = (not _select_custom) and _challenge_chosen
+    })
+  end
+
+  if G.UIDEF.daily_challenge_tab then
+    table.insert(tabs, {
+      label = mod_loc("Daily"),
+      tab_definition_function = G.UIDEF.daily_challenge_tab,
+    })
+  end
+
+  if G.UIDEF.botlatro_tab then
+    table.insert(tabs, {
+      label = mod_loc("Bot-latro"),
+      chosen = _select_bot,
+      tab_definition_function = G.UIDEF.botlatro_tab,
+    })
+  end
+
+  table.insert(tabs, {
+    label = mod_loc("Custom"),
+    chosen = (_select_custom and not _select_bot) or false,
+    tab_definition_function = G.UIDEF.custom_run_tab,
+  })
+
+  if G.UIDEF.speedrun_tab and not (G.GAME and G.GAME.multiplayer) then
+    table.insert(tabs, {label = mod_loc("Speedrun"), tab_definition_function = G.UIDEF.speedrun_tab})
+  end
+
+  return create_UIBox_generic_options({
+    no_back = from_game_over,
+    no_esc = from_game_over,
+    contents = {
+      {n = G.UIT.R, config = {align = "cm", padding = 0, draw_layer = 1}, nodes = {
+        create_tabs({tabs = tabs, snap_to_nav = true}),
+      }},
+    }
+  })
+end
+
+mod_loc_register{
+  fr = {
+    ["chosen"] = "choisis", ["Page"] = "Page", ["Clear"] = "Effacer", ["Choose"] = "Choisir", ["None"] = "Aucun",
+    ["Every ban"] = "Tous les interdits", ["Clear all"] = "Tout effacer",
+    ["Classic"] = "Classique", ["Easy"] = "Facile", ["Hard"] = "Difficile", ["Chaos"] = "Chaos", ["Rich"] = "Riche", ["Short run"] = "Partie courte",
+    ["Presets"] = "Préréglages", ["Your presets"] = "Vos préréglages", ["Slot"] = "Emplacement", ["Load"] = "Charger", ["Save"] = "Sauver",
+    ["Same rules as a normal run"] = "Mêmes règles qu'une partie normale", ["and"] = "et", ["more"] = "de plus",
+    ["Changes from a normal run"] = "Différences avec une partie normale", ["Overview"] = "Résumé",
+    ["CUSTOM RUN"] = "PARTIE PERSONNALISÉE", ["Reset"] = "Réinitialiser", ["START"] = "JOUER",
+    ["Custom Run"] = "Partie personnalisée", ["Your own rules, deck, shop and jokers"] = "Vos règles, jeu, boutique et jokers",
+    ["Current rules"] = "Règles actuelles", ["Configure"] = "Configurer",
+  },
+  es = {
+    ["chosen"] = "elegidos", ["Page"] = "Página", ["Clear"] = "Borrar", ["Choose"] = "Elegir", ["None"] = "Ninguno",
+    ["Every ban"] = "Todos los vetos", ["Clear all"] = "Borrar todo",
+    ["Classic"] = "Clásica", ["Easy"] = "Fácil", ["Hard"] = "Difícil", ["Chaos"] = "Caos", ["Rich"] = "Rico", ["Short run"] = "Partida corta",
+    ["Presets"] = "Ajustes", ["Your presets"] = "Tus ajustes", ["Slot"] = "Ranura", ["Load"] = "Cargar", ["Save"] = "Guardar",
+    ["Same rules as a normal run"] = "Mismas reglas que una partida normal", ["and"] = "y", ["more"] = "más",
+    ["Changes from a normal run"] = "Cambios frente a una partida normal", ["Overview"] = "Resumen",
+    ["CUSTOM RUN"] = "PARTIDA PERSONALIZADA", ["Reset"] = "Reiniciar", ["START"] = "JUGAR",
+    ["Custom Run"] = "Partida personalizada", ["Your own rules, deck, shop and jokers"] = "Tus reglas, baraja, tienda y comodines",
+    ["Current rules"] = "Reglas actuales", ["Configure"] = "Configurar",
+  },
+}
+end

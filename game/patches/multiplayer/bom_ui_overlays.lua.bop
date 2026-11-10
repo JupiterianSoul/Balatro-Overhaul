@@ -1,0 +1,1187 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 12
+-- ============================================
+-- BOM_UI_OVERLAYS — Sabotage picker, taunts, disconnect banners, error dialog,
+--                   version mismatch, connecting screen, cleanup
+-- FEATURE: Split from bom_ui.lua for maintainability
+-- ============================================
+
+local M = {}
+
+function M.init(bom_ui)
+    local function _show_mp_overlay(ref_name, definition)
+        if not G or not G.FUNCS or not G.FUNCS.overlay_menu then return end
+        G.SETTINGS = G.SETTINGS or {}
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 34
+        bom_ui.overlay({definition = definition})
+        G[ref_name] = G.OVERLAY_MENU
+    end
+
+    local function _hide_mp_overlay(ref_name)
+        if not G then return end
+        local overlay = G[ref_name]
+        if overlay then
+            if G.OVERLAY_MENU == overlay and G.FUNCS and G.FUNCS.exit_overlay_menu then
+                pcall(function() G.FUNCS.exit_overlay_menu() end)
+            else
+                pcall(function() overlay:remove() end)
+            end
+            G[ref_name] = nil
+        end
+    end
+
+    -- ============================================
+    -- SABOTAGE PICKER SCREEN
+    -- FEATURE: Redesigned — card-style bordered columns, name + description + PICK button
+    -- ============================================
+
+    function bom_ui.show_sabotage_picker(picks, on_chosen)
+        if not G then return end
+        if not picks or #picks < 1 then return end
+
+        for i, pick in ipairs(picks) do
+            local pick_id = pick.id
+            G.FUNCS["mp_pick_sabotage_" .. i] = function()
+                bom_ui.hide_sabotage_picker()
+                if on_chosen then on_chosen(pick_id) end
+            end
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 63
+            blocking = false,
+            blockable = false,
+            func = function()
+                if G.BOM_SABOTAGE_OVERLAY then return true end
+
+                -- Build card-style column for each sabotage option
+                local card_nodes = {}
+                for i, pick in ipairs(picks) do
+                    card_nodes[#card_nodes + 1] = {
+                        n = G.UIT.C, config = { align = "cm", padding = 0.05,
+                            colour = G.C.PURPLE, r = 0.09, minw = 2.2 }, nodes = {
+                        { n = G.UIT.C, config = { align = "cm", padding = 0.07,
+                            colour = G.C.BLACK, r = 0.07, minw = 2.0, minh = 2.8 }, nodes = {
+                            -- Sabotage name
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                                { n = G.UIT.T, config = { text = pick.name or "???",
+                                    scale = 0.28, colour = G.C.PURPLE, shadow = true } },
+                            }},
+                            -- Thin name/desc separator
+                            { n = G.UIT.R, config = { align = "cm", minh = 0.015, minw = 1.8,
+                                colour = { 0.55, 0.15, 0.55, 0.5 }, padding = 0.03 }, nodes = {} },
+                            -- Description
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.06, minh = 1.4 }, nodes = {
+                                { n = G.UIT.T, config = { text = pick.desc or "",
+                                    scale = 0.22, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+                            }},
+                            -- PICK button
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.06 }, nodes = {
+                                UIBox_button({ label = { mod_loc("PICK") },
+                                    button = "mp_pick_sabotage_" .. i,
+                                    minw = 1.7, minh = 0.5,
+                                    colour = G.C.PURPLE, scale = 0.3 }),
+                            }},
+                        }},
+                    }}
+                end
+
+                local definition = create_UIBox_generic_options({ contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("CHOOSE YOUR SABOTAGE"),
+                            scale = 0.4, colour = G.C.GOLD, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Pick one to send to your opponent"),
+                            scale = 0.25, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = card_nodes },
+                }})
+                _show_mp_overlay("BOM_SABOTAGE_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+    function bom_ui.hide_sabotage_picker()
+        _hide_mp_overlay("BOM_SABOTAGE_OVERLAY")
+    end
+
+    -- ============================================
+    -- SABOTAGE RECEIVED NOTIFICATION
+    -- ============================================
+
+    function bom_ui.show_sabotage_received(name)
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 23
+            blocking = false,
+            blockable = false,
+            func = function()
+                if G.BOM_SABOTAGE_TOAST and not G.BOM_SABOTAGE_TOAST.REMOVED then pcall(function() G.BOM_SABOTAGE_TOAST:remove() end) end
+                local overlay = UIBox({
+                    definition = {
+                        n = G.UIT.ROOT,
+                        config = { align = "cm", colour = G.C.CLEAR, padding = 0.2 },
+                        nodes = {
+                            { n = G.UIT.C, config = { align = "cm", colour = { 0.2, 0, 0.2, 0.85 }, r = 0.1, padding = 0.15, minw = 3.5, minh = 1.2 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                    { n = G.UIT.T, config = { text = mod_loc("Sabotaged!"), scale = 0.4, colour = G.C.PURPLE, shadow = true } },
+                                }},
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                    { n = G.UIT.T, config = { text = tostring(name or "???"), scale = 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                                }},
+                            }},
+                        },
+                    },
+                    config = { align = "cm", offset = { x = 0, y = 0 }, major = G.ROOM_ATTACH, type = 'cm' },
+                })
+                G.BOM_SABOTAGE_TOAST = overlay
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 48
+                    trigger = 'after',
+                    delay = 2,
+                    func = function()
+                        pcall(function() if not overlay.REMOVED then overlay:remove() end end) if G.BOM_SABOTAGE_TOAST == overlay then G.BOM_SABOTAGE_TOAST = nil end
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+    -- ============================================
+    -- TAUNT SYSTEM
+    -- ============================================
+
+    function bom_ui.send_taunt()
+        if not G then return end
+        if not G.GAME then return end
+        if not G.GAME.multiplayer then return end
+
+        local title = ""
+        pcall(function()
+            if CosmeticsManager and CosmeticsManager.get_equipped then
+                title = CosmeticsManager.get_equipped("title") or ""
+            end
+        end)
+
+        bom_core.send({ type = "taunt", title = title, timestamp = os.time() })
+    end
+
+    function bom_ui.receive_taunt(data)
+        if not G then return end
+        if not data then return end
+
+        local title = data.title or ""
+        local opponent_name = "Opponent"
+        pcall(function()
+            if G.GAME and G.GAME.mp_opponent and G.GAME.mp_opponent.name then
+                opponent_name = G.GAME.mp_opponent.name
+            end
+        end)
+
+        local taunt_text = opponent_name
+        if title and title ~= "" then
+            taunt_text = title .. " " .. opponent_name
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 20
+            blocking = false,
+            blockable = false,
+            func = function()
+                if G.BOM_TAUNT_TOAST and not G.BOM_TAUNT_TOAST.REMOVED then pcall(function() G.BOM_TAUNT_TOAST:remove() end) end
+                local overlay = UIBox({
+                    definition = {
+                        n = G.UIT.ROOT,
+                        config = { align = "tm", colour = G.C.CLEAR, padding = 0.1 },
+                        nodes = {
+                            { n = G.UIT.C, config = { align = "cm", colour = { 0.15, 0.15, 0.15, 0.8 }, r = 0.08, padding = 0.1, minw = 2.5 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                                    { n = G.UIT.T, config = { text = taunt_text .. " taunts!", scale = 0.3, colour = G.C.GOLD, shadow = true } },
+                                }},
+                            }},
+                        },
+                    },
+                    config = { align = "tm", offset = { x = 0, y = 0.5 }, major = G.ROOM_ATTACH, type = 'cm' },
+                })
+                G.BOM_TAUNT_TOAST = overlay
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 17
+                    trigger = 'after',
+                    delay = 2,
+                    func = function()
+                        pcall(function() if not overlay.REMOVED then overlay:remove() end end) if G.BOM_TAUNT_TOAST == overlay then G.BOM_TAUNT_TOAST = nil end
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+    -- ============================================
+    -- DISCONNECT BANNERS
+    -- ============================================
+
+    function bom_ui.show_disconnect_banner()
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 20
+            blocking = false,
+            blockable = false,
+            func = function()
+                if G.BOM_DISCONNECT_TOAST and not G.BOM_DISCONNECT_TOAST.REMOVED then pcall(function() G.BOM_DISCONNECT_TOAST:remove() end) end
+                local overlay = UIBox({
+                    definition = {
+                        n = G.UIT.ROOT,
+                        config = { align = "tm", colour = G.C.CLEAR, padding = 0.1 },
+                        nodes = {
+                            { n = G.UIT.C, config = { align = "cm", colour = { 0.3, 0, 0, 0.85 }, r = 0.08, padding = 0.1, minw = 3.5 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                                    { n = G.UIT.T, config = { text = mod_loc("Connection Lost"), scale = 0.35, colour = G.C.RED, shadow = true } },
+                                }},
+                            }},
+                        },
+                    },
+                    config = { align = "tm", offset = { x = 0, y = 0.5 }, major = G.ROOM_ATTACH, type = 'cm' },
+                })
+                G.BOM_DISCONNECT_TOAST = overlay
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 21
+                    trigger = 'after',
+                    delay = 3,
+                    func = function()
+                        pcall(function() if not overlay.REMOVED then overlay:remove() end end) if G.BOM_DISCONNECT_TOAST == overlay then G.BOM_DISCONNECT_TOAST = nil end
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+    function bom_ui.show_opponent_disconnected()
+        bom_ui.destroy_match_hud()
+
+        pcall(function()
+            if bom_rewards and bom_rewards.on_match_end then
+                bom_rewards.on_match_end({ result = "win", reason = "opponent_disconnected" })
+            end
+        end)
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 11
+            blocking = false,
+            blockable = false,
+            func = function()
+                if G.GAME then G.GAME.multiplayer = nil end
+
+                pcall(function()
+                    G:delete_run()
+                    G:main_menu()
+                    if bom_match and bom_match.reset then bom_match.reset() end
+                end)
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 33
+                    trigger = 'after',
+                    delay = 0.6,
+                    func = function()
+                        local definition = create_UIBox_generic_options({back_func = "exit_overlay_menu", contents = {
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                { n = G.UIT.T, config = { text = mod_loc("VICTORY!"), scale = 0.45, colour = G.C.GOLD, shadow = true } },
+                            }},
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                                { n = G.UIT.T, config = { text = mod_loc("Your opponent left the match."), scale = 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                            }},
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                                { n = G.UIT.T, config = { text = mod_loc("You win by forfeit!"), scale = 0.28, colour = G.C.GREEN, shadow = true } },
+                            }},
+                        }})
+                        _show_mp_overlay("MP_DISCONNECT_WIN_OVERLAY", definition)
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+    -- ============================================
+    -- ERROR DIALOG
+    -- FEATURE: Redesigned — clean overlay with red header, message, OK button
+    -- ============================================
+
+    function bom_ui.show_error(msg)
+        G.FUNCS.mp_dismiss_error = function()
+            bom_ui.hide_error()
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 82
+            blocking = false,
+            blockable = false,
+            func = function()
+                if G.MP_ERROR_OVERLAY then return true end
+                G.MP_ERROR_OVERLAY = UIBox({
+                    definition = {
+                        n = G.UIT.ROOT,
+                        config = { align = "cm", colour = G.C.CLEAR, padding = 0.2 },
+                        nodes = {
+                            { n = G.UIT.C, config = { align = "cm",
+                                colour = { 0.12, 0.02, 0.02, 0.95 },
+                                r = 0.1, padding = 0.15, minw = 4, minh = 1.5 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                    { n = G.UIT.T, config = { text = mod_loc("ERROR"),
+                                        scale = 0.4, colour = G.C.RED, shadow = true } },
+                                }},
+                                { n = G.UIT.R, config = { align = "cm", minh = 0.015, minw = 3.5,
+                                    colour = { 0.8, 0.1, 0.1, 0.35 } }, nodes = {} },
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                    { n = G.UIT.T, config = { text = tostring(msg or "Unknown error"),
+                                        scale = 0.28, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                                }},
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                    UIBox_button({ label = { mod_loc("OK") }, button = "mp_dismiss_error",
+                                        minw = 1.7, minh = 0.5, colour = G.C.RED, scale = 0.35 }),
+                                }},
+                            }},
+                        },
+                    },
+                    config = { align = "cm", offset = { x = 0, y = 0 },
+                        major = G.ROOM_ATTACH, type = 'cm' },
+                })
+                return true
+            end,
+        }))
+    end
+
+    function bom_ui.hide_error()
+        if G.MP_ERROR_OVERLAY then
+            pcall(function() G.MP_ERROR_OVERLAY:remove() end)
+            G.MP_ERROR_OVERLAY = nil
+        end
+    end
+
+    -- ============================================
+    -- CLEANUP — Remove all MP overlays
+    -- ============================================
+
+    function bom_ui.cleanup()
+        bom_ui.hide_searching_screen()
+        bom_ui.hide_room_code()
+        pcall(function() bom_ui.hide_waiting_screen() end)
+        bom_ui.hide_sabotage_picker()
+        bom_ui.hide_error()
+        bom_ui.hide_match_results()
+        bom_ui.hide_lobby()
+        bom_ui.destroy_match_hud()
+        _hide_mp_overlay("BOM_LOBBY_SETTINGS_OVERLAY")
+        _hide_mp_overlay("BOM_REMATCH_OVERLAY")
+        _hide_mp_overlay("BOM_SABOTAGE_OVERLAY")
+        _hide_mp_overlay("MP_DEBRIEF_OVERLAY")
+        _hide_mp_overlay("MP_WAITING_OVERLAY")
+        if G.MP_MATCH_START_OVERLAY then
+            pcall(function() G.MP_MATCH_START_OVERLAY:remove() end)
+            G.MP_MATCH_START_OVERLAY = nil
+        end
+        if G.MP_DISCONNECT_WIN_OVERLAY then
+            pcall(function() G.MP_DISCONNECT_WIN_OVERLAY:remove() end)
+            G.MP_DISCONNECT_WIN_OVERLAY = nil
+        end
+    end
+
+    -- ============================================
+    -- VERSION MISMATCH POPUP
+    -- ============================================
+
+    function bom_ui.show_version_mismatch(my_version, their_version)
+        pcall(function()
+            if bom_core and bom_core.disconnect then bom_core.disconnect() end
+        end)
+        bom_ui.cleanup()
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 53
+            blocking = false,
+            blockable = false,
+            func = function()
+                if OverhaulUpdate and OverhaulUpdate.known() then
+                    _show_mp_overlay("MP_VERSION_MISMATCH_OVERLAY", OverhaulUpdate.prompt_definition({ note = mod_loc("You: ") .. tostring(my_version or "?") .. "  |  " .. mod_loc("Opponent: ") .. tostring(their_version or "?") }))
+                    return true
+                end
+                if OverhaulUpdate then OverhaulUpdate.check(true) end
+                local definition = create_UIBox_generic_options({back_func = "exit_overlay_menu", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Version Mismatch"), scale = 0.4, colour = G.C.RED, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Both players must have the same game version."), scale = 0.28, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("You: ") .. tostring(my_version or "?") .. "  |  " .. mod_loc("Opponent: ") .. tostring(their_version or "?"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+                    }},
+                }})
+                _show_mp_overlay("MP_VERSION_MISMATCH_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+    -- ============================================
+    -- CONNECTING SCREEN
+    -- ============================================
+
+    function bom_ui.show_connecting_screen()
+        if not G or not G.FUNCS then return end
+
+        G.FUNCS.mp_cancel_connecting = function()
+            pcall(function()
+                if bom_core and bom_core.disconnect then bom_core.disconnect() end
+            end)
+            bom_ui.hide_connecting_screen()
+        end
+
+        local definition = create_UIBox_generic_options({back_func = "mp_cancel_connecting", contents = {
+            { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                { n = G.UIT.T, config = { text = mod_loc("CONNECTING"), scale = 0.4, colour = G.C.GOLD, shadow = true } },
+            }},
+            { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                { n = G.UIT.T, config = { text = mod_loc("Connecting to server..."), scale = 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+            }},
+            { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                { n = G.UIT.T, config = { text = mod_loc("Please wait"), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+            }},
+            { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                UIBox_button({ label = { mod_loc("Cancel") }, button = "mp_cancel_connecting", minw = 2.5, minh = 0.5, colour = G.C.RED, scale = 0.35 }),
+            }},
+        }})
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 711
+        bom_ui.overlay({definition = definition})
+        G.MP_CONNECTING_OVERLAY = G.OVERLAY_MENU
+    end
+
+    function bom_ui.release_connecting_screen()
+        local overlay = G and G.MP_CONNECTING_OVERLAY
+        if not overlay then return end
+        if G.OVERLAY_MENU ~= overlay then pcall(function() overlay:remove() end) end
+        G.MP_CONNECTING_OVERLAY = nil
+    end
+
+    function bom_ui.hide_connecting_screen()
+        if not G then return end
+        local overlay = G.MP_CONNECTING_OVERLAY
+        if overlay then
+            if G.OVERLAY_MENU == overlay and G.FUNCS and G.FUNCS.exit_overlay_menu then
+                pcall(function() G.FUNCS.exit_overlay_menu() end)
+            else
+                pcall(function() overlay:remove() end)
+            end
+            G.MP_CONNECTING_OVERLAY = nil
+        end
+    end
+
+    local function L(s) return mod_loc and mod_loc(s) or s end
+    local function kit() return rawget(_G, "bom_kit") end
+
+    local function match_state()
+        local st = {}
+        pcall(function() st = bom_match.get_state() or {} end)
+        return st
+    end
+
+    local function settings()
+        local s = nil
+        pcall(function() s = bom_match.get_settings() end)
+        if type(s) ~= "table" then pcall(function() s = G.GAME.mp_settings end) end
+        return type(s) == "table" and s or {}
+    end
+
+    local function later(fn)
+        G.E_MANAGER:add_event(Event({trigger = "immediate", blocking = false, blockable = false, func = function() pcall(fn) return true end}))
+    end
+
+    local function toast(text, colour)
+        if not (G and G.ROOM_ATTACH and text) then return end
+        pcall(function()
+            attention_text({text = text, scale = 0.5, hold = 3.5, major = G.ROOM_ATTACH, align = "cm", offset = {x = 0, y = -3.2},
+                backdrop_colour = colour or G.C.BLACK, silent = true})
+        end)
+    end
+    bom_ui.l4_toast = toast
+
+    local function players_sig()
+        local parts = {}
+        for _, p in ipairs(bom_ui.roster()) do
+            local st = bom_ui.player_status(p)
+            local armed = bom_party and bom_party.kick_armed and bom_party.kick_armed(p.pid) or false
+            parts[#parts + 1] = table.concat({tostring(p.name), tostring(p.lives), tostring(p.skips), tostring(st.text), tostring(st.blind), tostring(p.host), tostring(armed)}, ":")
+        end
+        return table.concat(parts, "|")
+    end
+
+    local LI = {sig = nil, t = 0}
+
+    local function li_tick(e)
+        local win = UIK and UIK._win
+        if not (win and win.id == "mp_li" and win._cur == "players" and G.OVERLAY_MENU) then return end
+        local now = G.TIMERS and G.TIMERS.REAL or 0
+        if now - LI.t < 0.25 then return end
+        LI.t = now
+        local sig = players_sig()
+        if LI.sig ~= nil and sig ~= LI.sig then
+            LI.sig = sig
+            later(function() if UIK._win == win and win._cur == "players" then UIK.refresh() end end)
+            return
+        end
+        LI.sig = sig
+    end
+
+    local function li_kick(e)
+        local r = e and e.config and e.config.ref_table
+        if not (r and r.pid ~= nil and bom_party and bom_party.kick) then return end
+        local sent = bom_party.kick(r.pid, r.name, r.bot)
+        if not sent then
+            if UIK._win and UIK._win.id == "mp_li" then pcall(UIK.refresh) end
+            return
+        end
+        G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.6, timer = "REAL", blocking = false, blockable = false, func = function()
+            if UIK._win and UIK._win.id == "mp_li" then pcall(UIK.refresh) end
+            return true
+        end}))
+    end
+
+    function bom_ui.lobby_players_tab()
+        local k = kit()
+        local d = k.dims()
+        local list = bom_ui.roster()
+        local party = bom_ui.in_party_run()
+        local i_host = party and bom_party.is_host and bom_party.is_host() or false
+        local rh = d.row_h + 0.06
+        local rows = {}
+        for i, p in ipairs(list) do
+            local host = p.host == true
+            local cells = {
+                k.lives_pill(p.lives, {h = rh}),
+                k.name_bar(p.name, {h = rh, colour = host and k.colour("name_host") or k.colour("name_light"), text_colour = k.colour("dark_text"), shadow = false}),
+                bom_badges.slot(p, {h = rh}),
+                p.skips ~= nil and k.skips_pill(p.skips, {h = rh}) or k.cell({}, {w = d.skips_w, h = rh}),
+                k.host_tag(host, {h = rh}),
+            }
+            if party then
+                if i_host and not p.mine and p.left ~= true and p.pid ~= nil then
+                    local armed = bom_party.kick_armed and bom_party.kick_armed(p.pid)
+                    cells[#cells + 1] = k.icon_button({label = armed and "?" or "K", colour = armed and G.C.GOLD or nil, button = "bom_li_kick", ref_table = {name = p.name, pid = p.pid, bot = bom_badges.is_bot(p)}, h = rh})
+                else
+                    cells[#cells + 1] = k.cell({}, {w = d.kick_w, h = rh})
+                end
+            end
+            cells[#cells + 1] = k.status_pill(bom_ui.player_status(p), {h = rh})
+            if i > 1 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.08}} end
+            if UIK.portrait and UIK.portrait() then
+                local top, low = {cells[1], cells[2], cells[3]}, {}
+                for j = 4, #cells do low[#low + 1] = cells[j] end
+                cells = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {
+                    k.row(top, {plain = true, padding = 0.02}),
+                    k.row(low, {plain = true, padding = 0.02}),
+                }}}
+            end
+            rows[#rows + 1] = k.row(cells, {mine = p.mine, padding = 0.06, id = p.pid ~= nil and ("bom_emote_pid_" .. tostring(p.pid)) or nil})
+        end
+        LI.sig = players_sig()
+        return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0.1, func = "bom_li_tick"}, nodes = {
+            {n = G.UIT.C, config = {align = "tm"}, nodes = rows},
+        }}
+    end
+
+    local MODE_RULE = {
+        nemesis = "Boss blinds are PvP from the chosen ante",
+        faceoff = "Every blind is PvP from the chosen ante",
+        ascension = "No PvP, lives only go on failed blinds",
+    }
+
+    local function ruleset()
+        local st = match_state()
+        if type(st.ruleset) == "table" then return st.ruleset end
+        local s = settings()
+        local id = s.ruleset_id
+        if id and rawget(_G, "bom_rulesets") and bom_rulesets.get then
+            local ok, rs = pcall(bom_rulesets.get, id)
+            if ok and type(rs) == "table" then return rs end
+        end
+        return nil
+    end
+    bom_ui.current_ruleset = ruleset
+
+    local function on_off(v) return v and L("On") or L("Off") end
+
+    local function value_label(key, v)
+        if bom_lobby_settings and bom_lobby_settings.value_label then
+            local ok, out = pcall(bom_lobby_settings.value_label, key, v)
+            if ok and out then return out end
+        end
+        if type(v) == "boolean" then return on_off(v) end
+        return tostring(v)
+    end
+
+    local function stake_name(n)
+        n = tonumber(n) or 1
+        local c = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and G.P_CENTER_POOLS.Stake[n]
+        if c then
+            local ok, name = pcall(localize, {type = "name_text", key = c.key, set = "Stake"})
+            if ok and name and name ~= "ERROR" then return name end
+        end
+        return tostring(n)
+    end
+
+    local function layer_names(s)
+        local ids = (ruleset() or {}).layers or s.layers
+        if type(ids) ~= "table" or #ids == 0 then return L("None") end
+        local names = {}
+        for _, id in ipairs(ids) do
+            local name = nil
+            if rawget(_G, "bom_layers") and bom_layers.name then pcall(function() name = bom_layers.name(id) end) end
+            names[#names + 1] = name or nil
+        end
+        if #names == 0 then return tostring(#ids) end
+        return table.concat(names, ", ")
+    end
+
+    local function mode_info()
+        local s = settings()
+        local mode = (G.GAME and G.GAME.mp_mode) or s.mode or "nemesis"
+        local name, rule = mode, MODE_RULE[mode] and L(MODE_RULE[mode]) or nil
+        pcall(function()
+            local gm = bom_gamemodes.get(mode)
+            if gm then name = gm.display_name or mode end
+        end)
+        if bom_ui.in_party_run() then
+            pcall(function()
+                local kind = bom_party.kind()
+                name = bom_party.kind_name(kind)
+                local lines = bom_party_run.desc(kind)
+                rule = lines and table.concat(lines, " ") or rule
+            end)
+        end
+        return L(name), rule
+    end
+
+    function bom_ui.lobby_rule_pairs()
+        local s = settings()
+        local mode = s.mode or "nemesis"
+        local out = {}
+        local party_raid = bom_ui.in_party_run() and (s.party_kind == "raid")
+        if not party_raid then out[#out + 1] = {L("Lives"), tostring(s.starting_lives or 4)} end
+        local pvp = mode == "faceoff" and s.showdown_starting_antes or (mode == "nemesis" and s.pvp_start_round or nil)
+        out[#out + 1] = {L("PvP from ante"), pvp and tostring(pvp) or "-"}
+        local fa = bom_match and bom_match.final_ante and bom_match.final_ante() or s.win_ante or 8
+        out[#out + 1] = {L("Final ante"), tostring(fa)}
+        out[#out + 1] = {L("Ready timer"), s.timer and value_label("timer_base_seconds", s.timer_base_seconds or 120) or L("Off")}
+        local seed = bom_match.clean_seed and bom_match.clean_seed(s.custom_seed) or nil
+        out[#out + 1] = {L("Seeds"), s.different_seeds and L("Different") or (seed or L("Same"))}
+        local deck = s.deck or "Red Deck"
+        pcall(function() if G.GAME.selected_back and G.GAME.selected_back.name then deck = G.GAME.selected_back.loc_name or G.GAME.selected_back.name end end)
+        if s.different_decks then deck = deck .. " (" .. L("each picks") .. ")" end
+        out[#out + 1] = {L("Deck"), deck}
+        local mp_base = nil
+        pcall(function() if bom_stakes.valid(s.mp_stake) then mp_base = bom_stakes.base(s.mp_stake) end end)
+        out[#out + 1] = {L("Stake"), stake_name(mp_base or s.stake or (G.GAME and G.GAME.stake))}
+        if type(s.mp_stake) == "string" and s.mp_stake ~= "" and rawget(_G, "bom_stakes") then
+            local okn, nm = pcall(bom_stakes.name, s.mp_stake)
+            if okn and nm and nm ~= "" then out[#out + 1] = {L("MP stake"), nm} end
+        end
+        local order = s.the_order
+        pcall(function() order = bom_match.the_order_on() end)
+        out[#out + 1] = {L("Shared queue"), on_off(order)}
+        out[#out + 1] = {L("MP cards"), on_off(s.multiplayer_jokers ~= false)}
+        out[#out + 1] = {L("Layers"), layer_names(s)}
+        return out
+    end
+
+    local COVERED = {["Mode"] = true, ["Lives"] = true, ["PvP from ante"] = true, ["Final ante"] = true, ["Ready timer"] = true, ["Timer length"] = true,
+        ["Different seeds"] = true, ["Seed"] = true, ["Deck"] = true, ["Stake"] = true, ["Multiplayer stake"] = true, ["Shared queue"] = true, ["Multiplayer jokers"] = true}
+
+    function bom_ui.lobby_other_lines()
+        local lines = {}
+        pcall(function() lines = bom_lobby_settings.describe(settings()) or {} end)
+        local out = {}
+        for _, line in ipairs(lines) do
+            local label = tostring(line):match("^(.-):%s")
+            local skip = false
+            for en in pairs(COVERED) do if label == L(en) then skip = true end end
+            if not skip then out[#out + 1] = tostring(line) end
+        end
+        return out
+    end
+
+    function bom_ui.lobby_run_lines()
+        local out = {}
+        local name, rule = mode_info()
+        out[#out + 1] = name
+        if rule then out[#out + 1] = rule end
+        local rs = ruleset()
+        if rs then
+            out[#out + 1] = L(rs.name or "")
+            if rs.desc then out[#out + 1] = L(rs.desc) end
+        end
+        for _, pr in ipairs(bom_ui.lobby_rule_pairs()) do out[#out + 1] = pr[1] .. ": " .. pr[2] end
+        local my_seed = nil
+        pcall(function() my_seed = G.GAME.pseudorandom.seed end)
+        if my_seed and rawget(_G, "MPFair") and MPFair.seed_hidden() then my_seed = nil end
+        if my_seed then out[#out + 1] = L("Your seed") .. ": " .. tostring(my_seed) end
+        local all = {}
+        pcall(function() all = bom_lobby_settings.describe(settings()) or {} end)
+        for _, line in ipairs(all) do out[#out + 1] = tostring(line) end
+        return out
+    end
+
+    local function rule_cell(label, value, w)
+        local k = kit()
+        local d = k.dims()
+        local h = d.row_h + 0.04
+        local vw = math.min(3.2, w * 0.46)
+        local lw = w - vw - 0.3
+        local ls, lsc = k.fit(label, lw, d.scale)
+        return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, minh = h + 0.08, r = 0.1, colour = {0, 0, 0, 0.15}, padding = 0.04}, nodes = {
+            {n = G.UIT.C, config = {align = "cl", minw = lw, maxw = lw, minh = h}, nodes = {k.text(ls, {scale = lsc, colour = G.C.UI.TEXT_LIGHT})}},
+            {n = G.UIT.C, config = {minw = 0.1}},
+            k.pill(value, {w = vw, h = h, colour = G.C.BLACK, scale = d.scale}),
+        }}
+    end
+
+    local function grid(pairs_list, w)
+        local gap = 0.16
+        local cw = (w - gap) / 2
+        local rows = {}
+        for i = 1, #pairs_list, 2 do
+            local a, b = pairs_list[i], pairs_list[i + 1]
+            if #rows > 0 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.08}} end
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                rule_cell(a[1], a[2], cw),
+                {n = G.UIT.C, config = {minw = gap}},
+                b and rule_cell(b[1], b[2], cw) or {n = G.UIT.C, config = {minw = cw}},
+            }}
+        end
+        return rows
+    end
+
+    function bom_ui.lobby_run_tab()
+        local k = kit()
+        local d = k.dims()
+        local w = UIK.W - 0.6
+        local nodes = {}
+        local name, rule = mode_info()
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {k.text(name, {scale = d.scale + 0.14, colour = G.C.GOLD})}}
+        if rule then nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", maxw = w}, nodes = {k.text(rule, {scale = d.small, colour = UIK.C.muted, shadow = false})}} end
+        local rs = ruleset()
+        if rs and rs.name then
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {minh = 0.06}}
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {k.text(L(rs.name), {scale = d.scale + 0.04, colour = G.C.WHITE})}}
+            if rs.desc then nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", maxw = w}, nodes = {k.text(L(rs.desc), {scale = d.small, colour = UIK.C.muted, shadow = false})}} end
+        end
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {minh = 0.14}}
+        for _, r in ipairs(grid(bom_ui.lobby_rule_pairs(), w)) do nodes[#nodes + 1] = r end
+        local other = bom_ui.lobby_other_lines()
+        if #other > 0 then
+            local pairs_list = {}
+            for _, line in ipairs(other) do
+                local a, b = line:match("^(.-):%s*(.*)$")
+                pairs_list[#pairs_list + 1] = {a or line, b or ""}
+                if #pairs_list >= 8 then break end
+            end
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {minh = 0.12}}
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {k.text(L("Other rules"), {scale = d.scale, colour = G.C.GOLD})}}
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {minh = 0.06}}
+            for _, r in ipairs(grid(pairs_list, w)) do nodes[#nodes + 1] = r end
+        end
+        return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0.06}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = nodes}}}
+    end
+
+    local function own_pvp_blind(key)
+        if type(key) ~= "string" then return true end
+        if key:sub(1, 6) == "bl_mp_" then return true end
+        local b = G.P_BLINDS and G.P_BLINDS[key]
+        if b and (b.pvp or b.mp_pvp) then return true end
+        if bom_party_run and bom_party_run.KEY then
+            for _, v in pairs(bom_party_run.KEY) do if v == key then return true end end
+        end
+        return false
+    end
+
+    local CATS = {"jokers", "consumables", "vouchers", "blinds", "tags"}
+    local CAT_LABEL = {jokers = "Jokers", consumables = "Consumables", vouchers = "Vouchers", blinds = "Blinds", tags = "Tags"}
+
+    local function category(key)
+        if G.P_CENTERS and G.P_CENTERS[key] then
+            local set = G.P_CENTERS[key].set
+            if set == "Joker" then return "jokers" end
+            if set == "Voucher" then return "vouchers" end
+            if set == "Tarot" or set == "Planet" or set == "Spectral" then return "consumables" end
+            return nil
+        end
+        if G.P_BLINDS and G.P_BLINDS[key] then return "blinds" end
+        if G.P_TAGS and G.P_TAGS[key] then return "tags" end
+        return nil
+    end
+
+    function bom_ui.banned_by_category()
+        local out = {jokers = {}, consumables = {}, vouchers = {}, blinds = {}, tags = {}}
+        local seen = {}
+        local function add(key)
+            if type(key) ~= "string" or seen[key] or own_pvp_blind(key) then return end
+            if G.GAME and type(G.GAME.bom_sw_bans) == "table" and G.GAME.bom_sw_bans[key] then return end
+            local cat = category(key)
+            if not cat then return end
+            seen[key] = true
+            local list = out[cat]
+            list[#list + 1] = key
+        end
+        for key, v in pairs((G.GAME and G.GAME.banned_keys) or {}) do if v then add(key) end end
+        local rs = ruleset()
+        if rs and type(rs.bans) == "table" then
+            for _, list in pairs(rs.bans) do
+                if type(list) == "table" then for _, key in ipairs(list) do add(key) end end
+            end
+        end
+        local function order_of(key)
+            local c = (G.P_CENTERS and G.P_CENTERS[key]) or (G.P_BLINDS and G.P_BLINDS[key]) or (G.P_TAGS and G.P_TAGS[key]) or {}
+            return tonumber(c.order) or 9999
+        end
+        for _, cat in ipairs(CATS) do
+            table.sort(out[cat], function(a, b)
+                local oa, ob = order_of(a), order_of(b)
+                if oa ~= ob then return oa < ob end
+                return a < b
+            end)
+        end
+        return out
+    end
+
+    local function name_of(key, set)
+        local ok, name = pcall(localize, {type = "name_text", key = key, set = set})
+        if ok and name and name ~= "ERROR" then return name end
+        return nil
+    end
+
+    local function cards_node(keys, w, rework)
+        local scale = UIK.touch() and 0.62 or 0.56
+        local cw, ch = G.CARD_W * scale, G.CARD_H * scale
+        local width = math.min(w, math.max(cw, #keys * (cw + 0.08)))
+        local area = CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, width, ch, {card_limit = #keys, type = "title", highlight_limit = 0, collection = true})
+        for _, key in ipairs(keys) do
+            local center = G.P_CENTERS[key]
+            if center then
+                local RW = rework and rawget(_G, "bom_reworks")
+                local function make()
+                    local ok, c = pcall(Card, area.T.x + area.T.w / 2, area.T.y, cw, ch, nil, center, {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true})
+                    return ok and c or nil
+                end
+                local card
+                if RW and RW.preview then card = RW.preview(key, make) else card = make() end
+                if card then
+                    if RW then card.mp_rw_preview = key end
+                    area:emplace(card)
+                end
+            end
+        end
+        return {n = G.UIT.O, config = {object = area}}
+    end
+
+    local function blinds_node(keys)
+        local size = UIK.touch() and 0.82 or 0.72
+        local nodes = {}
+        for _, key in ipairs(keys) do
+            local icon = kit().blind_icon(key, size)
+            if icon then
+                if #nodes > 0 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = 0.12}} end
+                nodes[#nodes + 1] = {n = G.UIT.C, config = {align = "cm", tooltip = {text = {name_of(key, "Blind") or "?"}}, hover = true, collideable = true}, nodes = {icon}}
+            end
+        end
+        return {n = G.UIT.R, config = {align = "cm"}, nodes = nodes}
+    end
+
+    local function tags_node(keys)
+        local size = UIK.touch() and 0.7 or 0.6
+        local nodes = {}
+        for _, key in ipairs(keys) do
+            local ok, tag = pcall(Tag, key, true)
+            if ok and tag then
+                local ok2, ui = pcall(function() return tag:generate_UI(size) end)
+                if ok2 and ui then
+                    if #nodes > 0 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = 0.1}} end
+                    if ui.n == G.UIT.R then ui.n = G.UIT.C end
+                    nodes[#nodes + 1] = ui
+                end
+            end
+        end
+        return {n = G.UIT.R, config = {align = "cm"}, nodes = nodes}
+    end
+
+    local function card_sections(groups, empty_text)
+        local k = kit()
+        local d = k.dims()
+        local w = UIK.W - 0.6
+        local nodes = {}
+        for _, g in ipairs(groups) do
+            if #g.keys > 0 then
+                if #nodes > 0 then nodes[#nodes + 1] = {n = G.UIT.R, config = {minh = 0.06}} end
+                nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {k.text(L(g.label) .. " (" .. #g.keys .. ")", {scale = d.scale, colour = G.C.GOLD})}}
+                local body
+                if g.kind == "blinds" then body = blinds_node(g.keys)
+                elseif g.kind == "tags" then body = tags_node(g.keys)
+                else body = {n = G.UIT.R, config = {align = "cm"}, nodes = {cards_node(g.keys, w, g.rework)}} end
+                nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", r = 0.1, colour = {0, 0, 0, 0.15}, padding = 0.06, minw = w}, nodes = {body}}
+            end
+        end
+        if #nodes == 0 then
+            nodes[1] = {n = G.UIT.R, config = {align = "cm", minh = 1.5}, nodes = {k.text(empty_text, {scale = d.scale + 0.04, colour = UIK.C.muted})}}
+        end
+        return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0.06}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = nodes}}}
+    end
+
+    function bom_ui.lobby_bans_tab()
+        local by = bom_ui.banned_by_category()
+        local groups = {}
+        for _, cat in ipairs(CATS) do groups[#groups + 1] = {kind = cat, label = CAT_LABEL[cat], keys = by[cat]} end
+        return card_sections(groups, L("Nothing is banned in this match"))
+    end
+
+    function bom_ui.rework_keys()
+        local rs = ruleset()
+        local out = {}
+        if rs and type(rs.reworks) == "table" then
+            for _, key in ipairs(rs.reworks) do
+                if type(key) == "string" and ((G.P_CENTERS and G.P_CENTERS[key]) or key == "Blue" or key:match("^tag_")) then out[#out + 1] = key end
+            end
+        end
+        return out
+    end
+
+    function bom_ui.lobby_reworks_tab()
+        local keys = bom_ui.rework_keys()
+        local groups = {{kind = "jokers", label = "Reworked cards", keys = {}, rework = true}}
+        for _, key in ipairs(keys) do
+            local cat = category(key)
+            if cat and cat ~= "blinds" and cat ~= "tags" then table.insert(groups[1].keys, key) end
+        end
+        local root = card_sections(groups, L("No reworked cards"))
+        local k = kit()
+        local extra = {}
+        for _, key in ipairs(keys) do
+            if not (G.P_CENTERS and G.P_CENTERS[key]) and rawget(_G, "bom_reworks") and bom_reworks.info then
+                local ok, info = pcall(bom_reworks.info, key)
+                if ok and type(info) == "table" and info.name then
+                    local text = {}
+                    for _, line in ipairs(info.text or {}) do text[#text + 1] = (tostring(line):gsub("{[^}]*}", "")) end
+                    extra[#extra + 1] = {n = G.UIT.R, config = {align = "cm", r = 0.1, colour = {0, 0, 0, 0.15}, padding = 0.05, minw = UIK.W - 0.6}, nodes = {
+                        {n = G.UIT.R, config = {align = "cm"}, nodes = {k.text(tostring(info.name), {scale = 0.34, colour = G.C.GOLD})}},
+                    }}
+                    local body = extra[#extra].nodes
+                    local ok_w, lines = pcall(require("multiplayer.mps_state").wrap, table.concat(text, " "), UIK.W - 0.9, 0.28)
+                    if not ok_w then lines = {table.concat(text, " ")} end
+                    for _, ln in ipairs(lines) do
+                        body[#body + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {k.text(ln, {scale = 0.28, colour = G.C.WHITE})}}
+                    end
+                end
+            end
+        end
+        if #extra > 0 then
+            local holder = root.nodes and root.nodes[1] and root.nodes[1].nodes
+            if holder then
+                if #holder == 1 and holder[1].config and holder[1].config.minh == 1.5 then holder[1] = nil end
+                for _, n in ipairs(extra) do holder[#holder + 1] = n end
+            end
+        end
+        return root
+    end
+
+    function bom_ui.lobby_info_def()
+        local tabs = {}
+        if bom_standings and bom_standings.tab then
+            tabs[#tabs + 1] = {key = "standings", label = L("Standings"), build = bom_standings.tab}
+        elseif bom_ui.in_party_run() and bom_party.standings_root then
+            tabs[#tabs + 1] = {key = "standings", label = L("Standings"), build = function()
+                local root = bom_party.standings_root()
+                root.n = G.UIT.R
+                root.config = root.config or {}
+                root.config.minw = UIK.W
+                return root
+            end}
+        end
+        local sw = rawget(_G, "bom_swap")
+        if sw and sw.active and sw.active() and sw.runs_tab and not (sw.party_on and sw.party_on()) then
+            tabs[#tabs + 1] = {key = "runs", label = sw.L("Runs"), build = sw.runs_tab}
+        end
+        tabs[#tabs + 1] = {key = "players", label = L("Players"), build = bom_ui.lobby_players_tab}
+        tabs[#tabs + 1] = {key = "run", label = L("Run"), build = bom_ui.lobby_run_tab}
+        tabs[#tabs + 1] = {key = "bans", label = L("Bans"), build = bom_ui.lobby_bans_tab}
+        if #bom_ui.rework_keys() > 0 then tabs[#tabs + 1] = {key = "reworks", label = L("Reworks"), build = bom_ui.lobby_reworks_tab} end
+        LI.sig = nil
+        return UIK.window({id = "mp_li", title = L("LOBBY INFO"), tabs = tabs})
+    end
+
+    function bom_ui.lobby_rows_text()
+        local list = bom_ui.roster()
+        local me, opp = list[1] or {}, list[2] or {}
+        local function loc(p)
+            local t = bom_match.format_location and bom_match.format_location(p.location) or nil
+            return t or "---"
+        end
+        return {self_lives = tostring(me.lives or 0), self_name = me.name, self_loc = loc(me), opp_lives = tostring(opp.lives or 0), opp_name = opp.name, opp_loc = loc(opp)}
+    end
+
+    local CONTEST = {reason = 1, sent = {}}
+    local REASONS = {
+        {key = "cheating", label = "Cheating"},
+        {key = "bug", label = "Game bug"},
+        {key = "connection", label = "Connection problem"},
+        {key = "other", label = "Other"},
+    }
+
+    function bom_ui.contest_available()
+        local st = match_state()
+        return bom_ui.is_ranked_match() and st.match_id ~= nil
+    end
+
+    function bom_ui.contest_sent()
+        local id = match_state().match_id
+        return id ~= nil and CONTEST.sent[tostring(id)] == true
+    end
+
+    function bom_ui.contest_menu_button()
+        local ok, node = pcall(bom_ui.contest_menu_button_raw)
+        return ok and node or nil
+    end
+
+    function bom_ui.contest_menu_button_raw()
+        if not (G.STAGE == G.STAGES.RUN and G.GAME and G.GAME.multiplayer and bom_ui.contest_available()) then return nil end
+        if bom_ui.contest_sent() then
+            return UIBox_button({label = {L("Contest sent")}, button = "nil", minw = 5, colour = G.C.UI.BACKGROUND_INACTIVE})
+        end
+        return UIBox_button({label = {L("Contest this match")}, button = "bom_contest_from_pause", minw = 5, colour = G.C.RED})
+    end
+
+    function bom_ui.contest_button_node(w)
+        local ok, avail = pcall(bom_ui.contest_available)
+        if not (ok and avail) then return nil end
+        local sent = bom_ui.contest_sent()
+        return UIBox_button({id = "mp_contest_btn", button = sent and "nil" or "bom_contest_from_results", label = {sent and L("Contest sent") or L("Contest")},
+            colour = sent and G.C.UI.BACKGROUND_INACTIVE or G.C.RED, minw = w or 3.4, maxw = w or 3.4, minh = 0.7, scale = 0.4, focus_args = {nav = "wide"}})
+    end
+
+    local function contest_back()
+        if CONTEST.from == "results" and bom_ui.reopen_results then
+            pcall(bom_ui.reopen_results)
+        elseif CONTEST.from == "pause" and G.FUNCS.options then
+            pcall(G.FUNCS.options)
+        else
+            pcall(G.FUNCS.exit_overlay_menu)
+        end
+    end
+
+    function bom_ui.open_contest(from)
+        CONTEST.from = from
+        local opts = {}
+        for i, r in ipairs(REASONS) do opts[i] = L(r.label) end
+        G.FUNCS.overlay_menu({definition = UIK.window({
+            id = "mp_contest", title = L("CONTEST THIS MATCH"), compact = true, w = 9.4,
+            back_func = "bom_contest_cancel", back_label = L("Cancel"),
+            build = function()
+                return UIK.stack({
+                    UIK.note({
+                        L("Only contest a real problem: cheating, a bug or a broken connection."),
+                        L("The match stays unrated until it is reviewed."),
+                        L("Contests sent to dodge a loss can cost you ranked access."),
+                    }, {w = 9.0, colour = G.C.UI.TEXT_LIGHT}),
+                    UIK.spacer(0.1),
+                    UIK.cycle({label = L("Reason"), options = opts, current = CONTEST.reason, w = 9.0, callback = function(i) CONTEST.reason = i end}),
+                }, {w = 9.0})
+            end,
+            footer = {UIK.button({label = L("Send contest"), button = "bom_contest_send", colour = G.C.RED})},
+        })})
+    end
+
+    local function contest_from_pause() bom_ui.open_contest("pause") end
+    local function contest_from_results() bom_ui.open_contest("results") end
+    local function contest_cancel() contest_back() end
+
+    local function contest_send()
+        local id = match_state().match_id
+        if id == nil then return contest_back() end
+        local reason = (REASONS[CONTEST.reason] or REASONS[1]).key
+        pcall(function() bom_core.send({type = "contest", match_id = id, reason = reason}) end)
+        CONTEST.sent[tostring(id)] = true
+        contest_back()
+        toast(L("Contest sent. The match is held until it is reviewed."), G.C.BLACK)
+    end
+
+    local function on_contest_result(d)
+        if type(d) ~= "table" then return true end
+        if d.ok then
+            toast(L("Contest received"), G.C.BLACK)
+        else
+            local id = match_state().match_id
+            if id ~= nil and d.reason ~= "already" then CONTEST.sent[tostring(id)] = nil end
+            toast(L("Contest refused") .. (d.reason and (": " .. tostring(d.reason)) or ""), G.C.RED)
+        end
+        return true
+    end
+
+    function bom_ui.register_contest_events()
+        G.FUNCS.bom_li_tick = li_tick
+        G.FUNCS.bom_li_kick = li_kick
+        G.FUNCS.bom_contest_from_pause = contest_from_pause
+        G.FUNCS.bom_contest_from_results = contest_from_results
+        G.FUNCS.bom_contest_cancel = contest_cancel
+        G.FUNCS.bom_contest_send = contest_send
+        if bom_events and bom_events.register then bom_events.register("contest_result", on_contest_result) end
+        if mod_loc_register then mod_loc_register({fr = bom_ui.L4_OV_FR, es = bom_ui.L4_OV_ES}) end
+    end
+
+    bom_ui.L4_OV_FR = {
+        ["LOBBY INFO"] = "INFOS DU SALON", ["Bans"] = "Bannis", ["Reworks"] = "Refontes", ["PvP from ante"] = "JcJ dès la mise", ["Ready timer"] = "Minuteur de prêt",
+        ["Seeds"] = "Graines", ["Different"] = "Différentes", ["Same"] = "Identiques", ["each picks"] = "au choix", ["MP cards"] = "Cartes MP", ["MP stake"] = "Mise MP", ["Layers"] = "Modificateurs",
+        ["None"] = "Aucun", ["On"] = "Activé", ["Other rules"] = "Autres règles", ["Your seed"] = "Votre seed",
+        ["Nothing is banned in this match"] = "Rien n'est banni dans ce match", ["Reworked cards"] = "Cartes refondues", ["No reworked cards"] = "Aucune carte refondue",
+        ["Cheating"] = "Triche", ["Game bug"] = "Bug du jeu", ["Connection problem"] = "Problème de connexion", ["Other"] = "Autre",
+        ["Contest"] = "Contester", ["Contest this match"] = "Contester ce match", ["Contest sent"] = "Contestation envoyée", ["CONTEST THIS MATCH"] = "CONTESTER CE MATCH",
+        ["Only contest a real problem: cheating, a bug or a broken connection."] = "Ne contestez qu'un vrai problème : triche, bug ou connexion coupée.",
+        ["The match stays unrated until it is reviewed."] = "Le match n'est pas classé tant qu'il n'est pas vérifié.",
+        ["Contests sent to dodge a loss can cost you ranked access."] = "Contester pour éviter une défaite peut vous coûter l'accès au classé.",
+        ["Reason"] = "Raison", ["Send contest"] = "Envoyer", ["Contest sent. The match is held until it is reviewed."] = "Contestation envoyée. Le match est en attente de vérification.",
+        ["Contest received"] = "Contestation reçue", ["Contest refused"] = "Contestation refusée",
+    }
+    bom_ui.L4_OV_ES = {
+        ["LOBBY INFO"] = "INFO DE LA SALA", ["Bans"] = "Vetos", ["Reworks"] = "Cambios", ["PvP from ante"] = "JcJ desde apuesta", ["Ready timer"] = "Temporizador de listo",
+        ["Seeds"] = "Semillas", ["Different"] = "Distintas", ["Same"] = "Iguales", ["each picks"] = "a elegir", ["MP cards"] = "Cartas MP", ["MP stake"] = "Pozo MP", ["Layers"] = "Modificadores",
+        ["None"] = "Ninguno", ["On"] = "Activado", ["Other rules"] = "Otras reglas", ["Your seed"] = "Tu código",
+        ["Nothing is banned in this match"] = "No hay nada vetado en esta partida", ["Reworked cards"] = "Cartas cambiadas", ["No reworked cards"] = "No hay cartas cambiadas",
+        ["Cheating"] = "Trampas", ["Game bug"] = "Error del juego", ["Connection problem"] = "Problema de conexión", ["Other"] = "Otro",
+        ["Contest"] = "Impugnar", ["Contest this match"] = "Impugnar esta partida", ["Contest sent"] = "Impugnación enviada", ["CONTEST THIS MATCH"] = "IMPUGNAR ESTA PARTIDA",
+        ["Only contest a real problem: cheating, a bug or a broken connection."] = "Impugna solo un problema real: trampas, un error o una conexión caída.",
+        ["The match stays unrated until it is reviewed."] = "La partida no cuenta hasta que se revise.",
+        ["Contests sent to dodge a loss can cost you ranked access."] = "Impugnar para evitar una derrota puede costarte el acceso a clasificatoria.",
+        ["Reason"] = "Motivo", ["Send contest"] = "Enviar", ["Contest sent. The match is held until it is reviewed."] = "Impugnación enviada. La partida queda en espera de revisión.",
+        ["Contest received"] = "Impugnación recibida", ["Contest refused"] = "Impugnación rechazada",
+    }
+
+end
+
+return M
+end

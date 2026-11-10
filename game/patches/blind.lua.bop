@@ -1,0 +1,188 @@
+BOP 1
+eol lf
+final 1
+base 2
+c 26
+s 1
+r 2 27 %20%20%20%20 -
+c 10
+s 1
+l 2
+    local key = self.config and self.config.blind and self.config.blind.key or ''
+    if (not self.boss and self.name) or key:sub(1, 6) == 'bl_mp_' then
+c 22
+s 1
+l 1
+            if loc_target then
+c 35
+l 12
+        -- Apocalypse Stake (10+): Boss blinds gain additional random suit debuff
+        pcall(function()
+            if self.boss and G.GAME.modifiers and G.GAME.modifiers.boss_additional_effect then
+                local suits = {'Hearts', 'Diamonds', 'Clubs', 'Spades'}
+                local random_suit = suits[math.ceil(pseudorandom(pseudoseed('apocalypse_boss')) * #suits)]
+                if not self.debuff then self.debuff = {} end
+                if not self.debuff.suit then
+                    self.debuff.suit = random_suit
+                end
+            end
+        end)
+
+c 10
+l 7
+        -- Calculate blind chips with creative stake multiplier
+        local creative_mult = 1
+        if get_creative_blind_multiplier then
+            creative_mult = get_creative_blind_multiplier()
+        elseif get_insanity_blind_multiplier then
+            creative_mult = get_insanity_blind_multiplier()
+        end
+c 1
+l 1
+        self.chips = self.chips*creative_mult
+c 8
+s 1
+r 2 116 %20%20%20%20%20%20%20%20 -
+c 20
+l 1
+                            self.children.animatedSprite.atlas = G.ANIMATION_ATLAS[self.config.blind.atlas or 'blind_chips'] or self.children.animatedSprite.atlas
+c 39
+s 1
+r 2 176 %20%20%20%20 -
+c 2
+s 1
+r 2 179 %20%20%20%20 -
+c 3
+s 1
+r 2 183 %20%20%20%20 -
+c 11
+s 3
+r 2 195 %20%20%20%20%20%20%20%20 -
+r 2 196 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 2 197 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 2 199 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 2 201 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+l 1
+            return true end }))
+c 15
+s 1
+r 2 219 %20%20%20%20 -
+c 19
+s 1
+l 1
+                                        return true end }))
+c 26
+s 1
+l 1
+        }))
+c 35
+s 1
+l 1
+    if not silent then
+c 6
+s 1
+l 1
+                return true end }))
+c 39
+s 1
+r 2 349 %20%20%20%20 -
+c 11
+s 1
+r 2 361 %20%20%20%20 -
+c 2
+s 1
+r 2 364 %20%20%20%20 -
+c 9
+s 1
+r 2 374 %20%20%20%20 -
+c 2
+s 1
+r 2 377 %20%20%20%20 -
+c 3
+s 1
+r 2 381 %20%20%20%20 -
+c 4
+s 1
+r 2 386 %20%20%20%20 -
+c 1
+s 1
+l 1
+
+c 4
+s 1
+r 2 393 %20%20%20%20 -
+c 35
+s 1
+r 2 429 %20%20%20%20 -
+c 23
+s 1
+r 2 453 %20%20%20%20 -
+c 1
+s 1
+r 2 455 %20%20%20%20 -
+c 18
+s 1
+r 2 474 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 8
+s 1
+l 1
+        return true end }))
+c 4
+s 1
+r 2 488 %20%20%20%20 -
+c 11
+s 1
+r 2 500 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 3
+s 1
+l 1
+        return true end }))
+c 45
+s 1
+r 2 550 %20%20%20%20 -
+c 7
+s 1
+l 1
+        end
+c 1
+s 1
+r 2 57 %20%20%20%20 -
+c 7
+s 1
+l 1
+        end
+c 12
+s 1
+r 2 581 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 11
+s 1
+l 1
+            end
+c 23
+s 1
+r 2 617 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 7
+l 1
+    if self.boss and card.area ~= G.jokers and card.config and card.config.center and card.config.center.key == 'm_wild' then
+r 2 651 %20%20%20%20%20%20%20%20 -
+l 2
+        return
+    end
+c 22
+s 1
+r 2 647 %20%20%20%20 -
+c 66
+s 1
+l 1
+
+c 19
+l 1
+        self.children.animatedSprite.atlas = G.ANIMATION_ATLAS[self.config.blind.atlas or 'blind_chips'] or self.children.animatedSprite.atlas
+c 18
+end

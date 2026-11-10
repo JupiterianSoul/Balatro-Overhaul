@@ -1,0 +1,822 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 476
+﻿-- ============================================
+-- BOM_NEMESIS â€” PvP blind system (ported from BalatroMultiplayer-0.3.3)
+-- FEATURE: Registers bl_mp_nemesis, opponent color system, all blind hooks
+-- ============================================
+
+local bom_nemesis = {
+    initialized = false,
+}
+
+-- ============================================
+-- BLIND COLUMN COLOR SYSTEM
+-- 25 vanilla blinds used as color sources for nemesis visuals.
+-- Each player picks a blind_col (1-25, default 1) sent during match join.
+-- ============================================
+
+local BLIND_COL_KEYS = {
+    "tooth", "small", "big", "hook", "ox",
+    "house", "wall", "wheel", "arm", "club",
+    "fish", "psychic", "goad", "water", "window",
+    "manacle", "eye", "mouth", "plant", "serpent",
+    "pillar", "needle", "head", "flint", "mark",
+}
+
+function bom_nemesis.blind_col_numtokey(num)
+    num = tonumber(num) or 1
+    if num < 1 or num > #BLIND_COL_KEYS then num = 1 end
+    return "bl_" .. BLIND_COL_KEYS[num]
+end
+
+-- FEATURE: Resolve opponent's chosen blind color key
+-- When both players have â‰¤1 life, use bl_final_heart if it exists (showdown climax)
+local function party_kind()
+    local k = nil
+    pcall(function() k = bom_party_run and bom_party_run.kind() end)
+    return k
+end
+bom_nemesis.party_kind = party_kind
+
+function bom_nemesis.debuff_lines()
+    if party_kind() then return bom_party_run.hud_desc() end
+    return { "Score more points than", "your opponent to win!" }
+end
+
+function bom_nemesis.fill_debuff_lines(b)
+    if not (b and party_kind()) then return end
+    local lines = bom_party_run.hud_desc()
+    if type(b.loc_debuff_lines) ~= "table" then b.loc_debuff_lines = {"", ""} end
+    b.loc_debuff_lines[1] = lines[1] or ""
+    b.loc_debuff_lines[2] = lines[2] or ""
+end
+
+function bom_nemesis.chip_atlas(key)
+    local b = key and G.P_BLINDS and G.P_BLINDS[key]
+    return G.ANIMATION_ATLAS and (G.ANIMATION_ATLAS[b and b.atlas or "blind_chips"] or G.ANIMATION_ATLAS.blind_chips)
+end
+
+function bom_nemesis.get_nemesis_key()
+    if party_kind() then
+        local art = bom_party_run.art_key()
+        if art then return art end
+    end
+    local opp_col = 1
+    pcall(function()
+        local state = bom_match and bom_match.get_state()
+        if state and state.opp_blind_col then
+            opp_col = state.opp_blind_col
+        end
+    end)
+
+    local ret = (G.P_BLINDS and G.P_BLINDS.bl_mp_nemesis) and "bl_mp_nemesis" or bom_nemesis.blind_col_numtokey(opp_col)
+
+    -- Final Heart special case: both at â‰¤1 life
+    pcall(function()
+        local my_lives = bom_match and bom_match.get_my_lives() or 99
+        local opp_lives = bom_match and bom_match.get_opp_lives() or 99
+        if my_lives <= 1 and opp_lives <= 1 then
+            if G.STATE ~= G.STATES.ROUND_EVAL then
+                if G.P_BLINDS and G.P_BLINDS["bl_final_heart"] then
+                    ret = "bl_final_heart"
+                end
+            end
+        end
+    end)
+
+    return ret
+end
+
+-- FEATURE: Get opponent's username for display on nemesis blind
+function bom_nemesis.get_opponent_username()
+    if party_kind() then return bom_party_run.name() end
+    local name = "Opponent"
+    pcall(function()
+        local state = bom_match and bom_match.get_state()
+        if state and state.opp_name then name = state.opp_name end
+    end)
+    return name
+end
+
+-- ============================================
+-- BLIND REGISTRATION (no SMODS needed)
+-- ============================================
+
+local function ensure_blind_registered()
+    if not G or not G.P_BLINDS then return end
+    if G.P_BLINDS["bl_mp_nemesis"] then return end
+
+    local base = G.P_BLINDS["bl_big"] or G.P_BLINDS["bl_small"] or {}
+    if G.ANIMATION_ATLAS and G.ANIMATION_ATLAS.mp_nemesis_chip then base = { atlas = "mp_nemesis_chip", pos = { x = 0, y = 0 } } end
+    G.P_BLINDS["bl_mp_nemesis"] = {
+        key = "bl_mp_nemesis",
+        name = "bl_mp_nemesis",
+        loc_name = "Rival Blind",
+        dollars = 5,
+        mult = 1,
+        boss = { min = 1, max = 10 },
+        blind_types = { "boss" },
+        boss_colour = (G.C and (G.C.MULT or G.C.RED)) or { 1, 0, 0, 1 },
+        atlas = base.atlas or "blind_chips",
+        pos = base.pos or { x = 0, y = 0 },
+        discovered = true,
+        order = 1000,
+        no_collection = true,
+        debuff = {},
+        loc_debuff_text = {
+            "Score more points than",
+            "your opponent to win!",
+        },
+        -- FIX: in_pool must NOT be a function. Function values in this blind config
+        -- can reach save payloads and crash LÃ–VE Channel:push() serialization.
+        in_pool = false,
+    }
+
+    -- FIX: Bug 1 â€” Add localization entry so localize({type="name_text", key="bl_mp_nemesis", set="Blind"})
+    -- returns "Nemesis" instead of "ERROR". Without this, the vanilla HUD blind name display
+    -- shows "ERROR" because there's no localization table entry for bl_mp_nemesis.
+    -- FIX: Must also generate text_parsed/name_parsed fields via loc_parse_string(),
+    -- otherwise localize({type="raw_descriptions"}) crashes with 'bad argument #1 to ipairs'.
+    pcall(function()
+        if G.localization and G.localization.descriptions and G.localization.descriptions.Blind then
+            local entry = {
+                name = "The Rival",
+                text = {"Score more points than", "your opponent to win!"},
+            }
+            -- Generate parsed fields (same as init_localization does at load time)
+            if loc_parse_string then
+                entry.text_parsed = {}
+                for _, line in ipairs(entry.text) do
+                    entry.text_parsed[#entry.text_parsed+1] = loc_parse_string(line)
+                end
+                entry.name_parsed = {}
+                entry.name_parsed[1] = loc_parse_string(entry.name)
+            end
+            G.localization.descriptions.Blind["bl_mp_nemesis"] = entry
+        end
+    end)
+
+    mp_log.info("BOM_NEMESIS", "registered bl_mp_nemesis")
+
+    -- FIX: Also add to banned_keys and bosses_used immediately if G.GAME exists.
+    -- This prevents the get_new_boss() crash at common_events.lua:2684 where
+    -- bl_mp_nemesis lands in eligible_bosses as `true` but isn't in bosses_used,
+    -- making `true <= min_use` crash with "attempt to compare number with boolean".
+    if G.GAME then
+        G.GAME.banned_keys = G.GAME.banned_keys or {}
+        G.GAME.banned_keys["bl_mp_nemesis"] = true
+        G.GAME.bosses_used = G.GAME.bosses_used or {}
+        G.GAME.bosses_used["bl_mp_nemesis"] = G.GAME.bosses_used["bl_mp_nemesis"] or 0
+    end
+end
+
+-- Public wrapper so other modules (bom_pvp_hud) can ensure registration before setting blind_choices
+function bom_nemesis.ensure_registered()
+    ensure_blind_registered()
+end
+
+-- ============================================
+-- PVP DETECTION
+-- ============================================
+
+function bom_nemesis.in_unresolved_pvp_blind()
+    if not G or not G.GAME or not G.GAME.multiplayer or not G.GAME.blind then return false end
+    local b = G.GAME.blind
+    if b.mp_pvp_over then return false end
+    if b.pvp then return true end
+    if not G.GAME.facing_blind then return false end
+    if not (bom_match and bom_match.is_in_match and bom_match.is_in_match()) then return false end
+    local key = b.config and b.config.blind and b.config.blind.key
+    if key ~= "bl_mp_nemesis" then return false end
+    local slot = G.GAME.blind_on_deck or "Boss"
+    local code = (slot == "Small" and "S") or (slot == "Big" and "B") or "L"
+    local ante = (G.GAME.round_resets and G.GAME.round_resets.ante) or 1
+    if not bom_match.is_blind_pvp(ante, code) then return false end
+    b.pvp = true
+    mp_log.warn("BOM_NEMESIS", "pvp flag was lost during the PvP blind (ante %s %s), restored", tostring(ante), code)
+    return true
+end
+
+function bom_nemesis.is_pvp_boss()
+    if not G or not G.GAME or not G.GAME.multiplayer then return false end
+    -- FIX: Do NOT check bom_match.is_pvp_blind() (match phase).
+    -- The match phase (PVP_BLIND/PVP_RESOLVE) is a GLOBAL state that can be set
+    -- by server messages about the OTHER player's blind entry. If Player A enters
+    -- a PvP blind, the server broadcasts isPvpBlind=true, which transitions Player B's
+    -- phase to PVP_BLIND â€” even though Player B is at their Small/Big blind.
+    -- Result: is_pvp_boss() returns true for Player B's non-PvP blind, activating
+    -- opponent name, PvP scoring, and "waiting for opponent" on a Small/Big blind.
+    -- ONLY check G.GAME.blind.pvp, which is set locally by update_draw_to_hand
+    -- from pvp_blind_choices (authoritative, per-slot, per-ante).
+    return G.GAME.blind and G.GAME.blind["pvp"] or false
+end
+
+-- ============================================
+-- APPLY NEMESIS TO CURRENT BLIND (post-set_blind fixup)
+-- ============================================
+
+function bom_nemesis.apply_current_blind(blind_obj)
+    if not G or not G.GAME or not G.GAME.multiplayer then return end
+    if not bom_nemesis.is_pvp_boss() then return end
+
+    blind_obj = blind_obj or G.GAME.blind
+    if not blind_obj or not blind_obj.config then return end
+
+    ensure_blind_registered()
+
+    local nemesis_blind = G.P_BLINDS and G.P_BLINDS["bl_mp_nemesis"]
+    if nemesis_blind then
+        blind_obj.config.blind = nemesis_blind
+    end
+
+    blind_obj.pvp = true
+    blind_obj.boss = true
+    blind_obj.name = "bl_mp_nemesis"
+    blind_obj.loc_name = bom_nemesis.get_opponent_username()
+    blind_obj.disabled = true
+    blind_obj.debuff = {}
+    blind_obj.loc_debuff_text = bom_nemesis.debuff_lines()
+    bom_nemesis.fill_debuff_lines(blind_obj)
+end
+
+-- ============================================
+-- INIT â€” All blind hooks (MUST be called once after engine loads)
+-- ============================================
+
+function bom_nemesis.init()
+    if bom_nemesis.initialized then
+        ensure_blind_registered()
+        return
+    end
+
+    ensure_blind_registered()
+
+    -- =============================================
+    -- HOOK 1: Blind:set_blind â€” swap blind to Nemesis BEFORE original runs
+    -- Prevents name-based boss effects (The Needle, The Water, Amber Acorn, etc.)
+    -- After original: set disabled, adjust spin speed based on nemesis type
+    -- =============================================
+    pcall(function()
+        if Blind and Blind.set_blind then
+            local original_set_blind = Blind.set_blind
+            ---@diagnostic disable-next-line: duplicate-set-field
+            Blind.set_blind = function(self, blind, reset, silent)
+                local is_pvp = false
+                pcall(function()
+                    -- FIX: Do NOT use is_pvp_boss() here â€” it checks G.GAME.blind.pvp
+                    -- which is stale from the PREVIOUS blind. Instead, check the incoming
+                    -- blind prototype key AND the match phase to decide if this set_blind
+                    -- should convert to Nemesis. The incoming blind is "bl_mp_nemesis" only
+                    -- when update_blind_select set blind_choices[slot] = "bl_mp_nemesis".
+                    if not reset and G.GAME and G.GAME.multiplayer
+                        and bom_match and bom_match.is_in_match() then
+                        local is_nemesis_blind = blind and blind.key == "bl_mp_nemesis"
+                        local blind_slot = (G.GAME and G.GAME.blind_on_deck) or "Boss"
+                        local slot_code = (blind_slot == "Small" and "S") or (blind_slot == "Big" and "B") or "L"
+                        local ante = (G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante) or 1
+                        local slot_is_pvp = false
+                        pcall(function()
+                            slot_is_pvp = bom_match.is_blind_pvp(ante, slot_code)
+                        end)
+                        -- FIX: Changed from `is_nemesis_blind and slot_is_pvp` to just `slot_is_pvp`.
+                        -- If update_blind_select fires late (network lag), the blind prototype
+                        -- may still be a vanilla boss when set_blind runs, but slot_is_pvp
+                        -- (derived from bom_match.is_blind_pvp ante/slot lookup) is authoritative.
+                        -- Always substitute with Nemesis when the slot is PvP.
+                        if slot_is_pvp then
+                            ensure_blind_registered()
+                            local nemesis = G.P_BLINDS and G.P_BLINDS["bl_mp_nemesis"]
+                            if nemesis and blind then
+                                blind = nemesis
+                                is_pvp = true
+                            end
+                        elseif is_nemesis_blind and not slot_is_pvp then
+                            -- FIX: Guard against stale bl_mp_nemesis in Small/Big slots.
+                            -- If this slot is not PvP for the current ante/mode, force vanilla.
+                            if blind_slot == "Small" and G.P_BLINDS and G.P_BLINDS["bl_small"] then
+                                blind = G.P_BLINDS["bl_small"]
+                            elseif blind_slot == "Big" and G.P_BLINDS and G.P_BLINDS["bl_big"] then
+                                blind = G.P_BLINDS["bl_big"]
+                            end
+                        end
+                    end
+                end)
+                local result = original_set_blind(self, blind, reset, silent)
+                -- FIX: Explicitly clear pvp flag for non-PvP blinds.
+                -- self.pvp persists across set_blind calls on the same Blind object.
+                -- Without this, a stale pvp=true from the previous Nemesis blind
+                -- could leak into the next Small/Big blind.
+                if reset then
+                    if self.pvp then
+                        mp_log.info("BOM_NEMESIS", "set_blind reset during a PvP blind, pvp flag kept")
+                    end
+                elseif not is_pvp then
+                    pcall(function()
+                        self.pvp = false
+                        self.mp_pvp_over = nil
+                    end)
+                end
+                if is_pvp then
+                    pcall(function()
+                        self.pvp = true
+                        self.mp_pvp_over = nil
+                        self.boss = true
+                        self.disabled = true
+                        self.debuff = {}
+                        self.loc_debuff_text = bom_nemesis.debuff_lines()
+                        bom_nemesis.fill_debuff_lines(self)
+                        -- FIX: Override in-game blind sprite to show opponent's blind color
+                        -- instead of Big Blind default. set_blind stored bl_mp_nemesis.pos
+                        -- (Big Blind pos) so we must fix it AFTER original_set_blind runs.
+                        local nemesis_key = bom_nemesis.get_nemesis_key()
+                        if G.P_BLINDS[nemesis_key] then
+                            local correct_pos = G.P_BLINDS[nemesis_key].pos
+                            if correct_pos then
+                                -- Fix the prototype pos so future references also work
+                                if self.config and self.config.blind then
+                                    self.config.blind.pos = correct_pos
+                                    self.config.blind.atlas = G.P_BLINDS[nemesis_key].atlas
+                                end
+                                self.pos = correct_pos
+                                -- Fix the animated sprite immediately
+                                if self.children and self.children.animatedSprite then
+                                    self.children.animatedSprite.atlas = bom_nemesis.chip_atlas(nemesis_key) or self.children.animatedSprite.atlas
+                                    self.children.animatedSprite:set_sprite_pos(correct_pos)
+                                end
+                            end
+                        end
+                        -- Adjust spin based on nemesis type (ref: blind_hud.lua)
+                        local is_boss = true
+                        local is_showdown = false
+                        if nemesis_key == "bl_small" or nemesis_key == "bl_big" then is_boss = false end
+                        if nemesis_key == "bl_final_heart" then is_showdown = true end
+                        if G.ARGS and G.ARGS.spin then
+                            G.ARGS.spin.real = (G.SETTINGS.reduced_motion and 0 or 1) * (is_boss and (is_showdown and 0.5 or 0.25) or 0)
+                        end
+                    end)
+                end
+                return result
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 2: Blind:change_colour â€” small/big nemesis should NOT use boss colouration
+    -- =============================================
+    pcall(function()
+        if Blind and Blind.change_colour then
+            local original_change_colour = Blind.change_colour
+            ---@diagnostic disable-next-line: duplicate-set-field
+            Blind.change_colour = function(self, blind_col)
+                local small = false
+                pcall(function()
+                    if self.config and self.config.blind and self.config.blind.key == "bl_mp_nemesis" then
+                        local nemesis_key = bom_nemesis.get_nemesis_key()
+                        if nemesis_key == "bl_small" or nemesis_key == "bl_big" then
+                            small = true
+                        end
+                    end
+                end)
+                local boss = self.boss
+                if small then self.boss = false end
+                original_change_colour(self, blind_col)
+                self.boss = boss
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 3: Blind:defeat â€” reset HUD after PvP blind
+    -- =============================================
+    pcall(function()
+        if Blind and Blind.defeat then
+            local original_defeat = Blind.defeat
+            ---@diagnostic disable-next-line: duplicate-set-field
+            Blind.defeat = function(self, silent)
+                local result = original_defeat(self, silent)
+                pcall(function()
+                    if bom_pvp_hud and bom_pvp_hud.reset_blind_hud then
+                        bom_pvp_hud.reset_blind_hud()
+                    end
+                end)
+                return result
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 4: Blind:disable â€” no-op for PvP bosses (prevents boss debuffs from being removed)
+    -- =============================================
+    pcall(function()
+        if Blind and Blind.disable then
+            local original_disable = Blind.disable
+            ---@diagnostic disable-next-line: duplicate-set-field
+            Blind.disable = function(self)
+                if bom_nemesis.is_pvp_boss() then
+                    return
+                end
+                return original_disable(self)
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 5: Blind:get_type â€” for nemesis, return blind_on_deck (showdown triple-nemesis)
+    -- =============================================
+    pcall(function()
+        if Blind and Blind.get_type then
+            local original_get_type = Blind.get_type
+            ---@diagnostic disable-next-line: duplicate-set-field
+            Blind.get_type = function(self)
+                if self.name == "bl_mp_nemesis" then
+                    return G.GAME.blind_on_deck or "Boss"
+                end
+                return original_get_type(self)
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 6: get_blind_main_colour â€” resolve nemesis to opponent's blind color
+    -- =============================================
+    pcall(function()
+        if get_blind_main_colour then
+            local original_get_colour = get_blind_main_colour
+            ---@diagnostic disable-next-line: lowercase-global
+            get_blind_main_colour = function(type)
+                pcall(function()
+                    local is_nemesis = false
+                    if G.GAME and G.GAME.round_resets and G.GAME.round_resets.blind_choices then
+                        is_nemesis = G.GAME.round_resets.blind_choices[type] == "bl_mp_nemesis"
+                    end
+                    if not is_nemesis then
+                        is_nemesis = (type == "bl_mp_nemesis")
+                    end
+                    if is_nemesis then
+                        type = bom_nemesis.get_nemesis_key()
+                    end
+                end)
+                return original_get_colour(type)
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 7: ease_background_colour_blind â€” use opponent's blind color for background
+    -- =============================================
+    pcall(function()
+        if ease_background_colour_blind then
+            local original_ease_bg = ease_background_colour_blind
+            ---@diagnostic disable-next-line: lowercase-global
+            ease_background_colour_blind = function(state, blind_override)
+                pcall(function()
+                    local blindname = blind_override
+                        or (G.GAME and G.GAME.blind and G.GAME.blind.name ~= "" and G.GAME.blind.name)
+                        or "Small Blind"
+                    if blindname == "" then blindname = "Small Blind" end
+                    if blindname == "bl_mp_nemesis" then
+                        local nemesis_key = bom_nemesis.get_nemesis_key()
+r 2 703 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 65
+                            if nemesis_key == k then
+                                blind_override = v.name
+                                break
+                            end
+                        end
+                    end
+                end)
+                return original_ease_bg(state, blind_override)
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 8: add_round_eval_row â€” cashout screen shows opponent's score for nemesis
+    -- =============================================
+    pcall(function()
+        if add_round_eval_row then
+            local original_add_eval_row = add_round_eval_row
+            ---@diagnostic disable-next-line: lowercase-global
+            add_round_eval_row = function(config)
+                if config and config.name == "blind1"
+                    and G.GAME and G.GAME.blind
+                    and G.GAME.blind.config and G.GAME.blind.config.blind
+                    and G.GAME.blind.config.blind.key == "bl_mp_nemesis" then
+                    pcall(function()
+                        -- Show opponent's score as the "blind target"
+                        local panel = G.GAME.mp_opponent_panel
+                        if panel and panel.score_text then
+                            G.GAME.blind.chip_text = tostring(panel.score_text)
+                        end
+                        -- Use opponent's blind color on cashout
+                        local nemesis_key = bom_nemesis.get_nemesis_key()
+                        if G.P_BLINDS[nemesis_key] then
+                            G.GAME.blind.pos = G.P_BLINDS[nemesis_key].pos
+                            G.GAME.blind.config.blind.atlas = G.P_BLINDS[nemesis_key].atlas
+                        end
+                    end)
+                end
+                return original_add_eval_row(config)
+            end
+        end
+    end)
+
+    -- =============================================
+    -- HOOK 9: create_UIBox_blind_choice â€” full override for PvP/nemesis blinds
+    -- Shows opponent's blind color, username, "LIFE or DEATH", "????" score
+    -- Ported from BalatroMultiplayer-0.3.3 ui/game/blind_choice.lua
+    -- =============================================
+    pcall(function()
+        if create_UIBox_blind_choice then
+            local original_create_blind_choice = create_UIBox_blind_choice
+            ---@diagnostic disable-next-line: lowercase-global
+            create_UIBox_blind_choice = function(type, run_info)
+                -- Only override when in multiplayer match
+                local in_mp = false
+                pcall(function()
+                    in_mp = G.GAME and G.GAME.multiplayer and bom_match and bom_match.is_in_match()
+                end)
+                if not in_mp then
+                    return original_create_blind_choice(type, run_info)
+                end
+
+                if not G.GAME.blind_on_deck then G.GAME.blind_on_deck = "Small" end
+                if not run_info then G.GAME.round_resets.blind_states[G.GAME.blind_on_deck] = "Select" end
+
+r 15 1491 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 7
+                type = type or "Small"
+
+                local nemesis = G.GAME.round_resets.blind_choices[type] == "bl_mp_nemesis"
+                local is_pvp_slot = G.GAME.round_resets.pvp_blind_choices and G.GAME.round_resets.pvp_blind_choices[type]
+                -- FIX: Resolve opponent blind color for BOTH nemesis and pvp_slot blinds
+                local nemesis_blind_col = (nemesis or is_pvp_slot) and bom_nemesis.get_nemesis_key() or nil
+
+r 15 1494 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 1495 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+                }
+
+                -- FEATURE: Use opponent's blind_col atlas position for nemesis/PvP sprite
+                local blind_atlas = "blind_chips"
+                local blind_pos = blind_choice.config.pos
+                if blind_choice.config and blind_choice.config.atlas then blind_atlas = blind_choice.config.atlas end
+                if (nemesis or is_pvp_slot) and nemesis_blind_col and G.P_BLINDS[nemesis_blind_col] then
+                    blind_pos = G.P_BLINDS[nemesis_blind_col].pos
+                    blind_atlas = G.P_BLINDS[nemesis_blind_col].atlas or "blind_chips"
+                end
+
+                blind_choice.animation = AnimatedSprite(0, 0, 1.4, 1.4, G.ANIMATION_ATLAS[blind_atlas], blind_pos)
+r 15 1499 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 5
+                    { shader = "dissolve", shadow_height = 0.05 },
+                    { shader = "dissolve" },
+                })
+
+                local extras = nil
+r 15 1212 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+
+r 15 1506 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 1507 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+
+r 15 1509 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 312 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 313 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 51
+                        if v.visible then _poker_hands[#_poker_hands + 1] = k end
+                    end
+                    table.sort(_poker_hands)
+                    G.GAME.orbital_choices[G.GAME.round_resets.ante][type] =
+                        pseudorandom_element(_poker_hands, pseudoseed("orbital"))
+                end
+
+                -- FEATURE: "LIFE or DEATH" extras for PvP/nemesis blinds (ported from reference)
+                if nemesis or is_pvp_slot then
+                    local sd = 0
+                    pcall(function() sd = bom_match.get_sudden_death() or 0 end)
+                    local w1, w2, w3 = "LIFE", "or", "DEATH"
+                    if party_kind() then
+                        w1, w2, w3 = bom_party_run.extras()
+                    elseif sd > 0 then
+                        w1, w2, w3 = mod_loc("mp_sd_top"), string.format(mod_loc("mp_sd_round"), sd), mod_loc("mp_sd_bottom")
+                    end
+                    local dt1 = DynaText({
+                        string = { { string = w1, colour = G.C.FILTER } },
+                        colours = { G.C.BLACK },
+                        scale = 0.55, silent = true, pop_delay = 4.5,
+                        shadow = true, bump = true, maxw = 3,
+                    })
+                    local dt2 = DynaText({
+                        string = { { string = w2, colour = G.C.WHITE } },
+                        colours = { G.C.CHANCE },
+                        scale = 0.35, silent = true, pop_delay = 4.5,
+                        shadow = true, maxw = 3,
+                    })
+                    local dt3 = DynaText({
+                        string = { { string = w3, colour = G.C.FILTER } },
+                        colours = { G.C.BLACK },
+                        scale = 0.55, silent = true, pop_delay = 4.5,
+                        shadow = true, bump = true, maxw = 3,
+                    })
+                    extras = {
+                        n = G.UIT.R, config = { align = "cm" }, nodes = {
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.07, r = 0.1, colour = { 0, 0, 0, 0.12 }, minw = 2.9 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm" }, nodes = {
+                                    { n = G.UIT.O, config = { object = dt1 } },
+                                }},
+                                { n = G.UIT.R, config = { align = "cm" }, nodes = {
+                                    { n = G.UIT.O, config = { object = dt2 } },
+                                }},
+                                { n = G.UIT.R, config = { align = "cm" }, nodes = {
+                                    { n = G.UIT.O, config = { object = dt3 } },
+                                }},
+                            }},
+                        },
+                    }
+                elseif type == "Small" then
+r 15 1521 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                elseif type == "Big" then
+r 15 1521 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 1524 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 14
+                    local pdt1 = DynaText({ string = { { string = localize("ph_up_ante_1"), colour = G.C.FILTER } }, colours = { G.C.BLACK }, scale = 0.55, silent = true, pop_delay = 4.5, shadow = true, bump = true, maxw = 3 })
+                    local pdt2 = DynaText({ string = { { string = localize("ph_up_ante_2"), colour = G.C.WHITE } }, colours = { G.C.CHANCE }, scale = 0.35, silent = true, pop_delay = 4.5, shadow = true, maxw = 3 })
+                    local pdt3 = DynaText({ string = { { string = localize("ph_up_ante_3"), colour = G.C.WHITE } }, colours = { G.C.CHANCE }, scale = 0.35, silent = true, pop_delay = 4.5, shadow = true, maxw = 3 })
+                    extras = {
+                        n = G.UIT.R, config = { align = "cm" }, nodes = {
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.07, r = 0.1, colour = { 0, 0, 0, 0.12 }, minw = 2.9 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm" }, nodes = { { n = G.UIT.O, config = { object = pdt1 } } } },
+                                { n = G.UIT.R, config = { align = "cm" }, nodes = { { n = G.UIT.O, config = { object = pdt2 } } } },
+                                { n = G.UIT.R, config = { align = "cm" }, nodes = { { n = G.UIT.O, config = { object = pdt3 } } } },
+                            }},
+                        },
+                    }
+                end
+
+r 3 1959 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 11
+
+                local loc_target = localize({
+                    type = "raw_descriptions", key = blind_choice.config.key, set = "Blind",
+                    vars = { localize(G.GAME.current_round.most_played_poker_hand, "poker_hands") },
+                })
+
+                -- FEATURE: Show opponent username as blind name for PvP blinds (nemesis or FaceOff)
+                local loc_name = (nemesis or is_pvp_slot)
+                    and bom_nemesis.get_opponent_username()
+                    or localize({ type = "name_text", key = blind_choice.config.key, set = "Blind" })
+
+r 15 1547 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 13
+
+                -- FEATURE: Insanity stake multiplier for blind amount display
+                local insanity_mult = 1
+                if get_insanity_blind_multiplier then
+                    insanity_mult = get_insanity_blind_multiplier()
+                end
+
+                -- FEATURE: "????" score for PvP blinds (ported from reference)
+                local blind_amt = get_blind_amount(G.GAME.round_resets.blind_ante) * blind_choice.config.mult * G.GAME.starting_params.ante_scaling * insanity_mult
+                if nemesis or is_pvp_slot then
+                    blind_amt = "????"
+                end
+
+r 15 1546 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                if (nemesis or is_pvp_slot) and party_kind() then
+                    text_table = bom_party_run.desc()
+                    local amt = bom_party_run.select_amount(type, G.GAME.round_resets.blind_ante or G.GAME.round_resets.ante)
+                    if amt then blind_amt = amt end
+                end
+
+r 15 1550 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                local _reward = true
+r 15 1552 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 119
+                if blind_state == "Select" then blind_state = "Current" end
+                local run_info_colour = run_info and (
+                    blind_state == "Defeated" and G.C.GREY
+                    or blind_state == "Skipped" and G.C.BLUE
+                    or blind_state == "Upcoming" and G.C.ORANGE
+                    or blind_state == "Current" and G.C.RED
+                    or G.C.GOLD
+                )
+
+                -- FIX: Ensure mp_blind_ready_text is initialized for PvP buttons
+                if (nemesis or is_pvp_slot) and not G.GAME.mp_blind_ready_text then
+                    G.GAME.mp_blind_ready_text = mod_loc("Ready")
+                end
+
+                local t = {
+                    n = G.UIT.R, config = {
+                        id = type, align = "tm", func = "blind_choice_handler",
+                        minh = not run_info and 10 or nil,
+                        ref_table = { deck = nil, run_info = run_info },
+                        r = 0.1, padding = 0.05,
+                    }, nodes = {
+                        { n = G.UIT.R, config = { align = "cm", colour = mix_colours(G.C.BLACK, G.C.L_BLACK, 0.5), r = 0.1, outline = 1, outline_colour = G.C.L_BLACK }, nodes = {
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.2 }, nodes = {
+                                not run_info and {
+                                    n = G.UIT.R, config = {
+                                        id = "select_blind_button", align = "cm", ref_table = blind_choice.config,
+                                        colour = disabled and G.C.UI.BACKGROUND_INACTIVE or G.C.ORANGE,
+                                        minh = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.2 or 0.6, minw = 2.7, maxw = 2.7,
+                                        padding = 0.07, r = 0.1, shadow = true, hover = true, one_press = true,
+                                        func = (nemesis or is_pvp_slot) and "bom_pvp_ready_button" or nil,
+                                        button = "select_blind",
+                                    }, nodes = {
+                                        { n = G.UIT.T, config = {
+                                            ref_table = (nemesis or is_pvp_slot) and G.GAME or G.GAME.round_resets.loc_blind_states,
+                                            ref_value = (nemesis or is_pvp_slot) and "mp_blind_ready_text" or type,
+                                            scale = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 0.65 or 0.45,
+                                            colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.UI.TEXT_LIGHT,
+                                            shadow = not disabled,
+                                        }},
+                                    },
+                                } or {
+                                    n = G.UIT.R, config = {
+                                        id = "select_blind_button", align = "cm", ref_table = blind_choice.config,
+                                        colour = run_info_colour, minh = 0.6, minw = 2.7,
+                                        padding = 0.07, r = 0.1, emboss = 0.08,
+                                    }, nodes = {
+                                        { n = G.UIT.T, config = {
+                                            text = localize(blind_state, "blind_states"),
+                                            scale = 0.45, colour = G.C.UI.TEXT_LIGHT, shadow = true,
+                                        }},
+                                    },
+                                },
+                            }},
+                            { n = G.UIT.R, config = { id = "blind_name", align = "cm", padding = 0.07 }, nodes = {
+                                { n = G.UIT.R, config = {
+                                    align = "cm", r = 0.1, outline = 1, outline_colour = blind_col,
+                                    colour = darken(blind_col, 0.3), minw = 2.9, emboss = 0.1,
+                                    padding = 0.07, line_emboss = 1,
+                                }, nodes = {
+                                    { n = G.UIT.O, config = { object = DynaText({
+                                        string = loc_name,
+                                        colours = { disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE },
+                                        shadow = not disabled, float = not disabled,
+                                        y_offset = -4, scale = 0.45, maxw = 2.8,
+                                    })}},
+                                }},
+                            }},
+                            { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                { n = G.UIT.R, config = { id = "blind_desc", align = "cm", padding = 0.05 }, nodes = {
+                                    { n = G.UIT.R, config = { align = "cm" }, nodes = {
+                                        { n = G.UIT.R, config = { align = "cm", minh = 1.5 }, nodes = {
+                                            { n = G.UIT.O, config = { object = blind_choice.animation } },
+                                        }},
+                                        text_table and text_table[1] and {
+                                            n = G.UIT.R, config = { align = "cm", minh = 0.7, padding = 0.05, minw = 2.9 }, nodes = {
+                                                text_table[1] and { n = G.UIT.R, config = { align = "cm", maxw = 2.8 }, nodes = {
+                                                    { n = G.UIT.T, config = { id = blind_choice.config.key, ref_table = { val = "" }, ref_value = "val", scale = 0.32, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, shadow = not disabled, func = "HUD_blind_debuff_prefix" } },
+                                                    { n = G.UIT.T, config = { text = text_table[1] or "-", scale = 0.32, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, shadow = not disabled } },
+                                                }} or nil,
+                                                text_table[2] and { n = G.UIT.R, config = { align = "cm", maxw = 2.8 }, nodes = {
+                                                    { n = G.UIT.T, config = { text = text_table[2] or "-", scale = 0.32, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, shadow = not disabled } },
+                                                }} or nil,
+                                                text_table[3] and { n = G.UIT.R, config = { align = "cm", maxw = 2.8 }, nodes = {
+                                                    { n = G.UIT.T, config = { text = text_table[3] or "-", scale = 0.32, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, shadow = not disabled } },
+                                                }} or nil,
+                                            },
+                                        } or nil,
+                                    }},
+                                    { n = G.UIT.R, config = { align = "cm", r = 0.1, padding = 0.05, minw = 3.1, colour = G.C.BLACK, emboss = 0.05 }, nodes = {
+                                        { n = G.UIT.R, config = { align = "cm", maxw = 3 }, nodes = {
+                                            -- FIX: Show "Enemy Score" for PvP/nemesis blinds instead of "Score at least"
+                                            { n = G.UIT.T, config = { text = (nemesis or is_pvp_slot) and (party_kind() and bom_party_run.top_label() or mod_loc("Enemy Score")) or localize("ph_blind_score_at_least"), scale = 0.3, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, shadow = not disabled } },
+                                        }},
+                                        { n = G.UIT.R, config = { align = "cm", minh = 0.6 }, nodes = {
+                                            { n = G.UIT.O, config = { w = 0.5, h = 0.5, colour = G.C.BLUE, object = stake_sprite, hover = true, can_collide = false } },
+                                            { n = G.UIT.B, config = { h = 0.1, w = 0.1 } },
+                                            { n = G.UIT.T, config = { text = number_format(blind_amt), scale = score_number_scale(0.9, blind_amt), lang = G.LANGUAGES["en-us"], colour = (nemesis or is_pvp_slot) and (disabled and G.C.UI.TEXT_INACTIVE or G.C.GOLD) or (disabled and G.C.UI.TEXT_INACTIVE or G.C.RED), shadow = not disabled } },
+                                        }},
+                                        _reward and { n = G.UIT.R, config = { align = "cm" }, nodes = {
+                                            { n = G.UIT.T, config = { text = localize("ph_blind_reward"), scale = 0.35, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, shadow = not disabled } },
+                                            { n = G.UIT.T, config = { text = string.rep(localize("$"), blind_choice.config.dollars) .. "+", lang = G.LANGUAGES["en-us"], scale = 0.35, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.MONEY, shadow = not disabled } },
+                                        }} or nil,
+                                    }},
+                                }},
+                            }},
+                        }},
+                        { n = G.UIT.R, config = { id = "blind_extras", align = "cm" }, nodes = { extras } },
+                    },
+                }
+                return t
+            end
+        end
+    end)
+
+    bom_nemesis.initialized = true
+    mp_log.info("BOM_NEMESIS", "nemesis blind system initialized (9 hooks)")
+end
+
+return bom_nemesis
+end

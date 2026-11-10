@@ -1,0 +1,214 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 28
+CORNER_LABELS = CORNER_LABELS or {}
+local CL = CORNER_LABELS
+
+CL.PC_SCALE = 1.4
+CL.PAD_X = 6
+CL.PAD_Y = 5
+CL.MARGIN = 10
+
+local ink_cache = setmetatable({}, {__mode = "k"})
+local ink_count = 0
+
+local function measure(font, text)
+    local per_font = ink_cache[font]
+    if not per_font then
+        per_font = {}
+        ink_cache[font] = per_font
+    end
+    local hit = per_font[text]
+    if hit then return hit end
+    local adv_w, line_h = font:getWidth(text), font:getHeight()
+    local res = {x = 0, y = 0, w = adv_w, h = line_h}
+    if love.graphics.newCanvas and adv_w > 0 then
+        pcall(function()
+            local pad = 4
+            local cw, ch = math.ceil(adv_w) + pad * 2, math.ceil(line_h) + pad * 2
+            local canvas = love.graphics.newCanvas(cw, ch)
+            love.graphics.push("all")
+            love.graphics.setCanvas(canvas)
+r 19 278 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            love.graphics.clear(0, 0, 0, 0)
+r 3 4413 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.setFont(font)
+            love.graphics.print(text, pad, pad)
+r 12 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 53
+            love.graphics.pop()
+            local data = canvas:newImageData()
+            local dpi = canvas.getDPIScale and canvas:getDPIScale() or 1
+            local pw, ph = data:getDimensions()
+            local x0, y0, x1, y1 = pw, ph, -1, -1
+            for py = 0, ph - 1 do
+                for px = 0, pw - 1 do
+                    local _, _, _, a = data:getPixel(px, py)
+                    if a > 0.2 then
+                        if px < x0 then x0 = px end
+                        if px > x1 then x1 = px end
+                        if py < y0 then y0 = py end
+                        if py > y1 then y1 = py end
+                    end
+                end
+            end
+            data:release()
+            canvas:release()
+            if x1 >= x0 and y1 >= y0 then
+                res = {x = x0 / dpi - pad, y = y0 / dpi - pad, w = (x1 - x0 + 1) / dpi, h = (y1 - y0 + 1) / dpi}
+            end
+        end)
+    end
+    ink_count = ink_count + 1
+    if ink_count > 400 then
+        ink_cache = setmetatable({}, {__mode = "k"})
+        ink_count = 0
+        ink_cache[font] = {[text] = res}
+    else
+        per_font[text] = res
+    end
+    return res
+end
+
+function CL.box(text, scale, font)
+    font = font or love.graphics.getFont()
+    scale = scale or 1
+    local ink = measure(font, text)
+    local vink = measure(font, "ONLINEFPS0123456789")
+    local w = ink.w * scale + CL.PAD_X * 2
+    local h = vink.h * scale + CL.PAD_Y * 2
+    return w, h, ink, vink
+end
+
+function CL.draw(text, x, y, opts)
+    opts = opts or {}
+    local font = opts.font or love.graphics.getFont()
+    if not font then return 0, 0 end
+    CL.last_font = font
+    local scale = opts.scale or 1
+    local w, h, ink, vink = CL.box(text, scale, font)
+    if opts.anchor == "tr" then x = x - w end
+    love.graphics.push()
+r 19 278 %20%20%20%20 -
+l 115
+    local bg = opts.bg or {0, 0, 0, 0.75}
+    love.graphics.setColor(bg[1], bg[2], bg[3], bg[4] or 1)
+    love.graphics.rectangle("fill", x, y, w, h, 4, 4)
+    local c = opts.colour or {1, 1, 1, 1}
+    love.graphics.setColor(c[1], c[2], c[3], c[4] or 1)
+    love.graphics.print(text, x + CL.PAD_X - ink.x * scale, y + CL.PAD_Y - vink.y * scale, 0, scale, scale)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.pop()
+    return w, h, x, y
+end
+
+function CL.scale()
+    return (_G._IS_DESKTOP and CL.PC_SCALE or 1) * (G and G.UI_SIZE or 1)
+end
+
+CL.MODE_GAP = 4
+
+function CL.mode_shown()
+    if not (CL.mode_available and G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI) or G.OVERLAY_MENU then return false end
+    if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.show_mode_indicator == false then return false end
+    return true
+end
+
+function CL.mode_modded()
+    return MODLOADER and MODLOADER.modded and true or false
+end
+
+function CL.mode_text()
+    return string.upper(mod_loc(CL.mode_modded() and "Modded" or "Normal"))
+end
+
+function CL.mode_box()
+    local sb = CL.status_box
+    local x = sb and sb.x or (mp_config and mp_config.STATUS_INDICATOR_X or 18)
+    local y = sb and (sb.y + sb.h + CL.MODE_GAP) or (mp_config and mp_config.STATUS_INDICATOR_Y or 18)
+    local w, h = CL.box(CL.mode_text(), CL.scale(), CL.last_font or love.graphics.getFont())
+    return x, y, w, h
+end
+
+function CL.mode_clear_y(room_x)
+    if not (CL.mode_available and G and G.ROOM and G.TILESCALE) then return nil end
+    if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.show_mode_indicator == false then return nil end
+    local u = G.TILESCALE*G.TILESIZE
+    local x, y, w, h = CL.mode_box()
+    if (G.ROOM.T.x + room_x)*u > x + w then return nil end
+    return (y + h + CL.MODE_GAP)/u - G.ROOM.T.y
+end
+
+function CL.draw_mode()
+    CL.mode_rect = nil
+    if not CL.mode_shown() then return end
+    local text = CL.mode_text()
+    local colour = CL.mode_modded() and {0.3, 0.9, 0.55, 1} or {0.4, 0.7, 1, 1}
+    local scale = CL.scale()
+    local font = love.graphics.getFont()
+    CL.last_font = font
+    local x, y, w, h = CL.mode_box()
+    CL.draw(text, x + scale, y + scale, {scale = scale, bg = {0, 0, 0, 0}, colour = {0, 0, 0, 0.55}, font = font})
+    CL.draw(text, x, y, {scale = scale, bg = {0, 0, 0, 0}, colour = colour, font = font})
+    CL.mode_rect = {x = x, y = y, w = w, h = h}
+end
+
+function CL.mode_hit(mx, my)
+    local r = CL.mode_rect
+    if not (r and CL.mode_shown()) then return false end
+    if G.CONTROLLER and G.CONTROLLER.locked then return false end
+    return mx >= r.x and mx <= r.x + r.w and my >= r.y - CL.MODE_GAP and my <= r.y + r.h + CL.MODE_GAP
+end
+
+function CL.mode_tap()
+    local f = G.FUNCS[CL.mode_modded() and 'mods_normal_game' or 'mods_modded_game']
+    if f then f({config = {}}) end
+end
+
+function CL.mode_press(mx, my)
+    if not CL.mode_hit(mx, my) then return false end
+    local down = love.mouse.isDown(1) or (love.touch and #love.touch.getTouches() > 0)
+    if down then
+        CL.mode_armed = true
+    else
+        CL.mode_tap()
+    end
+    return true
+end
+
+function CL.mode_release(mx, my)
+    if not CL.mode_armed then return false end
+    CL.mode_armed = nil
+    if CL.mode_hit(mx, my) then CL.mode_tap() end
+    return true
+end
+
+function CL.draw_modded()
+    local m = G and G.MODDED_INDICATOR
+    if not (m and G.STAGES and G.STAGE == G.STAGES.RUN and G.GAME and G.GAME.modded_run) then return end
+    CL.draw(m.text, love.graphics.getWidth() - CL.MARGIN, CL.MARGIN, {anchor = "tr", scale = CL.scale(), bg = {0.8, 0.1, 0.1, 0.85}, colour = {1, 1, 1, 1}})
+end
+
+function CL.version_text()
+    local b = OVERHAUL_NAME and OVERHAUL_VERSION and (' b' .. tostring(OVERHAUL_VERSION)) or ''
+    return 'V ' .. tostring(OVERHAUL_NAME or OVERHAUL_VERSION or '?') .. b .. ' - Overhaul'
+end
+
+function CL.draw_version()
+    if not (G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU) then return end
+    local sw = love.graphics.getWidth()
+    local y = CL.MARGIN
+    local fb = G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.show_fps and CL.fps_box
+    if fb and fb.x + fb.w > sw - 200 and fb.y < CL.MARGIN + 40 then
+        y = fb.y + fb.h + 6
+    end
+    CL.draw(CL.version_text(), sw - CL.MARGIN, y, {anchor = "tr", scale = 1, bg = {0, 0, 0, 0.45}, colour = {1, 1, 1, 0.95}})
+end
+
+return CL
+end

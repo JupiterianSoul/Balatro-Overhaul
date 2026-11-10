@@ -1,0 +1,394 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 193
+local C = require("functions/shop/tavern_catalog")
+local S = require("functions/shop/tavern_store")
+local SL = require("functions/shop/tavern_sleeves")
+
+local A = {shared = {}, defaults = {}}
+
+local function hex(h)
+  if type(h) ~= "string" then return nil end
+  return {tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255, 1}
+end
+A.hex = hex
+
+function A.register()
+  if A.registered then return end
+  A.registered = true
+  local sets = rawget(_G, "SHOP_COLOR_SETS")
+  local rar = rawget(_G, "SHOP_RARITY")
+  if sets and rar then
+    local have = {}
+    for _, s in ipairs(sets) do have[s.id] = true end
+    local map = {common = rar.COMMON, uncommon = rar.UNCOMMON, rare = rar.RARE, epic = rar.EPIC, legendary = rar.LEGENDARY}
+    for _, p in ipairs(C.NEW_PALETTES) do
+      if not have[p.id] and TAVERN_PALETTES.kept(p.id) then
+        sets[#sets + 1] = {id = p.id, name = p.name, rarity = map[p.rarity] or rar.COMMON, group = "Tavern", bonus = true, tavern = true,
+          blue = p.blue, red = p.red, green = p.green, yellow = p.yellow, price = 0}
+      end
+    end
+  end
+  local effects = rawget(_G, "SHOP_ICON_EFFECTS")
+  if effects and rar then
+    local have = {}
+    for _, e in ipairs(effects) do have[e.id] = true end
+    local map = {common = rar.COMMON, uncommon = rar.UNCOMMON, rare = rar.RARE, epic = rar.EPIC, legendary = rar.LEGENDARY}
+    for _, e in ipairs(C.NEW_EFFECTS) do
+      if not have[e.id] then
+        effects[#effects + 1] = {id = e.id, name = e.name, rarity = map[e.rarity] or rar.COMMON, shader = e.steps[1], steps = e.steps, tavern = true, price = 0}
+      end
+    end
+  end
+  local titles = rawget(_G, "TITLES")
+  if titles then
+    local have = {}
+    for _, t in ipairs(titles) do have[t.id] = true end
+    for _, t in ipairs(C.NEW_TITLES) do
+      if not have[t.id] then
+        titles[#titles + 1] = {id = t.id, name = t.name, description = "Found in a Title Pack", unlock_type = "tavern", category = "tavern"}
+      end
+    end
+  end
+end
+
+local ATLASES = {
+  tavern_packs = "TavernPacks.png",
+  tavern_portraits = "TavernPortraits.png",
+  tavern_backs = "TavernBacks.png",
+}
+
+function A.atlas(name)
+  if not (G and G.ASSET_ATLAS) then return nil end
+  local a = G.ASSET_ATLAS[name]
+  if a then return a end
+  if A.shared["miss:" .. name] then return nil end
+  local file = ATLASES[name]
+  local scale = G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.texture_scaling or 2
+  if name == "tavern_sleeves" then
+    local ok, img = pcall(function() return love.graphics.newImage(SL.build(scale), {mipmaps = true, dpiscale = scale}) end)
+    if not ok then
+      print("[tavern_sleeves] " .. tostring(img))
+      A.shared["miss:" .. name] = true
+      return nil
+    end
+    G.ASSET_ATLAS[name] = {name = name, image = img, px = 71, py = 95}
+    return G.ASSET_ATLAS[name]
+  end
+  local path = file and ("resources/textures/" .. scale .. "x/" .. file)
+  if not (path and (love.filesystem.getInfo(path) or (release_art and release_art.has(path)) or (booster_tints and booster_tints.has(path)))) then
+    A.shared["miss:" .. name] = true
+    return nil
+  end
+  local ok, img = pcall(function()
+    if name == "tavern_backs" then
+      local data = love.image.newImageData(path)
+      return love.graphics.newImage(SL.coat_all(data, scale), {mipmaps = true, dpiscale = scale})
+    end
+    return love.graphics.newImage(path, {mipmaps = true, dpiscale = scale})
+  end)
+  if not ok then
+    A.shared["miss:" .. name] = true
+    return nil
+  end
+  G.ASSET_ATLAS[name] = {name = name, image = img, px = 71, py = 95}
+  return G.ASSET_ATLAS[name]
+end
+
+function A.sprite(atlas_name, pos, w, h)
+  local a = A.atlas(atlas_name) or (G.ASSET_ATLAS and G.ASSET_ATLAS[atlas_name])
+  if not a or not pos then return nil end
+  local spr = Sprite(0, 0, w or G.CARD_W, h or G.CARD_H, a, pos)
+  spr.states.drag.can = false
+  spr.states.collide.can = false
+  return spr
+end
+
+function A.pack_sprite(pack, w, h)
+  local art = S.art.packs and S.art.packs[pack.art]
+  local spr
+  if art and A.atlas("tavern_packs") then spr = A.sprite("tavern_packs", art, w, h) end
+  if not spr then spr = A.sprite("Booster", pack.booster, w, h) end
+  return spr
+end
+
+function A.ranked_now()
+  local now = G and G.TIMERS and G.TIMERS.REAL
+  if now and A._rk_at == now then return A._rk end
+  local r = false
+  local ui = rawget(_G, "bom_ui")
+  if ui and ui.is_ranked_match then
+    local ok, v = pcall(ui.is_ranked_match)
+    r = ok and v and true or false
+  end
+  A._rk_at, A._rk = now, r
+  return r
+end
+
+local function active_key(type_key)
+  if A.preview and A.preview[type_key] ~= nil then return A.preview[type_key] or nil end
+  if A.ranked_now() then return nil end
+  return S.equipped(type_key)
+end
+
+local function back_item(key)
+  if not key then return nil end
+  return S.get("back:" .. key)
+end
+
+local function shared_back(it)
+  local sk = "back:" .. it.base
+  local spr = A.shared[sk]
+  if spr then return spr end
+  spr = A.sprite(it.atlas or "tavern_backs", it.pos)
+  A.shared[sk] = spr
+  return spr
+end
+
+function A.draw_back(card)
+  if not (card and card.playing_card and card.children and card.children.back and G.GAME) then return end
+  local it = back_item(active_key("back"))
+  if not it then return end
+  local spr = shared_back(it)
+  if not spr then return end
+  card.ARGS.send_to_shader = card.ARGS.send_to_shader or {0, 0}
+  local base = card.children.back
+  spr.role.draw_major = card
+  if card.area and card.area.config and card.area.config.type == "deck" and card.area.cards and card.area.cards[1] ~= card then
+    local prev = G.BRUTE_OVERLAY
+    G.BRUTE_OVERLAY = (card.rank or 0) > 3 and card.back_overlay or G.C.WHITE
+    spr:draw_from(base)
+    G.BRUTE_OVERLAY = prev
+    return
+  end
+  spr:draw_shader("dissolve", nil, nil, true, base)
+  local send = card.ARGS.send_to_shader
+  if it.finish == "negative" then
+    spr:draw_shader("negative", nil, send, true, base)
+    spr:draw_shader("negative_shine", nil, send, true, base)
+  elseif it.finish then
+    spr:draw_shader(it.finish, nil, send, true, base)
+  end
+end
+
+function A.coat(base)
+  if not (base and base.T and base.children and G and G.GAME) then return base end
+  local it = back_item(active_key("back"))
+  local a = it and A.atlas(it.atlas or "tavern_backs")
+  if not (a and it.pos) then return base end
+  local spr = Sprite(base.T.x, base.T.y, base.T.w, base.T.h, a, it.pos)
+  spr.states.drag.can = false
+  spr.states.collide.can = false
+  spr.states.hover.can = false
+  spr:set_role({major = base, role_type = "Glued", draw_major = base})
+  local send = {0, 0}
+  spr.draw = function(self)
+    if not (self.states.visible and base.states.visible) then return end
+    self:draw_self()
+    if it.finish then
+      send[1], send[2] = G.TIMERS.REAL / 28, G.TIMERS.REAL
+      if it.finish == "negative" then
+        self:draw_shader("negative", nil, send)
+        self:draw_shader("negative_shine", nil, send)
+      else
+        self:draw_shader(it.finish, nil, send)
+      end
+    end
+r 2 461 %20%20%20%20 -
+l 77
+  end
+  base.children.tavern_sleeve = spr
+  return base
+end
+
+local function blind_colours()
+  return G and G.C and G.C.BLIND
+end
+
+function A.apply_felt()
+  local b = blind_colours()
+  if not b then return end
+  for _, k in ipairs({"Small", "Big", "won"}) do
+    if b[k] and not A.defaults[k] then A.defaults[k] = {b[k][1], b[k][2], b[k][3], b[k][4]} end
+  end
+  local f = S.def("felt", active_key("felt"))
+  local c = f and hex(f.colour)
+  for _, k in ipairs({"Small", "Big", "won"}) do
+    local t, d = b[k], A.defaults[k]
+    if t and d then
+      local src = c or d
+      if c and k == "won" then src = {c[1] * 0.85, c[2] * 0.85, c[3] * 0.85, 1} end
+      t[1], t[2], t[3], t[4] = src[1], src[2], src[3], src[4] or 1
+    end
+  end
+end
+
+function A.apply_flames()
+  local f = S.def("flame", active_key("flame"))
+  if not (G and G.ARGS) then return end
+  local pairs_ = {chip_flames = f and f.chips, mult_flames = f and f.mult}
+  for tab, cols in pairs(pairs_) do
+    local a = G.ARGS[tab]
+    if a then
+      if cols then
+        a.colour_1, a.colour_2 = hex(cols[1]), hex(cols[2])
+      elseif G.ARGS.flame_handler then
+        local h = tab == "chip_flames" and G.ARGS.flame_handler.chips or G.ARGS.flame_handler.mult
+        if h then a.colour_1, a.colour_2 = h.colour, h.accent end
+      end
+    end
+  end
+end
+
+function A.celebrate()
+  local c = S.def("celebration", active_key("celebration"))
+  if not (c and G and G.ROOM_ATTACH and Particles) then return end
+  local cols = {}
+  for _, h in ipairs(c.colours or {}) do cols[#cols + 1] = hex(h) end
+  if #cols == 0 then return end
+  for i = 1, 2 do
+    local p = Particles(0, 0, 0, 0, {timer = 0.01, scale = 0.25, speed = 3, lifespan = 3.5, attach = G.ROOM_ATTACH, colours = cols, fill = true, padding = -0.5, initialize = true})
+    p.fade_alpha = 0
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = 2.5 + i * 0.5, blockable = false, blocking = false, func = function()
+      if p and p.fade then p:fade(0.6) end
+      return true
+    end}))
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = 4 + i * 0.5, blockable = false, blocking = false, func = function()
+      if p and p.remove then p:remove() end
+      return true
+    end}))
+  end
+  pcall(play_sound, "holo1", 1.2, 0.5)
+end
+
+function A.effect_steps(key)
+  if not key then return nil end
+  for _, e in ipairs(rawget(_G, "SHOP_ICON_EFFECTS") or {}) do
+    if e.id == key then return e.steps or (e.shader and {e.shader}) or nil end
+  end
+  return nil
+end
+
+function A.shine_sprite(spr, steps, soul)
+  if not spr then return spr end
+  local send = {0, 0}
+  spr.draw = function(self)
+r 2 447 %20%20%20%20 -
+l 14
+    local t = G.TIMERS.REAL
+    send[1] = t / 28
+    send[2] = t
+    self:draw_shader("dissolve", 0.05)
+    self:draw_shader("dissolve")
+    for _, sh in ipairs(steps or {}) do self:draw_shader(sh, nil, send) end
+    if soul then
+      local sm = 0.07 + 0.02 * math.sin(1.8 * t)
+      local rm = 0.05 * math.sin(1.219 * t)
+      soul.role.draw_major = self
+      soul:draw_shader("dissolve", 0, nil, nil, self, sm, rm, nil, 0.1 + 0.03 * math.sin(1.8 * t), nil, 0.6)
+      soul:draw_shader("dissolve", nil, nil, nil, self, sm, rm)
+      for _, sh in ipairs(steps or {}) do soul:draw_shader(sh, nil, send, nil, self, sm, rm) end
+    end
+r 2 461 %20%20%20%20 -
+l 69
+  end
+  return spr
+end
+
+function A.portrait_sprite(key, w, h)
+  local it = key and S.get("portrait:" .. key)
+  if not it then return nil end
+  return A.sprite("tavern_portraits", it.pos, w, h)
+end
+
+function A.icon_sprite(w, h, opts)
+  opts = opts or {}
+  w, h = w or 0.9 * G.CARD_W, h or 0.9 * G.CARD_H
+  local pkey = opts.portrait
+  if pkey == nil then pkey = S.equipped("portrait") end
+  local spr, soul
+  if pkey then spr = A.portrait_sprite(pkey, w, h) end
+  if not spr then
+    local jkey = opts.joker
+    if jkey == nil and ProfileRewardsManager and ProfileRewardsManager.get_equipped_icon then jkey = ProfileRewardsManager.get_equipped_icon() end
+    local center = jkey and G.P_CENTERS and G.P_CENTERS[jkey]
+    if not center and opts.fallback then center = G.P_CENTERS[opts.fallback] end
+    if not center then return nil end
+    local atlas = G.ASSET_ATLAS[center.atlas or "Joker"] or G.ASSET_ATLAS.Joker
+    spr = Sprite(0, 0, w, h, atlas, center.pos)
+    spr.states.drag.can = false
+    spr.states.collide.can = false
+    if center.soul_pos then
+      soul = Sprite(0, 0, w, h, atlas, center.soul_pos)
+      soul.states.drag.can = false
+      soul.states.collide.can = false
+    end
+  end
+  local ekey = opts.effect
+  if ekey == nil then ekey = S.equipped("effect") end
+  return A.shine_sprite(spr, A.effect_steps(ekey), soul)
+end
+
+function A.icon_frame_def()
+  local spr = A.icon_sprite()
+  return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", padding = 0.1}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", padding = 0.08, r = 0.1, colour = G.C.L_BLACK, emboss = 0.05}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.06, r = 0.08, colour = G.C.BLACK, outline = 1, outline_colour = G.C.GOLD,
+          minw = 0.9 * G.CARD_W, minh = 0.9 * G.CARD_H}, nodes = spr and {{n = G.UIT.O, config = {object = spr}}}
+          or {{n = G.UIT.T, config = {text = "?", scale = 0.7, colour = G.C.GREY, shadow = true}}}},
+      }},
+    }},
+  }}
+end
+
+function A.refresh_icon()
+  pcall(function() if setup_profile_icon_frame then setup_profile_icon_frame() end end)
+end
+
+function A.install_hooks()
+  if A.hooked then return end
+  A.hooked = true
+  A.register()
+  if G and G.UIDEF and G.UIDEF.profile_icon_frame then
+    local orig = G.UIDEF.profile_icon_frame
+    G.UIDEF.profile_icon_frame = function(...)
+      local ok, def = pcall(A.icon_frame_def)
+      if ok and def then return def end
+      return orig(...)
+    end
+  end
+  if G and G.FUNCS and G.FUNCS.flame_handler then
+    local orig = G.FUNCS.flame_handler
+r 4 1963 %20%20%20%20 -
+l 27
+      orig(e)
+      if A.preview and A.preview.flame ~= nil or S.equipped("flame") then pcall(A.apply_flames) end
+    end
+  end
+  if rawget(_G, "ease_background_colour_blind") then
+    local orig = ease_background_colour_blind
+    ease_background_colour_blind = function(...)
+      pcall(A.apply_felt)
+      return orig(...)
+    end
+  end
+  if rawget(_G, "win_game") then
+    local orig = win_game
+    win_game = function(...)
+      local r = orig(...)
+      pcall(A.celebrate)
+      return r
+    end
+  end
+  S.on_equip = function(it)
+    if it.type == "portrait" or it.type == "effect" then A.refresh_icon() end
+    if it.type == "felt" then pcall(A.apply_felt) end
+    if it.type == "flame" then pcall(A.apply_flames) end
+  end
+end
+
+return A
+end

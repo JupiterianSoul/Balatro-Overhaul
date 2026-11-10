@@ -1,0 +1,694 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 584
+-- ============================================
+-- ACHIEVEMENTS UI for Balatro v10.0
+-- VANILLA-PERFECT UI - Uses exact Balatro patterns
+-- SAFE: All G access is null-checked
+-- ============================================
+
+-- ============================================
+-- CONSTANTS
+-- ============================================
+
+local PAGE_SIZE = 8  -- 4 columns x 2 rows grid (Voucher pattern)
+local MAX_ITERATIONS = 1000
+
+local function ach_rows()
+    return (rawget(_G, 'PORTRAIT') and PORTRAIT.on()) and 4 or 2
+end
+
+-- Rarity colors matching vanilla palette
+local RARITY_COLORS = {
+    Common = {0.65, 0.65, 0.65, 1},      -- Gray
+    Rare = {0.3, 0.5, 0.9, 1},           -- Blue
+    Epic = {0.6, 0.3, 0.8, 1},           -- Purple
+    Legendary = {1, 0.75, 0.2, 1},       -- Gold
+    Secret = {0.8, 0.2, 0.2, 1}          -- Red
+}
+
+-- ============================================
+-- SAFE HELPERS
+-- ============================================
+
+local function safe_get_color(rarity)
+    if not rarity then return RARITY_COLORS.Common end
+    return RARITY_COLORS[rarity] or RARITY_COLORS.Common
+end
+
+local function safe_get_ach_display(ach, unlocked)
+    if not ach then return mod_loc("???"), mod_loc("Unknown achievement") end
+    
+    local name = mod_loc(ach.name or "???")
+    local desc = mod_loc(ach.description or "")
+    
+    -- Secret achievement handling
+    if ach.is_secret and not unlocked then
+        name = mod_loc("???")
+        desc = mod_loc(ach.secret_hint or "This achievement is a secret...")
+    end
+    
+    return name, desc
+end
+
+local TR = {
+    fr = {
+        ["Reach Ante 39"] = "Atteindre l'Ante 39",
+        ["Win a run without skipping a blind"] = "Gagner une partie sans passer de blinde",
+        ["Finish your first Daily Challenge"] = "Terminer votre premier Défi Quotidien",
+        ["Finish 7 Daily Challenges"] = "Terminer 7 Défis Quotidiens",
+        ["Finish 30 Daily Challenges"] = "Terminer 30 Défis Quotidiens",
+        ["Finish a Daily Challenge 7 days in a row"] = "Terminer le Défi Quotidien 7 jours d'affilée",
+        ["Finish a Daily Challenge 30 days in a row"] = "Terminer le Défi Quotidien 30 jours d'affilée",
+        ["Cheat Sheet"] = "Antisèche",
+        ["Open the Cheats menu"] = "Ouvrir le menu Triche",
+        ["Not every button is for honest players..."] = "Certains boutons ne sont pas pour les joueurs honnêtes...",
+        ["DJ"] = "DJ",
+        ["Finish a Custom Run"] = "Terminer une partie personnalisée",
+        ["Beat the Ante 7 Boss Blind with exactly $77"] = "Battre le Boss de l'Ante 7 avec exactement 77$",
+        ["7-7-7..."] = "7-7-7...",
+        ["Win on any Creative Stake (Chaos or higher)"] = "Gagner sur une mise créative (Chaos ou plus)",
+        ["Win on all 4 Creative Stakes"] = "Gagner sur les 4 mises créatives",
+        ["Win your first Challenge"] = "Gagner votre premier Défi",
+        ["Win 5 different Challenges"] = "Gagner 5 Défis différents",
+        ["Win 10 different Challenges"] = "Gagner 10 Défis différents",
+        ["Win 20 different Challenges"] = "Gagner 20 Défis différents",
+        ["Win 30 different Challenges"] = "Gagner 30 Défis différents",
+        ["Ante 25"] = "Ante 25",
+        ["Reach Ante 25"] = "Atteindre l'Ante 25",
+        ["Ante 30"] = "Ante 30",
+        ["Reach Ante 30"] = "Atteindre l'Ante 30",
+        ["Ante 40"] = "Ante 40",
+        ["Have 7 different enhancements in your deck at once"] = "Avoir 7 améliorations différentes dans votre jeu en même temps",
+        ["Open a guide"] = "Ouvrir un guide",
+        ["VIP"] = "VIP",
+        ["Full Spectrum"] = "Spectre complet",
+        ["Play a hand with all 4 suits represented"] = "Jouer une main avec les 4 couleurs",
+        ["First Blood"] = "Premier sang",
+        ["Outscore your opponent in a multiplayer blind"] = "Battre le score de votre adversaire sur une blinde multijoueur",
+        ["Comeback Kid"] = "Roi du retour",
+        ["Win a match from 1 life remaining"] = "Gagner un match avec 1 seule vie restante",
+        ["Win 10 multiplayer matches"] = "Gagner 10 matchs multijoueur",
+        ["Untouchable"] = "Intouchable",
+        ["Win a match without losing a life"] = "Gagner un match sans perdre de vie",
+        ["Saboteur"] = "Saboteur",
+        ["Use 5 sabotage cards in one match"] = "Utiliser 5 cartes de sabotage en un match",
+        ["Daily Rival"] = "Rival du jour",
+        ["Play the Daily MP Challenge 7 days in a row"] = "Jouer le Défi Quotidien multijoueur 7 jours d'affilée",
+        ["Welcome In"] = "Bienvenue",
+        ["Visit The Casino"] = "Visiter Le Casino",
+        ["Regular"] = "Habitué",
+        ["Visit The Casino 50 times"] = "Visiter Le Casino 50 fois",
+        ["Grand Tour"] = "Grand tour",
+        ["Visit every place in The Casino"] = "Visiter chaque lieu du Casino",
+        ["Blacksmith"] = "Forgeron",
+        ["Create a card in The Forge"] = "Créer une carte à la Forge",
+        ["Master Smith"] = "Maître forgeron",
+        ["Create 10 cards in The Forge"] = "Créer 10 cartes à la Forge",
+        ["Dressed Up"] = "Sur son trente-et-un",
+        ["Change your look at the Tailor"] = "Changer de style chez le Tailleur",
+        ["Fashionista"] = "Fashionista",
+        ["Change your look 10 times"] = "Changer de style 10 fois",
+        ["Rewind"] = "Retour en arrière",
+        ["Watch a replay"] = "Regarder un replay",
+        ["Film Critic"] = "Critique de cinéma",
+        ["Watch 10 replays"] = "Regarder 10 replays",
+        ["Sparring Partner"] = "Partenaire d'entraînement",
+        ["Fight a boss in the Training Grounds"] = "Affronter un boss à l'Entraînement",
+        ["Coin Op"] = "Une pièce, une partie",
+        ["Play a game in the Arcade"] = "Jouer à un jeu de la Salle d'arcade",
+        ["Seed Collector"] = "Collectionneur de seeds",
+        ["Save a seed in the Library"] = "Enregistrer une seed à la Bibliothèque",
+        ["Historian"] = "Historien",
+        ["Look back at your past runs"] = "Revoir vos anciennes parties",
+        ["Known Path"] = "Chemin connu",
+        ["Win a seeded run"] = "Gagner une partie avec seed",
+        ["Quick Hands"] = "Mains rapides",
+        ["Win a run in under 20 minutes"] = "Gagner une partie en moins de 20 minutes",
+        ["Shuffle Up"] = "On mélange",
+        ["Play your first multiplayer match"] = "Jouer votre premier match multijoueur",
+        ["Table Regular"] = "Pilier de table",
+        ["Play 50 multiplayer matches"] = "Jouer 50 matchs multijoueur",
+        ["Card Shark"] = "Requin des cartes",
+        ["Play 200 multiplayer matches"] = "Jouer 200 matchs multijoueur",
+        ["Table Boss"] = "Patron de la table",
+        ["Win 50 multiplayer matches"] = "Gagner 50 matchs multijoueur",
+        ["House Always Wins"] = "La maison gagne toujours",
+        ["Win 200 multiplayer matches"] = "Gagner 200 matchs multijoueur",
+        ["Hot Hand"] = "Main chaude",
+        ["Win 3 multiplayer matches in a row"] = "Gagner 3 matchs multijoueur d'affilée",
+        ["Unstoppable"] = "Inarrêtable",
+        ["Win 10 multiplayer matches in a row"] = "Gagner 10 matchs multijoueur d'affilée",
+        ["Duelist"] = "Duelliste",
+        ["Outscore your opponent in 25 blinds"] = "Battre le score de votre adversaire sur 25 blindes",
+        ["Blind Champion"] = "Champion des blindes",
+        ["Outscore your opponent in 100 blinds"] = "Battre le score de votre adversaire sur 100 blindes",
+        ["Rival Slayer"] = "Tueur de rivaux",
+        ["Win a Rivals match"] = "Gagner un match Rivaux",
+        ["Face to Face"] = "Face à face",
+        ["Win a FaceOff match"] = "Gagner un match FaceOff",
+        ["Ranked Up"] = "Montée en grade",
+        ["Win a Ranked match"] = "Gagner un match Classé",
+        ["Climber"] = "Grimpeur",
+        ["Win 10 Ranked matches"] = "Gagner 10 matchs Classés",
+        ["Ascended"] = "Ascensionné",
+        ["Win an Ascension match"] = "Gagner un match Ascension",
+        ["Photo Finish"] = "Photo-finish",
+        ["Win a Race match"] = "Gagner une Course",
+        ["Last One Standing"] = "Dernier debout",
+        ["Win a Battle Royale"] = "Gagner un Battle Royale",
+        ["Team Player"] = "Esprit d'équipe",
+        ["Win a Teams match"] = "Gagner un match en Équipes",
+        ["Raid Boss"] = "Boss de raid",
+        ["Beat a Co-op Raid"] = "Réussir un Raid coop",
+        ["Switch Hitter"] = "Ambidextre",
+        ["Win a Switcheroo match"] = "Gagner un match Switcheroo",
+        ["Jack of All Modes"] = "Touche-à-tout",
+        ["Win a match in every multiplayer mode"] = "Gagner un match dans chaque mode multijoueur",
+        ["Chaos Theory"] = "Théorie du chaos",
+        ["Win a multiplayer match with the Random Deck"] = "Gagner un match multijoueur avec le Jeu aléatoire",
+        ["ACHIEVEMENTS"] = "SUCCÈS",
+        ["Runs"] = "Parties",
+        ["Decks & Stakes"] = "Jeux et mises",
+        ["Jokers & Cards"] = "Jokers et cartes",
+        ["Hands"] = "Mains",
+        ["Overhaul"] = "Overhaul",
+        ["Multiplayer"] = "Multijoueur",
+        ["Secret"] = "Secret",
+        ["Decks"] = "Jeux",
+        ["Jokers"] = "Jokers",
+        ["Overview"] = "Aperçu",
+        ["Unlocked"] = "Débloqués",
+        ["Locked"] = "Verrouillé",
+        ["Latest unlock"] = "Dernier débloqué",
+        ["Closest to unlock"] = "Le plus proche",
+        ["Legendary"] = "Légendaire",
+        ["Epic"] = "Épique",
+        ["%d%% complete"] = "%d%% terminé",
+        ["%d of %d unlocked"] = "%d sur %d débloqués",
+        ["Unlocked %s"] = "Débloqué le %s",
+        ["%d / %d h"] = "%d / %d h",
+        ["???"] = "???",
+        ["This achievement is a secret..."] = "Ce succès est un secret...",
+    },
+    es = {
+        ["Reach Ante 39"] = "Alcanzar el Ante 39",
+        ["Win a run without skipping a blind"] = "Ganar una partida sin saltar ninguna ciega",
+        ["Finish your first Daily Challenge"] = "Terminar tu primer Desafío Diario",
+        ["Finish 7 Daily Challenges"] = "Terminar 7 Desafíos Diarios",
+        ["Finish 30 Daily Challenges"] = "Terminar 30 Desafíos Diarios",
+        ["Finish a Daily Challenge 7 days in a row"] = "Terminar el Desafío Diario 7 días seguidos",
+        ["Finish a Daily Challenge 30 days in a row"] = "Terminar el Desafío Diario 30 días seguidos",
+        ["Cheat Sheet"] = "Chuleta",
+        ["Open the Cheats menu"] = "Abrir el menú de Trucos",
+        ["Not every button is for honest players..."] = "No todos los botones son para jugadores honrados...",
+        ["DJ"] = "DJ",
+        ["Finish a Custom Run"] = "Terminar una partida personalizada",
+        ["Beat the Ante 7 Boss Blind with exactly $77"] = "Vencer al Jefe del Ante 7 con exactamente $77",
+        ["7-7-7..."] = "7-7-7...",
+        ["Win on any Creative Stake (Chaos or higher)"] = "Ganar en una apuesta creativa (Caos o superior)",
+        ["Win on all 4 Creative Stakes"] = "Ganar en las 4 apuestas creativas",
+        ["Win your first Challenge"] = "Ganar tu primer Desafío",
+        ["Win 5 different Challenges"] = "Ganar 5 Desafíos distintos",
+        ["Win 10 different Challenges"] = "Ganar 10 Desafíos distintos",
+        ["Win 20 different Challenges"] = "Ganar 20 Desafíos distintos",
+        ["Win 30 different Challenges"] = "Ganar 30 Desafíos distintos",
+        ["Ante 25"] = "Ante 25",
+        ["Reach Ante 25"] = "Alcanzar el Ante 25",
+        ["Ante 30"] = "Ante 30",
+        ["Reach Ante 30"] = "Alcanzar el Ante 30",
+        ["Ante 40"] = "Ante 40",
+        ["Have 7 different enhancements in your deck at once"] = "Tener 7 mejoras distintas en tu baraja a la vez",
+        ["Open a guide"] = "Abrir una guía",
+        ["VIP"] = "VIP",
+        ["Full Spectrum"] = "Espectro completo",
+        ["Play a hand with all 4 suits represented"] = "Jugar una mano con los 4 palos",
+        ["First Blood"] = "Primera sangre",
+        ["Outscore your opponent in a multiplayer blind"] = "Supera la puntuación de tu rival en una ciega multijugador",
+        ["Comeback Kid"] = "Rey de la remontada",
+        ["Win a match from 1 life remaining"] = "Ganar una partida con solo 1 vida restante",
+        ["Win 10 multiplayer matches"] = "Ganar 10 partidas multijugador",
+        ["Untouchable"] = "Intocable",
+        ["Win a match without losing a life"] = "Ganar una partida sin perder ninguna vida",
+        ["Saboteur"] = "Saboteador",
+        ["Use 5 sabotage cards in one match"] = "Usar 5 cartas de sabotaje en una partida",
+        ["Daily Rival"] = "Rival diario",
+        ["Play the Daily MP Challenge 7 days in a row"] = "Jugar el Desafío Diario multijugador 7 días seguidos",
+        ["Welcome In"] = "Bienvenido",
+        ["Visit The Casino"] = "Visitar El Casino",
+        ["Regular"] = "Cliente habitual",
+        ["Visit The Casino 50 times"] = "Visitar El Casino 50 veces",
+        ["Grand Tour"] = "La gran visita",
+        ["Visit every place in The Casino"] = "Visitar todos los lugares de El Casino",
+        ["Blacksmith"] = "Herrero",
+        ["Create a card in The Forge"] = "Crear una carta en la Forja",
+        ["Master Smith"] = "Maestro herrero",
+        ["Create 10 cards in The Forge"] = "Crear 10 cartas en la Forja",
+        ["Dressed Up"] = "De punta en blanco",
+        ["Change your look at the Tailor"] = "Cambiar de estilo en el Sastre",
+        ["Fashionista"] = "Fashionista",
+        ["Change your look 10 times"] = "Cambiar de estilo 10 veces",
+        ["Rewind"] = "Rebobinar",
+        ["Watch a replay"] = "Ver una repetición",
+        ["Film Critic"] = "Crítico de cine",
+        ["Watch 10 replays"] = "Ver 10 repeticiones",
+        ["Sparring Partner"] = "Compañero de sparring",
+        ["Fight a boss in the Training Grounds"] = "Enfrentarte a un jefe en el Entrenamiento",
+        ["Coin Op"] = "Echa una moneda",
+        ["Play a game in the Arcade"] = "Jugar a un juego del Salón recreativo",
+        ["Seed Collector"] = "Coleccionista de códigos",
+        ["Save a seed in the Library"] = "Guardar un código en la Biblioteca",
+        ["Historian"] = "Historiador",
+        ["Look back at your past runs"] = "Repasar tus partidas anteriores",
+        ["Known Path"] = "Camino conocido",
+        ["Win a seeded run"] = "Ganar una partida con código",
+        ["Quick Hands"] = "Manos rápidas",
+        ["Win a run in under 20 minutes"] = "Ganar una partida en menos de 20 minutos",
+        ["Shuffle Up"] = "A barajar",
+        ["Play your first multiplayer match"] = "Jugar tu primera partida multijugador",
+        ["Table Regular"] = "Fijo en la mesa",
+        ["Play 50 multiplayer matches"] = "Jugar 50 partidas multijugador",
+        ["Card Shark"] = "Tiburón de las cartas",
+        ["Play 200 multiplayer matches"] = "Jugar 200 partidas multijugador",
+        ["Table Boss"] = "Dueño de la mesa",
+        ["Win 50 multiplayer matches"] = "Ganar 50 partidas multijugador",
+        ["House Always Wins"] = "La casa siempre gana",
+        ["Win 200 multiplayer matches"] = "Ganar 200 partidas multijugador",
+        ["Hot Hand"] = "Racha caliente",
+        ["Win 3 multiplayer matches in a row"] = "Ganar 3 partidas multijugador seguidas",
+        ["Unstoppable"] = "Imparable",
+        ["Win 10 multiplayer matches in a row"] = "Ganar 10 partidas multijugador seguidas",
+        ["Duelist"] = "Duelista",
+        ["Outscore your opponent in 25 blinds"] = "Supera la puntuación de tu rival en 25 ciegas",
+        ["Blind Champion"] = "Campeón de ciegas",
+        ["Outscore your opponent in 100 blinds"] = "Supera la puntuación de tu rival en 100 ciegas",
+        ["Rival Slayer"] = "Azote de rivales",
+        ["Win a Rivals match"] = "Ganar una partida de Rivales",
+        ["Face to Face"] = "Cara a cara",
+        ["Win a FaceOff match"] = "Ganar una partida de FaceOff",
+        ["Ranked Up"] = "Subida de rango",
+        ["Win a Ranked match"] = "Ganar una partida Clasificatoria",
+        ["Climber"] = "Escalador",
+        ["Win 10 Ranked matches"] = "Ganar 10 partidas Clasificatorias",
+        ["Ascended"] = "Ascendido",
+        ["Win an Ascension match"] = "Ganar una partida de Ascensión",
+        ["Photo Finish"] = "Foto finish",
+        ["Win a Race match"] = "Ganar una Carrera",
+        ["Last One Standing"] = "El último en pie",
+        ["Win a Battle Royale"] = "Ganar un Battle Royale",
+        ["Team Player"] = "Jugador de equipo",
+        ["Win a Teams match"] = "Ganar una partida por Equipos",
+        ["Raid Boss"] = "Jefe de asalto",
+        ["Beat a Co-op Raid"] = "Superar un Asalto coop",
+        ["Switch Hitter"] = "Ambidiestro",
+        ["Win a Switcheroo match"] = "Ganar una partida de Switcheroo",
+        ["Jack of All Modes"] = "Todoterreno",
+        ["Win a match in every multiplayer mode"] = "Ganar una partida en cada modo multijugador",
+        ["Chaos Theory"] = "Teoría del caos",
+        ["Win a multiplayer match with the Random Deck"] = "Ganar una partida multijugador con la Baraja aleatoria",
+        ["ACHIEVEMENTS"] = "LOGROS",
+        ["Runs"] = "Partidas",
+        ["Decks & Stakes"] = "Barajas y apuestas",
+        ["Jokers & Cards"] = "Comodines y cartas",
+        ["Hands"] = "Manos",
+        ["Overhaul"] = "Overhaul",
+        ["Multiplayer"] = "Multijugador",
+        ["Secret"] = "Secreto",
+        ["Decks"] = "Barajas",
+        ["Jokers"] = "Comodines",
+        ["Overview"] = "Resumen",
+        ["Unlocked"] = "Desbloqueados",
+        ["Locked"] = "Bloqueado",
+        ["Latest unlock"] = "Último desbloqueado",
+        ["Closest to unlock"] = "El más cercano",
+        ["Legendary"] = "Legendario",
+        ["Epic"] = "Épico",
+        ["%d%% complete"] = "%d%% completado",
+        ["%d of %d unlocked"] = "%d de %d desbloqueados",
+        ["Unlocked %s"] = "Desbloqueado el %s",
+        ["%d / %d h"] = "%d / %d h",
+        ["???"] = "???",
+        ["This achievement is a secret..."] = "Este logro es un secreto...",
+    },
+}
+mod_loc_register(TR)
+
+local AU = {}
+Overhaul = Overhaul or {}
+Overhaul.achievements_ui = AU
+
+AU.TABS = {
+    {key = "Runs", label = "Runs"},
+    {key = "Decks & Stakes", label = "Decks"},
+    {key = "Hands", label = "Hands"},
+    {key = "Jokers & Cards", label = "Jokers"},
+    {key = "Overhaul", label = "Overhaul"},
+    {key = "Multiplayer", label = "Multiplayer"},
+    {key = "Secret", label = "Secret"},
+}
+
+AU.CHIP = {Common = 1, Uncommon = 3, Rare = 5, Epic = 6, Legendary = 8, Secret = 4}
+AU.HOURS = {hours_played_10 = true, hours_played_50 = true, hours_played_100 = true}
+
+local function L(s)
+    local lang = G and G.SETTINGS and G.SETTINGS.language
+    if lang == "es_ES" or lang == "es_419" then lang = "es" end
+    local t = TR[lang]
+    if t and t[s] then return t[s] end
+    return mod_loc and mod_loc(s) or s
+end
+AU.L = L
+local function touch() return UIK.touch() end
+
+local function fmt(v)
+    v = tonumber(v) or 0
+    return number_format and number_format(v) or tostring(math.floor(v))
+end
+
+local function txt(s, scale, colour, maxw)
+    return {n = G.UIT.T, config = {text = tostring(s or ""), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true, maxw = maxw}}
+end
+
+local function row(nodes, o)
+    o = o or {}
+    return {n = G.UIT.R, config = {align = o.align or "cl", minh = o.h, padding = 0}, nodes = nodes}
+end
+
+function AU.player(id)
+    local pd = AchievementManager and AchievementManager.player_data and AchievementManager.player_data.achievements
+    return pd and pd[id] or {}
+end
+
+function AU.list(cat)
+    local out = {}
+    local live = AchievementManager and AchievementManager.achievements or {}
+    for _, a in ipairs(ACHIEVEMENT_DEFINITIONS or {}) do
+        if live[a.id] and (cat == nil or a.category == cat) then out[#out + 1] = a end
+    end
+    table.sort(out, function(x, y) return (x.order or 999) < (y.order or 999) end)
+    return out
+end
+
+function AU.count(list)
+    local n = 0
+    for _, a in ipairs(list) do if AU.player(a.id).unlocked then n = n + 1 end end
+    return n, #list
+end
+
+function AU.progress_text(a, p)
+    local goal = tonumber(a.progress_required) or 1
+    local cur = math.min(tonumber(p.progress) or 0, goal)
+    if AU.HOURS[a.id] then return string.format(L("%d / %d h"), math.floor(cur / 3600), math.floor(goal / 3600)) end
+    return fmt(cur) .. " / " .. fmt(goal)
+end
+
+function AU.fraction(a, p)
+    local goal = tonumber(a.progress_required) or 1
+    if goal <= 0 then return 0 end
+    return math.max(0, math.min(1, (tonumber(p.progress) or 0) / goal))
+end
+
+local function chip(a, size)
+    local ok, s = pcall(get_stake_sprite, AU.CHIP[a.rarity] or 1, size)
+    if ok and s then return {n = G.UIT.O, config = {object = s}} end
+    return {n = G.UIT.B, config = {w = size, h = size}}
+end
+
+local function bar(frac, w)
+    local h = touch() and 0.14 or 0.12
+    local fill = {}
+    if frac > 0 then fill[1] = {n = G.UIT.C, config = {minw = math.max(0.05, w * frac), minh = h, r = 0.04, colour = G.C.GREEN}, nodes = {}} end
+    return {n = G.UIT.C, config = {align = "cl", minw = w, maxw = w, minh = h, r = 0.04, colour = G.C.UI.BACKGROUND_INACTIVE}, nodes = fill}
+end
+
+function AU.card(a, w, h)
+    local p = AU.player(a.id)
+    local un = p.unlocked and true or false
+    local secret = a.is_secret and not un
+    local t = touch()
+    local cs = t and 0.5 or 0.42
+    local tw = w - cs - 0.4
+    local name = secret and L("???") or L(a.name or a.id)
+    local desc = secret and L(a.secret_hint or "This achievement is a secret...") or L(a.description or "")
+    local lines = {
+        row({txt(name, t and 0.4 or 0.36, un and G.C.GOLD or G.C.WHITE, tw)}, {h = t and 0.38 or 0.32}),
+        row({txt(desc, t and 0.3 or 0.27, un and G.C.UI.TEXT_LIGHT or UIK.C.muted, tw)}, {h = t and 0.3 or 0.26}),
+    }
+    local goal = tonumber(a.progress_required) or 1
+    local third
+    if un then
+        local when = tonumber(p.unlock_date)
+        third = {txt(when and when > 0 and string.format(L("Unlocked %s"), os.date("%d/%m/%Y", when)) or L("Unlocked"), t and 0.28 or 0.25, G.C.GREEN, tw)}
+    elseif goal > 1 and not secret then
+        local bw = math.min(2.4, tw * 0.55)
+        third = {bar(AU.fraction(a, p), bw), {n = G.UIT.C, config = {minw = 0.15}, nodes = {}}, txt(AU.progress_text(a, p), t and 0.28 or 0.25, UIK.C.muted, tw - bw - 0.2)}
+    else
+        third = {txt(secret and L("Secret") or L("Locked"), t and 0.28 or 0.25, UIK.C.muted, tw)}
+    end
+    lines[3] = row(third, {h = t and 0.28 or 0.24})
+    return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, minh = h, r = 0.12, colour = G.C.BLACK, emboss = 0.05, padding = 0.06,
+        outline = un and 1 or nil, outline_colour = un and G.C.GOLD or nil}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = cs + 0.12, padding = 0}, nodes = {chip(a, cs)}},
+        {n = G.UIT.C, config = {align = "cl", minw = tw, maxw = tw, padding = 0}, nodes = lines},
+    }}
+end
+
+function AU.cols()
+    return UIK.portrait() and 1 or 2
+end
+
+function AU.card_size()
+    local cols = AU.cols()
+    local gap = 0.12
+    return (UIK.W - 2 * UIK.PAD - gap * (cols + 1)) / cols, touch() and 1.14 or 0.94
+end
+
+function AU.per_page()
+    local _, h = AU.card_size()
+    local pager_h = (touch() and 0.82 or 0.66) + 0.12
+    local fit = math.max(1, math.floor((UIK.H - UIK.TOP - pager_h - 0.08) / (h + 0.08 + 0.05 * AU.cols())))
+    return fit * AU.cols()
+end
+
+function AU.category_tab(cat)
+    local list = AU.list(cat)
+    local id = "ach_" .. cat
+    local per = AU.per_page()
+    local pages = math.max(1, math.ceil(#list / per))
+    local page = math.max(1, math.min(UIK._pages[id] or 1, pages))
+    UIK._pages[id] = page
+    local w, h = AU.card_size()
+    local items = {}
+    for i = (page - 1) * per + 1, math.min(#list, page * per) do items[#items + 1] = AU.card(list[i], w, h) end
+    local pager_h = (touch() and 0.82 or 0.66) + 0.12
+    local got, total = AU.count(list)
+    local ps = touch() and 0.42 or 0.38
+    local pt = string.format(L("Page %d of %d"), page, pages)
+    local full = string.format(L("%d of %d unlocked"), got, total) .. "   " .. pt
+    local room = UIK.W - 2 * (touch() and 1.3 or 1.15) - 1
+    if UIK.text_w(full, ps) + 0.4 <= room then pt = full end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = "tm", minw = UIK.W, minh = UIK.H - UIK.TOP - pager_h, padding = 0}, nodes = {
+                {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+                    {n = G.UIT.R, config = {minh = 0.08}, nodes = {}},
+                    UIK.grid(items, AU.cols(), {w = UIK.W - 2 * UIK.PAD, padding = 0.04}),
+                }},
+            }},
+            UIK.pager{prev = "uik_page", next = "uik_page", prev_ref = {id = id, d = -1, n = pages}, next_ref = {id = id, d = 1, n = pages},
+                prev_disabled = pages < 2, next_disabled = pages < 2,
+                text = pt, text_w = math.min(room, UIK.text_w(pt, ps) + 0.4), w = UIK.W},
+        }},
+    }}
+end
+
+function AU.overview()
+    local SU = Overhaul.stats_ui
+    local all = AU.list()
+    local got, total = AU.count(all)
+    local latest, latest_at, close, close_f = nil, 0, nil, -1
+    local rar = {Legendary = {0, 0}, Epic = {0, 0}}
+    for _, a in ipairs(all) do
+        local p = AU.player(a.id)
+        if rar[a.rarity] then
+            rar[a.rarity][2] = rar[a.rarity][2] + 1
+            if p.unlocked then rar[a.rarity][1] = rar[a.rarity][1] + 1 end
+        end
+        if p.unlocked then
+            if (tonumber(p.unlock_date) or 0) >= latest_at then latest, latest_at = a, tonumber(p.unlock_date) or 0 end
+        elseif not a.is_secret and (tonumber(a.progress_required) or 1) > 1 then
+            local f = AU.fraction(a, p)
+            if f > close_f then close, close_f = a, f end
+        end
+    end
+    local pct = total > 0 and math.floor(got * 100 / total) or 0
+    local tiles = {
+        {L("Unlocked"), got .. " / " .. total, G.C.GOLD, string.format(L("%d%% complete"), pct)},
+        {L("Latest unlock"), latest and L(latest.name) or "-", G.C.GREEN, latest and latest_at > 0 and os.date("%d/%m/%Y", latest_at) or nil},
+        {L("Closest to unlock"), close and L(close.name) or "-", G.C.FILTER, close and AU.progress_text(close, AU.player(close.id)) or nil},
+        {L("Legendary"), rar.Legendary[1] .. " / " .. rar.Legendary[2], G.C.GOLD},
+    }
+    for _, tab in ipairs(AU.TABS) do
+        local g, n = AU.count(AU.list(tab.key))
+        tiles[#tiles + 1] = {L(tab.key), g .. " / " .. n, g > 0 and G.C.WHITE or UIK.C.muted, n > 0 and string.format(L("%d%% complete"), math.floor(g * 100 / n)) or nil}
+    end
+    tiles[#tiles + 1] = {L("Epic"), rar.Epic[1] .. " / " .. rar.Epic[2], G.C.WHITE}
+    if SU and SU.tiles then return SU.tiles(tiles) end
+    return UIK.note(tiles[1][1] .. ": " .. tiles[1][2])
+end
+
+AU.back = "exit_overlay_menu"
+
+function create_UIBox_achievements_main()
+    if not G then return nil end
+    if AchievementManager and AchievementManager.init then pcall(AchievementManager.init) end
+    if AchievementManager and AchievementManager.check_all then pcall(AchievementManager.check_all) end
+    local tabs = {{key = "overview", label = L("Overview"), build = AU.overview}}
+    for _, tab in ipairs(AU.TABS) do
+        local cat = tab.key
+        tabs[#tabs + 1] = {key = cat, label = L(tab.label), build = function() return AU.category_tab(cat) end}
+    end
+    local t = UIK.window{
+        id = "ach",
+        title = L("ACHIEVEMENTS"),
+        tabs = tabs,
+        back_func = AU.back,
+        snap_back = true,
+    }
+    t.config.portrait_rebuild = "achievements"
+    return t
+end
+
+-- ============================================
+-- ACHIEVEMENT DETAIL POPUP (Vanilla tooltip pattern)
+-- ============================================
+
+function create_achievement_detail_popup(achievement_id)
+    if not G then return nil end
+    if not achievement_id then return nil end
+    if not AchievementManager then return nil end
+    if not AchievementManager.achievements then return nil end
+    
+    local ach = AchievementManager.achievements[achievement_id]
+    if not ach then return nil end
+    
+    local player_ach = nil
+    if AchievementManager.player_data and AchievementManager.player_data.achievements then
+        player_ach = AchievementManager.player_data.achievements[achievement_id]
+    end
+    
+    local unlocked = player_ach and player_ach.unlocked or false
+    local progress = player_ach and player_ach.progress or 0
+    local display_name, display_desc = safe_get_ach_display(ach, unlocked)
+    local rar_col = safe_get_color(ach.rarity)
+    
+    -- Build detail nodes
+    local detail_nodes = {
+        -- Achievement name
+r 15 723 %20%20%20%20%20%20%20%20 -
+l 3
+            {n=G.UIT.T, config={text = display_name, scale = 0.5, colour = unlocked and G.C.GOLD or G.C.WHITE, shadow = true}}
+        }},
+        -- Rarity (colored text only)
+r 15 71 %20%20%20%20%20%20%20%20 -
+l 97
+            {n=G.UIT.T, config={text = mod_loc(ach.rarity or "Common"), scale = 0.35, colour = rar_col}}
+        }},
+        -- Description
+        {n=G.UIT.R, config={align = "cm", padding = 0.1, maxw = 4}, nodes={
+            {n=G.UIT.T, config={text = display_desc, scale = 0.3, colour = G.C.UI.TEXT_LIGHT}}
+        }}
+    }
+    
+    -- Progress bar if tracked
+    if ach.is_tracked and not unlocked then
+        local pct = math.min(1, progress / (ach.progress_required or 1))
+        table.insert(detail_nodes, {n=G.UIT.R, config={align = "cm", padding = 0.1}, nodes={
+            {n=G.UIT.C, config={align = "cl", minw = 3.5, minh = 0.15, r = 0.05, colour = G.C.BLACK, outline = 0.5, outline_colour = G.C.WHITE}, nodes={
+                {n=G.UIT.C, config={align = "cl", minw = 3.5 * pct, minh = 0.12, r = 0.03, colour = G.C.BLUE}, nodes={}}
+            }},
+        }})
+        table.insert(detail_nodes, {n=G.UIT.R, config={align = "cm"}, nodes={
+            {n=G.UIT.T, config={text = progress.." / "..(ach.progress_required or 1), scale = 0.28, colour = G.C.UI.TEXT_LIGHT}}
+        }})
+    end
+    
+    -- Unlock date if unlocked
+    if unlocked and player_ach and player_ach.unlock_date then
+        local date_str = nil
+        pcall(function()
+            date_str = os.date("%b %d, %Y", player_ach.unlock_date)
+        end)
+        if date_str then
+            table.insert(detail_nodes, {n=G.UIT.R, config={align = "cm", padding = 0.1}, nodes={
+                {n=G.UIT.T, config={text = mod_loc("Unlocked: ")..date_str, scale = 0.25, colour = G.C.GREEN}}
+            }})
+        end
+    end
+    
+    -- Reward if unlocked
+    if unlocked and ach.reward_data and ach.reward_data.name then
+        table.insert(detail_nodes, {n=G.UIT.R, config={align = "cm", padding = 0.08}, nodes={
+            {n=G.UIT.T, config={text = mod_loc("Reward: ")..mod_loc(ach.reward_data.name), scale = 0.28, colour = G.C.GOLD}}
+        }})
+    end
+    
+    return {n=G.UIT.ROOT, config={align = "cm", r = 0.1, colour = G.C.BLACK, padding = 0.15, outline = 1, outline_colour = rar_col}, nodes=detail_nodes}
+end
+
+-- ============================================
+-- RARITY LEGEND
+-- ============================================
+
+function create_rarity_legend()
+    if not G then return nil end
+    
+    local rarities = {"Common", "Rare", "Epic", "Legendary", "Secret"}
+    local legend_nodes = {}
+    
+    for _, rarity in ipairs(rarities) do
+        local col = safe_get_color(rarity)
+        table.insert(legend_nodes, {n=G.UIT.C, config={align = "cm", padding = 0.08}, nodes={
+            {n=G.UIT.T, config={text = mod_loc(rarity), scale = 0.25, colour = col}}
+        }})
+    end
+    
+    return {n=G.UIT.R, config={align = "cm", padding = 0.1, colour = G.C.L_BLACK, r = 0.08}, nodes=legend_nodes}
+end
+
+-- ============================================
+-- HOOK INTO OPTIONS MENU
+-- ============================================
+
+local function add_achievements_button()
+    if not G then return end
+    if not G.FUNCS then return end
+    
+    -- Open achievements menu function
+    local function open_from(back, tab)
+        if G.SETTINGS then G.SETTINGS.paused = true end
+        AU.back = back
+        if tab and UIK and UIK._last_tab then UIK._last_tab.ach = tab end
+        local ui_def = create_UIBox_achievements_main()
+        if ui_def then
+            G.FUNCS.overlay_menu({
+                definition = ui_def
+            })
+        end
+    end
+
+    G.FUNCS.open_achievements = function(e) open_from("high_scores") end
+    G.FUNCS.open_mp_achievements = function(e) open_from("mp_stats", "Multiplayer") end
+end
+
+-- Initialize
+local init_success = pcall(add_achievements_button)
+if not init_success then
+    print("[ACHIEVEMENTS UI] Failed to add button hook")
+end
+
+print("[ACHIEVEMENTS UI] Module loaded (vanilla-perfect)")
+return create_UIBox_achievements_main
+end

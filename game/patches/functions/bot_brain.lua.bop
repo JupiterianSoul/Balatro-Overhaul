@@ -1,0 +1,253 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 183
+BOT = BOT or {}
+local BOT = BOT
+
+BOT.brains = BOT.brains or {}
+BOT.WAIT = BOT.WAIT or {}
+BOT.active = BOT.active or false
+BOT.settings = BOT.settings or {brain = "mock", mode = "auto", delay = 0.4}
+
+local function new_stats()
+    return {actions = 0, refused = 0, errors = 0, runs = 0, wins = 0, losses = 0, best_ante = 0, by_type = {}, started = love.timer.getTime()}
+end
+BOT.stats = BOT.stats or new_stats()
+
+local function rng_int(rng, a, b)
+    if b < a then return a end
+    return a + math.floor(rng() * (b - a + 1))
+end
+
+local function shuffled(list, rng)
+    local t = {}
+    for i, v in ipairs(list) do t[i] = v end
+    for i = #t, 2, -1 do
+        local j = rng_int(rng, 1, i)
+        t[i], t[j] = t[j], t[i]
+    end
+    return t
+end
+
+local function hand_ids(state)
+    local ids = {}
+    for _, c in ipairs(state.hand or {}) do ids[#ids + 1] = c.id end
+    return ids
+end
+
+local MOCK_WEIGHTS = {
+    play = 10, discard = 3, use = 1, sell = 0.3, reorder_jokers = 0.3, sort = 0.3,
+    buy = 3, buy_and_use = 1, redeem = 2, open = 2, reroll = 1, leave = 2,
+    pick = 5, skip = 1, select = 6, reroll_boss = 0.5, cash_out = 1,
+    new_run = 1, menu = 0, endless = 0,
+}
+
+function BOT.fill_action(entry, state, rng)
+    local a = {type = entry.type, card = entry.card}
+    if entry.cards_min then
+        local ids = shuffled(hand_ids(state), rng)
+        local n = rng_int(rng, entry.cards_min, math.min(entry.cards_max, #ids))
+        a.cards = {}
+        for i = 1, n do a.cards[i] = ids[i] end
+    end
+    if entry.targets_min then
+        local ids = shuffled(hand_ids(state), rng)
+        local n = rng_int(rng, entry.targets_min, math.min(entry.targets_max, #ids))
+        a.targets = {}
+        for i = 1, n do a.targets[i] = ids[i] end
+    end
+    if entry.type == "reorder_jokers" then
+        local ids = {}
+        for _, j in ipairs(state.jokers or {}) do ids[#ids + 1] = j.id end
+        a.order = shuffled(ids, rng)
+    end
+    if entry.type == "sort" then a.by = rng() < 0.5 and "rank" or "suit" end
+    return a
+end
+
+BOT.brains.mock = function(state, ctx)
+    local rng = ctx.rng or math.random
+    local legal = state.legal or {}
+    if #legal == 0 then return nil end
+    local shop_turns = ctx.shop_turns or 0
+    local total = 0
+    local weights = {}
+    for i, l in ipairs(legal) do
+        local w = MOCK_WEIGHTS[l.type] or 1
+        if l.type == "leave" then w = w + shop_turns * 2 end
+        if l.targets_min and #(state.hand or {}) < l.targets_min then w = 0 end
+        weights[i] = w
+        total = total + w
+    end
+    if total <= 0 then return nil end
+    local r = rng() * total
+    for i, l in ipairs(legal) do
+        r = r - weights[i]
+        if r <= 0 then return BOT.fill_action(l, state, rng), "random legal action" end
+    end
+    return BOT.fill_action(legal[#legal], state, rng), "random legal action"
+end
+
+function BOT.start(opts)
+    opts = opts or {}
+    for k, v in pairs(opts) do BOT.settings[k] = v end
+    BOT.active = true
+    BOT.paused = false
+    BOT.wait = 0
+    BOT.pending = nil
+    BOT.step_requested = false
+    BOT.thinking_since = nil
+    BOT.last_thinking = nil
+    BOT.ctx = {rng = BOT.settings.rng or math.random, shop_turns = 0}
+    BOT.stats = new_stats()
+    BOT.log = {}
+    BOT.state_filter = nil
+end
+
+function BOT.stop()
+    BOT.active = false
+    BOT.pending = nil
+    BOT.paused = false
+    BOT.step_requested = false
+    BOT.thinking_since = nil
+    if BOT.on_stop then pcall(BOT.on_stop) end
+end
+
+function BOT.note(kind, text)
+    local log = BOT.log or {}
+    BOT.log = log
+    log[#log + 1] = {t = love.timer.getTime(), kind = kind, text = text}
+    if #log > 200 then table.remove(log, 1) end
+    if BOT.on_note then pcall(BOT.on_note, kind, text) end
+end
+
+local function describe(a)
+    local parts = {a.type}
+    if a.card then parts[#parts + 1] = "card=" .. tostring(a.card) end
+    if a.cards then parts[#parts + 1] = "cards=" .. table.concat(a.cards, ",") end
+    if a.targets then parts[#parts + 1] = "targets=" .. table.concat(a.targets, ",") end
+    if a.by then parts[#parts + 1] = "by=" .. a.by end
+    return table.concat(parts, " ")
+end
+BOT.describe = describe
+
+function BOT.step_once()
+    local Bb = BOT_BRIDGE
+    if G.OVERLAY_MENU and G.OVERLAY_MENU ~= true and Bb.find_button(G.OVERLAY_MENU, "continue_unlock") then
+        G.FUNCS.continue_unlock()
+        BOT.note("popup", "closed an unlock popup")
+        return true
+    end
+    local phase = Bb.phase()
+    if phase == "busy" or phase == "menu" then return false end
+    local state = Bb.observe({text = BOT.settings.text ~= false})
+    local ctx = BOT.ctx
+    if BOT.state_filter then
+        local fok, ferr = pcall(BOT.state_filter, state, ctx)
+        if not fok then BOT.note("error", tostring(ferr)) end
+        if Bb.phase() ~= phase then return false end
+    end
+    if phase == "shop" then ctx.shop_turns = (ctx.shop_turns or 0) + 1 else ctx.shop_turns = 0 end
+    if (phase == "game_over" or phase == "win") and not ctx.ended then
+        ctx.ended = true
+        BOT.stats.runs = BOT.stats.runs + 1
+        if phase == "win" then BOT.stats.wins = BOT.stats.wins + 1 else BOT.stats.losses = BOT.stats.losses + 1 end
+        BOT.note("end", phase .. " ante " .. tostring(state.run and state.run.ante))
+        if BOT.on_run_end then
+            local stop = BOT.on_run_end(phase, state)
+            if stop then return true end
+        end
+    end
+    if phase ~= "game_over" and phase ~= "win" then ctx.ended = false end
+    local ante = state.run and state.run.ante or 0
+    if ante > BOT.stats.best_ante then BOT.stats.best_ante = ante end
+    local brain = BOT.brains[BOT.settings.brain] or BOT.brains.mock
+    if (phase == "game_over" or phase == "win") and BOT.brains.rules then brain = BOT.brains.rules end
+    if (ctx.refuse_streak or 0) >= 3 then brain = BOT.brains.mock end
+    local ok, a, reason = pcall(brain, state, ctx)
+    if ok and a == BOT.WAIT then return false end
+    if not ok then
+        BOT.stats.errors = BOT.stats.errors + 1
+        BOT.note("error", tostring(a))
+        a = nil
+    end
+    if not a and BOT.brains.mock and brain ~= BOT.brains.mock then
+        a, reason = BOT.brains.mock(state, ctx)
+    end
+    if not a then return false end
+    BOT.last_reason = reason
+    BOT.last_phase = phase
+    if BOT.settings.preview and (a.cards or a.targets) and G.hand then
+        local list = {}
+        for _, id in ipairs(a.cards or a.targets) do
+            for _, c in ipairs(G.hand.cards) do
+                if c.sort_id == id then list[#list + 1] = c end
+            end
+        end
+r 2 582 %20%20%20%20%20%20%20%20 -
+l 62
+        for _, c in ipairs(list) do G.hand:add_to_highlighted(c, true) end
+        BOT.pending = {a = a, reason = reason, at = love.timer.getTime() + math.max(0.4, BOT.settings.delay or 0.4)}
+        BOT.note("plan", describe(a) .. (reason and (" | " .. reason) or ""))
+        return true
+    end
+    return BOT.apply(a, reason)
+end
+
+function BOT.apply(a, reason)
+    local ctx = BOT.ctx
+    local done, why = BOT_BRIDGE.act(a)
+    if done then
+        BOT.stats.actions = BOT.stats.actions + 1
+        BOT.stats.by_type[a.type] = (BOT.stats.by_type[a.type] or 0) + 1
+        BOT.note("act", describe(a) .. (reason and (" | " .. reason) or ""))
+        ctx.refuse_streak = 0
+    else
+        ctx.refuse_streak = (ctx.refuse_streak or 0) + 1
+        BOT.stats.refused = BOT.stats.refused + 1
+        BOT.note("refused", describe(a) .. " | " .. tostring(why))
+    end
+    return done
+end
+
+function BOT.brain_for(provider)
+    local p = BOT.config and BOT.config.provider(provider)
+    if not p or p.kind == "rules" then return "rules" end
+    if p.kind == "mock" then return "mock" end
+    if p.kind == "sim" then return p.key end
+    if BOT.config.get("ai_every_move") then return "llm" end
+    return "hybrid"
+end
+
+function BOT.needs_update()
+    return BOT.active or (BOT.http and BOT.http.count > 0) or (BOT.ui and BOT.ui.solo) or (BOT.versus and BOT.versus.on)
+end
+
+function BOT.update(dt)
+    if BOT.http then BOT.http.poll() end
+    if BOT.ui and BOT.ui.update then BOT.ui.update(dt) end
+    if BOT.versus and BOT.versus.update then BOT.versus.update(dt) end
+    if not BOT.active then return end
+    if BOT.pending then
+        if love.timer.getTime() < BOT.pending.at then return end
+        local p = BOT.pending
+        BOT.pending = nil
+        if BOT_BRIDGE.phase() == BOT.last_phase then BOT.apply(p.a, p.reason) end
+        BOT.wait = BOT.settings.delay or 0.4
+        return
+    end
+    if BOT.paused then return end
+    if BOT.settings.mode == "step" and not BOT.step_requested then return end
+    BOT.wait = (BOT.wait or 0) - dt
+    if BOT.wait > 0 then return end
+    local acted = BOT.step_once()
+    if acted then
+        BOT.step_requested = false
+        BOT.wait = BOT.settings.delay or 0.4
+    else
+        BOT.wait = 0.05
+    end
+end
+end

@@ -1,0 +1,1257 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 715
+local P = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+P.MAX = 8
+P.KINDS = {"br", "teams", "raid"}
+P.KIND_NAME = {br = "Battle Royale", teams = "Teams", raid = "Co-op Raid"}
+P.KIND_INFO = {
+    br = "Lowest score each PvP blind loses a life",
+    teams = "Team scores add up, teams share lives",
+    raid = "Everyone beats one shared boss target",
+}
+P.TEAM_NAME = {"Team A", "Team B", "Team C", "Team D"}
+
+local S = {room = nil, ps = nil, code = nil, id = nil, visibility = "private", me = nil, flag = false, result = nil}
+P.S = S
+
+function P.kind_name(k) return L(P.KIND_NAME[k or "br"] or P.KIND_NAME.br) end
+function P.team_name(t) return L(P.TEAM_NAME[(tonumber(t) or 0) + 1] or "Team") end
+
+function P.team_colour(t)
+    local list = {G.C.RED, G.C.BLUE, G.C.GREEN, G.C.ORANGE}
+    return list[(tonumber(t) or 0) + 1] or G.C.UI.BACKGROUND_INACTIVE
+end
+
+function P.active()
+    if not S.flag then return false end
+    return bom_match ~= nil and bom_match.get_phase() ~= bom_match.PHASE.NONE
+end
+
+function P.clear()
+    P.remove_hud()
+    S.room, S.ps, S.code, S.id, S.me, S.flag, S.result, S.last_join = nil, nil, nil, nil, nil, false, nil, nil
+    S.visibility = "private"
+end
+
+local function settings()
+    return bom_match and bom_match.get_settings and bom_match.get_settings() or {}
+end
+
+function P.kind()
+    if S.ps and S.ps.kind then return S.ps.kind end
+    if S.room and S.room.kind then return S.room.kind end
+    return settings().party_kind or "br"
+end
+
+function P.is_host()
+    if S.room and S.room.hostId ~= nil and S.me ~= nil then return S.room.hostId == S.me end
+    return bom_match and bom_match.is_host_player() or false
+end
+
+local function fmt_score(v)
+    if v == nil then return "-" end
+    local n = tonumber(v)
+    if not n then return tostring(v) end
+    local ok, out = pcall(number_format, n)
+    return ok and out or tostring(n)
+end
+P.fmt_score = fmt_score
+
+local function name_check(retry)
+    local name = bom_room.my_profile_name()
+    if not bom_room.is_default_name(name) then return name end
+    pcall(function() bom_ui.hide_connecting_screen() end)
+    bom_room.show_name_prompt("default", name, retry)
+    return nil
+end
+
+function P.create(visibility, kind)
+    visibility = visibility == "public" and "public" or "private"
+    if not name_check(function() P.create(visibility, kind) end) then return end
+    pcall(function() if G and G.GAME then G.GAME.bom_quick_match = false end end)
+    pcall(function() bom_ui.show_connecting_screen() end)
+    bom_room.retry = function() P.create(visibility, kind) end
+    S.last_join = nil
+    bom_core.connect(function()
+        bom_core.send({type = "party_create", kind = kind or "br", visibility = visibility, raid_curve = 2,
+            name = bom_room.my_profile_name(), mods = bom_core.mods_field(), version = bom_room.game_version()})
+    end)
+end
+
+local function my_entry()
+    if not (S.room and S.room.players) then return nil end
+    for _, p in ipairs(S.room.players) do
+        if p.pid == S.me then return p end
+    end
+    return nil
+end
+
+function P.team_counts()
+    local n = math.max(2, tonumber(S.room and S.room.teams) or 2)
+    local counts = {}
+    for t = 1, n do counts[t] = 0 end
+    for _, p in ipairs(S.room and S.room.players or {}) do
+        if p.connected ~= false then
+            local t = (tonumber(p.team) or 0) + 1
+            counts[t] = (counts[t] or 0) + 1
+        end
+    end
+    return counts, n
+end
+
+function P.start_block()
+    if not (S.room and S.room.players) then return "not_enough_players" end
+    local n, waiting = 0, 0
+    for _, p in ipairs(S.room.players) do
+        if p.connected ~= false then
+            n = n + 1
+            if p.pid ~= S.room.hostId and not p.ready then waiting = waiting + 1 end
+        end
+    end
+    if n < 2 then return "not_enough_players" end
+    if waiting > 0 then return "not_ready", waiting end
+    local s = settings()
+    if (s.party_kind or P.kind()) == "teams" and s.team_auto == false then
+        local counts, tc = P.team_counts()
+        local size = tonumber(s.team_size) or 2
+        local used, lo, hi = 0, math.huge, 0
+        for t, c in ipairs(counts) do
+            if t > tc and c > 0 then return "teams_uneven" end
+            if t <= tc then
+                if c > 0 then used = used + 1 end
+                lo, hi = math.min(lo, c), math.max(hi, c)
+            end
+        end
+        if used < 2 then return "need_two_teams" end
+        if hi > size then return "team_too_big" end
+        if lo ~= hi then return "teams_uneven" end
+    end
+    return nil
+end
+
+function P.can_start()
+    if not P.is_host() then return false end
+    return P.start_block() == nil
+end
+
+local ERRORS = {
+    already_in_room = "You are already in a room.",
+    room_gone = "This room is gone.",
+    invalid_code = "Invalid room code. Check and try again.",
+    in_match = "This room is already playing a match.",
+    room_full = "This party is full.",
+    not_enough_players = "A party needs at least 2 players.",
+    not_ready = "Every player must be ready.",
+    need_two_teams = "Teams needs at least two teams with players.",
+    teams_uneven = "Teams must have the same number of players.",
+    team_too_big = "A team has more players than the team size.",
+    host_only = "Only the host can do that.",
+    bad_kick = "You can't remove that player.",
+    no_such_player = "That player is not in the party any more.",
+}
+
+local function on_error(d)
+    local reason = d.reason
+    pcall(function() bom_ui.hide_connecting_screen() end)
+    if reason == "mods_mismatch" or reason == "code_required" or reason == "version_mismatch" then
+        pcall(function() bom_browse.on_join_refused(d, bom_room.last_join) end)
+        return
+    end
+    local text = L(ERRORS[reason or ""] or "Could not join the party.")
+    if reason == "host_only" or reason == "bad_kick" or reason == "no_such_player" then
+        P._kick = {}
+        pcall(function() bom_ui.show_error(text) end)
+        pcall(P.refresh_lobby)
+        return
+    end
+    if reason == "not_enough_players" or reason == "not_ready" or reason == "need_two_teams" or reason == "teams_uneven" or reason == "team_too_big" then
+        pcall(function() bom_ui.show_error(text) end)
+        return
+    end
+    local from_browse = bom_room.last_join and bom_room.last_join.from_browse
+    local in_lobby = S.code ~= nil and bom_match.get_phase() == bom_match.PHASE.LOBBY
+    if in_lobby then
+        pcall(function() bom_ui.show_error(text) end)
+        return
+    end
+    S.flag = false
+    pcall(function() bom_match.reset() end)
+    if from_browse and bom_browse then
+        pcall(function() bom_browse.show() end)
+    else
+        pcall(function() bom_core.disconnect() end)
+    end
+    pcall(function() bom_ui.show_error(text) end)
+end
+
+local function on_joined(d)
+    S.flag = true
+    S.code, S.id, S.me = d.code, d.id, d.playerId
+    S.visibility = d.visibility or "private"
+    S.ps, S.result = nil, nil
+    pcall(function() if G and G.GAME then G.GAME.bom_room_code = d.code; G.GAME.bom_quick_match = false end end)
+    bom_match.enter_lobby(d.host == true, d.code)
+    local st = bom_match.get_state()
+    st.server_player_id = d.playerId
+    st.visibility = S.visibility
+    if d.settings then bom_match.on_settings_received(d.settings) end
+    pcall(function() bom_room.on_seat({code = d.code, id = d.id, token = d.token, host = d.host, playerId = d.playerId}) end)
+    pcall(function() bom_rejoin.on_room_seat(d) end)
+    pcall(function() if bom_browse then bom_browse.close_state() end end)
+    pcall(function() bom_ui.hide_connecting_screen() end)
+    P.show_lobby()
+end
+
+local function lobby_open()
+    return UIK and UIK._win and UIK._win.id == "party" and G.OVERLAY_MENU ~= nil and G.OVERLAY_MENU == P._box
+end
+
+local function footer_sig()
+    local me = my_entry()
+    local n = #(S.room and S.room.players or {})
+    return tostring(P.is_host()) .. tostring(me and me.ready) .. tostring(P.can_start()) .. tostring(n >= P.MAX)
+end
+
+function P.refresh_lobby()
+    if not lobby_open() then return end
+    if footer_sig() ~= P._sig then return P.show_lobby() end
+    UIK.refresh()
+end
+
+local function on_room(d)
+    S.flag = true
+    local was_host = P.is_host()
+    S.room = d
+    if d.code then S.code = d.code end
+    if d.visibility then S.visibility = d.visibility end
+    local st = bom_match.get_state()
+    if S.me ~= nil and d.hostId ~= nil then st.is_host = d.hostId == S.me end
+    if d.phase == "lobby" then
+        if was_host ~= P.is_host() and bom_lobby_settings and bom_lobby_settings.is_open() then
+            bom_lobby_settings.show()
+        else
+            P.refresh_lobby()
+        end
+        return
+    end
+    if S.ps and S.ps.players then
+        local by = {}
+        for _, p in ipairs(d.players or {}) do by[p.pid] = p end
+        for _, p in ipairs(S.ps.players) do
+            local r = by[p.pid]
+            if r then
+                p.connected = r.connected
+                if r.name then p.name = r.name end
+            end
+        end
+    end
+    P.rebuild_hud()
+    P.refresh_standings()
+end
+
+local function on_state(d)
+    S.flag = true
+    S.ps = d
+    if d.myId ~= nil then S.me = d.myId end
+    P.rebuild_hud()
+    P.refresh_standings()
+end
+
+function P.return_to_lobby(d)
+    S.result = nil
+    S.ps = nil
+    local in_lobby = bom_match.get_phase() == bom_match.PHASE.LOBBY
+    local function seat()
+        pcall(function() bom_events.apply_lobby_seat(d) end)
+        if d.settings then pcall(bom_match.on_settings_received, d.settings) end
+        if d.playerId ~= nil then S.me = d.playerId end
+    end
+    P.remove_hud()
+    if in_lobby then
+        seat()
+        G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.8, blocking = false, blockable = false, no_delete = true,
+            func = function() P.show_lobby(); return true end}))
+        return
+    end
+    pcall(function() bom_ui.destroy_match_hud() end)
+    if G.GAME then G.GAME.multiplayer = nil end
+    bom_match.return_to_lobby()
+    seat()
+    pcall(function() if G.OVERLAY_MENU then G.FUNCS.exit_overlay_menu() end end)
+    bom_rejoin.exit_to_menu({keep_match = true, silent = true, after = function() P.show_lobby() end})
+end
+
+function P.on_message(d)
+    local t = d.type
+    if t == "room_created" or t == "room_ready" then
+        P.clear()
+        return false
+    end
+    if t == "party_joined" then on_joined(d) return true end
+    if t == "party_room" then on_room(d) return true end
+    if t == "party_state" then on_state(d) return true end
+    if t == "party_error" then on_error(d) return true end
+    if t == "match_settings" and S.flag and S.code and type(d.settings) == "table" then
+        pcall(bom_match.on_settings_received, d.settings)
+        P.refresh_lobby()
+        return false
+    end
+    if not d.party then return false end
+    S.flag = true
+    if t == "rejoin_ok" then
+        S.code = d.code or S.code
+        if d.playerId ~= nil then S.me = d.playerId end
+        S.ps, S.state_asked, S.live_key = nil, nil, nil
+        return false
+    end
+    if t == "lobby_returned" then
+        P.return_to_lobby(d)
+        return true
+    elseif t == "match_start" then
+        S.result, S.ps = nil, nil
+    elseif t == "pvp_resolved" then
+        S.last_pvp = d
+    elseif t == "match_ended" then
+        S.result = {placement = d.placement, reason = d.reason, result = d.result}
+    elseif t == "room_closed" then
+        P.remove_hud()
+    end
+    return false
+end
+
+local function send(msg)
+    pcall(function() bom_core.send(msg) end)
+end
+
+local FUNCS = {}
+
+FUNCS.party_ready = function()
+    local me = my_entry()
+    send({type = "party_ready", ready = not (me and me.ready)})
+end
+
+FUNCS.party_start = function()
+    if not P.can_start() then return end
+    local seed = bom_match.new_match_seed and bom_match.new_match_seed() or nil
+    send({type = "party_start", seed = seed})
+end
+
+FUNCS.party_balance = function()
+    if P.is_host() then send({type = "party_balance"}) end
+end
+
+FUNCS.party_settings = function()
+    pcall(function() bom_lobby_settings.show() end)
+end
+
+FUNCS.party_copy_code = function()
+    pcall(function() love.system.setClipboardText(tostring(S.code or "")) end)
+    play_sound("card1")
+    P._copied = S.code
+    P.refresh_lobby()
+end
+
+FUNCS.party_team_auto = function(v)
+    if not P.is_host() then return end
+    bom_room.update_setting("team_auto", v == true)
+    P.refresh_lobby()
+end
+
+FUNCS.party_leave = function()
+    send({type = "party_leave"})
+    pcall(function() bom_match.reset() end)
+    pcall(function() bom_core.disconnect() end)
+    P.clear()
+    G.FUNCS.open_multiplayer_menu()
+end
+
+FUNCS.party_back_to_results = function()
+    if bom_ui and bom_ui.reopen_results then bom_ui.reopen_results() else G.FUNCS.exit_overlay_menu() end
+end
+
+FUNCS.party_standings = function()
+    P.show_standings(true)
+end
+
+P.BOT_LEVELS = {"easy", "medium", "hard"}
+P.BOT_NAMES = {"Easy", "Medium", "Hard"}
+P._bot_level = P._bot_level or 2
+
+FUNCS.party_add_bot = function()
+    if not P.is_host() then return end
+    send({type = "add_bot", level = P.BOT_LEVELS[P._bot_level] or "medium"})
+end
+
+for pid = 0, P.MAX - 1 do
+    FUNCS["party_bot_remove_" .. pid] = function()
+        if not P.is_host() then return end
+        for _, p in ipairs(S.room and S.room.players or {}) do
+            if p.pid == pid and p.bot then send({type = "remove_bot", name = p.name}) end
+        end
+    end
+end
+
+P._kick = P._kick or {}
+
+function P.kick_armed(pid)
+    local k = P._kick
+    return pid ~= nil and k.pid == pid and love.timer.getTime() - (k.t or 0) < 3 or false
+end
+
+function P.can_kick(p)
+    return type(p) == "table" and p.pid ~= nil and p.pid ~= S.me and p.left ~= true and P.is_host() and S.code ~= nil
+end
+
+function P.kick(pid, name, bot)
+    if not P.is_host() or pid == nil or pid == S.me then return false end
+    if not P.kick_armed(pid) then
+        P._kick = {pid = pid, t = love.timer.getTime()}
+        pcall(play_sound, "cancel", 1.1, 0.5)
+        G.E_MANAGER:add_event(Event({trigger = "after", delay = 3.05, timer = "REAL", blocking = false, blockable = false, func = function()
+            pcall(P.refresh_lobby)
+            return true
+        end}))
+        pcall(P.refresh_lobby)
+        return false
+    end
+    P._kick = {}
+    if bot then send({type = "remove_bot", name = name}) else send({type = "party_kick", pid = pid}) end
+    pcall(P.refresh_lobby)
+    return true
+end
+
+function P.on_kicked(d)
+    if type(d) ~= "table" then return true end
+    local msg = L("The host removed you from the party")
+    S.flag = false
+    P.clear()
+    local function to_menu()
+        pcall(function() if G.OVERLAY_MENU then G.FUNCS.exit_overlay_menu() end end)
+        G.FUNCS.open_multiplayer_menu()
+        pcall(function() bom_ui.show_error(msg) end)
+    end
+    if bom_rejoin and bom_rejoin.exit_to_menu and G.STAGE == G.STAGES.RUN then
+        bom_rejoin.exit_to_menu({silent = true, reason = "kicked", after = to_menu})
+    else
+        pcall(function() bom_match.reset() end)
+        pcall(function() bom_core.disconnect() end)
+        to_menu()
+    end
+    return true
+end
+
+for pid = 0, P.MAX - 1 do
+    FUNCS["party_kick_" .. pid] = function()
+        for _, p in ipairs(S.room and S.room.players or {}) do
+            if p.pid == pid and P.can_kick(p) then P.kick(pid, p.name, p.bot) return end
+        end
+    end
+end
+
+for pid = 0, P.MAX - 1 do
+    FUNCS["party_team_" .. pid] = function()
+        if not S.room or settings().team_auto ~= false then return end
+        if not (P.is_host() or pid == S.me) then return end
+        local n = math.max(2, tonumber(S.room.teams) or 2)
+        for _, p in ipairs(S.room.players or {}) do
+            if p.pid == pid then
+                send({type = "party_team", pid = pid, team = ((tonumber(p.team) or 0) + 1) % n})
+                return
+            end
+        end
+    end
+end
+
+local function row_h() return UIK.touch() and 0.64 or 0.6 end
+
+local function chip(label, colour, w, h)
+    return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, minh = h, r = 0.08, colour = colour, padding = 0.02}, nodes = {
+        {n = G.UIT.T, config = {text = label, scale = UIK.touch() and 0.34 or 0.3, colour = G.C.WHITE, shadow = true}},
+    }}
+end
+
+local function cell(nodes, w, align)
+    return {n = G.UIT.C, config = {align = align or "cm", minw = w, maxw = w, padding = 0}, nodes = nodes}
+end
+
+local function txt(str, scale, colour)
+    return {n = G.UIT.T, config = {text = tostring(str), scale = scale, colour = colour or G.C.WHITE, shadow = true}}
+end
+
+local function player_row(p, i, w, teams)
+    local h = row_h()
+    local seat_w, team_w, status_w, gap = 0.6, teams and 1.5 or 0, 1.7, 0.1
+    local kick_w = P.is_host() and 1.2 or 0
+    local name_w = w - seat_w - team_w - status_w - gap * 4 - (teams and gap or 0) - (kick_w > 0 and kick_w + gap or 0)
+    local nodes = {cell({txt(tostring(i), 0.34, UIK.C.muted)}, seat_w)}
+    local function add(n)
+        nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = gap}}
+        nodes[#nodes + 1] = n
+    end
+    if not p then
+        add(cell({txt(L("Open seat"), 0.34, UIK.C.muted)}, name_w, "cl"))
+        if teams then add(cell({}, team_w)) end
+        if kick_w > 0 then add(cell({}, kick_w)) end
+        add(cell({}, status_w))
+    else
+        local me = p.pid == S.me
+        local badge = not p.bot and bom_ranked and bom_ranked.badge_for(p.name, 0.4)
+        add(cell(badge and {badge, {n = G.UIT.C, config = {minw = 0.06}}, txt(p.name or "?", 0.36, me and G.C.GOLD or G.C.WHITE)} or {txt(p.name or "?", 0.36, me and G.C.GOLD or G.C.WHITE)}, name_w, "cl"))
+        if teams then
+            local s = settings()
+            local col = P.team_colour(p.team)
+            if s.team_auto ~= false then
+                add(cell({chip(L("Auto"), G.C.UI.BACKGROUND_INACTIVE, team_w, h - 0.12)}, team_w))
+            elseif P.is_host() or me then
+                add(cell({UIBox_button({button = "party_team_" .. p.pid, label = {P.team_name(p.team)}, colour = col,
+                    minw = team_w, maxw = team_w, minh = h - 0.12, scale = 0.32, col = true})}, team_w))
+            else
+                add(cell({chip(P.team_name(p.team), col, team_w, h - 0.12)}, team_w))
+            end
+        end
+        if kick_w > 0 then
+            if not p.bot and P.can_kick(p) then
+                local armed = P.kick_armed(p.pid)
+                add(cell({UIBox_button({button = "party_kick_" .. p.pid, label = {armed and L("Sure?") or L("Kick")}, colour = armed and G.C.GOLD or G.C.RED,
+                    minw = kick_w, maxw = kick_w, minh = h - 0.12, scale = 0.32, col = true})}, kick_w))
+            else
+                add(cell({}, kick_w))
+            end
+        end
+        local label, col
+        if p.bot and P.is_host() then
+            add(cell({UIBox_button({button = "party_bot_remove_" .. p.pid, label = {L("Remove")}, colour = G.C.RED,
+                minw = status_w, maxw = status_w, minh = h - 0.12, scale = 0.32, col = true})}, status_w))
+        elseif p.connected == false then
+            label, col = L("Away"), G.C.ORANGE
+        elseif S.room and p.pid == S.room.hostId then
+            label, col = L("Host"), G.C.GOLD
+        elseif p.ready then
+            label, col = L("Ready"), G.C.GREEN
+        else
+            label, col = L("Not ready"), G.C.UI.BACKGROUND_INACTIVE
+        end
+        if label then add(cell({chip(label, col, status_w, h - 0.12)}, status_w)) end
+    end
+    return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.03}, nodes = {
+        {n = G.UIT.C, config = {align = "cl", minw = w, minh = h, r = 0.1, colour = G.C.BLACK, emboss = 0.04, id = p and p.pid ~= nil and ("bom_emote_pid_" .. tostring(p.pid)) or nil}, nodes = nodes},
+    }}
+end
+
+local function sorted_players()
+    local out = {}
+    for _, p in ipairs(S.room and S.room.players or {}) do out[#out + 1] = p end
+    table.sort(out, function(a, b) return (a.pid or 0) < (b.pid or 0) end)
+    return out
+end
+
+local function summary_lines(s)
+    local k = s.party_kind or "br"
+    local lines = {}
+    if k == "br" then
+        lines[1] = L("Lives each") .. ": " .. tostring(s.starting_lives or 4)
+        lines[2] = L("Lives lost per blind") .. ": " .. tostring(s.br_losers or 1)
+    elseif k == "teams" then
+        lines[1] = L("Team size") .. ": " .. tostring(s.team_size or 2)
+        lines[2] = L("Team lives") .. ": " .. tostring(s.starting_lives or 4)
+    elseif k == "race" then
+        lines[1] = L("Target ante") .. ": " .. tostring(s.race_target or 4)
+        return lines
+    else
+        lines[1] = L("Raid lives") .. ": " .. tostring(s.raid_lives or 3)
+        lines[2] = L("Target per player") .. ": " .. tostring(s.raid_per_player or 100) .. "%"
+    end
+    if UIK.touch() then return lines end
+    lines[3] = L("PvP from ante") .. " " .. tostring(s.pvp_start_round or 2) .. ", " .. tostring(s.party_blind_seconds or 180) .. "s"
+    return lines
+end
+
+local function code_block(w)
+    local touch = UIK.touch()
+    local bw, gap, h = touch and 2.0 or 1.8, 0.12, touch and 1.0 or 0.9
+    local box_w = w - bw - gap
+    local copied = P._copied ~= nil and P._copied == S.code
+    local code = {n = G.UIT.C, config = {align = "cm", minw = box_w, maxw = box_w, minh = h, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes = {
+        {n = G.UIT.T, config = {text = tostring(S.code or "????"), scale = touch and 0.95 or 0.85, colour = G.C.GOLD, shadow = true}},
+    }}
+    local copy = UIK.button{label = copied and L("Copied") or L("Copy"), button = "party_copy_code", colour = copied and UIK.C.ok or UIK.C.accent,
+        w = bw, h = h, col = true, id = "party_copy_code"}
+    local info = S.visibility == "public" and L("Public: listed in Browse Rooms, or join with this code")
+        or L("Private: only players with this code can join")
+    local nodes = {
+        {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = {code, {n = G.UIT.C, config = {minw = gap}}, copy}},
+    }
+    local note = UIK.note({info}, {w = w})
+    local row = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = w, padding = 0}, nodes = {nodes[1], note}},
+    }}
+    row.uik_h = h + note.uik_h
+    return row
+end
+
+local function team_counts_row(w, s)
+    local counts, n = P.team_counts()
+    local size = tonumber(s.team_size) or 2
+    local gap = 0.1
+    local cw = (w - gap * (n - 1)) / n
+    local h = row_h() - 0.08
+    local nodes = {}
+    for t = 1, n do
+        if t > 1 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = gap}} end
+        local c = counts[t] or 0
+        local col = s.team_auto ~= false and G.C.UI.BACKGROUND_INACTIVE or P.team_colour(t - 1)
+        nodes[#nodes + 1] = chip(P.team_name(t - 1) .. "  " .. c .. "/" .. size, col, cw, h)
+    end
+    local row = {n = G.UIT.R, config = {align = "cm", minw = w, minh = h + 0.08, padding = 0}, nodes = nodes}
+    row.uik_h = h + 0.08
+    return row
+end
+
+local function start_status()
+    local host = P.is_host()
+    local me = my_entry()
+    if not host then
+        if me and me.ready then return L("Waiting for the host to start"), UIK.C.muted end
+        return L("Press Ready when you are set"), G.C.ORANGE
+    end
+    local why, n = P.start_block()
+    if not why then return L("Everyone is ready, you can start"), G.C.GREEN end
+    local s = settings()
+    local text
+    if why == "not_enough_players" then
+        text = L("Start needs at least 2 players")
+    elseif why == "not_ready" then
+        text = L("Waiting for {n} player(s) to be ready"):gsub("{n}", tostring(n or 1))
+    elseif why == "need_two_teams" then
+        text = L("Put players in at least two teams")
+    elseif why == "team_too_big" then
+        text = L("A team has more than {n} players"):gsub("{n}", tostring(s.team_size or 2))
+    else
+        text = L("Teams are uneven, make them {n}v{n}"):gsub("{n}", tostring(s.team_size or 2))
+    end
+    return text, G.C.ORANGE
+end
+
+local function lobby_body()
+    local s = settings()
+    local inner = UIK.col_w(2) - 2 * UIK.PAD
+    local kind = s.party_kind or "br"
+    local teams = kind == "teams"
+    local host = P.is_host()
+    local list = sorted_players()
+    local left = {UIK.header(L("Players") .. "  " .. #list .. "/" .. P.MAX, {w = inner})}
+    for i = 1, P.MAX do left[#left + 1] = player_row(list[i], i, inner, teams) end
+
+    local right = {UIK.header(L("Party code"), {w = inner}), code_block(inner)}
+    if host then
+        local labels, cur = {}, 1
+        for i, k in ipairs(P.KINDS) do
+            labels[i] = P.kind_name(k)
+            if k == kind then cur = i end
+        end
+        right[#right + 1] = UIK.cycle{w = inner, label = L("Party mode"), options = labels, current = cur, info = L(P.KIND_INFO[kind]), id = "party_kind",
+            callback = function(i)
+                bom_room.update_setting("party_kind", P.KINDS[i])
+                UIK.refresh()
+            end}
+    else
+        right[#right + 1] = UIK.value{w = inner, vw = 3.2, label = L("Party mode"), value = P.kind_name(kind), info = L(P.KIND_INFO[kind])}
+    end
+    if teams then
+        local auto = s.team_auto ~= false
+        if host then
+            P._tog = {team_auto = auto}
+            right[#right + 1] = UIK.toggle{w = inner, label = L("Auto-balance teams"), ref_table = P._tog, ref_value = "team_auto", id = "party_team_auto",
+                info = not UIK.touch() and (auto and L("Teams are mixed at start") or L("Tap a team to move a player")) or nil, callback = FUNCS.party_team_auto}
+        else
+            right[#right + 1] = UIK.note({auto and L("The host mixes teams at start") or L("Tap your team to switch")}, {w = inner})
+        end
+        right[#right + 1] = team_counts_row(inner, s)
+    else
+        right[#right + 1] = UIK.note(summary_lines(s), {w = inner})
+    end
+    if host then
+        local names = {}
+        for i, n in ipairs(P.BOT_NAMES) do names[i] = L(n) end
+        right[#right + 1] = UIK.cycle{w = inner, label = L("Bot difficulty"), options = names, current = P._bot_level, id = "party_bot_level",
+            info = not (teams and UIK.touch()) and L("Bot-latro players run on the server and play like real players") or nil,
+            callback = function(i) P._bot_level = i end}
+    end
+    local text, col = start_status()
+    right[#right + 1] = UIK.note({text}, {w = inner, colour = col, scale = UIK.touch() and 0.36 or 0.32})
+    local mg = rawget(_G, "Minigames")
+    if mg and mg.lobby_wait and mg.lobby_wait(true) then
+        local wb = UIK.button{label = L("Play while you wait"), button = "mg_wait_play", colour = G.C.PURPLE, id = "mg_wait_row", col = true}
+        left[#left + 1] = {n = G.UIT.R, config = {align = "cm", minw = inner, padding = 0.1}, nodes = {wb}}
+    end
+    return UIK.columns({left, right})
+end
+
+function P.show_lobby()
+    if not (G and G.FUNCS and UIK) then return end
+    P.ensure()
+    pcall(function() bom_ui.release_connecting_screen() end)
+    pcall(function() require("multiplayer.bom_lobby_leave").register() end)
+    local host = P.is_host()
+    local me = my_entry()
+    local footer = {}
+    local fw = bom_social and (UIK.touch() and 2.15 or 2.05) or nil
+    if not host then
+        footer[#footer + 1] = UIK.button{label = me and me.ready and L("Unready") or L("Ready"), button = "party_ready",
+            colour = me and me.ready and UIK.C.danger or UIK.C.ok, id = "party_ready", w = fw}
+    end
+    footer[#footer + 1] = UIK.button{label = host and L("Settings") or L("View settings"), button = "party_settings", colour = UIK.C.accent, id = "party_settings", w = fw}
+    if host then
+        footer[#footer + 1] = UIK.button{label = L("Add Bot"), button = "party_add_bot", colour = G.C.PURPLE,
+            disabled = #(S.room and S.room.players or {}) >= P.MAX, id = "party_add_bot", w = fw}
+        footer[#footer + 1] = UIK.button{label = L("Start"), button = "party_start", colour = UIK.C.ok, disabled = not P.can_start(), id = "party_start", w = fw}
+    end
+    if bom_social then
+        footer[#footer + 1] = UIK.button{label = L("Friends"), button = "social_open_party", colour = UIK.C.ok, w = fw, id = "party_friends"}
+        footer[#footer + 1] = UIK.button{label = L("Emote"), button = "social_emote_open_party", colour = G.C.BLUE, w = fw, id = "party_emote"}
+        if bom_social.chat_button then footer[#footer + 1] = bom_social.chat_button("party", fw) end
+    end
+    P._sig = footer_sig()
+r 4 1381 %20%20%20%20 -
+l 534
+    G.FUNCS.overlay_menu{definition = UIK.window{zoom = false,
+        id = "party",
+        title = L("PARTY LOBBY"),
+        tabs = {{key = "lobby", label = L("Lobby"), build = lobby_body}},
+        back_func = "party_lobby_back",
+        back_label = L("Leave"),
+        footer = footer,
+    }}
+    P._box = G.OVERLAY_MENU
+end
+
+local function alive_first(list)
+    local out = {}
+    for _, p in ipairs(list or {}) do out[#out + 1] = p end
+    table.sort(out, function(a, b)
+        if (a.alive ~= false) ~= (b.alive ~= false) then return a.alive ~= false end
+        if a.alive == false then return (tonumber(a.placement) or 99) < (tonumber(b.placement) or 99) end
+        if (tonumber(a.lives) or 0) ~= (tonumber(b.lives) or 0) then return (tonumber(a.lives) or 0) > (tonumber(b.lives) or 0) end
+        return (tonumber(a.score) or -1) > (tonumber(b.score) or -1)
+    end)
+    return out
+end
+
+local function raid_bar(w, total, target)
+    local t, g = tonumber(total) or 0, tonumber(target) or 0
+    local frac = g > 0 and math.max(0, math.min(1, t / g)) or 0
+    local fill = math.max(0.01, w * frac)
+    return {n = G.UIT.R, config = {align = "cl", minw = w, minh = 0.2, r = 0.06, colour = G.C.UI.BACKGROUND_INACTIVE}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = fill, maxw = fill, minh = 0.2, r = 0.06, colour = frac >= 1 and G.C.GREEN or G.C.ORANGE}, nodes = {}},
+    }}
+end
+
+local HUD_W = 3.6
+
+local function hud_line(left, right, lcol, rcol, scale, bg, w, badge)
+    scale = scale or 0.3
+    w = w or (HUD_W - 0.2)
+    local lw = w * 0.58
+    local rw = w - lw
+    return {n = G.UIT.R, config = {align = "cm", minw = w, minh = scale + 0.06, r = 0.06, colour = bg or G.C.CLEAR}, nodes = {
+        {n = G.UIT.C, config = {align = "cl", minw = lw, maxw = lw}, nodes = badge and {badge, {n = G.UIT.C, config = {minw = 0.04}}, txt(left, scale, lcol)} or {txt(left, scale, lcol)}},
+        {n = G.UIT.C, config = {align = "cr", minw = rw, maxw = rw}, nodes = {txt(right, scale, rcol)}},
+    }}
+end
+
+local function lives_text(n)
+    return tostring(tonumber(n) or 0) .. " " .. L("lives")
+end
+
+local MINE_BG = {1, 0.85, 0.3, 0.16}
+P.MINE_BG = MINE_BG
+
+function P.my_team()
+    for _, p in ipairs(S.ps and S.ps.players or {}) do
+        if p.pid == S.me then return p.team end
+    end
+    return nil
+end
+
+FUNCS.party_hud_toggle = function()
+    S.hud_collapsed = not S.hud_collapsed
+    S.hud_forced = nil
+    P.rebuild_hud()
+end
+
+function P.hud_def(collapsed)
+    local ps = S.ps or {}
+    local kind = ps.kind or P.kind()
+    local iw = HUD_W - 0.2
+    local rows = {}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = iw, minh = 0.42, button = "party_hud_toggle", hover = true, r = 0.06}, nodes = {
+        txt(P.kind_name(kind) .. (collapsed and "  +" or "  -"), 0.36, G.C.GOLD)}}
+    local mine = P.my_team()
+    if kind == "br" then
+        local lo, hi = ps.lowest, ps.highest
+        rows[#rows + 1] = hud_line(L("Lowest") .. ": " .. (lo and lo.name or "-"), lo and fmt_score(lo.score) or "-", G.C.RED, G.C.RED)
+        rows[#rows + 1] = hud_line(L("Highest") .. ": " .. (hi and hi.name or "-"), hi and fmt_score(hi.score) or "-", G.C.GREEN, G.C.GREEN)
+    elseif kind == "teams" then
+        for _, t in ipairs(ps.teams or {}) do
+            local col = t.alive == false and G.C.UI.TEXT_INACTIVE or P.team_colour(t.team)
+            rows[#rows + 1] = hud_line(P.team_name(t.team) .. "  " .. lives_text(t.lives), fmt_score(t.score), col, G.C.WHITE, nil, t.team == mine and MINE_BG or nil)
+        end
+    elseif kind == "raid" then
+        local r = ps.raid or {}
+        rows[#rows + 1] = hud_line(L("Raid lives") .. ": " .. tostring(r.lives or 0), fmt_score(r.total) .. " / " .. fmt_score(r.target), G.C.WHITE, G.C.WHITE)
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = iw, padding = 0.04}, nodes = {raid_bar(iw, r.total, r.target)}}
+    end
+    if not collapsed then
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = iw, minh = 0.02, colour = {1, 1, 1, 0.12}}, nodes = {}}
+        local list = alive_first(ps.players)
+        local two = #list > 4 or UIK.touch()
+        local cells = {}
+        for _, p in ipairs(list) do
+            local out = p.alive == false
+            local col = out and G.C.UI.TEXT_INACTIVE or (p.pid == S.me and G.C.GOLD or G.C.WHITE)
+            if kind == "teams" and not out and p.pid ~= S.me then col = P.team_colour(p.team) end
+            local right
+            if out then
+                right = L("Out")
+            elseif two then
+                right = kind == "raid" and (p.finished and L("Done") or fmt_score(p.score)) or tostring(tonumber(p.lives) or 0)
+            elseif kind == "raid" then
+                right = p.score ~= nil and fmt_score(p.score) or (p.finished and L("Done") or "-")
+            else
+                right = (p.score ~= nil and (fmt_score(p.score) .. "  ") or "") .. lives_text(p.lives)
+            end
+            local name = p.name or "?"
+            if p.connected == false and not out then name = name .. " (" .. L("away") .. ")" end
+            local bg = (kind == "teams" and mine ~= nil and p.team == mine) and MINE_BG or nil
+            cells[#cells + 1] = hud_line(name, right, col, out and G.C.UI.TEXT_INACTIVE or G.C.WHITE, two and 0.26 or 0.28, bg, two and (iw - 0.1) / 2 or iw,
+                bom_ranked and bom_ranked.badge_for(p.name, two and 0.26 or 0.3))
+        end
+        if two then
+            for i = 1, #cells, 2 do
+                local a, b = cells[i], cells[i + 1]
+                a.n = G.UIT.C
+                local pair = {a, {n = G.UIT.C, config = {minw = 0.1}}}
+                if b then b.n = G.UIT.C; pair[3] = b else pair[3] = {n = G.UIT.C, config = {minw = (iw - 0.1) / 2}} end
+                rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = iw}, nodes = pair}
+            end
+        else
+            for _, c in ipairs(cells) do rows[#rows + 1] = c end
+        end
+    end
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = HUD_W, r = 0.12, padding = 0.08, colour = {0, 0, 0, 0.45}, emboss = 0.05}, nodes = rows},
+    }}
+end
+
+local function in_run()
+    return G and G.STAGE == G.STAGES.RUN and G.GAME and G.GAME.multiplayer and G.consumeables ~= nil
+end
+
+function P.remove_hud()
+    if P.hud then
+        pcall(function() P.hud:remove() end)
+        P.hud = nil
+    end
+end
+
+local function free_height()
+    local top = G.consumeables.T.y + G.consumeables.T.h + 0.35
+    local bottom = G.deck and G.deck.T and G.deck.T.y or (G.ROOM and G.ROOM.T.h) or 12
+    return bottom - top - 0.15
+end
+
+local function build(collapsed)
+    local ok, box = pcall(function()
+        return UIBox{definition = P.hud_def(collapsed), config = {align = "bm", offset = {x = 0, y = 0.35}, major = G.consumeables, bond = "Weak"}}
+    end)
+    return ok and box or nil
+end
+
+function P.rebuild_hud()
+    P.remove_hud()
+    if not (S.ps and in_run()) then return end
+    do return end
+    if S.hud_collapsed == nil then S.hud_collapsed = UIK.touch() and true or false end
+    local box = build(S.hud_collapsed)
+    if box and not S.hud_collapsed then
+        local ok, room = pcall(free_height)
+        if ok and box.T and box.T.h > room then
+            pcall(function() box:remove() end)
+            box = build(true)
+        end
+    end
+    P.hud = box
+end
+
+local LIVE_BLIND = {Small = "S", Big = "B", Boss = "L"}
+
+local function live_stat()
+    local g = G.GAME
+    local where
+    if G.STATE == G.STATES.SHOP then where = "shop"
+    elseif G.STATE == G.STATES.BLIND_SELECT then where = g.mp_blind_ready and "ready" or "select"
+    elseif g.facing_blind then where = "blind"
+    else return nil end
+    local cr = g.current_round or {}
+    local score = 0
+    if where == "blind" then
+        local ok, v = pcall(function() return bom_core.plain_number(g.chips) end)
+        score = ok and tonumber(v) or tonumber(g.chips) or 0
+    end
+    return {
+        type = "live_stat", where = where, ante = g.round_resets and g.round_resets.ante or 1,
+        blind = where ~= "shop" and LIVE_BLIND[g.blind_on_deck or ""] or nil,
+        hands = where == "blind" and (cr.hands_left or 0) or 0, discards = where == "blind" and (cr.discards_left or 0) or 0,
+        score = math.floor(score or 0),
+    }
+end
+
+local function live_tick()
+    local now = love.timer.getTime()
+    if S.live_at and now - S.live_at < 0.25 then return end
+    S.live_at = now
+    local ok, st = pcall(live_stat)
+    if not ok or not st then return end
+    local key = table.concat({st.where, st.ante, st.blind or "", st.hands, st.discards, st.score}, "|")
+    if key == S.live_key then return end
+    S.live_key = key
+    send(st)
+end
+
+function P.update()
+    if S.flag and S.ps and in_run() and S.ps.phase == "playing" then
+        live_tick()
+        if bom_spectate then pcall(bom_spectate.tick) end
+    end
+    if P.hud then
+        if not (S.flag and in_run()) then P.remove_hud() end
+    elseif S.flag and S.ps and in_run() then
+        P.rebuild_hud()
+    elseif S.flag and not S.ps and in_run() and not S.state_asked then
+        S.state_asked = true
+        send({type = "request_state"})
+    end
+end
+
+local function placement_text(n)
+    n = tonumber(n)
+    return n and ("#" .. n) or "-"
+end
+P.placement_text = placement_text
+
+local function standings_open()
+    return UIK and UIK._win and UIK._win.id == "party_st" and G.OVERLAY_MENU ~= nil and G.OVERLAY_MENU == P._st_box
+end
+
+function P.refresh_standings()
+    if standings_open() then UIK.refresh() end
+end
+
+local LIVE_BLIND_NAME = {S = "Small Blind", B = "Big Blind", L = "Boss Blind"}
+
+local function live_text(live)
+    if type(live) ~= "table" then return nil end
+    local parts = {string.format(L("Ante %d"), tonumber(live.ante) or 1)}
+    if live.where == "shop" then
+        parts[#parts + 1] = L("Shop")
+    elseif live.where == "select" then
+        parts[#parts + 1] = L("Choosing blind")
+    elseif live.where == "ready" then
+        if LIVE_BLIND_NAME[live.blind or ""] then parts[#parts + 1] = L(LIVE_BLIND_NAME[live.blind]) end
+        parts[#parts + 1] = L("ready")
+    else
+        if LIVE_BLIND_NAME[live.blind or ""] then parts[#parts + 1] = L(LIVE_BLIND_NAME[live.blind]) end
+        local h, d = tonumber(live.hands) or 0, tonumber(live.discards) or 0
+        parts[#parts + 1] = string.format(L(h == 1 and "%d hand" or "%d hands"), h) .. " " .. string.format(L(d == 1 and "%d discard" or "%d discards"), d)
+    end
+    return table.concat(parts, ", ")
+end
+P.live_text = live_text
+
+local function standings_body()
+    if bom_standings and bom_standings.tab and bom_ui and bom_ui.in_party_run and bom_ui.in_party_run() then
+        local ok, node = pcall(bom_standings.tab)
+        if ok and node then return node end
+    end
+    local ps = S.ps or {}
+    local kind = ps.kind or P.kind()
+    local w = UIK.W - 2 * UIK.PAD
+    local teams = kind == "teams"
+    local cols = {{key = "place", w = 1.0}, {key = "name"}, teams and {key = "team", w = 1.8} or nil, {key = "lives", w = 1.2}, {key = "status", w = 5.2}, {key = "score", w = 2.2}}
+    local list = {}
+    for i = 1, 6 do if cols[i] then list[#list + 1] = cols[i] end end
+    local fixed = 0
+    for _, c in ipairs(list) do fixed = fixed + (c.w or 0) end
+    for _, c in ipairs(list) do if c.key == "name" then c.w = w - fixed - 0.2 end end
+    local function line(values, colours, scale, bg, badge)
+        local nodes = {}
+        for i, c in ipairs(list) do
+            local v = values[c.key] or ""
+            local sc = scale
+            local room = c.w - 0.15 - ((badge and c.key == "name") and 0.46 or 0)
+            local tw = UIK.text_w(v, scale)
+            if tw > room and tw > 0 then sc = scale * room / tw end
+            local t = txt(v, sc, colours and colours[c.key] or G.C.WHITE)
+            nodes[#nodes + 1] = cell((badge and c.key == "name") and {badge, {n = G.UIT.C, config = {minw = 0.06}}, t} or {t}, c.w, c.key == "name" and "cl" or "cm")
+        end
+        return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.02}, nodes = {
+            {n = G.UIT.C, config = {align = "cl", minw = w, minh = UIK.touch() and 0.6 or 0.48, r = 0.1, colour = bg or G.C.BLACK, emboss = bg == G.C.CLEAR and 0 or 0.04, padding = 0.03}, nodes = nodes},
+        }}
+    end
+    local items = {}
+    local title
+    if kind == "br" then
+        local lo, hi = ps.lowest, ps.highest
+        title = L("Lowest") .. ": " .. (lo and (lo.name .. " " .. fmt_score(lo.score)) or "-") .. "    " .. L("Highest") .. ": " .. (hi and (hi.name .. " " .. fmt_score(hi.score)) or "-")
+    elseif kind == "teams" then
+        local parts = {}
+        for _, t in ipairs(ps.teams or {}) do parts[#parts + 1] = P.team_name(t.team) .. " " .. fmt_score(t.score) end
+        title = #parts > 0 and table.concat(parts, "    ") or P.kind_name(kind)
+    else
+        local r = ps.raid or {}
+        title = L("Raid") .. ": " .. fmt_score(r.total) .. " / " .. fmt_score(r.target) .. "    " .. L("Raid lives") .. ": " .. tostring(r.lives or 0)
+    end
+    items[#items + 1] = UIK.header(title, {w = w})
+    if kind == "raid" then
+        local r = ps.raid or {}
+        items[#items + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.04}, nodes = {raid_bar(w - 0.2, r.total, r.target)}}
+    end
+    local head = {place = L("Place"), name = L("Player"), team = L("Team"), lives = L("Lives"), status = L("Status"), score = L("Score")}
+    local ts = UIK.touch() and 0.42 or 0.32
+    items[#items + 1] = line(head, nil, ts, G.C.CLEAR)
+    for _, p in ipairs(alive_first(ps.players)) do
+        local out = p.alive == false
+        local status = out and L("Out") or (p.connected == false and L("Away") or (p.finished and L("Done") or (live_text(p.live) or L("Playing"))))
+        local me = p.pid == S.me
+        local values = {place = placement_text(p.placement), name = p.name or "?", team = teams and P.team_name(p.team) or "",
+            lives = tostring(p.lives or 0), status = status,
+            score = fmt_score(p.score ~= nil and p.score or (not out and type(p.live) == "table" and p.live.where == "blind" and p.live.score or nil))}
+        local base = out and G.C.UI.TEXT_INACTIVE or G.C.WHITE
+        local colours = {place = base, name = me and G.C.GOLD or base, team = teams and P.team_colour(p.team) or base, lives = base,
+            status = out and G.C.RED or (p.connected == false and G.C.ORANGE or base), score = base}
+        local mine = (teams and P.my_team() ~= nil and p.team == P.my_team()) or (not teams and me)
+        items[#items + 1] = line(values, colours, ts, mine and {0.3, 0.25, 0.08, 1} or nil, bom_ranked and bom_ranked.badge_for(p.name, 0.4))
+    end
+    local node = {n = G.UIT.R, config = {align = "tm", minw = UIK.W, minh = UIK.H, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = w}, nodes = items},
+    }}
+    return node
+end
+
+function P.standings_root()
+    P.ensure()
+    local ok, body = pcall(standings_body)
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {ok and body or {n = G.UIT.R, config = {}}}}
+end
+
+function P.in_party()
+    return S.flag == true and S.ps ~= nil
+end
+
+function P.show_standings(from_results)
+    P.ensure()
+    local finished = (S.ps and S.ps.phase == "finished") or (S.result ~= nil and bom_match.is_match_over() and S.ps and S.ps.phase ~= "playing")
+    local footer = {}
+    if from_results and finished and P.is_host() then
+        footer[#footer + 1] = UIK.button{label = L("Return to Lobby"), button = "mp_return_to_lobby", colour = UIK.C.accent, id = "party_st_lobby"}
+    end
+    if not finished and bom_spectate and bom_spectate.allowed() then
+        footer[#footer + 1] = UIK.button{label = L("Spectate"), button = "party_spectate", colour = UIK.C.accent, id = "party_st_spec"}
+    end
+    footer[#footer + 1] = UIK.button{label = L("Quit"), button = "mp_leave_lobby", colour = UIK.C.danger, id = "party_st_quit"}
+    G.FUNCS.overlay_menu{definition = UIK.window{zoom = false,
+        id = "party_st",
+        title = finished and L("PARTY RESULTS") or L("STANDINGS"),
+        tabs = {{key = "s", label = L("Standings"), build = standings_body}},
+        back_func = from_results and "party_back_to_results" or "exit_overlay_menu",
+        footer = footer,
+    }}
+    P._st_box = G.OVERLAY_MENU
+end
+
+function P.solo_note()
+    pcall(function()
+        attention_text({text = L("No fight this blind"), scale = 0.7, hold = 2.5, major = G.play, align = "cm", offset = {x = 0, y = -1},
+            backdrop_colour = G.C.BLACK, silent = true})
+    end)
+end
+
+function P.result_line()
+    local r = S.result
+    local n = 0
+    for _ in ipairs(S.ps and S.ps.players or {}) do n = n + 1 end
+    if r and r.placement then
+        return L("Place") .. " " .. placement_text(r.placement) .. (n > 0 and (" " .. L("of") .. " " .. n) or "")
+    end
+    return L("Watching the others play")
+end
+
+local END_LINE = {
+    team_won = "Your team won", team_eliminated = "Your team lost",
+    raid_cleared = "Raid cleared", raid_failed = "Raid failed", last_standing = "Last one standing",
+}
+
+function P.end_line()
+    local r = S.result or {}
+    local head = END_LINE[r.reason or ""]
+    if not head then
+        local kind = P.kind()
+        local won = bom_match.get_state().match_result == "win"
+        if kind == "teams" then head = won and END_LINE.team_won or END_LINE.team_eliminated
+        elseif kind == "raid" then head = won and END_LINE.raid_cleared or END_LINE.raid_failed end
+    end
+    local place = r.placement and P.result_line() or nil
+    if head and place then return L(head) .. ", " .. place end
+    return head and L(head) or P.result_line()
+end
+
+function P.results_buttons()
+    local nodes = {}
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.4, minw = 3.4}, nodes = {
+        {n = G.UIT.T, config = {text = P.result_line(), scale = 0.32, colour = G.C.GOLD, shadow = true, maxw = 3.4}},
+    }}
+    local over = S.ps and S.ps.phase == "finished"
+    nodes[#nodes + 1] = UIBox_button({id = "party_standings_btn", button = "party_standings", label = {over and L("Results") or L("Standings")},
+        colour = G.C.GREEN, minw = 3.4, maxw = 3.4, minh = 1, focus_args = {nav = "wide", snap_to = true}})
+    if P.is_host() then
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.2, minw = 0.1}, nodes = {}}
+        nodes[#nodes + 1] = UIBox_button({id = "mp_return_lobby_btn", button = over and "mp_return_to_lobby" or "nil", label = {L("Return to Lobby")},
+            colour = over and G.C.BLUE or G.C.UI.BACKGROUND_INACTIVE, minw = 3.4, maxw = 3.4, minh = 1, focus_args = {nav = "wide"}})
+    end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.2, minw = 0.1}, nodes = {}}
+    nodes[#nodes + 1] = UIBox_button({id = "mp_leave_lobby_btn", button = "mp_leave_lobby", label = {L("Quit")}, colour = G.C.RED,
+        minw = 3.4, maxw = 3.4, minh = 1, focus_args = {nav = "wide"}})
+    return nodes
+end
+
+local function register_strings()
+    mod_loc_register{
+    fr = {
+        ["No fight this blind"] = "Pas de duel sur cette blinde", ["One against one"] = "Un contre un", ["Visibility"] = "Visibilité", ["Public"] = "Public", ["Private"] = "Privé", ["Mode"] = "Mode",
+        ["Create"] = "Créer", ["(update)"] = "(mise à jour)", ["Ante"] = "Mise", ["In match"] = "En match", ["MODS NEEDED"] = "MODS REQUIS",
+        ["MODE"] = "MODE", ["SLOTS"] = "PLACES", ["STATUS"] = "ÉTAT", ["1v1"] = "1c1", ["All"] = "Tous", ["Slots"] = "Places", ["Any"] = "Tous",
+        ["Free slots"] = "Places libres", ["Started"] = "Commencé", ["Not started"] = "Pas commencé", ["No room matches these filters."] = "Aucune salle ne correspond aux filtres.",
+        ["Battle Royale"] = "Battle Royale", ["Teams"] = "Équipes", ["Co-op Raid"] = "Raid coop",
+        ["Lowest score each PvP blind loses a life"] = "Le plus petit score de chaque blinde JcJ perd une vie",
+        ["Team scores add up, teams share lives"] = "Les scores d'équipe s'additionnent, vies partagées",
+        ["Everyone beats one shared boss target"] = "Tous contre un seul objectif de boss partagé",
+        ["Team A"] = "Équipe A", ["Team B"] = "Équipe B", ["Team C"] = "Équipe C", ["Team D"] = "Équipe D", ["Team"] = "Équipe",
+        ["This party is full."] = "Ce groupe est complet.", ["A party needs at least 2 players."] = "Un groupe a besoin d'au moins 2 joueurs.",
+        ["Every player must be ready."] = "Chaque joueur doit être prêt.", ["Teams needs at least two teams with players."] = "Il faut au moins deux équipes avec des joueurs.",
+        ["Could not join the party."] = "Impossible de rejoindre le groupe.",
+        ["CREATE PUBLIC PARTY"] = "CRÉER UN GROUPE PUBLIC", ["CREATE PRIVATE PARTY"] = "CRÉER UN GROUPE PRIVÉ", ["JOIN PARTY WITH CODE"] = "REJOINDRE AVEC UN CODE",
+        ["Enter a 4-character party code"] = "Entrez un code de groupe à 4 caractères", ["JOIN PARTY"] = "REJOINDRE UN GROUPE",
+        ["PARTY"] = "GROUPE", ["3 to 8 players: Battle Royale, Teams or Co-op Raid"] = "3 à 8 joueurs : Battle Royale, Équipes ou Raid coop",
+        ["PARTY (3-8 PLAYERS)"] = "GROUPE (3-8 JOUEURS)", ["Battle Royale, Teams and Co-op Raid"] = "Battle Royale, Équipes et Raid coop",
+        ["Open seat"] = "Place libre", ["Away"] = "Absent", ["away"] = "absent", ["Host"] = "Hôte", ["Ready"] = "Prêt", ["Not ready"] = "Pas prêt", ["Unready"] = "Annuler prêt",
+        ["Auto"] = "Auto", ["Lives each"] = "Vies chacun", ["Lives lost per blind"] = "Vies perdues par blinde", ["Team size"] = "Taille d'équipe",
+        ["Team lives"] = "Vies d'équipe", ["Raid lives"] = "Vies du raid", ["Target per player"] = "Objectif par joueur", ["Raid every blind"] = "Raid à chaque blinde", ["Small, Big and Boss are all raids"] = "Petite, grosse et boss sont toutes des raids", ["PvP from ante"] = "JcJ dès la mise initiale",
+        ["Party code"] = "Code du groupe", ["Copy"] = "Copier", ["Copied"] = "Copié",
+        ["Public: listed in Browse Rooms, or join with this code"] = "Public : listé dans Parcourir les salles, ou avec ce code",
+        ["Private: only players with this code can join"] = "Privé : seuls les joueurs avec ce code peuvent rejoindre",
+        ["Waiting for the host to start"] = "En attente du lancement par l'hôte", ["Press Ready when you are set"] = "Appuyez sur Prêt quand vous l'êtes",
+        ["Everyone is ready, you can start"] = "Tout le monde est prêt, vous pouvez lancer", ["Start needs at least 2 players"] = "Il faut au moins 2 joueurs pour lancer",
+        ["Waiting for {n} player(s) to be ready"] = "En attente de {n} joueur(s) prêt(s)", ["Put players in at least two teams"] = "Placez les joueurs dans au moins deux équipes",
+        ["A team has more than {n} players"] = "Une équipe a plus de {n} joueurs", ["Teams are uneven, make them {n}v{n}"] = "Équipes inégales, faites du {n}c{n}",
+        ["Auto-balance teams"] = "Équilibrer les équipes", ["Tap a team to move a player"] = "Touchez une équipe pour déplacer un joueur",
+        ["The host mixes teams at start"] = "L'hôte mélange les équipes au départ", ["Tap your team to switch"] = "Touchez votre équipe pour en changer",
+        ["Teams must have the same number of players."] = "Les équipes doivent avoir le même nombre de joueurs.",
+        ["A team has more players than the team size."] = "Une équipe dépasse la taille d'équipe.",
+        ["Players"] = "Joueurs", ["Room"] = "Salle", ["Public party code"] = "Code du groupe public", ["Private party code"] = "Code du groupe privé",
+        ["Party mode"] = "Mode de groupe", ["Teams are mixed at start"] = "Les équipes sont mélangées au départ", ["Auto-balance"] = "Équilibrer",
+        ["Settings"] = "Paramètres", ["View settings"] = "Voir les réglages", ["Start"] = "Lancer", ["PARTY LOBBY"] = "SALON DU GROUPE", ["Lobby"] = "Salon", ["Leave"] = "Quitter",
+        ["lives"] = "vies", ["Lowest"] = "Plus bas", ["Highest"] = "Plus haut", ["Out"] = "Éliminé", ["Done"] = "Fini", ["Playing"] = "En jeu", ["Ante %d"] = "Mise %d", ["Small Blind"] = "Petite Blinde", ["Big Blind"] = "Grosse Blinde", ["Boss Blind"] = "Blinde Boss", ["Choosing blind"] = "Choix de la blinde", ["ready"] = "prêt", ["%d hand"] = "%d main", ["%d hands"] = "%d mains", ["%d discard"] = "%d défausse", ["%d discards"] = "%d défausses",
+        ["Raid"] = "Raid", ["Place"] = "Place", ["Player"] = "Joueur", ["Lives"] = "Vies", ["Status"] = "État", ["Score"] = "Score",
+        ["Return to Lobby"] = "Retour au salon", ["Quit"] = "Quitter", ["PARTY RESULTS"] = "RÉSULTATS DU GROUPE", ["STANDINGS"] = "CLASSEMENT", ["Standings"] = "Classement",
+        ["Your team won"] = "Votre équipe a gagné", ["Your team lost"] = "Votre équipe a perdu", ["Raid cleared"] = "Raid réussi",
+        ["Raid failed"] = "Raid échoué", ["Last one standing"] = "Dernier en jeu",
+        ["Results"] = "Résultats", ["of"] = "sur", ["Watching the others play"] = "Vous regardez les autres jouer",
+        ["Party"] = "Groupe", ["PvP blind time"] = "Durée de la blinde JcJ", ["Time limit once the PvP blind starts"] = "Limite de temps dès le début de la blinde JcJ",
+        ["How many lowest scores lose a life"] = "Combien des plus bas scores perdent une vie", ["Ties at the cut"] = "Égalités à la limite",
+        ["Everyone tied loses"] = "Tous les ex aequo perdent", ["Ties are spared"] = "Les ex aequo sont épargnés",
+        ["Final two sudden death"] = "Mort subite à deux", ["Both drop to 1 life"] = "Les deux passent à 1 vie",
+        ["Every blind"] = "Chaque blinde", ["Small, Big and Boss all count"] = "Petite, grosse et boss comptent toutes",
+        ["Teammate share"] = "Part des coéquipiers", ["100% is a plain sum"] = "100 % est une simple somme", ["Auto-balance teams"] = "Équilibrer les équipes",
+        ["Shared by everyone"] = "Partagées par tous", ["Extra target per ante"] = "Objectif en plus par mise initiale", ["100% is the standard raid"] = "100 % correspond au raid standard",
+        ["PARTY SETTINGS"] = "RÉGLAGES DU GROUPE", ["PARTY SETTINGS (VIEW ONLY)"] = "RÉGLAGES DU GROUPE (LECTURE)",
+        ["You were the last one standing."] = "Vous êtes le dernier en jeu.", ["Your team won."] = "Votre équipe a gagné.",
+        ["Your team ran out of lives."] = "Votre équipe n'a plus de vies.", ["The raid boss was beaten."] = "Le boss du raid est vaincu.",
+        ["The raid ran out of lives."] = "Le raid n'a plus de vies.", ["The host closed the party."] = "L'hôte a fermé le groupe.",
+    },
+    es = {
+        ["No fight this blind"] = "Sin duelo en esta ciega", ["One against one"] = "Uno contra uno", ["Visibility"] = "Visibilidad", ["Public"] = "Pública", ["Private"] = "Privada", ["Mode"] = "Modo",
+        ["Create"] = "Crear", ["(update)"] = "(actualizar)", ["Ante"] = "Apuesta", ["In match"] = "En partida", ["MODS NEEDED"] = "FALTAN MODS",
+        ["MODE"] = "MODO", ["SLOTS"] = "PLAZAS", ["STATUS"] = "ESTADO", ["1v1"] = "1c1", ["All"] = "Todos", ["Slots"] = "Plazas", ["Any"] = "Todas",
+        ["Free slots"] = "Plazas libres", ["Started"] = "Empezada", ["Not started"] = "Sin empezar", ["No room matches these filters."] = "Ninguna sala coincide con los filtros.",
+        ["Battle Royale"] = "Battle Royale", ["Teams"] = "Equipos", ["Co-op Raid"] = "Raid cooperativo",
+        ["Lowest score each PvP blind loses a life"] = "La puntuación más baja de cada ciega JcJ pierde una vida",
+        ["Team scores add up, teams share lives"] = "Las puntuaciones del equipo se suman, vidas compartidas",
+        ["Everyone beats one shared boss target"] = "Todos contra un objetivo de jefe compartido",
+        ["Team A"] = "Equipo A", ["Team B"] = "Equipo B", ["Team C"] = "Equipo C", ["Team D"] = "Equipo D", ["Team"] = "Equipo",
+        ["This party is full."] = "Este grupo está lleno.", ["A party needs at least 2 players."] = "Un grupo necesita al menos 2 jugadores.",
+        ["Every player must be ready."] = "Todos los jugadores deben estar listos.", ["Teams needs at least two teams with players."] = "Hacen falta al menos dos equipos con jugadores.",
+        ["Could not join the party."] = "No se pudo unir al grupo.",
+        ["CREATE PUBLIC PARTY"] = "CREAR GRUPO PÚBLICO", ["CREATE PRIVATE PARTY"] = "CREAR GRUPO PRIVADO", ["JOIN PARTY WITH CODE"] = "UNIRSE CON CÓDIGO",
+        ["Enter a 4-character party code"] = "Escribe un código de grupo de 4 caracteres", ["JOIN PARTY"] = "UNIRSE A UN GRUPO",
+        ["PARTY"] = "GRUPO", ["3 to 8 players: Battle Royale, Teams or Co-op Raid"] = "De 3 a 8 jugadores: Battle Royale, Equipos o Raid cooperativo",
+        ["PARTY (3-8 PLAYERS)"] = "GRUPO (3-8 JUGADORES)", ["Battle Royale, Teams and Co-op Raid"] = "Battle Royale, Equipos y Raid cooperativo",
+        ["Open seat"] = "Plaza libre", ["Away"] = "Ausente", ["away"] = "ausente", ["Host"] = "Anfitrión", ["Ready"] = "Listo", ["Not ready"] = "No listo", ["Unready"] = "No listo",
+        ["Auto"] = "Auto", ["Lives each"] = "Vidas cada uno", ["Lives lost per blind"] = "Vidas perdidas por ciega", ["Team size"] = "Tamaño de equipo",
+        ["Team lives"] = "Vidas del equipo", ["Raid lives"] = "Vidas del raid", ["Target per player"] = "Objetivo por jugador", ["Raid every blind"] = "Raid en cada ciega", ["Small, Big and Boss are all raids"] = "Ciega pequeña, grande y jefe son raids", ["PvP from ante"] = "JcJ desde la apuesta inicial",
+        ["Party code"] = "Código del grupo", ["Copy"] = "Copiar", ["Copied"] = "Copiado",
+        ["Public: listed in Browse Rooms, or join with this code"] = "Público: aparece en Buscar salas, o únete con este código",
+        ["Private: only players with this code can join"] = "Privado: solo entra quien tenga este código",
+        ["Waiting for the host to start"] = "Esperando a que el anfitrión empiece", ["Press Ready when you are set"] = "Pulsa Listo cuando estés preparado",
+        ["Everyone is ready, you can start"] = "Todos listos, puedes empezar", ["Start needs at least 2 players"] = "Se necesitan al menos 2 jugadores",
+        ["Waiting for {n} player(s) to be ready"] = "Esperando a {n} jugador(es)", ["Put players in at least two teams"] = "Pon jugadores en al menos dos equipos",
+        ["A team has more than {n} players"] = "Un equipo tiene más de {n} jugadores", ["Teams are uneven, make them {n}v{n}"] = "Equipos desiguales, haz {n}c{n}",
+        ["Auto-balance teams"] = "Equilibrar equipos", ["Tap a team to move a player"] = "Toca un equipo para mover a un jugador",
+        ["The host mixes teams at start"] = "El anfitrión mezcla los equipos al empezar", ["Tap your team to switch"] = "Toca tu equipo para cambiar",
+        ["Teams must have the same number of players."] = "Los equipos deben tener el mismo número de jugadores.",
+        ["A team has more players than the team size."] = "Un equipo supera el tamaño de equipo.",
+        ["Players"] = "Jugadores", ["Room"] = "Sala", ["Public party code"] = "Código del grupo público", ["Private party code"] = "Código del grupo privado",
+        ["Party mode"] = "Modo de grupo", ["Teams are mixed at start"] = "Los equipos se mezclan al empezar", ["Auto-balance"] = "Equilibrar",
+        ["Settings"] = "Ajustes", ["View settings"] = "Ver ajustes", ["Start"] = "Empezar", ["PARTY LOBBY"] = "SALA DEL GRUPO", ["Lobby"] = "Sala", ["Leave"] = "Salir",
+        ["lives"] = "vidas", ["Lowest"] = "Más baja", ["Highest"] = "Más alta", ["Out"] = "Fuera", ["Done"] = "Hecho", ["Playing"] = "Jugando", ["Ante %d"] = "Apuesta %d", ["Small Blind"] = "Ciega pequeña", ["Big Blind"] = "Ciega grande", ["Boss Blind"] = "Ciega jefe", ["Choosing blind"] = "Eligiendo ciega", ["ready"] = "listo", ["%d hand"] = "%d mano", ["%d hands"] = "%d manos", ["%d discard"] = "%d descarte", ["%d discards"] = "%d descartes",
+        ["Raid"] = "Raid", ["Place"] = "Puesto", ["Player"] = "Jugador", ["Lives"] = "Vidas", ["Status"] = "Estado", ["Score"] = "Puntos",
+        ["Return to Lobby"] = "Volver a la sala", ["Quit"] = "Salir", ["PARTY RESULTS"] = "RESULTADOS DEL GRUPO", ["STANDINGS"] = "CLASIFICACIÓN", ["Standings"] = "Clasificación",
+        ["Your team won"] = "Tu equipo ganó", ["Your team lost"] = "Tu equipo perdió", ["Raid cleared"] = "Raid superado",
+        ["Raid failed"] = "Raid fallido", ["Last one standing"] = "Último en pie",
+        ["Results"] = "Resultados", ["of"] = "de", ["Watching the others play"] = "Estás viendo jugar a los demás",
+        ["Party"] = "Grupo", ["PvP blind time"] = "Tiempo de la ciega JcJ", ["Time limit once the PvP blind starts"] = "Límite de tiempo desde que empieza la ciega JcJ",
+        ["How many lowest scores lose a life"] = "Cuántas puntuaciones más bajas pierden una vida", ["Ties at the cut"] = "Empates en el corte",
+        ["Everyone tied loses"] = "Todos los empatados pierden", ["Ties are spared"] = "Los empates se salvan",
+        ["Final two sudden death"] = "Muerte súbita a dos", ["Both drop to 1 life"] = "Ambos bajan a 1 vida",
+        ["Every blind"] = "Cada ciega", ["Small, Big and Boss all count"] = "Pequeña, grande y jefe cuentan",
+        ["Teammate share"] = "Parte de compañeros", ["100% is a plain sum"] = "100 % es una suma simple", ["Auto-balance teams"] = "Equilibrar equipos",
+        ["Shared by everyone"] = "Compartidas por todos", ["Extra target per ante"] = "Objetivo extra por apuesta inicial", ["100% is the standard raid"] = "100 % es el raid estándar",
+        ["PARTY SETTINGS"] = "AJUSTES DEL GRUPO", ["PARTY SETTINGS (VIEW ONLY)"] = "AJUSTES DEL GRUPO (SOLO LECTURA)",
+        ["You were the last one standing."] = "Fuiste el último en pie.", ["Your team won."] = "Tu equipo ganó.",
+        ["Your team ran out of lives."] = "Tu equipo se quedó sin vidas.", ["The raid boss was beaten."] = "El jefe del raid fue derrotado.",
+        ["The raid ran out of lives."] = "El raid se quedó sin vidas.", ["The host closed the party."] = "El anfitrión cerró el grupo.",
+    },
+    }
+end
+
+local ready = false
+function P.ensure()
+    if ready or not (G and G.FUNCS) then return ready end
+    ready = true
+    if mod_loc_register then pcall(register_strings) end
+    for k, f in pairs(FUNCS) do G.FUNCS[k] = f end
+    return true
+end
+
+function P.init()
+    P.ensure()
+    if bom_events and bom_events.register then bom_events.register("party_kicked", P.on_kicked) end
+end
+
+return P
+end

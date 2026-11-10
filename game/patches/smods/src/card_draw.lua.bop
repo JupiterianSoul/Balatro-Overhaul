@@ -1,0 +1,642 @@
+BOP 1
+eol lf
+final 0
+base 0
+l 23
+-- CanvasSprite: a Sprite that draws from a Love2D canvas
+SMODS.CanvasSprite = Sprite:extend()
+
+-- init: create a canvas for the sprite
+function SMODS.CanvasSprite:init(args)
+    self.canvasW = 71
+    self.canvasH = 95
+    self.canvasScale = 10
+    self.text = ""
+    self.text_offset = {x = 0, y = 0}
+	self.text_h_align = 'center'
+	self.text_v_align = 'middle'
+    for k, v in pairs(args) do self[k] = v end
+    self.canvas = love.graphics.newCanvas(self.canvasW * self.canvasScale, self.canvasH * self.canvasScale)
+    self.font = (SMODS.Fonts[self.text_font] or G.FONTS[self.text_font] or G.FONTS[1]).FONT
+
+    Sprite.init(self, self.X or 0, self.Y or 0, self.W or G.CARD_W, self.H or G.CARD_H, { name = "dummy", px = self.canvasW * self.canvasScale, py = self.canvasH * self.canvasScale, image = self.canvas }, { x = 0, y = 0 })
+    self.canvas:renderTo(love.graphics.clear, 0, 0, 0, 0)
+end
+
+-- draw_from: draw the sprite on another object
+-- code mostly borrowed from vanilla
+function SMODS.CanvasSprite:draw_from(other_obj, ms, mr, mx, my)
+r 30 181 %20%20%20%20 -
+r 30 182 %20%20%20%20 -
+r 30 183 %20%20%20%20 -
+r 30 184 %20%20%20%20 -
+r 30 185 %20%20%20%20 -
+r 30 186 %20%20%20%20 -
+l 3
+    love.graphics.draw(
+        self.canvas,
+        self.sprite,
+r 30 190 %20%20%20%20%20%20%20%20 -
+l 5
+        0,
+        0,
+        other_obj.VT.w/(other_obj.T.w)/(self.canvasScale),
+        other_obj.VT.h/(other_obj.T.h)/(self.canvasScale)
+    )
+r 3 4572 %20%20%20%20 -
+l 16
+    love.graphics.pop()
+end
+
+function SMODS.clean_up_canvas_text(t)
+	if t.canvas_text[1] then
+		SMODS.clean_up_children(t.canvas_text)
+		t.canvas_text = nil
+		return
+	end
+	t.canvas_text:remove()
+	t.canvas_text = nil
+end
+
+SMODS.clean_up_children_ignore = {center = true, shadow = true, back = true, h_popup = true, front = true}
+function SMODS.clean_up_children(t)
+	local ignore = SMODS.clean_up_children_ignore
+r 12 131 %20%20%20%20 -
+l 54
+        if not ignore[k] then
+            if type(v) == 'table' and v.remove then v:remove() end
+            t[k] = nil
+        end
+	end
+end
+
+SMODS.DrawSteps = {}
+SMODS.DrawStep = SMODS.GameObject:extend {
+    obj_table = SMODS.DrawSteps,
+    obj_buffer = {},
+    required_params = {
+        'key',
+        'order',
+        'func',
+    },
+    layers = {
+        card = true,
+        both = true,
+    },
+    -- func = function(card, layer) end,
+    set = "Draw Step",
+    register = function(self)
+        if self.registered then
+            sendWarnMessage(('Detected duplicate register call on object %s'):format(self.key), self.set)
+            return
+        end
+        SMODS.DrawStep.super.register(self)
+    end,
+    inject = function() end,
+    post_inject_class = function(self)
+        table.sort(self.obj_buffer, function(_self, _other) return self.obj_table[_self].order < self.obj_table[_other].order end)
+    end,
+    conditions = {},
+    check_individual_condition = function(self, card, layer, k, v)
+        if k == 'vortex' then return not not card.vortex == v end
+        if k == 'facing' then return card.sprite_facing == v end
+        if k == 'front_hidden' then return not not card.front_hidden == v end
+        return true
+    end,
+    check_conditions = function(self, card, layer)
+        if not self.layers[layer] then return end
+        for k,v in pairs(self.conditions) do
+            if not self:check_individual_condition(card, layer, k, v) then return end
+        end
+        return true
+    end
+}
+
+SMODS.DrawStep {
+    key = 'shadow',
+    order = -1000,
+    layers = { shadow = true, both = true },
+    func = function(self)
+r 3 4348 %20%20%20%20%20%20%20%20 -
+l 1
+        self.ARGS.send_to_shader[1] = math.min(self.VT.r*3, 1) + math.sin(G.TIMERS.REAL/28) + 1 + (self.juice and self.juice.r*20 or 0) + self.tilt_var.amt
+r 3 4350 %20%20%20%20%20%20%20%20 -
+l 1
+
+r 2 455 %20%20%20%20%20%20%20%20 -
+r 2 457 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+        end
+    
+r 3 4357 %20%20%20%20%20%20%20%20 -
+l 3
+    
+        --Draw the shadow
+        if not self.no_shadow and G.SETTINGS.GRAPHICS.shadows == 'On' and((self.ability.effect ~= 'Glass Card' and not self.greyed and self:should_draw_shadow() ) and ((self.area and self.area ~= G.discard and self.area.config.type ~= 'deck') or not self.area or self.states.drag.is)) then
+r 3 4361 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4362 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+        end
+    end,
+}
+
+SMODS.DrawStep {
+    key = 'focused_ui_1',
+    order = -100,
+    func = function(self)
+        if self.area ~= G.hand then 
+r 3 4366 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 8
+        end
+    end,
+}
+
+SMODS.DrawStep {
+    key = 'tilt',
+    order = -50,
+    func = function(self)
+r 3 4370 %20%20%20%20%20%20%20%20 -
+r 3 4371 %20%20%20%20%20%20%20%20 -
+r 3 4372 %20%20%20%20%20%20%20%20 -
+r 3 4373 %20%20%20%20%20%20%20%20 -
+r 3 4374 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4375 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4376 %20%20%20%20%20%20%20%20 -
+r 3 4377 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4378 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4379 %20%20%20%20%20%20%20%20 -
+r 3 4380 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4381 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4382 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4383 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+        end
+    end,
+}
+
+SMODS.DrawStep {
+    key = 'particles',
+    order = -40,
+    func = function(self)
+        --Any particles
+r 3 4386 %20%20%20%20%20%20%20%20 -
+l 7
+    end,
+}
+
+SMODS.DrawStep {
+    key = 'tags_buttons',
+    order = -30,
+    func = function(self)
+r 3 4388 %20%20%20%20%20%20%20%20 -
+r 3 4389 %20%20%20%20%20%20%20%20 -
+r 3 4390 %20%20%20%20%20%20%20%20 -
+r 3 4391 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4392 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4393 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4394 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 %20
+r 3 4395 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                end
+            else
+r 3 4398 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+            end
+        end
+r 3 4401 %20%20%20%20%20%20%20%20 -
+l 8
+        if self.children.select_button and self.highlighted then self.children.select_button:draw() end
+    end,
+} 
+
+SMODS.DrawStep {
+    key = 'vortex',
+    order = -20,
+    func = function(self)
+r 3 4404 %20%20%20%20%20%20%20%20 %20
+r 3 4405 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        else
+r 3 4407 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 150 %20%20%20%20%20%20%20%20%20%20%20%20 %20
+r 3 4409 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+            end
+        end
+
+r 3 4413 %20%20%20%20%20%20%20%20 -
+l 8
+    end,
+    conditions = { vortex = true },
+}
+
+SMODS.DrawStep {
+    key = 'center',
+    order = -10,
+    func = function(self, layer)
+r 3 4415 %20%20%20%20%20%20%20%20 -
+l 1
+        if (self.edition and self.edition.negative and (not self.delay_edition or self.delay_edition.negative)) or (self.ability.name == 'Antimatter' and (self.config.center.discovered or self.bypass_discovery_center)) then
+r 3 4417 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+        elseif not self:should_draw_base_shader() then
+            -- Don't render base dissolve shader.
+r 3 4421 %20%20%20%20%20%20%20%20 -
+r 3 4422 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+        end
+
+r 3 4429 %20%20%20%20%20%20%20%20%20 -
+l 1
+         if not self.config.center.discovered and (self.config.center.unlocked ~= false) and not self.config.center.demo and not self.bypass_discovery_center and not SMODS.is_playing_card(self) then
+r 3 4431 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4432 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4433 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+
+r 3 4435 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            if (self.config.center.undiscovered and not self.config.center.undiscovered.no_overlay) or not( SMODS.UndiscoveredSprites[self.ability.set] and SMODS.UndiscoveredSprites[self.ability.set].no_overlay) then 
+r 3 4436 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 7
+            else
+                if SMODS.UndiscoveredSprites[self.ability.set] and SMODS.UndiscoveredSprites[self.ability.set].overlay_sprite then
+                    SMODS.UndiscoveredSprites[self.ability.set].overlay_sprite:draw_shader('dissolve', nil, nil, nil, self.children.center, scale_mod, rotate_mod)
+                end
+            end
+        end
+
+r 3 4439 %20%20%20%20%20%20%20%20 -
+l 1
+            if self:should_draw_base_shader() then
+r 3 4440 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 15
+            end
+        end
+
+        local center = self.config.center
+        if center.draw and type(center.draw) == 'function' then
+            center:draw(self, layer)
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'front',
+    order = 0,
+    func = function(self, layer)
+r 3 4415 %20%20%20%20%20%20%20%20 -
+l 2
+        if (self.edition and self.edition.negative and (not self.delay_edition or self.delay_edition.negative)) or (self.ability.name == 'Antimatter' and (self.config.center.discovered or self.bypass_discovery_center)) then
+            if self.children.front and (self.ability.delayed or not self:should_hide_front()) then
+r 3 4419 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+            end
+        elseif not self:should_draw_base_shader() then
+            -- Don't render base dissolve shader.
+r 3 4421 %20%20%20%20%20%20%20%20 -
+l 1
+            if self.children.front and (self.ability.delayed or not self:should_hide_front()) then
+r 3 4425 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+            end
+        end
+
+        local center = self.config.center
+        if center.set == 'Default' or center.set == 'Enhanced' and not center.replace_base_card then
+            if not center.no_suit then
+                local suit = SMODS.Suits[self.base.suit] or {}
+                if suit.draw and type(suit.draw) == 'function' then
+                    suit:draw(self, layer)
+                end
+            end
+            if not center.no_rank then
+                local rank = SMODS.Ranks[self.base.value] or {}
+                if rank.draw and type(rank.draw) == 'function' then
+                    rank:draw(self, layer)
+                end
+            end
+        end
+    end,
+    conditions = { vortex = false, facing = 'front', front_hidden = false },
+}
+SMODS.DrawStep {
+    key = 'card_type_shader',
+    order = 10,
+    func = function(self)
+r 3 4446 %20%20%20%20%20%20%20%20 -
+l 1
+            if self:should_draw_base_shader() and not self.config.center.disable_shine then
+r 3 4440 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+            end
+        end
+        if (self.ability.set == 'Booster' or self.ability.set == 'Spectral') and self:should_draw_base_shader() and not self.config.center.disable_shine then
+r 3 4450 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'edition',
+    order = 20,
+    func = function(self, layer)
+        local edition = self.delay_edition or self.edition
+        if edition and not edition.negative then
+            for k, v in pairs(G.P_CENTER_POOLS.Edition) do
+                if edition[v.key:sub(3)] and v.shader then
+                    if type(v.draw) == 'function' then
+                        v:draw(self, layer)
+                    else
+                        self.children.center:draw_shader(v.shader, nil, self.ARGS.send_to_shader)
+                        if self.children.front and not self:should_hide_front() then
+                            self.children.front:draw_shader(v.shader, nil, self.ARGS.send_to_shader)
+                        end
+                    end
+                end
+            end
+        end
+        if (edition and edition.negative) or (self.ability.name == 'Antimatter' and (self.config.center.discovered or self.bypass_discovery_center)) then
+r 3 4471 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 14
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'seal',
+    order = 30,
+    func = function(self, layer)
+        local seal = G.P_SEALS[self.seal] or {}
+        if self.ability.delay_seal then return end
+        if type(seal.draw) == 'function' then
+            seal:draw(self, layer)
+        elseif self.seal then
+r 3 4474 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4475 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4476 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'stickers',
+    order = 40,
+    func = function(self, layer)
+r 3 4493 %20%20%20%20%20%20%20%20 -
+r 3 4494 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4495 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4496 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4497 %20%20%20%20%20%20%20%20 -
+r 3 4498 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4499 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4500 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 24
+        end
+
+        for k, v in pairs(SMODS.Stickers) do
+            if self.ability[v.key] then
+                if v and v.draw and type(v.draw) == 'function' then
+                    v:draw(self, layer)
+                else
+                    G.shared_stickers[v.key].role.draw_major = self
+                    G.shared_stickers[v.key]:draw_shader('dissolve', nil, nil, nil, self.children.center)
+                    G.shared_stickers[v.key]:draw_shader('voucher', nil, self.ARGS.send_to_shader, nil, self.children.center)
+                end
+            end
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'canvas_text',
+    order = 45,
+    func = function(self, layer)
+        if self.canvas_text and (self.config.center.discovered or self.bypass_discovery_center) then
+            for _, sprite in ipairs(self.canvas_text[1] and self.canvas_text or {self.canvas_text}) do
+                love.graphics.push()
+r 19 278 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 30
+                sprite.canvas:renderTo(love.graphics.clear, 0, 0, 0, 0)
+                local text = love.graphics.newText(sprite.font, {sprite.text_colour or G.C.UI.TEXT_LIGHT, sprite.ref_table and sprite.ref_table[sprite.ref_value] or sprite.text})
+                local scale_fac = math.min((sprite.text_width or sprite.canvasW)/text:getWidth(), (sprite.text_height or sprite.canvasH)/text:getHeight()) * sprite.canvasScale
+                if text then 
+                    local x,y,r,sx,sy,ox,oy = unpack(sprite.text_transform or {
+                            (0 + sprite.text_offset.x) * sprite.canvasScale,
+                            (0 + sprite.text_offset.y) * sprite.canvasScale,
+                            0,
+                            scale_fac, scale_fac,
+							sprite.text_h_align == 'left' and 0 or (sprite.text_h_align == 'right' and text:getWidth() or text:getWidth()/2),
+							sprite.text_v_align == 'top' and 0 or (sprite.text_v_align == 'bottom' and text:getHeight() or text:getHeight()/2)
+                        })
+                    sprite.canvas:renderTo(love.graphics.draw,
+                        text,
+                        x, y, r, sx, sy, ox, oy
+                    )
+                end
+                love.graphics.pop()
+                sprite.role.draw_major = self
+                sprite:draw_shader('dissolve', nil, nil, nil, self.children.center)
+            end
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'soul',
+    order = 50,
+    func = function(self)
+r 3 4503 %20%20%20%20%20%20%20%20 -
+r 3 4504 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4505 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+
+r 3 4507 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4508 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4509 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'floating_sprite',
+    order = 60,
+    func = function(self)
+r 3 4512 %20%20%20%20%20%20%20%20 -
+r 3 4513 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4514 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+
+            if type(self.config.center.soul_pos.draw) == 'function' then
+                self.config.center.soul_pos.draw(self, scale_mod, rotate_mod)
+            elseif self.children.floating_sprite then
+r 3 4516 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4517 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4518 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4519 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                else
+r 3 4521 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4522 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 18
+                end
+            end
+            if self.edition then 
+                local edition = G.P_CENTERS[self.edition.key]
+                if edition.apply_to_float and self.children.floating_sprite then
+                    self.children.floating_sprite:draw_shader(edition.shader, nil, nil, nil, self.children.center, scale_mod, rotate_mod)                    
+                end
+            end
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'debuff',
+    order = 70,
+    func = function(self)
+        if self.debuff and not self.delay_debuff then
+r 3 4527 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            if self.children.front and (self.ability.delayed or not self:should_hide_front()) then
+r 3 4529 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 11
+            end
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'greyed',
+    order = 80,
+    func = function(self)
+        if self.greyed then
+r 3 4533 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            if self.children.front and (self.ability.delayed or not self:should_hide_front()) then
+r 3 4535 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 10
+            end
+        end
+    end,
+    conditions = { vortex = false, facing = 'front' },
+}
+
+SMODS.DrawStep {
+    key = 'back',
+    order = 0,
+    func = function(self)
+r 3 4540 %20%20%20%20%20%20%20%20 -
+r 3 4541 %20%20%20%20%20%20%20%20 -
+r 3 4542 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4543 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4544 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4545 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4546 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4547 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+        end
+
+r 3 4550 %20%20%20%20%20%20%20%20 -
+r 3 4551 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        else
+r 3 4553 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+        end
+    end,
+    conditions = { vortex = false, facing = 'back' },
+} 
+
+SMODS.DrawStep {
+    key = 'back_sticker',
+    order = 10,
+    func = function(self)
+r 3 4493 %20%20%20%20%20%20%20%20 -
+r 3 4494 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 17
+            local sticker_offset = self.sticker_offset or {}
+            G.shared_stickers[self.sticker]:draw_shader('dissolve', nil, nil, true, self.children.center, nil, self.sticker_rotation, sticker_offset.x, sticker_offset.y)
+            local stake = G.P_STAKES['stake_'..string.lower(self.sticker)] or {}
+            if stake.shiny then G.shared_stickers[self.sticker]:draw_shader('voucher', nil, self.ARGS.send_to_shader, true, self.children.center, nil, self.sticker_rotation, sticker_offset.x, sticker_offset.y) end
+        end
+    end,
+    conditions = { vortex = false, facing = 'back' },
+}
+
+-- All keys in this table will not be automatically drawn with a default `draw()` call in the "others" DrawStep.
+SMODS.draw_ignore_keys = {
+    focused_ui = true, front = true, back = true, soul_parts = true, center = true, floating_sprite = true, shadow = true, use_button = true, buy_button = true, buy_and_use_button = true, debuff = true, price = true, particles = true, h_popup = true,
+}
+SMODS.DrawStep {
+    key = 'others',
+    order = 90,
+    func = function(self)
+r 2 455 %20%20%20%20%20%20%20%20 -
+l 24
+            if not v.custom_draw and not SMODS.draw_ignore_keys[k] then v:draw() end
+        end
+    end,
+}
+
+SMODS.DrawStep {
+    key = 'sprite_particles',
+    order = 95,
+    func = function(self)
+        for i, particle_sprite in ipairs(self.sprite_particles or {}) do
+            local sprite_particle_obj = SMODS.SpriteParticles[particle_sprite.sprite_particle_key]
+            if sprite_particle_obj and type(sprite_particle_obj.draw) == "function" then
+                sprite_particle_obj:draw(particle_sprite, self)
+            end
+        end
+    end,
+    conditions = { vortex = false },
+}
+
+SMODS.DrawStep {
+    key = 'focused_ui_2',
+    order = 100,
+    func = function(self)
+        if self.area == G.hand then 
+r 3 4366 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 8
+        end
+    end,
+}
+
+SMODS.DrawStep {
+    key = 'drawhash_boundingrect',
+    order = 1000,
+    func = function(self)
+r 2 461 %20%20%20%20%20%20%20%20 -
+r 3 4572 %20%20%20%20%20%20%20%20 -
+l 3
+    end,
+}
+
+r 3 4340 - -
+r 3 4341 %20%20%20%20 -
+l 1
+    self.hover_tilt = 1
+r 2 447 %20%20%20%20 -
+l 7
+    for _, k in ipairs(SMODS.DrawStep.obj_buffer) do
+        if SMODS.DrawSteps[k]:check_conditions(self, layer) then SMODS.DrawSteps[k].func(self, layer) end
+    end
+end
+
+-- Import Sprite Steps
+ assert(load(SMODS.NFS.read(SMODS.path..'src/utils/sprite_steps.lua'), ('=[SMODS _ "src/utils/sprite_steps.lua"]')))()
+end

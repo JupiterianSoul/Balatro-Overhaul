@@ -1,0 +1,2028 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 72
+-- ============================================
+-- MOD GUIDE V8.0 — Individual category windows
+-- Each category button opens its own window
+-- BACK returns to Guide tab, no tab switching
+-- Two-column layout for text-heavy categories
+-- ============================================
+
+-- Color name to color value resolver
+local function resolve_colour(name)
+  if not name or not G or not G.C then return G.C.WHITE end
+  local map = {
+    BLUE = G.C.BLUE, RED = G.C.RED, GREEN = G.C.GREEN, GOLD = G.C.GOLD,
+    ORANGE = G.C.ORANGE, PURPLE = G.C.PURPLE, WHITE = G.C.WHITE,
+    MONEY = G.C.MONEY, GREY = G.C.L_BLACK,
+  }
+  return map[name] or G.C.WHITE
+end
+
+-- Build rows from a lines array
+local function build_line_rows(lines)
+  local rows = {}
+  for _, line in ipairs(lines) do
+    if line.text == "" then
+      table.insert(rows, {n=G.UIT.R, config={align = "cm", padding = 0.01}, nodes={}})
+    else
+      local colour = resolve_colour(line.colour)
+      local scale = line.scale or 0.39
+      table.insert(rows, {n=G.UIT.R, config={align = "cl", padding = 0.006}, nodes={
+        {n=G.UIT.T, config={text = line.text, scale = scale, colour = colour}}
+      }})
+    end
+  end
+  return rows
+end
+
+-- Build a single-column content window
+local function build_single_column(title, lines)
+  local rows = build_line_rows(lines)
+  return create_UIBox_generic_options({
+    back_func = 'guide_back_to_guide_tab',
+    contents = {
+      {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        {n=G.UIT.T, config={text = title, scale = 0.59, colour = G.C.GOLD, shadow = true}}
+      }},
+      {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+        {n=G.UIT.C, config={align = "tl", padding = 0.06, minw = 5.6}, nodes=rows}
+      }},
+    }
+  })
+end
+
+-- Build a two-column content window
+local function build_two_columns(title, left_lines, right_lines)
+  local left_rows = build_line_rows(left_lines)
+  local right_rows = build_line_rows(right_lines)
+  return create_UIBox_generic_options({
+    back_func = 'guide_back_to_guide_tab',
+    contents = {
+      {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        {n=G.UIT.T, config={text = title, scale = 0.59, colour = G.C.GOLD, shadow = true}}
+      }},
+      {n=G.UIT.R, config={align = "tm", padding = 0.02}, nodes={
+        {n=G.UIT.C, config={align = "tl", padding = 0.06, minw = 4.2}, nodes=left_rows},
+        {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+        {n=G.UIT.C, config={align = "tl", padding = 0.06, minw = 4.2}, nodes=right_rows},
+      }},
+    }
+  })
+end
+
+-- BACK from any category window → returns to Guide tab in settings
+G.FUNCS.guide_back_to_guide_tab = function(e)
+r 4 1382 %20%20 -
+l 6
+    definition = create_UIBox_settings('Guide')
+  }
+end
+
+-- Back to settings from guide overlay (legacy, kept for safety)
+G.FUNCS.guide_back_to_settings = function(e)
+r 4 1382 %20%20 -
+l 8
+    definition = create_UIBox_settings('Guide')
+  }
+end
+
+-- =====================
+-- Category 1: Overview
+-- =====================
+G.FUNCS.open_guide_overview = function(e)
+r 4 1382 %20%20 -
+l 27
+    definition = build_single_column(mod_loc("BALATRO OVERHAUL"), {
+      {text = mod_loc("Welcome to Balatro Overhaul!"), scale = 0.45, colour = "ORANGE"},
+      {text = ""},
+      {text = mod_loc("FEATURES:"), scale = 0.45, colour = "BLUE"},
+      {text = mod_loc("- XP, ranks and level rewards"), scale = 0.39},
+      {text = mod_loc("- 242 Achievements with popups"), scale = 0.39},
+      {text = mod_loc("- Daily and weekly Quests, Journeys"), scale = 0.39},
+      {text = mod_loc("- The Casino: Market, Tailor, Forge"), scale = 0.39},
+      {text = mod_loc("- Custom Run Builder"), scale = 0.39},
+      {text = mod_loc("- Daily Challenge"), scale = 0.39},
+      {text = mod_loc("- Multiplayer modes and Ranked"), scale = 0.39},
+      {text = mod_loc("- Jimbo Comments"), scale = 0.39},
+      {text = mod_loc("- Hand Optimizer"), scale = 0.39},
+      {text = mod_loc("- Cheats"), scale = 0.39},
+      {text = mod_loc("- 4 Creative Stakes (9-12)"), scale = 0.39},
+      {text = mod_loc("- Deck Creator"), scale = 0.39},
+      {text = mod_loc("- Jukebox (Music Select)"), scale = 0.39},
+      {text = mod_loc("- Modded Game & Mods Workshop"), scale = 0.39},
+      {text = mod_loc("- Overhaul tutorial with Hologram"), scale = 0.39},
+    })
+  }
+end
+
+-- =====================
+-- Category 2: Mod Menu (v3.0 — 7 tabs)
+-- =====================
+G.FUNCS.open_guide_modmenu = function(e)
+r 4 1382 %20%20 -
+l 34
+    definition = build_two_columns(mod_loc("CHEATS"),
+      -- Left column
+      {
+        {text = mod_loc("TURN THEM ON:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Play > New Run > Cheats."), scale = 0.39},
+        {text = mod_loc("Counts like a seeded run."), scale = 0.39},
+        {text = mod_loc("CHEATS button: drag it anywhere."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("7 TABS:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("RUN: Cash, Hands, Discards"), scale = 0.39},
+        {text = mod_loc("God Mode, Win Blind, Slots"), scale = 0.39},
+        {text = mod_loc("JOKERS: Browse + add any"), scale = 0.39},
+        {text = mod_loc("CONSUM.: Tarots/Planets/Spectrals"), scale = 0.39},
+      },
+      -- Right column
+      {
+        {text = mod_loc("CARDS: Browse/modify cards"), scale = 0.39},
+        {text = mod_loc("VOUCHERS: Activate any"), scale = 0.39},
+        {text = mod_loc("HANDS: Level up hand ranks"), scale = 0.39},
+        {text = mod_loc("OPTIONS: Button, Reset position"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("WARNING:"), scale = 0.45, colour = "RED"},
+        {text = mod_loc("Using a cheat means"), scale = 0.39, colour = "RED"},
+        {text = mod_loc("no XP and no"), scale = 0.39, colour = "RED"},
+        {text = mod_loc("quest progress."), scale = 0.39, colour = "RED"},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 3: Custom Runs (two columns)
+-- =====================
+G.FUNCS.open_guide_customruns = function(e)
+r 4 1382 %20%20 -
+l 35
+    definition = build_two_columns(mod_loc("CUSTOM RUNS"),
+      -- Left column
+      {
+        {text = mod_loc("ACCESS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Play > Custom tab"), scale = 0.39},
+        {text = mod_loc("> Configure"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("RULES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Hands, Discards"), scale = 0.39},
+        {text = mod_loc("- Hand Size, Win Ante"), scale = 0.39},
+        {text = mod_loc("- Joker/Cons. Slots"), scale = 0.39},
+        {text = mod_loc("- Starting Money"), scale = 0.39},
+        {text = mod_loc("- Endless Mode"), scale = 0.39},
+      },
+      -- Right column
+      {
+        {text = mod_loc("DECK:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Deck Back selector"), scale = 0.39},
+        {text = mod_loc("- Size (1-208 cards)"), scale = 0.39},
+        {text = mod_loc("- Enhancement & Edition"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("SHOP & JOKERS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Toggle item pools"), scale = 0.39},
+        {text = mod_loc("- Pick starting jokers"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("No progression!"), scale = 0.39, colour = "RED"},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 4: Progression (two columns)
+-- =====================
+G.FUNCS.open_guide_progression = function(e)
+r 4 1382 %20%20 -
+l 33
+    definition = build_two_columns(mod_loc("PROGRESSION"),
+      {
+        {text = mod_loc("XP SOURCES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Hands, antes and bosses"), scale = 0.39},
+        {text = mod_loc("- Winning runs (more on"), scale = 0.39},
+        {text = mod_loc("  higher stakes)"), scale = 0.39},
+        {text = mod_loc("- Quests and Journeys"), scale = 0.39},
+        {text = mod_loc("- Achievements, milestones"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("LEVELS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Every level pays Balacoin,"), scale = 0.39},
+        {text = mod_loc("more at each new rank."), scale = 0.39},
+        {text = mod_loc("Claim them in Progression."), scale = 0.39},
+      },
+      {
+        {text = mod_loc("RANKS (7):"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Novice > Apprentice"), scale = 0.39},
+        {text = mod_loc("Journeyman > Expert"), scale = 0.39},
+        {text = mod_loc("Master > Grandmaster"), scale = 0.39},
+        {text = mod_loc("Legend (level 100)"), scale = 0.39, colour = "GOLD"},
+        {text = ""},
+        {text = mod_loc("NO XP:"), scale = 0.45, colour = "RED"},
+        {text = mod_loc("Runs with cheats or a seed."), scale = 0.39, colour = "RED"},
+        {text = mod_loc("Daily runs still count."), scale = 0.39, colour = "RED"},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 5: Quests (two columns)
+-- =====================
+G.FUNCS.open_guide_quests = function(e)
+r 4 1382 %20%20 -
+l 34
+    definition = build_two_columns(mod_loc("QUESTS"),
+      {
+        {text = mod_loc("TYPES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Daily: 4 a day, 1 free swap"), scale = 0.39},
+        {text = mod_loc("- Weekly: 4 a week"), scale = 0.39},
+        {text = mod_loc("- Journeys: lifetime goals"), scale = 0.39},
+        {text = mod_loc("  in 3 to 5 stages"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("WHERE:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Progression > Quests, or"), scale = 0.39},
+        {text = mod_loc("The Casino > Tavern > Quests."), scale = 0.39},
+      },
+      {
+        {text = mod_loc("WHEN ONE IS DONE:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("A popup shows up: CLAIM now,"), scale = 0.39},
+        {text = mod_loc("or LATER from Progression."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("EXAMPLES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Win runs, beat bosses"), scale = 0.39},
+        {text = mod_loc("- Play a multiplayer match"), scale = 0.39},
+        {text = mod_loc("- Make a joker in The Forge"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("REWARDS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- XP and Balacoin"), scale = 0.39},
+        {text = mod_loc("Cheats or seeded: no progress."), scale = 0.39, colour = "RED"},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 6: Profile (actual 6 tabs)
+-- =====================
+G.FUNCS.open_guide_profile = function(e)
+r 4 1382 %20%20 -
+l 31
+    definition = build_two_columns(mod_loc("CUSTOMIZATION"),
+      {
+        {text = mod_loc("WHERE:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("The Casino > Tailor."), scale = 0.39},
+        {text = mod_loc("Tabs: Icon, Shine, Title,"), scale = 0.39},
+        {text = mod_loc("Colours, Table, Backs,"), scale = 0.39},
+        {text = mod_loc("Flair and Jimbo."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("EQUIP:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Tap an item you own to equip it."), scale = 0.39},
+        {text = mod_loc("Locked items show their rarity."), scale = 0.39},
+      },
+      {
+        {text = mod_loc("PREVIEW:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("The left side shows your"), scale = 0.39},
+        {text = mod_loc("profile card, or the item on"), scale = 0.39},
+        {text = mod_loc("a real card."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("GET MORE:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Open packs at the Market."), scale = 0.39},
+        {text = mod_loc("Everything you bought before"), scale = 0.39},
+        {text = mod_loc("is still yours."), scale = 0.39},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 7: Shop (actual 3 tabs)
+-- =====================
+G.FUNCS.open_guide_shop = function(e)
+r 4 1382 %20%20 -
+l 41
+    definition = build_two_columns(mod_loc("MARKET"),
+      {
+        {text = mod_loc("PACKS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Palette, Jester, Sleeve, Shine"), scale = 0.39},
+        {text = mod_loc("and Title packs hold 3 cards,"), scale = 0.39},
+        {text = mod_loc("Jumbo packs hold 5."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("CRATES:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("Tavern Crate: 5 cards, the last"), scale = 0.39},
+        {text = mod_loc("one Rare or better."), scale = 0.39},
+        {text = mod_loc("Legend Crate: 5 cards, the last"), scale = 0.39},
+        {text = mod_loc("one Epic or better."), scale = 0.39},
+      },
+      {
+        {text = mod_loc("ODDS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("On every pack, the full table"), scale = 0.39},
+        {text = mod_loc("in the Odds tab. Items you lack"), scale = 0.39},
+        {text = mod_loc("are three times as likely."), scale = 0.39},
+        {text = mod_loc("A Legendary at least every 40."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("DUPLICATES:"), scale = 0.45, colour = "MONEY"},
+        {text = mod_loc("Turn into Balacoin at once."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("Fast opening: Odds tab or"), scale = 0.39},
+        {text = mod_loc("Settings > Shop."), scale = 0.39},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 8: Filters (removed — stub only)
+-- =====================
+G.FUNCS.open_guide_filters = function(e)
+  G.FUNCS.guide_back_to_guide_tab(e)
+end
+
+-- =====================
+-- Category 9: Stakes (4 stakes, 9-12)
+-- =====================
+G.FUNCS.open_guide_stakes = function(e)
+r 4 1382 %20%20 -
+l 43
+    definition = build_two_columns(mod_loc("CREATIVE STAKES (9-12)"),
+      -- Left column
+      {
+        {text = mod_loc("4 new difficulty tiers beyond Gold Stake!"), scale = 0.39, colour = "ORANGE"},
+        {text = ""},
+        {text = mod_loc("STAKE 9 - CHAOS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Booster Packs have -1 choice"), scale = 0.39},
+        {text = mod_loc("- Foil sticker"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("STAKE 10 - APOCALYPSE:"), scale = 0.45, colour = "ORANGE"},
+        {text = mod_loc("- Boss Blinds gain an additional effect"), scale = 0.39},
+        {text = mod_loc("- Holographic sticker"), scale = 0.39},
+      },
+      -- Right column
+      {
+        {text = ""},
+        {text = mod_loc("STAKE 11 - OBLIVION:"), scale = 0.45, colour = "GREY"},
+        {text = mod_loc("- 1 random Joker slot disabled each round"), scale = 0.39},
+        {text = mod_loc("- Negative sticker"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("STAKE 12 - TRANSCENDENT:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("- Boss Blinds are always Finisher Blinds"), scale = 0.39},
+        {text = mod_loc("- Polychrome sticker"), scale = 0.39},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 10: Debug (removed — stub only)
+-- =====================
+G.FUNCS.open_guide_debug = function(e)
+  G.FUNCS.guide_back_to_guide_tab(e)
+end
+
+-- Remove old functions
+_G.create_guide_page_content = nil
+_G.build_guide_pages = nil
+
+-- =====================
+-- Category 11: Multiplayer
+-- =====================
+G.FUNCS.open_guide_multiplayer = function(e)
+r 4 1382 %20%20 -
+l 33
+    definition = build_two_columns(mod_loc("GAME MODES"),
+      {
+        {text = mod_loc("PLAY:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Quick Match finds an opponent"), scale = 0.39},
+        {text = mod_loc("- Create Room, public or private"), scale = 0.39},
+        {text = mod_loc("- Browse Rooms or Join with Code"), scale = 0.39},
+        {text = mod_loc("- Ranked, Daily and Weekly"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("1V1 MODES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Rivals: boss blinds from"), scale = 0.39},
+        {text = mod_loc("  ante 2 are PvP blinds"), scale = 0.39},
+        {text = mod_loc("- FaceOff: every blind is PvP"), scale = 0.39},
+        {text = mod_loc("- Ascension: no PvP, reach the"), scale = 0.39},
+        {text = mod_loc("  farthest round to win"), scale = 0.39},
+      },
+      {
+        {text = mod_loc("PARTY MODES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Battle Royale: lowest score"), scale = 0.39},
+        {text = mod_loc("  each PvP blind loses a life"), scale = 0.39},
+        {text = mod_loc("- Teams: team scores add up,"), scale = 0.39},
+        {text = mod_loc("  teams share lives"), scale = 0.39},
+        {text = mod_loc("- Co-op Raid: everyone beats"), scale = 0.39},
+        {text = mod_loc("  one shared boss target"), scale = 0.39},
+        {text = mod_loc("- Race: first to the target ante"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("A seat is kept 15 min if a"), scale = 0.39},
+        {text = mod_loc("player leaves (Rejoin)."), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_mp_ranked = function(e)
+r 4 1382 %20%20 -
+l 32
+    definition = build_two_columns(mod_loc("RANKED"),
+      {
+        {text = mod_loc("RANKED MATCHES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- The same fixed rules every match"), scale = 0.39},
+        {text = mod_loc("- Win to gain RP, lose to drop"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("RANKS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Stone, Bronze, Silver, Gold,"), scale = 0.39},
+        {text = mod_loc("  Platinum, Foiled, Holographic,"), scale = 0.39},
+        {text = mod_loc("  Polychromed, Negative,"), scale = 0.39},
+        {text = mod_loc("  TRUE JIMBO"), scale = 0.39},
+        {text = mod_loc("- Each rank has tiers I, II, III"), scale = 0.39},
+      },
+      {
+        {text = mod_loc("SEASON:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Time left, peak rank, matches,"), scale = 0.39},
+        {text = mod_loc("  win rate and streak"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("PACKS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Ranked XP fills the next pack"), scale = 0.39},
+        {text = mod_loc("- Open packs for cosmetics:"), scale = 0.39},
+        {text = mod_loc("  badges, titles, sleeves,"), scale = 0.39},
+        {text = mod_loc("  frames, flames and bursts"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("Ranked is separate from your"), scale = 0.39},
+        {text = mod_loc("own Progression level."), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_mp_rules = function(e)
+r 4 1382 %20%20 -
+l 35
+    definition = build_two_columns(mod_loc("MATCH RULES"),
+      {
+        {text = mod_loc("PVP BLINDS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Both players play the same"), scale = 0.39},
+        {text = mod_loc("  blind, the higher score wins"), scale = 0.39},
+        {text = mod_loc("- The loser loses a life"), scale = 0.39},
+        {text = mod_loc("- No lives left: match lost"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("RULESETS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Classic: standard MP rules"), scale = 0.39},
+        {text = mod_loc("- Balanced: MP reworks,"), scale = 0.39},
+        {text = mod_loc("  Justice banned"), scale = 0.39},
+        {text = mod_loc("- Also Vanilla, Slow burn,"), scale = 0.39},
+        {text = mod_loc("  Tournament, Sprint, Chaos"), scale = 0.39},
+      },
+      {
+        {text = mod_loc("HOST SETTINGS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Lives, PvP from ante,"), scale = 0.39},
+        {text = mod_loc("  final ante, ready timer"), scale = 0.39},
+        {text = mod_loc("- Deck, stake, banned cards"), scale = 0.39},
+        {text = mod_loc("- Layers like Scarcity"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("REWORKS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Some cards work differently"), scale = 0.39},
+        {text = mod_loc("  in MP: see Collection >"), scale = 0.39},
+        {text = mod_loc("  Reworks or Lobby Info"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("SPEED:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Up to 4x, full score count"), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_mp_emotes = function(e)
+r 4 1382 %20%20 -
+l 27
+    definition = build_two_columns(mod_loc("EMOTES & CHAT"),
+      {
+        {text = mod_loc("EMOTES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Press Emote in the lobby or"), scale = 0.39},
+        {text = mod_loc("  during a match to pick one"), scale = 0.39},
+        {text = mod_loc("- Everyone sees and hears it"), scale = 0.39},
+        {text = mod_loc("- Off while watching a replay"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("CHAT:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Lobby chat also works in the run"), scale = 0.39},
+        {text = mod_loc("- Friends > Messages for DMs"), scale = 0.39},
+      },
+      {
+        {text = mod_loc("SAFETY:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Players card: Mute or Report"), scale = 0.39},
+        {text = mod_loc("- Turn chat off in the chat card"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("FRIENDS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Add friend: search players"), scale = 0.39},
+        {text = mod_loc("  by name"), scale = 0.39},
+        {text = mod_loc("- Invite friends to your room"), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_mp_replays = function(e)
+r 4 1382 %20%20 -
+l 25
+    definition = build_two_columns(mod_loc("REPLAYS"),
+      {
+        {text = mod_loc("REPLAYS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Finished matches are saved"), scale = 0.39},
+        {text = mod_loc("- Profile > History lists them"), scale = 0.39},
+        {text = mod_loc("- Watch replay plays one back"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("PLAYBACK BAR:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Pause, speed and skip ahead"), scale = 0.39},
+        {text = mod_loc("- Leave goes back to the menu"), scale = 0.39},
+      },
+      {
+        {text = mod_loc("GOOD TO KNOW:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Matches still waiting for a"), scale = 0.39},
+        {text = mod_loc("  reconnection are not listed"), scale = 0.39},
+        {text = mod_loc("- Delete removes a replay,"), scale = 0.39},
+        {text = mod_loc("  press it twice to confirm"), scale = 0.39},
+        {text = mod_loc("- Options, chat and emotes are"), scale = 0.39},
+        {text = mod_loc("  off while watching"), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_mp_mods = function(e)
+r 4 1382 %20%20 -
+l 24
+    definition = build_two_columns(mod_loc("MODS IN MP"),
+      {
+        {text = mod_loc("MODDED ROOMS (BETA):"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- A room can use mods"), scale = 0.39},
+        {text = mod_loc("- Modded rooms list their mods"), scale = 0.39},
+        {text = mod_loc("- Missing mods install on join"), scale = 0.39},
+        {text = mod_loc("- Everyone needs the same"), scale = 0.39},
+        {text = mod_loc("  game version"), scale = 0.39},
+      },
+      {
+        {text = mod_loc("GOOD TO KNOW:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Mods in multiplayer are in"), scale = 0.39},
+        {text = mod_loc("  beta and may cause issues"), scale = 0.39},
+        {text = mod_loc("- MODS in the MP menu lists"), scale = 0.39},
+        {text = mod_loc("  mods made for multiplayer"), scale = 0.39},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 13: Hand Optimizer
+-- =====================
+G.FUNCS.open_guide_handoptimizer = function(e)
+r 4 1382 %20%20 -
+l 28
+    definition = build_single_column(mod_loc("HAND OPTIMIZER"), {
+      {text = mod_loc("Finds the best hand you can play."), scale = 0.42, colour = "ORANGE"},
+      {text = ""},
+      {text = mod_loc("HOW IT WORKS:"), scale = 0.45, colour = "BLUE"},
+      {text = mod_loc("- Tries every hand you can play"), scale = 0.39},
+      {text = mod_loc("- Scores each one with the game's own rules"), scale = 0.39},
+      {text = mod_loc("- Counts Jokers, levels, the boss and card effects"), scale = 0.39},
+      {text = ""},
+      {text = mod_loc("IN A ROUND:"), scale = 0.45, colour = "BLUE"},
+      {text = mod_loc("- The Best hand box shows the top play"), scale = 0.39},
+      {text = mod_loc("- Pick selects those cards for you"), scale = 0.39},
+      {text = mod_loc("- More lists the five best plays"), scale = 0.39},
+      {text = mod_loc("- Luck based effects show a range"), scale = 0.39},
+      {text = ""},
+      {text = mod_loc("TOGGLE:"), scale = 0.45, colour = "BLUE"},
+      {text = mod_loc("Settings > Helpers > Hand Optimizer"), scale = 0.39},
+    })
+  }
+end
+
+-- Remove old functions
+_G.create_guide_page_content = nil
+_G.build_guide_pages = nil
+
+-- =====================
+-- Category 14: Deck Creator
+-- =====================
+G.FUNCS.open_guide_deck_creator = function(e)
+r 4 1382 %20%20 -
+l 32
+    definition = build_two_columns(mod_loc("DECK CREATOR"),
+      -- Left column
+      {
+        {text = mod_loc("ACCESS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("The Casino > The Forge"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("5 TABS:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("- Basic: name, hands, discards"), scale = 0.39},
+        {text = mod_loc("- Rates: card draw rates"), scale = 0.39},
+        {text = mod_loc("- Items: starting jokers/cards"), scale = 0.39},
+        {text = mod_loc("- Bans: banned content"), scale = 0.39},
+        {text = mod_loc("- Gameplay: modifiers"), scale = 0.39},
+      },
+      -- Right column
+      {
+        {text = mod_loc("RATE PAGES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("- Page 1: rate sliders"), scale = 0.39},
+        {text = mod_loc("- Page 2: deck + shop config"), scale = 0.39},
+        {text = mod_loc("- Page 3: more rates"), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("NOTES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Starting items always spawn."), scale = 0.39},
+        {text = mod_loc("Custom decks saved in profile."), scale = 0.39},
+      }
+    )
+  }
+end
+
+-- =====================
+-- Category 15: Jimbo Comments
+-- =====================
+G.FUNCS.open_guide_jimbo_comments = function(e)
+r 4 1382 %20%20 -
+l 23
+    definition = build_single_column(mod_loc("JIMBO COMMENTS"), {
+      {text = mod_loc("Jimbo reacts to your run!"), scale = 0.42, colour = "ORANGE"},
+      {text = ""},
+      {text = mod_loc("HE TALKS ABOUT:"), scale = 0.45, colour = "BLUE"},
+      {text = mod_loc("- Big hands, close calls and losses"), scale = 0.39},
+      {text = mod_loc("- Boss blinds and what they do"), scale = 0.39},
+      {text = mod_loc("- Rare Jokers, money and new antes"), scale = 0.39},
+      {text = mod_loc("- Lives and PvP blinds in multiplayer"), scale = 0.39},
+      {text = ""},
+      {text = mod_loc("WHERE:"), scale = 0.45, colour = "BLUE"},
+      {text = mod_loc("Jimbo finds free space on screen,"), scale = 0.39},
+      {text = mod_loc("next to what he is talking about."), scale = 0.39},
+      {text = ""},
+      {text = mod_loc("TOGGLE:"), scale = 0.45, colour = "BLUE"},
+      {text = mod_loc("Settings > Helpers > Jimbo Comments"), scale = 0.39},
+      {text = mod_loc("Choose how often he talks there too."), scale = 0.39},
+    })
+  }
+end
+
+print("[MOD GUIDE] V8.0 Individual Category Windows Loaded - 13 categories (+ Deck Creator + Jimbo Comments)!")
+
+G.FUNCS.open_guide_modded_game = function(e)
+r 4 1382 %20%20 -
+l 27
+    definition = build_two_columns(mod_loc("MODDED GAME"),
+      {
+        {text = mod_loc("TWO GAMES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Normal: the Overhaul as is,"), scale = 0.39},
+        {text = mod_loc("no mods ever load."), scale = 0.39},
+        {text = mod_loc("Modded: your enabled mods load."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("SWITCH:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("NORMAL / MODDED under the"), scale = 0.39},
+        {text = mod_loc("title buttons. The game restarts"), scale = 0.39},
+        {text = mod_loc("and reopens the last one."), scale = 0.39},
+      },
+      {
+        {text = mod_loc("PROFILES:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Each game keeps its own"), scale = 0.39},
+        {text = mod_loc("three profiles and saves."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("CRASH GUARD:"), scale = 0.45, colour = "RED"},
+        {text = mod_loc("If a mod crashes at start,"), scale = 0.39},
+        {text = mod_loc("the next start turns it off"), scale = 0.39},
+        {text = mod_loc("and tells you which mod it was."), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_mods_workshop = function(e)
+r 4 1382 %20%20 -
+l 26
+    definition = build_two_columns(mod_loc("MODS & WORKSHOP"),
+      {
+        {text = mod_loc("MODS MENU:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Mods button on the title."), scale = 0.39},
+        {text = mod_loc("Installed: turn mods on or off,"), scale = 0.39},
+        {text = mod_loc("Config, Update, Remove."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("ZIP INSTALL:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Put a mod zip in Downloads,"), scale = 0.39},
+        {text = mod_loc("the game installs it at start."), scale = 0.39},
+      },
+      {
+        {text = mod_loc("WORKSHOP:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("Search, categories, sort and"), scale = 0.39},
+        {text = mod_loc("filter hundreds of mods."), scale = 0.39},
+        {text = mod_loc("Mod page: Install, Update,"), scale = 0.39},
+        {text = mod_loc("Uninstall. Needed mods are"), scale = 0.39},
+        {text = mod_loc("offered before the download."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("New installs start turned off."), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_tavern = function(e)
+r 4 1382 %20%20 -
+l 31
+    definition = build_two_columns(mod_loc("THE CASINO"),
+      {
+        {text = mod_loc("CASINO MAP:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("THE CASINO button on the title."), scale = 0.39},
+        {text = mod_loc("- Tavern: Quests, Run History"), scale = 0.39},
+        {text = mod_loc("- Market: the Shop"), scale = 0.39},
+        {text = mod_loc("- Tailor: Customization"), scale = 0.39},
+        {text = mod_loc("- The Forge: The Forge and"), scale = 0.39},
+        {text = mod_loc("  the Deck Creator"), scale = 0.39},
+        {text = mod_loc("- Library: Seed Library"), scale = 0.39},
+        {text = mod_loc("- Training Grounds: Boss Practice"), scale = 0.39},
+        {text = mod_loc("- Arcade: Minigames"), scale = 0.39},
+        {text = mod_loc("- Racetrack: Speedruns"), scale = 0.39},
+      },
+      {
+        {text = mod_loc("MOVING:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Arrows, trackpad or D-pad pick"), scale = 0.39},
+        {text = mod_loc("a place, Enter or A opens it."), scale = 0.39},
+        {text = mod_loc("Back returns to the map."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("COLOURS:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("52 colour sets, all clearly"), scale = 0.39},
+        {text = mod_loc("different, plus Polychromatic."), scale = 0.39},
+        {text = mod_loc("Get them from Palette Packs,"), scale = 0.39},
+        {text = mod_loc("equip them in Customization."), scale = 0.39},
+      }
+    )
+  }
+end
+
+G.FUNCS.open_guide_performance = function(e)
+r 4 1382 %20%20 -
+l 1269
+    definition = build_two_columns(mod_loc("PERFORMANCE"),
+      {
+        {text = mod_loc("PERFORMANCE MODE:"), scale = 0.45, colour = "GREEN"},
+        {text = mod_loc("Options > Performance."), scale = 0.39},
+        {text = mod_loc("One switch for the lighter"), scale = 0.39},
+        {text = mod_loc("settings: smaller picture,"), scale = 0.39},
+        {text = mod_loc("still background, no card"), scale = 0.39},
+        {text = mod_loc("shine, fewer particles."), scale = 0.39},
+        {text = mod_loc("Off puts yours back."), scale = 0.39},
+      },
+      {
+        {text = mod_loc("PERFORMANCE SETTINGS:"), scale = 0.45, colour = "BLUE"},
+        {text = mod_loc("Each option also works"), scale = 0.39},
+        {text = mod_loc("on its own: Background,"), scale = 0.39},
+        {text = mod_loc("Card Shine, Particles,"), scale = 0.39},
+        {text = mod_loc("Frame Rate Limit and more."), scale = 0.39},
+        {text = ""},
+        {text = mod_loc("TIP:"), scale = 0.45, colour = "GOLD"},
+        {text = mod_loc("Use it on slow phones or"), scale = 0.39},
+        {text = mod_loc("with big mods like Cryptid."), scale = 0.39},
+      }
+    )
+  }
+end
+
+mod_loc_register{fr = {
+  ["GAME MODES"] = "MODES DE JEU",
+  ["PLAY:"] = "JOUER :",
+  ["- Quick Match finds an opponent"] = "- Match rapide trouve un adversaire",
+  ["- Create Room, public or private"] = "- Créer un salon, public ou privé",
+  ["- Browse Rooms or Join with Code"] = "- Parcourir ou rejoindre par code",
+  ["- Ranked, Daily and Weekly"] = "- Classé, Quotidien et Hebdo",
+  ["1V1 MODES:"] = "MODES 1V1 :",
+  ["- Rivals: boss blinds from"] = "- Rivaux : dès la mise initiale 2, les",
+  ["  ante 2 are PvP blinds"] = "  blindes de boss sont en PvP",
+  ["- FaceOff: every blind is PvP"] = "- FaceOff : toutes les blindes en PvP",
+  ["- Ascension: no PvP, reach the"] = "- Ascension : sans PvP, atteins",
+  ["  farthest round to win"] = "  la manche la plus lointaine",
+  ["PARTY MODES:"] = "MODES DE GROUPE :",
+  ["- Battle Royale: lowest score"] = "- Battle Royale : le plus petit score",
+  ["  each PvP blind loses a life"] = "  de chaque blinde PvP perd une vie",
+  ["- Teams: team scores add up,"] = "- Équipes : les scores s'additionnent,",
+  ["  teams share lives"] = "  l'équipe partage ses vies",
+  ["- Co-op Raid: everyone beats"] = "- Raid coop : tous battent",
+  ["  one shared boss target"] = "  un même objectif de boss",
+  ["- Race: first to the target ante"] = "- Course : premier à la mise initiale visée",
+  ["A seat is kept 15 min if a"] = "Une place est gardée 15 min si",
+  ["player leaves (Rejoin)."] = "un joueur part (Revenir).",
+  ["RANKED"] = "CLASSÉ",
+  ["RANKED MATCHES:"] = "MATCHS CLASSÉS :",
+  ["- The same fixed rules every match"] = "- Les mêmes règles à chaque match",
+  ["- Win to gain RP, lose to drop"] = "- Gagne des RP en gagnant, perds-en",
+  ["RANKS:"] = "RANGS :",
+  ["- Stone, Bronze, Silver, Gold,"] = "- Pierre, Bronze, Argent, Or,",
+  ["  Platinum, Foiled, Holographic,"] = "  Platine, Brillant, Holographique,",
+  ["  Polychromed, Negative,"] = "  Polychrome, Négatif,",
+  ["  TRUE JIMBO"] = "  VRAI JIMBO",
+  ["- Each rank has tiers I, II, III"] = "- Chaque rang a les paliers I, II, III",
+  ["SEASON:"] = "SAISON :",
+  ["- Time left, peak rank, matches,"] = "- Temps restant, meilleur rang,",
+  ["  win rate and streak"] = "  matchs, victoires et série",
+  ["PACKS:"] = "PAQUETS :",
+  ["- Ranked XP fills the next pack"] = "- L'XP classée remplit le paquet",
+  ["- Open packs for cosmetics:"] = "- Ouvre-les pour des cosmétiques :",
+  ["  badges, titles, sleeves,"] = "  badges, titres, pochettes,",
+  ["  frames, flames and bursts"] = "  cadres, flammes et éclats",
+  ["Ranked is separate from your"] = "Le classé est séparé de votre",
+  ["own Progression level."] = "niveau de Progression.",
+  ["MATCH RULES"] = "RÈGLES DU MATCH",
+  ["PVP BLINDS:"] = "BLINDES PVP :",
+  ["- Both players play the same"] = "- Les deux joueurs jouent la même",
+  ["  blind, the higher score wins"] = "  blinde, le meilleur score gagne",
+  ["- The loser loses a life"] = "- Le perdant perd une vie",
+  ["- No lives left: match lost"] = "- Plus de vies : match perdu",
+  ["RULESETS:"] = "RÈGLES :",
+  ["- Classic: standard MP rules"] = "- Classique : règles MP standard",
+  ["- Balanced: MP reworks,"] = "- Équilibré : refontes MP,",
+  ["  Justice banned"] = "  Justice bannie",
+  ["- Also Vanilla, Slow burn,"] = "- Aussi Vanilla, Feu doux,",
+  ["  Tournament, Sprint, Chaos"] = "  Tournoi, Sprint, Chaos",
+  ["HOST SETTINGS:"] = "RÉGLAGES DE L'HÔTE :",
+  ["- Lives, PvP from ante,"] = "- Vies, PvP dès la mise initiale,",
+  ["  final ante, ready timer"] = "  mise initiale finale, minuteur",
+  ["- Deck, stake, banned cards"] = "- Jeu, mise, cartes bannies",
+  ["- Layers like Scarcity"] = "- Couches comme Pénurie",
+  ["REWORKS:"] = "REFONTES :",
+  ["- Some cards work differently"] = "- Certaines cartes changent",
+  ["  in MP: see Collection >"] = "  en MP : vois Collection >",
+  ["  Reworks or Lobby Info"] = "  Refontes ou Infos du salon",
+  ["SPEED:"] = "VITESSE :",
+  ["- Up to 4x, full score count"] = "- Jusqu'à 4x, décompte complet",
+  ["EMOTES & CHAT"] = "EMOTES ET CHAT",
+  ["EMOTES:"] = "EMOTES :",
+  ["- Press Emote in the lobby or"] = "- Appuie sur Emote au salon ou",
+  ["  during a match to pick one"] = "  en match pour en choisir une",
+  ["- Everyone sees and hears it"] = "- Tout le monde la voit et l'entend",
+  ["- Off while watching a replay"] = "- Désactivées pendant un replay",
+  ["CHAT:"] = "CHAT :",
+  ["- Lobby chat also works in the run"] = "- Le chat du salon marche en partie",
+  ["- Friends > Messages for DMs"] = "- Amis > Messages pour les MP",
+  ["SAFETY:"] = "SÉCURITÉ :",
+  ["- Players card: Mute or Report"] = "- Carte Joueurs : Muet ou Signaler",
+  ["- Turn chat off in the chat card"] = "- Coupe le chat depuis sa carte",
+  ["FRIENDS:"] = "AMIS :",
+  ["- Add friend: search players"] = "- Ajouter : cherche des joueurs",
+  ["  by name"] = "  par leur nom",
+  ["- Invite friends to your room"] = "- Invite tes amis dans ton salon",
+  ["REPLAYS"] = "REPLAYS",
+  ["REPLAYS:"] = "REPLAYS :",
+  ["- Finished matches are saved"] = "- Les matchs finis sont enregistrés",
+  ["- Profile > History lists them"] = "- Profil > Historique les liste",
+  ["- Watch replay plays one back"] = "- Voir le replay le rejoue",
+  ["PLAYBACK BAR:"] = "BARRE DE LECTURE :",
+  ["- Pause, speed and skip ahead"] = "- Pause, vitesse et avance rapide",
+  ["- Leave goes back to the menu"] = "- Quitter revient au menu",
+  ["GOOD TO KNOW:"] = "BON À SAVOIR :",
+  ["- Matches still waiting for a"] = "- Les matchs qui attendent une",
+  ["  reconnection are not listed"] = "  reconnexion ne sont pas listés",
+  ["- Delete removes a replay,"] = "- Supprimer efface un replay,",
+  ["  press it twice to confirm"] = "  appuie deux fois pour confirmer",
+  ["- Options, chat and emotes are"] = "- Options, chat et emotes sont",
+  ["  off while watching"] = "  coupés pendant le visionnage",
+  ["MODS IN MP"] = "MODS EN MP",
+  ["MODDED ROOMS (BETA):"] = "SALONS MODDÉS (BÊTA) :",
+  ["- A room can use mods"] = "- Un salon peut utiliser des mods",
+  ["- Modded rooms list their mods"] = "- Les salons moddés listent leurs mods",
+  ["- Missing mods install on join"] = "- Les mods manquants s'installent",
+  ["- Everyone needs the same"] = "- Tous ont besoin de la même",
+  ["  game version"] = "  version du jeu",
+  ["- Mods in multiplayer are in"] = "- Les mods en multijoueur sont en",
+  ["  beta and may cause issues"] = "  bêta et peuvent poser problème",
+  ["- MODS in the MP menu lists"] = "- MODS du menu MP liste les",
+  ["  mods made for multiplayer"] = "  mods faits pour le multijoueur",
+  ["Overhaul"] = "Overhaul",
+  ["Multiplayer"] = "Multijoueur",
+  ["Game Modes"] = "Modes de jeu",
+  ["Ranked"] = "Classé",
+  ["Match Rules"] = "Règles du match",
+  ["Emotes & Chat"] = "Emotes et chat",
+  ["Replays"] = "Replays",
+  ["Mods in MP"] = "Mods en MP",
+  ["What's New"] = "Nouveautés",
+}, es = {
+  ["GAME MODES"] = "MODOS DE JUEGO",
+  ["PLAY:"] = "JUGAR:",
+  ["- Quick Match finds an opponent"] = "- Partida rápida busca un rival",
+  ["- Create Room, public or private"] = "- Crear sala, pública o privada",
+  ["- Browse Rooms or Join with Code"] = "- Explorar salas o unirse con código",
+  ["- Ranked, Daily and Weekly"] = "- Clasificatoria, Diaria y Semanal",
+  ["1V1 MODES:"] = "MODOS 1V1:",
+  ["- Rivals: boss blinds from"] = "- Rivales: desde la apuesta inicial 2, las",
+  ["  ante 2 are PvP blinds"] = "  ciegas jefe son PvP",
+  ["- FaceOff: every blind is PvP"] = "- FaceOff: todas las ciegas son PvP",
+  ["- Ascension: no PvP, reach the"] = "- Ascensión: sin PvP, llega a la",
+  ["  farthest round to win"] = "  ronda más lejana para ganar",
+  ["PARTY MODES:"] = "MODOS DE GRUPO:",
+  ["- Battle Royale: lowest score"] = "- Battle Royale: la puntuación más baja",
+  ["  each PvP blind loses a life"] = "  de cada ciega PvP pierde una vida",
+  ["- Teams: team scores add up,"] = "- Equipos: las puntuaciones se suman,",
+  ["  teams share lives"] = "  el equipo comparte vidas",
+  ["- Co-op Raid: everyone beats"] = "- Raid cooperativo: todos superan",
+  ["  one shared boss target"] = "  un mismo objetivo de jefe",
+  ["- Race: first to the target ante"] = "- Carrera: el primero en la apuesta inicial objetivo",
+  ["A seat is kept 15 min if a"] = "Se guarda el sitio 15 min si",
+  ["player leaves (Rejoin)."] = "un jugador sale (Volver).",
+  ["RANKED"] = "CLASIFICATORIA",
+  ["RANKED MATCHES:"] = "PARTIDAS CLASIFICATORIAS:",
+  ["- The same fixed rules every match"] = "- Las mismas reglas en cada partida",
+  ["- Win to gain RP, lose to drop"] = "- Gana RP al ganar, pierdes al perder",
+  ["RANKS:"] = "RANGOS:",
+  ["- Stone, Bronze, Silver, Gold,"] = "- Piedra, Bronce, Plata, Oro,",
+  ["  Platinum, Foiled, Holographic,"] = "  Platino, Laminado, Holográfico,",
+  ["  Polychromed, Negative,"] = "  Policromo, Negativo,",
+  ["  TRUE JIMBO"] = "  JIMBO VERDADERO",
+  ["- Each rank has tiers I, II, III"] = "- Cada rango tiene niveles I, II, III",
+  ["SEASON:"] = "TEMPORADA:",
+  ["- Time left, peak rank, matches,"] = "- Tiempo restante, mejor rango,",
+  ["  win rate and streak"] = "  partidas, victorias y racha",
+  ["PACKS:"] = "PAQUETES:",
+  ["- Ranked XP fills the next pack"] = "- La XP clasificatoria llena el paquete",
+  ["- Open packs for cosmetics:"] = "- Ábrelos para conseguir cosméticos:",
+  ["  badges, titles, sleeves,"] = "  insignias, títulos, fundas,",
+  ["  frames, flames and bursts"] = "  marcos, llamas y estallidos",
+  ["Ranked is separate from your"] = "La clasificatoria va aparte de tu",
+  ["own Progression level."] = "nivel de Progreso.",
+  ["MATCH RULES"] = "REGLAS DE LA PARTIDA",
+  ["PVP BLINDS:"] = "CIEGAS PVP:",
+  ["- Both players play the same"] = "- Ambos juegan la misma ciega,",
+  ["  blind, the higher score wins"] = "  gana la puntuación más alta",
+  ["- The loser loses a life"] = "- El perdedor pierde una vida",
+  ["- No lives left: match lost"] = "- Sin vidas: partida perdida",
+  ["RULESETS:"] = "REGLAMENTOS:",
+  ["- Classic: standard MP rules"] = "- Clásico: reglas MP estándar",
+  ["- Balanced: MP reworks,"] = "- Equilibrado: cambios MP,",
+  ["  Justice banned"] = "  Justicia prohibida",
+  ["- Also Vanilla, Slow burn,"] = "- También Vanilla, Fuego lento,",
+  ["  Tournament, Sprint, Chaos"] = "  Torneo, Sprint, Caos",
+  ["HOST SETTINGS:"] = "AJUSTES DEL ANFITRIÓN:",
+  ["- Lives, PvP from ante,"] = "- Vidas, PvP desde la apuesta inicial,",
+  ["  final ante, ready timer"] = "  apuesta inicial final, temporizador",
+  ["- Deck, stake, banned cards"] = "- Baraja, apuesta, cartas prohibidas",
+  ["- Layers like Scarcity"] = "- Capas como Escasez",
+  ["REWORKS:"] = "CAMBIOS:",
+  ["- Some cards work differently"] = "- Algunas cartas cambian",
+  ["  in MP: see Collection >"] = "  en MP: mira Colección >",
+  ["  Reworks or Lobby Info"] = "  Cambios o Info de la sala",
+  ["SPEED:"] = "VELOCIDAD:",
+  ["- Up to 4x, full score count"] = "- Hasta 4x, conteo completo",
+  ["EMOTES & CHAT"] = "EMOTES Y CHAT",
+  ["EMOTES:"] = "EMOTES:",
+  ["- Press Emote in the lobby or"] = "- Pulsa Emote en la sala o",
+  ["  during a match to pick one"] = "  en la partida para elegir uno",
+  ["- Everyone sees and hears it"] = "- Todos lo ven y lo oyen",
+  ["- Off while watching a replay"] = "- Desactivados en una repetición",
+  ["CHAT:"] = "CHAT:",
+  ["- Lobby chat also works in the run"] = "- El chat de la sala va en la partida",
+  ["- Friends > Messages for DMs"] = "- Amigos > Mensajes para privados",
+  ["SAFETY:"] = "SEGURIDAD:",
+  ["- Players card: Mute or Report"] = "- Tarjeta Jugadores: Silenciar o Reportar",
+  ["- Turn chat off in the chat card"] = "- Apaga el chat desde su tarjeta",
+  ["FRIENDS:"] = "AMIGOS:",
+  ["- Add friend: search players"] = "- Añadir: busca jugadores",
+  ["  by name"] = "  por su nombre",
+  ["- Invite friends to your room"] = "- Invita amigos a tu sala",
+  ["REPLAYS"] = "REPETICIONES",
+  ["REPLAYS:"] = "REPETICIONES:",
+  ["- Finished matches are saved"] = "- Las partidas terminadas se guardan",
+  ["- Profile > History lists them"] = "- Perfil > Historial las lista",
+  ["- Watch replay plays one back"] = "- Ver repetición la reproduce",
+  ["PLAYBACK BAR:"] = "BARRA DE REPRODUCCIÓN:",
+  ["- Pause, speed and skip ahead"] = "- Pausa, velocidad y avance",
+  ["- Leave goes back to the menu"] = "- Salir vuelve al menú",
+  ["GOOD TO KNOW:"] = "A TENER EN CUENTA:",
+  ["- Matches still waiting for a"] = "- Las partidas que esperan una",
+  ["  reconnection are not listed"] = "  reconexión no aparecen",
+  ["- Delete removes a replay,"] = "- Borrar elimina una repetición,",
+  ["  press it twice to confirm"] = "  pulsa dos veces para confirmar",
+  ["- Options, chat and emotes are"] = "- Opciones, chat y emotes están",
+  ["  off while watching"] = "  desactivados al verla",
+  ["MODS IN MP"] = "MODS EN MP",
+  ["MODDED ROOMS (BETA):"] = "SALAS CON MODS (BETA):",
+  ["- A room can use mods"] = "- Una sala puede usar mods",
+  ["- Modded rooms list their mods"] = "- Las salas con mods listan sus mods",
+  ["- Missing mods install on join"] = "- Los mods que faltan se instalan",
+  ["- Everyone needs the same"] = "- Todos necesitan la misma",
+  ["  game version"] = "  versión del juego",
+  ["- Mods in multiplayer are in"] = "- Los mods en multijugador están en",
+  ["  beta and may cause issues"] = "  beta y pueden dar problemas",
+  ["- MODS in the MP menu lists"] = "- MODS del menú MP lista los",
+  ["  mods made for multiplayer"] = "  mods hechos para multijugador",
+  ["Overhaul"] = "Overhaul",
+  ["Multiplayer"] = "Multijugador",
+  ["Game Modes"] = "Modos de juego",
+  ["Ranked"] = "Clasificatoria",
+  ["Match Rules"] = "Reglas",
+  ["Emotes & Chat"] = "Emotes y chat",
+  ["Replays"] = "Repeticiones",
+  ["Mods in MP"] = "Mods en MP",
+  ["What's New"] = "Novedades",
+}}
+
+local GUIDE_1105 = {
+  {fn = "open_guide_keyboard", title = "KEYBOARD PLAY", left = {
+    {"INPUT MODE:", "BLUE"}, {"Settings > Controls > Input mode:"}, {"Mouse, Keyboard, Trackpad or"}, {"Trackpad + keys."}, {""},
+    {"KEYBOARD:", "BLUE"}, {"Arrows move the gold focus."}, {"Space presses or picks."}, {"Backspace goes back."}, {"Q and E change tabs."}, {"Enter plays the hand."},
+  }, right = {
+    {"MORE KEYS:", "GOLD"}, {"D discards, X and C sort."}, {"1 to 0 pick cards 1 to 10."}, {"B buys, S sells, U uses."}, {"T rerolls, I opens Run Info."}, {""},
+    {"YOUR KEYS:", "BLUE"}, {"Settings > Controls > Keys and"}, {"gestures. Help lists them all."}, {"In a run: Options > Controls >"}, {"Remap changes them there."},
+  }},
+  {fn = "open_guide_trackpad", title = "TRACKPAD", left = {
+    {"TRACKPAD:", "BLUE"}, {"Settings > Controls > Input mode."}, {"Tap: click, or press the focus."}, {"Two-finger scroll: move the"}, {"gold focus along the cards."},
+    {"Swipe left or right: move a"}, {"picked joker, or change tabs."}, {"Two-finger tap: back, or clear"}, {"the picked cards."},
+    {"Press a card and slide over"}, {"others to pick them all."},
+  }, right = {
+    {"TRACKPAD + KEYS:", "GOLD"}, {"The same gestures, plus keys"}, {"for the left hand:"}, {"Space plays, D discards,"}, {"A and G move a card, F uses,"}, {"Tab opens Run Info."}, {""},
+    {"A gesture never plays, buys"}, {"or sells on its own."},
+  }},
+  {fn = "open_guide_qol", title = "QOL", left = {
+    {"SETTINGS:", "BLUE"}, {"Settings is sorted in categories:"}, {"Gameplay, Shop, Helpers and more."}, {"The search bar at the top finds"}, {"a setting from a few letters."}, {""},
+    {"BACK:", "BLUE"}, {"Back and Esc return to the"}, {"screen you came from."}, {""},
+    {"SHOP:", "BLUE"}, {"Buy and Reroll warn you first"}, {"when they cost you interest."},
+  }, right = {
+    {"SOLO RUNS:", "GOLD"}, {"F and Shift+F: game speed."}, {"M mutes all, N the music."}, {"Pause when the window loses"}, {"focus. Restart from the pause"},
+    {"menu starts the same kind of run."}, {"Fast packs, sticker counters,"}, {"joker sell value total."}, {""},
+    {"Locked in multiplayer, Ranked"}, {"and speedruns: they say why."},
+  }},
+  {fn = "open_guide_random_run", title = "RANDOM RUN", left = {
+    {"RANDOM:", "BLUE"}, {"Play > Random."}, {"Picks an unlocked deck and"}, {"stake for you. ROLL until"}, {"you like it, then START."},
+  }, right = {
+    {"CUSTOM RANDOM:", "GOLD"}, {"Same panel, Custom random:"}, {"random custom rules on top."}, {"Run Info shows the rules."}, {""},
+    {"Restart, Same seed and New seed"}, {"keep the same random rules."},
+  }},
+  {fn = "open_guide_speedrun", title = "SPEEDRUN", left = {
+    {"SPEEDRUN MODE:", "BLUE"}, {"Play > Speedrun. Pick a"}, {"category, deck, stake and"}, {"seed type, then START."}, {""},
+    {"SAME RULES FOR ALL:", "GOLD"}, {"One game speed, no helpers,"}, {"no mods, Debug or Forge jokers."}, {"Locked features do nothing"}, {"and say Off in Speedrun."},
+  }, right = {
+    {"TIMER:", "BLUE"}, {"Under the consumables, a split"}, {"after every ante. Esc pauses it."}, {"Goal reached: your time, PB and"}, {"splits, then Continue, New"}, {"attempt or Watch."}, {""},
+    {"BOARD:", "BLUE"}, {"The Casino > Racetrack. My runs and"}, {"Online, WATCH on every row."},
+  }},
+  {fn = "open_guide_daily_seed", title = "DAILY SEED", left = {
+    {"DAILY RUN:", "BLUE"}, {"Play > Daily. Same seed, deck,"}, {"stake and rules for everyone"}, {"each day, offline too."}, {""},
+    {"ONE SCORED TRY:", "GOLD"}, {"Your first daily run counts."}, {"Later runs that day are practice."},
+  }, right = {
+    {"BOARD:", "BLUE"}, {"BOARD next to Play: the top 20,"}, {"your rank and your scored try."}, {"It needs the server."}, {""},
+    {"Forge jokers never show up"}, {"in a daily run."},
+  }},
+  {fn = "open_guide_run_history", title = "RUN HISTORY", left = {
+    {"RUN HISTORY:", "BLUE"}, {"The Casino > Tavern > RUN HISTORY:"}, {"every finished run, newest first:"}, {"deck, stake, ante, best hand"}, {"and result. The last 200 stay."},
+    {"VIEW shows the jokers you had"}, {"and plays a solo seed again."},
+  }, right = {
+    {"REPLAYS:", "GOLD"}, {"Every solo run is recorded on"}, {"this device only, the last 50."}, {"WATCH REPLAY plays it back,"}, {"with speed and ante buttons."},
+    {"MP runs open their match replay."},
+  }},
+  {fn = "open_guide_boss_practice", title = "BOSS PRACTICE", left = {
+    {"PRACTICE:", "BLUE"}, {"The Casino > Training Grounds."}, {"Pick a boss you have seen,"}, {"the ante (1 to 8) and a deck,"}, {"see the score you need."}, {""},
+    {"ONE FIGHT:", "GOLD"}, {"No rewards, nothing goes to"}, {"your stats. TRY AGAIN gives"}, {"the same fight, OTHER BOSS"}, {"picks another one."},
+  }, right = {
+    {"LOADOUT:", "BLUE"}, {"Typical run: a build like a"}, {"run has at that ante."}, {"From my run: your saved run"}, {"or one from Run History."}, {"Build my own: jokers, hand"}, {"levels, money, consumables."},
+  }},
+  {fn = "open_guide_minigames", title = "MINIGAMES", left = {
+    {"WHERE:", "BLUE"}, {"The Casino > Arcade > MINIGAMES."}, {"Pick a game, then Play."}, {"Your best is kept per game."}, {""},
+    {"NEW:", "GOLD"}, {"Beat the Blind: play hands to"}, {"beat Small, Big and Boss."}, {"Jimbo Run: tap, click or Space"}, {"to jump."},
+  }, right = {
+    {"IN MULTIPLAYER:", "BLUE"}, {"Play while you wait, in a lobby"}, {"or a PvP wait. The game closes"}, {"when the wait ends."}, {"No effect on the match."}, {""},
+    {"FRIENDS:", "BLUE"}, {"Friends' best shows next to"}, {"yours. Tap it for the board."},
+  }},
+  {fn = "open_guide_joker_forge", title = "THE FORGE", left = {
+    {"MAKE A CARD:", "BLUE"}, {"The Casino > The Forge > New."}, {"Pick a kind: joker, tarot,"}, {"planet, deck, blind and more."}, {"Simple: a few clear choices."}, {"Advanced: every rule."},
+    {"Pixel editor: draw the art,"}, {"Simple or Advanced too."},
+  }, right = {
+    {"PLAY IT:", "GOLD"}, {"Turn a creation on: it can"}, {"show up in solo runs."}, {"Export makes a mod you can"}, {"share. Mods > FORGED lists them."}, {""},
+    {"NEVER IN:", "RED"}, {"Ranked, speedruns and the daily."}, {"In MP only when the host turns"}, {"on Forge creations."},
+  }},
+  {fn = "open_guide_suit_colours", title = "SUIT COLOURS", left = {
+    {"PALETTES:", "BLUE"}, {"Options > Customize Deck:"}, {"the Suit Colours arrows switch"}, {"between Normal, High contrast"}, {"and the other palettes."},
+  }, right = {
+    {"CUSTOM:", "GOLD"}, {"Custom Colours opens a window"}, {"with real cards: pick a suit,"}, {"then a colour. Cards change"}, {"at once and the choice stays."},
+  }},
+  {fn = "open_guide_mp_fair", title = "FAIR PLAY", left = {
+    {"HOST SETTINGS:", "BLUE"}, {"Lobby settings > Fair play."}, {"Only the host changes them,"}, {"every player sees them."}, {"- Game speed over 4x"}, {"- Score speed"},
+    {"- Skip score animation"}, {"- Show the seed"}, {"- Hand Optimizer"}, {"- Score preview"},
+  }, right = {
+    {"DEFAULTS:", "GOLD"}, {"All off: 4x speed at most, the"}, {"seed hidden until the match"}, {"ends, no helpers."}, {""},
+    {"PRESETS:", "BLUE"}, {"Save the lobby settings under"}, {"a name, load them later."}, {""},
+    {"RANKED:", "RED"}, {"Fixed rules, no host settings."},
+  }},
+  {fn = "open_guide_mp_switcheroo", title = "MODES AND SWITCHEROO", left = {
+    {"CONTENT PER MODE:", "BLUE"}, {"Each mode has only the cards"}, {"that fit it (no traps in"}, {"Co-op Raid), and most modes"}, {"have two cards of their own."},
+    {"MP Collection: the mode bar"}, {"filters every category."},
+  }, right = {
+    {"SWITCHEROO:", "GOLD"}, {"After every boss blind the two"}, {"players swap their whole run:"}, {"deck, jokers, money, levels."}, {"You play on with the run you"},
+    {"hold. Create Room > Mode."}, {""},
+    {"IN A PARTY:", "BLUE"}, {"Battle Royale > Switcheroo:"}, {"each run passes to the next"}, {"player after every boss."},
+  }},
+  {fn = "open_guide_mp_friends", title = "FRIENDS", left = {
+    {"FRIENDS:", "BLUE"}, {"Multiplayer > FRIENDS."}, {"Invite a friend to your lobby,"}, {"join theirs, Ask to join,"}, {"or Watch their match."},
+    {"A toast shows invites and"}, {"friends coming online."}, {"Click a name: Nickname,"}, {"Challenge, Seed, Gift, Block."},
+  }, right = {
+    {"MORE:", "GOLD"}, {"Emote button in the chat."}, {"Recent: players you met, with"}, {"wins and losses."}, {"Friends' minigame bests in"},
+    {"the Minigames screen."}, {"Options: toasts, status,"}, {"Appear offline, Blocked."}, {"Party invite: up to 7 friends."},
+  }},
+  {fn = "open_guide_mp_showcase", title = "SHOWCASE", left = {
+    {"SHOWCASE:", "BLUE"}, {"Multiplayer > PROFILE >"}, {"Showcase. PICK three jokers"}, {"you have discovered and"}, {"choose a title."},
+  }, right = {
+    {"WHO SEES IT:", "GOLD"}, {"Your opponent, in the"}, {"multiplayer lobby."},
+  }},
+}
+
+GUIDE_1105[#GUIDE_1105 + 1] = {fn = "open_guide_controller", title = "CONTROLLER", left = {
+    {"CONTROLLER:", "BLUE"}, {"Plug in a gamepad. The D-pad"}, {"moves the focus, A presses,"}, {"B goes back, LB and RB"}, {"change tabs."}, {""},
+    {"IN A RUN:", "GOLD"}, {"X plays, Y discards."}, {"LB sells, RB uses or buys."}, {"R3 speeds up, L3 slows down."},
+  }, right = {
+    {"YOUR BUTTONS:", "BLUE"}, {"Settings > Controls >"}, {"Controller > Open."}, {"In a run: Options > Controls,"}, {"then Remap on any tab."}, {"Back returns to the same page."},
+    {""}, {"SLIDE SELECT:", "GOLD"}, {"Hold A on a hand card and"}, {"move to select several."},
+  }}
+GUIDE_1105[#GUIDE_1105 + 1] = {fn = "open_guide_portrait", title = "PORTRAIT MODE", left = {
+    {"PORTRAIT:", "BLUE"}, {"On a phone, turn it upright:"}, {"the game follows, in a run, a"}, {"pack, a menu or a match, and"}, {"nothing is lost."},
+  }, right = {
+    {"AUTO-ROTATE:", "GOLD"}, {"Only when auto-rotate is on in"}, {"the phone's settings. With the"}, {"lock on, the game stays as it is."}, {"PC never changes."},
+  }}
+
+local function guide_1105_lines(list)
+  local out = {}
+  for _, l in ipairs(list) do
+    if l[1] == "" then
+      out[#out + 1] = {text = ""}
+    elseif l[2] then
+      out[#out + 1] = {text = mod_loc(l[1]), scale = 0.45, colour = l[2]}
+    else
+      out[#out + 1] = {text = mod_loc(l[1]), scale = 0.39}
+    end
+  end
+  return out
+end
+
+for _, p in ipairs(GUIDE_1105) do
+  G.FUNCS[p.fn] = function(e)
+    G.FUNCS.overlay_menu{definition = build_two_columns(mod_loc(p.title), guide_1105_lines(p.left), guide_1105_lines(p.right))}
+  end
+end
+
+mod_loc_register{
+  fr = {
+    ["KEYBOARD PLAY"] = "JEU AU CLAVIER",
+    ["INPUT MODE:"] = "MODE DE CONTRÔLE :",
+    ["Settings > Game > Input mode:"] = "Réglages > Jeu > Mode de contrôle :",
+    ["Mouse, Keyboard, Trackpad or"] = "Souris, Clavier, Pavé tactile ou",
+    ["Trackpad + keys."] = "Pavé + touches.",
+    ["KEYBOARD:"] = "CLAVIER :",
+    ["Arrows move the gold focus."] = "Les flèches déplacent le cadre doré.",
+    ["Space presses or picks."] = "Espace appuie ou choisit.",
+    ["Backspace goes back."] = "Retour arrière revient en arrière.",
+    ["Q and E change tabs."] = "Q et E changent d'onglet.",
+    ["Enter plays the hand."] = "Entrée joue la main.",
+    ["MORE KEYS:"] = "AUTRES TOUCHES :",
+    ["D discards, X and C sort."] = "D défausse, X et C trient.",
+    ["1 to 0 pick cards 1 to 10."] = "1 à 0 choisissent les cartes 1 à 10.",
+    ["B buys, S sells, U uses."] = "B achète, S vend, U utilise.",
+    ["T rerolls, I opens Run Info."] = "T relance, I ouvre les infos de partie.",
+    ["YOUR KEYS:"] = "VOS TOUCHES :",
+    ["Settings > Game > Keys and"] = "Réglages > Jeu > Touches et",
+    ["gestures. Help lists them all."] = "gestes. Aide les liste toutes.",
+    ["In a run: Options > Controls."] = "En partie : Options > Contrôles.",
+    ["TRACKPAD"] = "PAVÉ TACTILE",
+    ["TRACKPAD:"] = "PAVÉ TACTILE :",
+    ["Settings > Game > Input mode."] = "Réglages > Jeu > Mode de contrôle.",
+    ["Tap: click, or press the focus."] = "Toucher : clic, ou appui sur le cadre.",
+    ["Two-finger scroll: move the"] = "Défilement à deux doigts : déplace",
+    ["gold focus along the cards."] = "le cadre doré sur les cartes.",
+    ["Swipe left or right: move a"] = "Glisser à gauche ou à droite : déplace",
+    ["picked joker, or change tabs."] = "le joker choisi, ou change d'onglet.",
+    ["Two-finger tap: back, or clear"] = "Toucher à deux doigts : retour, ou",
+    ["the picked cards."] = "retire les cartes choisies.",
+    ["TRACKPAD + KEYS:"] = "PAVÉ + TOUCHES :",
+    ["The same gestures, plus keys"] = "Les mêmes gestes, plus des touches",
+    ["for the left hand:"] = "pour la main gauche :",
+    ["Space plays, D discards,"] = "Espace joue, D défausse,",
+    ["A and G move a card, F uses,"] = "A et G déplacent une carte, F utilise,",
+    ["Tab opens Run Info."] = "Tab ouvre les infos de partie.",
+    ["A gesture never plays, buys"] = "Un geste ne joue, n'achète",
+    ["or sells on its own."] = "ni ne vend jamais tout seul.",
+    ["QOL"] = "QOL",
+    ["QOL TAB:"] = "ONGLET QOL :",
+    ["Settings > QoL holds every"] = "Réglages > QoL regroupe tous",
+    ["comfort setting in one place."] = "les réglages de confort.",
+    ["Settings > Search finds a"] = "Réglages > Recherche trouve un",
+    ["setting from a few letters."] = "réglage en quelques lettres.",
+    ["BACK:"] = "RETOUR :",
+    ["Back and Esc return to the"] = "Retour et Échap ramènent à",
+    ["screen you came from."] = "l'écran d'où vous venez.",
+    ["SHOP:"] = "BOUTIQUE :",
+    ["Buy and Reroll warn you first"] = "Acheter et Relancer préviennent",
+    ["when they cost you interest."] = "quand vous perdez des intérêts.",
+    ["SOLO RUNS:"] = "PARTIES SOLO :",
+    ["F and Shift+F: game speed."] = "F et Maj+F : vitesse du jeu.",
+    ["M mutes all, N the music."] = "M coupe tout, N la musique.",
+    ["Pause when the window loses"] = "Pause quand la fenêtre perd",
+    ["focus. Restart from the pause"] = "le focus. Recommencer depuis la",
+    ["menu, same seed or new seed."] = "pause, même seed ou nouvelle.",
+    ["Fast packs, sticker counters,"] = "Paquets rapides, compteurs,",
+    ["joker sell value total."] = "valeur de vente des jokers.",
+    ["Speed, pause and restart stay"] = "Vitesse, pause et recommencer",
+    ["off in multiplayer."] = "restent coupés en multijoueur.",
+    ["RANDOM:"] = "ALÉATOIRE :",
+    ["Play > New Run > RANDOM."] = "Jouer > Nouvelle partie > ALÉATOIRE.",
+    ["Picks an unlocked deck and"] = "Choisit un jeu débloqué et",
+    ["stake for you. Reroll until"] = "une mise pour vous. Relancez",
+    ["you like it, then START."] = "jusqu'à ce qu'il vous plaise, puis LANCER.",
+    ["CUSTOM RANDOM:"] = "HASARD PERSO :",
+    ["Same window, Custom random tab:"] = "Même fenêtre, onglet Hasard perso :",
+    ["random custom rules on top."] = "des règles perso au hasard en plus.",
+    ["Run Info shows the rules."] = "Les infos de partie montrent les règles.",
+    ["SPEEDRUN MODE:"] = "MODE SPEEDRUN :",
+    ["Play > Speedrun. Pick a"] = "Jouer > Speedrun. Choisissez une",
+    ["category, deck, stake and"] = "catégorie, un jeu, une mise et",
+    ["seed type, then START."] = "le type de seed, puis LANCER.",
+    ["SAME RULES FOR ALL:"] = "MÊMES RÈGLES POUR TOUS :",
+    ["One game speed, no helpers,"] = "Une seule vitesse, aucune aide,",
+    ["no mods, Debug or Forge jokers."] = "ni mods, ni Debug, ni jokers Forge.",
+    ["Breaking a rule stops the clock."] = "Enfreindre une règle arrête le chrono.",
+    ["TIMER:"] = "CHRONO :",
+    ["A split after every ante."] = "Un temps intermédiaire à chaque mise initiale.",
+    ["Settings > Game > Speedrun"] = "Réglages > Jeu > Chrono de",
+    ["timer shows it in normal runs."] = "speedrun l'affiche en partie normale.",
+    ["BOARD:"] = "CLASSEMENT :",
+    ["Tavern > SPEEDRUNS."] = "Taverne > SPEEDRUNS.",
+    ["My runs: your times and splits."] = "Mes parties : vos temps et intermédiaires.",
+    ["Online: every player's runs."] = "En ligne : les parties de tous.",
+    ["DAILY SEED"] = "SEED DU JOUR",
+    ["DAILY RUN:"] = "PARTIE DU JOUR :",
+    ["Play > Daily. Same seed, deck,"] = "Jouer > Du jour. Même seed, jeu,",
+    ["stake and rules for everyone"] = "mise et règles pour tous",
+    ["each day, offline too."] = "chaque jour, même hors ligne.",
+    ["ONE SCORED TRY:"] = "UN SEUL ESSAI COMPTÉ :",
+    ["Your first daily run counts."] = "Votre première partie du jour compte.",
+    ["Later runs that day are practice."] = "Les suivantes sont de l'entraînement.",
+    ["BOARD next to Play: the top 20,"] = "CLASSEMENT à côté de Jouer : le top 20,",
+    ["your rank and your scored try."] = "votre rang et votre essai compté.",
+    ["It needs the server."] = "Il faut le serveur.",
+    ["Forge jokers never show up"] = "Les jokers Forge n'apparaissent",
+    ["in a daily run."] = "jamais dans la partie du jour.",
+    ["RUN HISTORY:"] = "HISTORIQUE DES PARTIES :",
+    ["Tavern > RUN HISTORY. Every"] = "Taverne > HISTORIQUE DES PARTIES.",
+    ["finished run, newest first:"] = "Chaque partie finie, la plus récente d'abord :",
+    ["deck, stake, ante, best hand"] = "jeu, mise, mise initiale, meilleure main",
+    ["and result. The last 200 stay."] = "et résultat. Les 200 dernières restent.",
+    ["VIEW shows the jokers you had"] = "VOIR montre vos jokers",
+    ["and plays a solo seed again."] = "et rejoue une seed solo.",
+    ["Every solo run is recorded on"] = "Chaque partie solo est enregistrée",
+    ["this device only, the last 50."] = "sur cet appareil seulement, les 50 dernières.",
+    ["WATCH REPLAY plays it back,"] = "REVOIR la rejoue,",
+    ["with speed and ante buttons."] = "avec vitesse et saut de mise initiale.",
+    ["MP runs open their match replay."] = "Une partie MP ouvre le replay du match.",
+    ["PRACTICE:"] = "ENTRAÎNEMENT :",
+    ["Tavern > BOSS PRACTICE."] = "Taverne > ENTRAÎNEMENT BOSS.",
+    ["Pick a boss you have seen and"] = "Choisissez un boss déjà vu et",
+    ["an unlocked deck, see the"] = "un jeu débloqué, voyez le",
+    ["score you need, then PLAY."] = "score à faire, puis JOUER.",
+    ["ONE ROUND:"] = "UNE MANCHE :",
+    ["No rewards, nothing goes to"] = "Pas de récompense, rien ne va",
+    ["your stats. TRY AGAIN deals a"] = "dans vos stats. RÉESSAYER donne",
+    ["new hand, OTHER BOSS picks"] = "une nouvelle main, AUTRE BOSS",
+    ["another one."] = "en choisit un autre.",
+    ["Tavern > MINIGAMES."] = "Taverne > MINI-JEUX.",
+    ["Pick a game, then Play."] = "Choisissez un jeu, puis Jouer.",
+    ["Your best is kept per game."] = "Votre record est gardé par jeu.",
+    ["NEW:"] = "NOUVEAU :",
+    ["Beat the Blind: play hands to"] = "Battez la blinde : jouez des mains",
+    ["beat Small, Big and Boss."] = "contre Petite, Grosse et Boss.",
+    ["Jimbo Run: tap, click or Space"] = "La course de Jimbo : toucher, clic ou",
+    ["to jump."] = "Espace pour sauter.",
+    ["IN MULTIPLAYER:"] = "EN MULTIJOUEUR :",
+    ["Play while you wait, in a lobby"] = "Jouer en attendant, dans un salon",
+    ["or a PvP wait. The game closes"] = "ou avant un JcJ. Le jeu se ferme",
+    ["when the wait ends."] = "quand l'attente finit.",
+    ["No effect on the match."] = "Aucun effet sur le match.",
+    ["Friends' best shows next to"] = "Le record des amis s'affiche",
+    ["yours. Tap it for the board."] = "à côté du vôtre. Touchez-le pour le classement.",
+    ["MAKE A JOKER:"] = "CRÉER UN JOKER :",
+    ["Tavern > JOKER FORGE > New."] = "Taverne > FORGE À JOKERS > Nouveau.",
+    ["Builder: when it triggers and"] = "Constructeur : quand il se déclenche",
+    ["what it gives."] = "et ce qu'il donne.",
+    ["Pixel editor: draw the art."] = "Éditeur de pixels : dessinez l'image.",
+    ["PLAY IT:"] = "LE JOUER :",
+    ["Turn a creation on in My jokers:"] = "Activez une création dans Mes jokers :",
+    ["it can show up in solo shops."] = "elle peut sortir en boutique solo.",
+    ["NEVER IN:"] = "JAMAIS EN :",
+    ["Multiplayer, Ranked, speedruns"] = "Multijoueur, Classé, speedruns",
+    ["and the daily seed."] = "et seed du jour.",
+    ["SUIT COLOURS"] = "COULEURS DES ENSEIGNES",
+    ["PALETTES:"] = "PALETTES :",
+    ["Settings > Graphics > Look >"] = "Réglages > Graphismes > Apparence >",
+    ["Suit Colours. Palettes next to"] = "Couleurs des enseignes. Des palettes en plus de",
+    ["Normal and High contrast,"] = "Normal et Contraste élevé,",
+    ["some made for colourblind eyes."] = "certaines pensées pour les daltoniens.",
+    ["CUSTOM:"] = "PERSO :",
+    ["Pick Custom, then a colour"] = "Choisissez Perso, puis une couleur",
+    ["for each suit. Cards change"] = "pour chaque enseigne. Les cartes changent",
+    ["at once and the choice stays."] = "aussitôt et le choix reste.",
+    ["No slowdown: cards are"] = "Aucun ralentissement : les cartes",
+    ["recoloured only once."] = "ne sont recolorées qu'une fois.",
+    ["FAIR PLAY"] = "FAIR-PLAY",
+    ["Lobby settings > Fair play."] = "Réglages du salon > Fair-play.",
+    ["Only the host changes them,"] = "Seul l'hôte les change,",
+    ["every player sees them."] = "tous les joueurs les voient.",
+    ["- Game speed over 4x"] = "- Vitesse du jeu au-delà de 4x",
+    ["- Score speed"] = "- Vitesse du score",
+    ["- Skip score animation"] = "- Passer l'animation du score",
+    ["- Show the seed"] = "- Montrer la seed",
+    ["- Hand Optimizer"] = "- Optimiseur de main",
+    ["- Score preview"] = "- Aperçu du score",
+    ["  Optimizer and Score preview"] = "  de main et Aperçu du score",
+    ["DEFAULTS:"] = "PAR DÉFAUT :",
+    ["All off: 4x speed at most, the"] = "Tout coupé : 4x au plus, la",
+    ["seed hidden until the match"] = "seed cachée jusqu'à la fin",
+    ["ends, no helpers."] = "du match, aucune aide.",
+    ["Save the lobby settings under"] = "Enregistrez les réglages du salon",
+    ["a name, load them later."] = "sous un nom, rechargez-les plus tard.",
+    ["RANKED:"] = "CLASSÉ :",
+    ["Fixed rules, no host settings."] = "Règles fixes, pas de réglages d'hôte.",
+    ["MODES AND SWITCHEROO"] = "MODES ET CHASSÉ-CROISÉ",
+    ["CONTENT PER MODE:"] = "CONTENU PAR MODE :",
+    ["Each mode has only the cards"] = "Chaque mode n'a que les cartes",
+    ["that fit it (no traps in"] = "qui lui vont (pas de pièges en",
+    ["Co-op Raid), and most modes"] = "Raid coop), et la plupart des modes",
+    ["have two cards of their own."] = "ont deux cartes à eux.",
+    ["MP Collection: the mode bar"] = "Collection MP : la barre des modes",
+    ["filters every category."] = "filtre chaque catégorie.",
+    ["SWITCHEROO:"] = "CHASSÉ-CROISÉ :",
+    ["After every boss blind the two"] = "Après chaque blinde de boss, les deux",
+    ["players swap their whole run:"] = "joueurs échangent toute leur partie :",
+    ["deck, jokers, money, levels."] = "jeu, jokers, argent, niveaux.",
+    ["You play on with the run you"] = "Vous continuez avec la partie",
+    ["hold. Create Room > Mode."] = "reçue. Créer un salon > Mode.",
+    ["IN A PARTY:"] = "EN GROUPE :", ["Battle Royale > Switcheroo:"] = "Battle Royale > Chassé-croisé :",
+    ["each run passes to the next"] = "chaque partie passe au joueur", ["player after every boss."] = "suivant après chaque boss.",
+    ["Multiplayer > FRIENDS."] = "Multijoueur > AMIS.",
+    ["Invite a friend to your lobby,"] = "Invitez un ami dans votre salon,",
+    ["join theirs, Ask to join,"] = "rejoignez le sien, demandez à",
+    ["or Watch their match."] = "rejoindre ou regardez son match.",
+    ["Click a name: Nickname,"] = "Cliquez un nom : Surnom,",
+    ["Challenge, Seed, Gift, Block."] = "Défier, Seed, Offrir, Bloquer.",
+    ["A toast shows invites and"] = "Une bulle montre les invitations",
+    ["friends coming online."] = "et les amis qui se connectent.",
+    ["MORE:"] = "EN PLUS :",
+    ["Emote button in the chat."] = "Bouton Emote dans le chat.",
+    ["Recent: players you met, with"] = "Récents : joueurs rencontrés, avec",
+    ["wins and losses."] = "victoires et défaites.",
+    ["Friends' minigame bests in"] = "Records des amis aux mini-jeux",
+    ["the Minigames screen."] = "dans l'écran Mini-jeux.",
+    ["Options: toasts, status,"] = "Options : bulles, statut,",
+    ["Appear offline, Blocked."] = "hors ligne, joueurs bloqués.",
+    ["Party invite: up to 7 friends."] = "Inviter en groupe : 7 amis max.",
+    ["SHOWCASE"] = "VITRINE",
+    ["SHOWCASE:"] = "VITRINE :",
+    ["Multiplayer > PROFILE >"] = "Multijoueur > PROFIL >",
+    ["Showcase. PICK three jokers"] = "Vitrine. CHOISIR trois jokers",
+    ["you have discovered and"] = "que vous avez découverts et",
+    ["choose a title."] = "un titre.",
+    ["WHO SEES IT:"] = "QUI LA VOIT :",
+    ["Your opponent, in the"] = "Votre adversaire, dans le",
+    ["multiplayer lobby."] = "salon multijoueur.",
+    ["Tavern > CUSTOMIZATION."] = "Taverne > PERSONNALISATION.",
+    ["Tabs: Icon, Shine, Title,"] = "Onglets : Icône, Éclat, Titre,",
+    ["Colours, Table, Backs,"] = "Couleurs, Table, Dos,",
+    ["Flair and Jimbo."] = "Style et Jimbo.",
+    ["Tap an item you own to equip it."] = "Touchez un objet à vous pour l'équiper.",
+    ["Locked items show their rarity."] = "Les objets verrouillés montrent leur rareté.",
+    ["PREVIEW:"] = "APERÇU :",
+    ["The left side shows your"] = "À gauche, votre carte de",
+    ["profile card, or the item on"] = "profil, ou l'objet sur",
+    ["a real card."] = "une vraie carte.",
+    ["GET MORE:"] = "EN AVOIR PLUS :",
+    ["Open packs in the Tavern Shop."] = "Ouvrez des paquets à la Boutique de la Taverne.",
+    ["Everything you bought before"] = "Tout ce que vous aviez acheté",
+    ["is still yours."] = "est toujours à vous.",
+    ["Palette, Jester, Sleeve, Shine"] = "Paquets Palette, Bouffon, Dos, Éclat",
+    ["and Title packs hold 3 cards,"] = "et Titres : 3 cartes,",
+    ["Jumbo packs hold 5."] = "les Jumbo en ont 5.",
+    ["CRATES:"] = "CAISSES :",
+    ["Tavern Crate: 5 cards, the last"] = "Caisse de la Taverne : 5 cartes, la",
+    ["one Rare or better."] = "dernière Rare ou mieux.",
+    ["Legend Crate: 5 cards, the last"] = "Caisse légendaire : 5 cartes, la",
+    ["one Epic or better."] = "dernière Épique ou mieux.",
+    ["ODDS:"] = "CHANCES :",
+    ["On every pack, the full table"] = "Sur chaque paquet, le tableau complet",
+    ["in the Odds tab. Items you lack"] = "dans l'onglet Chances. Ce qui vous manque",
+    ["are three times as likely."] = "sort trois fois plus souvent.",
+    ["A Legendary at least every 40."] = "Un Légendaire au moins tous les 40.",
+    ["DUPLICATES:"] = "DOUBLONS :",
+    ["Turn into Balacoin at once."] = "Changés aussitôt en Balacoin.",
+    ["Fast opening: Odds tab or"] = "Ouverture rapide : onglet Chances ou",
+    ["Settings > Shop."] = "Réglages > Boutique.",
+    ["- Customization and Shop"] = "- Personnalisation et Boutique",
+    ["- Deck Creator, Joker Forge"] = "- Créateur de jeu, Forge à jokers",
+    ["- Seed Library, Run History"] = "- Bibliothèque de seeds, Historique",
+    ["- Boss Practice, Minigames"] = "- Entraînement boss, Mini-jeux",
+    ["- Speedruns board"] = "- Classement des speedruns",
+    ["Get them from Palette Packs,"] = "Dans les Paquets Palette,",
+    ["equip them in Customization."] = "équipez-les dans Personnalisation.",
+    ["Random Run"] = "Partie aléatoire",
+    ["Daily Seed"] = "Seed du jour",
+    ["Run History"] = "Historique",
+    ["Boss Practice"] = "Entraînement boss",
+    ["Joker Forge"] = "Forge à jokers",
+    ["Customization"] = "Personnalisation",
+    ["Market"] = "Marché",
+    ["Fair Play"] = "Fair-play",
+  },
+  es = {
+    ["KEYBOARD PLAY"] = "JUEGO CON TECLADO",
+    ["INPUT MODE:"] = "MODO DE CONTROL:",
+    ["Settings > Game > Input mode:"] = "Ajustes > Juego > Modo de control:",
+    ["Mouse, Keyboard, Trackpad or"] = "Ratón, Teclado, Panel táctil o",
+    ["Trackpad + keys."] = "Panel + teclas.",
+    ["KEYBOARD:"] = "TECLADO:",
+    ["Arrows move the gold focus."] = "Las flechas mueven el marco dorado.",
+    ["Space presses or picks."] = "Espacio pulsa o elige.",
+    ["Backspace goes back."] = "Retroceso vuelve atrás.",
+    ["Q and E change tabs."] = "Q y E cambian de pestaña.",
+    ["Enter plays the hand."] = "Intro juega la mano.",
+    ["MORE KEYS:"] = "MÁS TECLAS:",
+    ["D discards, X and C sort."] = "D descarta, X y C ordenan.",
+    ["1 to 0 pick cards 1 to 10."] = "1 a 0 eligen las cartas 1 a 10.",
+    ["B buys, S sells, U uses."] = "B compra, S vende, U usa.",
+    ["T rerolls, I opens Run Info."] = "T renueva, I abre la info de partida.",
+    ["YOUR KEYS:"] = "TUS TECLAS:",
+    ["Settings > Game > Keys and"] = "Ajustes > Juego > Teclas y",
+    ["gestures. Help lists them all."] = "gestos. Ayuda las muestra todas.",
+    ["In a run: Options > Controls."] = "En partida: Opciones > Controles.",
+    ["TRACKPAD"] = "PANEL TÁCTIL",
+    ["TRACKPAD:"] = "PANEL TÁCTIL:",
+    ["Settings > Game > Input mode."] = "Ajustes > Juego > Modo de control.",
+    ["Tap: click, or press the focus."] = "Toque: clic, o pulsa el marco.",
+    ["Two-finger scroll: move the"] = "Desplazar con dos dedos: mueve",
+    ["gold focus along the cards."] = "el marco dorado por las cartas.",
+    ["Swipe left or right: move a"] = "Deslizar a izquierda o derecha: mueve",
+    ["picked joker, or change tabs."] = "el joker elegido, o cambia de pestaña.",
+    ["Two-finger tap: back, or clear"] = "Toque con dos dedos: atrás, o",
+    ["the picked cards."] = "quita las cartas elegidas.",
+    ["TRACKPAD + KEYS:"] = "PANEL + TECLAS:",
+    ["The same gestures, plus keys"] = "Los mismos gestos, más teclas",
+    ["for the left hand:"] = "para la mano izquierda:",
+    ["Space plays, D discards,"] = "Espacio juega, D descarta,",
+    ["A and G move a card, F uses,"] = "A y G mueven una carta, F usa,",
+    ["Tab opens Run Info."] = "Tab abre la info de partida.",
+    ["A gesture never plays, buys"] = "Un gesto nunca juega, compra",
+    ["or sells on its own."] = "ni vende por sí solo.",
+    ["QOL"] = "QOL",
+    ["QOL TAB:"] = "PESTAÑA QOL:",
+    ["Settings > QoL holds every"] = "Ajustes > QoL reúne todos",
+    ["comfort setting in one place."] = "los ajustes de comodidad.",
+    ["Settings > Search finds a"] = "Ajustes > Buscar encuentra un",
+    ["setting from a few letters."] = "ajuste con unas pocas letras.",
+    ["BACK:"] = "ATRÁS:",
+    ["Back and Esc return to the"] = "Atrás y Esc vuelven a la",
+    ["screen you came from."] = "pantalla de la que vienes.",
+    ["SHOP:"] = "TIENDA:",
+    ["Buy and Reroll warn you first"] = "Comprar y Renovar avisan antes",
+    ["when they cost you interest."] = "cuando te cuestan intereses.",
+    ["SOLO RUNS:"] = "PARTIDAS EN SOLITARIO:",
+    ["F and Shift+F: game speed."] = "F y Mayús+F: velocidad del juego.",
+    ["M mutes all, N the music."] = "M silencia todo, N la música.",
+    ["Pause when the window loses"] = "Pausa cuando la ventana pierde",
+    ["focus. Restart from the pause"] = "el foco. Reiniciar desde el menú",
+    ["menu, same seed or new seed."] = "de pausa, mismo código o uno nuevo.",
+    ["Fast packs, sticker counters,"] = "Sobres rápidos, contadores,",
+    ["joker sell value total."] = "valor de venta de los comodines.",
+    ["Speed, pause and restart stay"] = "Velocidad, pausa y reinicio",
+    ["off in multiplayer."] = "siguen apagados en multijugador.",
+    ["RANDOM:"] = "ALEATORIA:",
+    ["Play > New Run > RANDOM."] = "Jugar > Nueva partida > ALEATORIA.",
+    ["Picks an unlocked deck and"] = "Elige una baraja desbloqueada y",
+    ["stake for you. Reroll until"] = "una apuesta por ti. Renueva",
+    ["you like it, then START."] = "hasta que te guste, y luego EMPEZAR.",
+    ["CUSTOM RANDOM:"] = "AZAR PERSONALIZADO:",
+    ["Same window, Custom random tab:"] = "Misma ventana, pestaña Azar personalizado:",
+    ["random custom rules on top."] = "reglas personalizadas al azar además.",
+    ["Run Info shows the rules."] = "La info de partida muestra las reglas.",
+    ["SPEEDRUN MODE:"] = "MODO SPEEDRUN:",
+    ["Play > Speedrun. Pick a"] = "Jugar > Speedrun. Elige una",
+    ["category, deck, stake and"] = "categoría, baraja, apuesta y",
+    ["seed type, then START."] = "tipo de código, y luego EMPEZAR.",
+    ["SAME RULES FOR ALL:"] = "MISMAS REGLAS PARA TODOS:",
+    ["One game speed, no helpers,"] = "Una sola velocidad, sin ayudas,",
+    ["no mods, Debug or Forge jokers."] = "sin mods, Debug ni comodines Forge.",
+    ["Breaking a rule stops the clock."] = "Romper una regla para el cronómetro.",
+    ["TIMER:"] = "CRONÓMETRO:",
+    ["A split after every ante."] = "Un parcial tras cada apuesta inicial.",
+    ["Settings > Game > Speedrun"] = "Ajustes > Juego > Cronómetro de",
+    ["timer shows it in normal runs."] = "speedrun lo muestra en partidas normales.",
+    ["BOARD:"] = "CLASIFICACIÓN:",
+    ["Tavern > SPEEDRUNS."] = "Taberna > SPEEDRUNS.",
+    ["My runs: your times and splits."] = "Mis partidas: tus tiempos y parciales.",
+    ["Online: every player's runs."] = "En línea: las partidas de todos.",
+    ["DAILY SEED"] = "CÓDIGO DIARIO",
+    ["DAILY RUN:"] = "PARTIDA DIARIA:",
+    ["Play > Daily. Same seed, deck,"] = "Jugar > Diaria. Mismo código, baraja,",
+    ["stake and rules for everyone"] = "apuesta y reglas para todos",
+    ["each day, offline too."] = "cada día, también sin conexión.",
+    ["ONE SCORED TRY:"] = "UN SOLO INTENTO PUNTUADO:",
+    ["Your first daily run counts."] = "Tu primera partida diaria cuenta.",
+    ["Later runs that day are practice."] = "Las siguientes de ese día son práctica.",
+    ["BOARD next to Play: the top 20,"] = "CLASIFICACIÓN junto a Jugar: el top 20,",
+    ["your rank and your scored try."] = "tu puesto y tu intento puntuado.",
+    ["It needs the server."] = "Necesita el servidor.",
+    ["Forge jokers never show up"] = "Los comodines Forge nunca salen",
+    ["in a daily run."] = "en una partida diaria.",
+    ["RUN HISTORY:"] = "HISTORIAL DE PARTIDAS:",
+    ["Tavern > RUN HISTORY. Every"] = "Taberna > HISTORIAL DE PARTIDAS.",
+    ["finished run, newest first:"] = "Cada partida terminada, la más reciente primero:",
+    ["deck, stake, ante, best hand"] = "baraja, apuesta, apuesta inicial, mejor mano",
+    ["and result. The last 200 stay."] = "y resultado. Se guardan las 200 últimas.",
+    ["VIEW shows the jokers you had"] = "VER muestra tus comodines",
+    ["and plays a solo seed again."] = "y vuelve a jugar un código en solitario.",
+    ["Every solo run is recorded on"] = "Cada partida en solitario se graba",
+    ["this device only, the last 50."] = "solo en este dispositivo, las 50 últimas.",
+    ["WATCH REPLAY plays it back,"] = "VER REPETICIÓN la reproduce,",
+    ["with speed and ante buttons."] = "con botones de velocidad y apuesta inicial.",
+    ["MP runs open their match replay."] = "Las partidas MP abren la repetición del duelo.",
+    ["PRACTICE:"] = "PRÁCTICA:",
+    ["Tavern > BOSS PRACTICE."] = "Taberna > PRÁCTICA DE JEFES.",
+    ["Pick a boss you have seen and"] = "Elige un jefe que ya hayas visto y",
+    ["an unlocked deck, see the"] = "una baraja desbloqueada, mira la",
+    ["score you need, then PLAY."] = "puntuación necesaria, y luego JUGAR.",
+    ["ONE ROUND:"] = "UNA RONDA:",
+    ["No rewards, nothing goes to"] = "Sin recompensas, nada va",
+    ["your stats. TRY AGAIN deals a"] = "a tus estadísticas. REINTENTAR reparte",
+    ["new hand, OTHER BOSS picks"] = "una mano nueva, OTRO JEFE elige",
+    ["another one."] = "otro.",
+    ["Tavern > MINIGAMES."] = "Taberna > MINIJUEGOS.",
+    ["Pick a game, then Play."] = "Elige un juego, y luego Jugar.",
+    ["Your best is kept per game."] = "Tu récord se guarda por juego.",
+    ["NEW:"] = "NUEVO:",
+    ["Beat the Blind: play hands to"] = "Vence a la ciega: juega manos",
+    ["beat Small, Big and Boss."] = "contra Pequeña, Grande y Jefe.",
+    ["Jimbo Run: tap, click or Space"] = "La carrera de Jimbo: toque, clic o",
+    ["to jump."] = "Espacio para saltar.",
+    ["IN MULTIPLAYER:"] = "EN MULTIJUGADOR:",
+    ["Play while you wait, in a lobby"] = "Jugar mientras esperas, en una sala",
+    ["or a PvP wait. The game closes"] = "o antes de un JcJ. El juego se cierra",
+    ["when the wait ends."] = "cuando acaba la espera.",
+    ["No effect on the match."] = "No afecta a la partida.",
+    ["Friends' best shows next to"] = "El récord de amigos sale",
+    ["yours. Tap it for the board."] = "junto al tuyo. Tócalo para ver la clasificación.",
+    ["MAKE A JOKER:"] = "CREAR UN COMODÍN:",
+    ["Tavern > JOKER FORGE > New."] = "Taberna > FORJA DE COMODINES > Nuevo.",
+    ["Builder: when it triggers and"] = "Constructor: cuándo se activa",
+    ["what it gives."] = "y qué da.",
+    ["Pixel editor: draw the art."] = "Editor de píxeles: dibuja la imagen.",
+    ["PLAY IT:"] = "JUGARLO:",
+    ["Turn a creation on in My jokers:"] = "Activa una creación en Mis comodines:",
+    ["it can show up in solo shops."] = "puede salir en tiendas en solitario.",
+    ["NEVER IN:"] = "NUNCA EN:",
+    ["Multiplayer, Ranked, speedruns"] = "Multijugador, Clasificatoria, speedruns",
+    ["and the daily seed."] = "y código diario.",
+    ["SUIT COLOURS"] = "COLORES DE LOS PALOS",
+    ["PALETTES:"] = "PALETAS:",
+    ["Settings > Graphics > Look >"] = "Ajustes > Gráficos > Aspecto >",
+    ["Suit Colours. Palettes next to"] = "Colores de los palos. Paletas además de",
+    ["Normal and High contrast,"] = "Normal y Alto contraste,",
+    ["some made for colourblind eyes."] = "algunas pensadas para daltónicos.",
+    ["CUSTOM:"] = "PERSONALIZADA:",
+    ["Pick Custom, then a colour"] = "Elige Personalizada, y luego un color",
+    ["for each suit. Cards change"] = "para cada palo. Las cartas cambian",
+    ["at once and the choice stays."] = "al instante y la elección se guarda.",
+    ["No slowdown: cards are"] = "Sin ralentizar: las cartas",
+    ["recoloured only once."] = "se recolorean una sola vez.",
+    ["FAIR PLAY"] = "JUEGO LIMPIO",
+    ["Lobby settings > Fair play."] = "Ajustes de sala > Juego limpio.",
+    ["Only the host changes them,"] = "Solo el anfitrión los cambia,",
+    ["every player sees them."] = "todos los jugadores los ven.",
+    ["- Game speed over 4x"] = "- Velocidad del juego por encima de 4x",
+    ["- Score speed"] = "- Velocidad de puntuación",
+    ["- Skip score animation"] = "- Saltar la animación de puntuación",
+    ["- Show the seed"] = "- Mostrar el código",
+    ["- Hand Optimizer"] = "- Optimizador de mano",
+    ["- Score preview"] = "- Vista previa de puntuación",
+    ["  Optimizer and Score preview"] = "  de mano y Vista previa de puntuación",
+    ["DEFAULTS:"] = "POR DEFECTO:",
+    ["All off: 4x speed at most, the"] = "Todo apagado: 4x como máximo, la",
+    ["seed hidden until the match"] = "código oculto hasta que acaba",
+    ["ends, no helpers."] = "la partida, sin ayudas.",
+    ["Save the lobby settings under"] = "Guarda los ajustes de la sala",
+    ["a name, load them later."] = "con un nombre y cárgalos después.",
+    ["RANKED:"] = "CLASIFICATORIA:",
+    ["Fixed rules, no host settings."] = "Reglas fijas, sin ajustes de anfitrión.",
+    ["MODES AND SWITCHEROO"] = "MODOS E INTERCAMBIO",
+    ["CONTENT PER MODE:"] = "CONTENIDO POR MODO:",
+    ["Each mode has only the cards"] = "Cada modo solo tiene las cartas",
+    ["that fit it (no traps in"] = "que le encajan (sin trampas en",
+    ["Co-op Raid), and most modes"] = "Asalto coop), y la mayoría de modos",
+    ["have two cards of their own."] = "tiene dos cartas propias.",
+    ["MP Collection: the mode bar"] = "Colección MP: la barra de modos",
+    ["filters every category."] = "filtra cada categoría.",
+    ["SWITCHEROO:"] = "INTERCAMBIO:",
+    ["After every boss blind the two"] = "Tras cada ciega de jefe, los dos",
+    ["players swap their whole run:"] = "jugadores intercambian toda su partida:",
+    ["deck, jokers, money, levels."] = "baraja, comodines, dinero, niveles.",
+    ["You play on with the run you"] = "Sigues con la partida",
+    ["hold. Create Room > Mode."] = "que tienes. Crear sala > Modo.",
+    ["IN A PARTY:"] = "EN GRUPO:", ["Battle Royale > Switcheroo:"] = "Battle Royale > Intercambio:",
+    ["each run passes to the next"] = "cada partida pasa al siguiente", ["player after every boss."] = "jugador tras cada jefe.",
+    ["Multiplayer > FRIENDS."] = "Multijugador > AMIGOS.",
+    ["Invite a friend to your lobby,"] = "Invita a un amigo a tu sala,",
+    ["join theirs, Ask to join,"] = "únete a la suya, pide unirte",
+    ["or Watch their match."] = "o mira su partida.",
+    ["Click a name: Nickname,"] = "Pulsa un nombre: Apodo,",
+    ["Challenge, Seed, Gift, Block."] = "Retar, Código, Regalar, Bloquear.",
+    ["A toast shows invites and"] = "Un aviso muestra invitaciones",
+    ["friends coming online."] = "y amigos que se conectan.",
+    ["MORE:"] = "ADEMÁS:",
+    ["Emote button in the chat."] = "Botón Emote en el chat.",
+    ["Recent: players you met, with"] = "Recientes: jugadores que conociste, con",
+    ["wins and losses."] = "victorias y derrotas.",
+    ["Friends' minigame bests in"] = "Récords de amigos en minijuegos",
+    ["the Minigames screen."] = "en la pantalla Minijuegos.",
+    ["Options: toasts, status,"] = "Opciones: avisos, estado,",
+    ["Appear offline, Blocked."] = "desconectado, bloqueados.",
+    ["Party invite: up to 7 friends."] = "Invitar en grupo: hasta 7 amigos.",
+    ["SHOWCASE"] = "VITRINA",
+    ["SHOWCASE:"] = "VITRINA:",
+    ["Multiplayer > PROFILE >"] = "Multijugador > PERFIL >",
+    ["Showcase. PICK three jokers"] = "Vitrina. ELEGIR tres comodines",
+    ["you have discovered and"] = "que hayas descubierto y",
+    ["choose a title."] = "un título.",
+    ["WHO SEES IT:"] = "QUIÉN LA VE:",
+    ["Your opponent, in the"] = "Tu rival, en la",
+    ["multiplayer lobby."] = "sala multijugador.",
+    ["Tavern > CUSTOMIZATION."] = "Taberna > PERSONALIZACIÓN.",
+    ["Tabs: Icon, Shine, Title,"] = "Pestañas: Icono, Brillo, Título,",
+    ["Colours, Table, Backs,"] = "Colores, Mesa, Reversos,",
+    ["Flair and Jimbo."] = "Estilo y Jimbo.",
+    ["Tap an item you own to equip it."] = "Toca un objeto tuyo para equiparlo.",
+    ["Locked items show their rarity."] = "Los objetos bloqueados muestran su rareza.",
+    ["PREVIEW:"] = "VISTA PREVIA:",
+    ["The left side shows your"] = "A la izquierda, tu tarjeta de",
+    ["profile card, or the item on"] = "perfil, o el objeto sobre",
+    ["a real card."] = "una carta real.",
+    ["GET MORE:"] = "CONSEGUIR MÁS:",
+    ["Open packs in the Tavern Shop."] = "Abre sobres en la Tienda de la Taberna.",
+    ["Everything you bought before"] = "Todo lo que compraste antes",
+    ["is still yours."] = "sigue siendo tuyo.",
+    ["Palette, Jester, Sleeve, Shine"] = "Sobres Paleta, Bufón, Reversos, Brillo",
+    ["and Title packs hold 3 cards,"] = "y Títulos: 3 cartas,",
+    ["Jumbo packs hold 5."] = "los Jumbo tienen 5.",
+    ["CRATES:"] = "CAJAS:",
+    ["Tavern Crate: 5 cards, the last"] = "Caja de la Taberna: 5 cartas, la",
+    ["one Rare or better."] = "última Rara o mejor.",
+    ["Legend Crate: 5 cards, the last"] = "Caja legendaria: 5 cartas, la",
+    ["one Epic or better."] = "última Épica o mejor.",
+    ["ODDS:"] = "PROBABILIDAD:",
+    ["On every pack, the full table"] = "En cada sobre, la tabla completa",
+    ["in the Odds tab. Items you lack"] = "en la pestaña Probabilidad. Lo que te falta",
+    ["are three times as likely."] = "sale tres veces más.",
+    ["A Legendary at least every 40."] = "Un Legendario al menos cada 40.",
+    ["DUPLICATES:"] = "REPETIDOS:",
+    ["Turn into Balacoin at once."] = "Se convierten en Balacoin al instante.",
+    ["Fast opening: Odds tab or"] = "Apertura rápida: pestaña Probabilidad o",
+    ["Settings > Shop."] = "Ajustes > Tienda.",
+    ["- Customization and Shop"] = "- Personalización y Tienda",
+    ["- Deck Creator, Joker Forge"] = "- Creador de barajas, Forja de jokers",
+    ["- Seed Library, Run History"] = "- Biblioteca de códigos, Historial",
+    ["- Boss Practice, Minigames"] = "- Práctica de jefes, Minijuegos",
+    ["- Speedruns board"] = "- Clasificación de speedruns",
+    ["Get them from Palette Packs,"] = "Salen en los Sobres Paleta,",
+    ["equip them in Customization."] = "equípalos en Personalización.",
+    ["Random Run"] = "Partida aleatoria",
+    ["Daily Seed"] = "Código diario",
+    ["Run History"] = "Historial",
+    ["Boss Practice"] = "Práctica de jefes",
+    ["Joker Forge"] = "Forja de jokers",
+    ["Customization"] = "Personalización",
+    ["Market"] = "Mercado",
+    ["Fair Play"] = "Juego limpio",
+  },
+}
+
+mod_loc_register{
+  fr = {
+    ["CASINO MAP:"] = "PLAN DU CASINO :",
+    ["THE CASINO button on the title."] = "Bouton LE CASINO sur l'écran titre.",
+    ["- Tavern: Quests, Run History"] = "- Taverne : Quêtes, Historique",
+    ["- Market: the Shop"] = "- Marché : la Boutique",
+    ["- Tailor: Customization"] = "- Tailleur : Personnalisation",
+    ["- The Forge: The Forge and"] = "- La Forge : La Forge et",
+    ["  the Deck Creator"] = "  le Créateur de jeu",
+    ["- Library: Seed Library"] = "- Bibliothèque : les seeds",
+    ["- Training Grounds: Boss Practice"] = "- Entraînement : Boss en solo",
+    ["- Arcade: Minigames"] = "- Arcade : Mini-jeux",
+    ["- Racetrack: Speedruns"] = "- Circuit : Speedruns",
+    ["MOVING:"] = "SE DÉPLACER :",
+    ["Arrows, trackpad or D-pad pick"] = "Flèches, pavé ou croix choisissent",
+    ["a place, Enter or A opens it."] = "un lieu, Entrée ou A l'ouvre.",
+    ["Back returns to the map."] = "Retour revient à la carte.",
+    ["Settings > Controls > Input mode:"] = "Réglages > Commandes > Mode :",
+    ["Settings > Controls > Keys and"] = "Réglages > Commandes > Touches et",
+    ["In a run: Options > Controls >"] = "En partie : Options > Commandes >",
+    ["Remap changes them there."] = "Réassigner les change sur place.",
+    ["Settings > Controls > Input mode."] = "Réglages > Commandes > Mode.",
+    ["Press a card and slide over"] = "Appuie sur une carte et glisse",
+    ["others to pick them all."] = "sur d'autres pour toutes les prendre.",
+    ["SETTINGS:"] = "RÉGLAGES :",
+    ["Settings is sorted in categories:"] = "Les réglages sont en catégories :",
+    ["Gameplay, Shop, Helpers and more."] = "Gameplay, Boutique, Aides et plus.",
+    ["The search bar at the top finds"] = "La recherche en haut trouve",
+    ["a setting from a few letters."] = "un réglage en quelques lettres.",
+    ["menu starts the same kind of run."] = "relance le même genre de partie.",
+    ["Locked in multiplayer, Ranked"] = "Bloqués en multi, en classé",
+    ["and speedruns: they say why."] = "et en speedrun : ils disent pourquoi.",
+    ["Play > Random."] = "Jouer > Hasard.",
+    ["stake for you. ROLL until"] = "une mise pour vous. TIRER jusqu'à",
+    ["Same panel, Custom random:"] = "Même panneau, Hasard perso :",
+    ["Restart, Same seed and New seed"] = "Recommencer, Même seed et",
+    ["keep the same random rules."] = "Nouvelle seed gardent les règles.",
+    ["Locked features do nothing"] = "Les options bloquées ne font rien",
+    ["and say Off in Speedrun."] = "et disent Désactivé en speedrun.",
+    ["Under the consumables, a split"] = "Sous les consommables, un temps",
+    ["after every ante. Esc pauses it."] = "par mise initiale. Échap le met en pause.",
+    ["Goal reached: your time, PB and"] = "Objectif atteint : votre temps, record et",
+    ["splits, then Continue, New"] = "temps par mise initiale, puis Continuer,",
+    ["attempt or Watch."] = "Nouvel essai ou Regarder.",
+    ["The Casino > Racetrack. My runs and"] = "Le Casino > Circuit. Mes parties et",
+    ["Online, WATCH on every row."] = "En ligne, REGARDER sur chaque ligne.",
+    ["The Casino > Tavern > RUN HISTORY:"] = "Le Casino > Taverne > HISTORIQUE :",
+    ["every finished run, newest first:"] = "chaque partie finie, récente d'abord :",
+    ["The Casino > Training Grounds."] = "Le Casino > Entraînement.",
+    ["Pick a boss you have seen,"] = "Choisis un boss déjà vu,",
+    ["the ante (1 to 8) and a deck,"] = "la mise initiale (1 à 8) et un jeu,",
+    ["see the score you need."] = "vois le score à atteindre.",
+    ["ONE FIGHT:"] = "UN COMBAT :",
+    ["your stats. TRY AGAIN gives"] = "tes stats. RÉESSAYER redonne",
+    ["the same fight, OTHER BOSS"] = "le même combat, AUTRE BOSS",
+    ["picks another one."] = "en choisit un autre.",
+    ["LOADOUT:"] = "ÉQUIPEMENT :",
+    ["Typical run: a build like a"] = "Partie type : un jeu comme une",
+    ["run has at that ante."] = "partie en a à cette mise initiale.",
+    ["From my run: your saved run"] = "Ma partie : ta partie en cours",
+    ["or one from Run History."] = "ou une de l'historique.",
+    ["Build my own: jokers, hand"] = "Sur mesure : jokers, niveaux",
+    ["levels, money, consumables."] = "de mains, argent, consommables.",
+    ["The Casino > Arcade > MINIGAMES."] = "Le Casino > Arcade > MINI-JEUX.",
+    ["THE FORGE"] = "LA FORGE",
+    ["MAKE A CARD:"] = "CRÉER UNE CARTE :",
+    ["The Casino > The Forge > New."] = "Le Casino > La Forge > Nouveau.",
+    ["Pick a kind: joker, tarot,"] = "Choisis un type : joker, tarot,",
+    ["planet, deck, blind and more."] = "planète, jeu, blinde et plus.",
+    ["Simple: a few clear choices."] = "Simple : quelques choix clairs.",
+    ["Advanced: every rule."] = "Avancé : toutes les règles.",
+    ["Pixel editor: draw the art,"] = "Éditeur pixel : dessine l'image,",
+    ["Simple or Advanced too."] = "en Simple ou Avancé aussi.",
+    ["Turn a creation on: it can"] = "Active une création : elle peut",
+    ["show up in solo runs."] = "apparaître en partie solo.",
+    ["Export makes a mod you can"] = "Exporter en fait un mod à",
+    ["share. Mods > FORGED lists them."] = "partager. Mods > FORGÉS les liste.",
+    ["Ranked, speedruns and the daily."] = "Classé, speedruns et le défi du jour.",
+    ["In MP only when the host turns"] = "En multi seulement si l'hôte active",
+    ["on Forge creations."] = "les créations de la Forge.",
+    ["Options > Customize Deck:"] = "Options > Personnaliser le jeu :",
+    ["the Suit Colours arrows switch"] = "les flèches Couleurs des enseignes",
+    ["between Normal, High contrast"] = "passent de Normal à Contraste élevé",
+    ["and the other palettes."] = "et aux autres palettes.",
+    ["Custom Colours opens a window"] = "Couleurs perso ouvre une fenêtre",
+    ["with real cards: pick a suit,"] = "avec de vraies cartes : une enseigne,",
+    ["then a colour. Cards change"] = "puis une couleur. Les cartes changent",
+    ["CONTROLLER"] = "MANETTE",
+    ["CONTROLLER:"] = "MANETTE :",
+    ["Plug in a gamepad. The D-pad"] = "Branche une manette. La croix",
+    ["moves the focus, A presses,"] = "déplace le cadre, A appuie,",
+    ["B goes back, LB and RB"] = "B revient, LB et RB",
+    ["change tabs."] = "changent d'onglet.",
+    ["IN A RUN:"] = "EN PARTIE :",
+    ["X plays, Y discards."] = "X joue, Y défausse.",
+    ["LB sells, RB uses or buys."] = "LB vend, RB utilise ou achète.",
+    ["R3 speeds up, L3 slows down."] = "R3 accélère, L3 ralentit.",
+    ["SLIDE SELECT:"] = "SÉLECTION GLISSÉE :",
+    ["Hold A on a hand card and"] = "Maintiens A sur une carte et",
+    ["move to select several."] = "bouge pour en choisir plusieurs.",
+    ["YOUR BUTTONS:"] = "TES BOUTONS :",
+    ["Settings > Controls >"] = "Réglages > Commandes >",
+    ["Controller > Open."] = "Manette > Ouvrir.",
+    ["In a run: Options > Controls,"] = "En partie : Options > Commandes,",
+    ["then Remap on any tab."] = "puis Réassigner sur un onglet.",
+    ["Back returns to the same page."] = "Retour revient à la même page.",
+    ["PORTRAIT MODE"] = "MODE PORTRAIT",
+    ["Portrait mode"] = "Mode portrait",
+    ["PORTRAIT:"] = "PORTRAIT :",
+    ["On a phone, turn it upright:"] = "Sur téléphone, tourne-le debout :",
+    ["the game follows, in a run, a"] = "le jeu suit, en partie, dans un",
+    ["pack, a menu or a match, and"] = "paquet, un menu ou un match, et",
+    ["nothing is lost."] = "rien n'est perdu.",
+    ["AUTO-ROTATE:"] = "ROTATION AUTO :",
+    ["Only when auto-rotate is on in"] = "Seulement si la rotation auto est",
+    ["the phone's settings. With the"] = "active sur le téléphone. Verrouillé,",
+    ["lock on, the game stays as it is."] = "le jeu reste comme il est.",
+    ["PC never changes."] = "Sur PC, rien ne change.",
+  },
+  es = {
+    ["CASINO MAP:"] = "MAPA DEL CASINO:",
+    ["THE CASINO button on the title."] = "Botón EL CASINO en el título.",
+    ["- Tavern: Quests, Run History"] = "- Taberna: Misiones, Historial",
+    ["- Market: the Shop"] = "- Mercado: la Tienda",
+    ["- Tailor: Customization"] = "- Sastre: Personalización",
+    ["- The Forge: The Forge and"] = "- La Forja: La Forja y",
+    ["  the Deck Creator"] = "  el Creador de barajas",
+    ["- Library: Seed Library"] = "- Biblioteca: los códigos",
+    ["- Training Grounds: Boss Practice"] = "- Entrenamiento: Práctica de jefes",
+    ["- Arcade: Minigames"] = "- Salón: Minijuegos",
+    ["- Racetrack: Speedruns"] = "- Circuito: Speedruns",
+    ["MOVING:"] = "MOVERSE:",
+    ["Arrows, trackpad or D-pad pick"] = "Flechas, panel o cruceta eligen",
+    ["a place, Enter or A opens it."] = "un lugar, Intro o A lo abre.",
+    ["Back returns to the map."] = "Atrás vuelve al mapa.",
+    ["Settings > Controls > Input mode:"] = "Ajustes > Controles > Modo:",
+    ["Settings > Controls > Keys and"] = "Ajustes > Controles > Teclas y",
+    ["In a run: Options > Controls >"] = "En partida: Opciones > Controles >",
+    ["Remap changes them there."] = "Reasignar las cambia ahí mismo.",
+    ["Settings > Controls > Input mode."] = "Ajustes > Controles > Modo.",
+    ["Press a card and slide over"] = "Pulsa una carta y desliza",
+    ["others to pick them all."] = "sobre otras para elegirlas todas.",
+    ["SETTINGS:"] = "AJUSTES:",
+    ["Settings is sorted in categories:"] = "Los ajustes van en categorías:",
+    ["Gameplay, Shop, Helpers and more."] = "Jugabilidad, Tienda, Ayudas y más.",
+    ["The search bar at the top finds"] = "La búsqueda de arriba encuentra",
+    ["a setting from a few letters."] = "un ajuste con pocas letras.",
+    ["menu starts the same kind of run."] = "inicia el mismo tipo de partida.",
+    ["Locked in multiplayer, Ranked"] = "Bloqueados en MP, clasificatoria",
+    ["and speedruns: they say why."] = "y speedrun: dicen por qué.",
+    ["Play > Random."] = "Jugar > Al azar.",
+    ["stake for you. ROLL until"] = "una apuesta por ti. TIRA hasta",
+    ["Same panel, Custom random:"] = "Mismo panel, Azar personalizado:",
+    ["Restart, Same seed and New seed"] = "Reiniciar, Mismo código y",
+    ["keep the same random rules."] = "Nuevo código mantienen las reglas.",
+    ["Locked features do nothing"] = "Lo bloqueado no hace nada",
+    ["and say Off in Speedrun."] = "y dice Desactivado en speedrun.",
+    ["Under the consumables, a split"] = "Bajo los consumibles, un parcial",
+    ["after every ante. Esc pauses it."] = "por apuesta inicial. Esc lo pausa.",
+    ["Goal reached: your time, PB and"] = "Meta alcanzada: tu tiempo, récord y",
+    ["splits, then Continue, New"] = "parciales, luego Continuar,",
+    ["attempt or Watch."] = "Nuevo intento o Ver.",
+    ["The Casino > Racetrack. My runs and"] = "El Casino > Circuito. Mis partidas y",
+    ["Online, WATCH on every row."] = "En línea, VER en cada fila.",
+    ["The Casino > Tavern > RUN HISTORY:"] = "El Casino > Taberna > HISTORIAL:",
+    ["every finished run, newest first:"] = "cada partida acabada, nuevas primero:",
+    ["The Casino > Training Grounds."] = "El Casino > Entrenamiento.",
+    ["Pick a boss you have seen,"] = "Elige un jefe que ya viste,",
+    ["the ante (1 to 8) and a deck,"] = "la apuesta inicial (1 a 8) y una baraja,",
+    ["see the score you need."] = "mira la puntuación necesaria.",
+    ["ONE FIGHT:"] = "UN COMBATE:",
+    ["your stats. TRY AGAIN gives"] = "tus estadísticas. REINTENTAR da",
+    ["the same fight, OTHER BOSS"] = "el mismo combate, OTRO JEFE",
+    ["picks another one."] = "elige otro.",
+    ["LOADOUT:"] = "EQUIPO:",
+    ["Typical run: a build like a"] = "Partida típica: lo que una",
+    ["run has at that ante."] = "partida tiene en esa apuesta inicial.",
+    ["From my run: your saved run"] = "Mi partida: tu partida guardada",
+    ["or one from Run History."] = "o una del historial.",
+    ["Build my own: jokers, hand"] = "A medida: jokers, niveles",
+    ["levels, money, consumables."] = "de manos, dinero, consumibles.",
+    ["The Casino > Arcade > MINIGAMES."] = "El Casino > Salón > MINIJUEGOS.",
+    ["THE FORGE"] = "LA FORJA",
+    ["MAKE A CARD:"] = "CREAR UNA CARTA:",
+    ["The Casino > The Forge > New."] = "El Casino > La Forja > Nuevo.",
+    ["Pick a kind: joker, tarot,"] = "Elige un tipo: joker, tarot,",
+    ["planet, deck, blind and more."] = "planeta, baraja, ciega y más.",
+    ["Simple: a few clear choices."] = "Simple: pocas opciones claras.",
+    ["Advanced: every rule."] = "Avanzado: todas las reglas.",
+    ["Pixel editor: draw the art,"] = "Editor de píxeles: dibuja la imagen,",
+    ["Simple or Advanced too."] = "también Simple o Avanzado.",
+    ["Turn a creation on: it can"] = "Activa una creación: puede",
+    ["show up in solo runs."] = "salir en partidas solo.",
+    ["Export makes a mod you can"] = "Exportar crea un mod para",
+    ["share. Mods > FORGED lists them."] = "compartir. Mods > FORJADOS los lista.",
+    ["Ranked, speedruns and the daily."] = "Clasificatoria, speedruns y el diario.",
+    ["In MP only when the host turns"] = "En MP solo si el anfitrión activa",
+    ["on Forge creations."] = "las creaciones de la Forja.",
+    ["Options > Customize Deck:"] = "Opciones > Personalizar baraja:",
+    ["the Suit Colours arrows switch"] = "las flechas Colores de palos",
+    ["between Normal, High contrast"] = "cambian entre Normal, Alto contraste",
+    ["and the other palettes."] = "y las otras paletas.",
+    ["Custom Colours opens a window"] = "Colores propios abre una ventana",
+    ["with real cards: pick a suit,"] = "con cartas reales: elige un palo,",
+    ["then a colour. Cards change"] = "luego un color. Las cartas cambian",
+    ["CONTROLLER"] = "MANDO",
+    ["CONTROLLER:"] = "MANDO:",
+    ["Plug in a gamepad. The D-pad"] = "Conecta un mando. La cruceta",
+    ["moves the focus, A presses,"] = "mueve el foco, A pulsa,",
+    ["B goes back, LB and RB"] = "B vuelve, LB y RB",
+    ["change tabs."] = "cambian de pestaña.",
+    ["IN A RUN:"] = "EN PARTIDA:",
+    ["X plays, Y discards."] = "X juega, Y descarta.",
+    ["LB sells, RB uses or buys."] = "LB vende, RB usa o compra.",
+    ["R3 speeds up, L3 slows down."] = "R3 acelera, L3 frena.",
+    ["SLIDE SELECT:"] = "SELECCIÓN DESLIZANDO:",
+    ["Hold A on a hand card and"] = "Mantén A en una carta y",
+    ["move to select several."] = "muévete para elegir varias.",
+    ["YOUR BUTTONS:"] = "TUS BOTONES:",
+    ["Settings > Controls >"] = "Ajustes > Controles >",
+    ["Controller > Open."] = "Mando > Abrir.",
+    ["In a run: Options > Controls,"] = "En partida: Opciones > Controles,",
+    ["then Remap on any tab."] = "luego Reasignar en cualquier pestaña.",
+    ["Back returns to the same page."] = "Atrás vuelve a la misma página.",
+    ["PORTRAIT MODE"] = "MODO VERTICAL",
+    ["Portrait mode"] = "Modo vertical",
+    ["PORTRAIT:"] = "VERTICAL:",
+    ["On a phone, turn it upright:"] = "En el móvil, ponlo de pie:",
+    ["the game follows, in a run, a"] = "el juego lo sigue, en partida, un",
+    ["pack, a menu or a match, and"] = "sobre, un menú o un combate, y",
+    ["nothing is lost."] = "no se pierde nada.",
+    ["AUTO-ROTATE:"] = "GIRO AUTOMÁTICO:",
+    ["Only when auto-rotate is on in"] = "Solo con el giro automático",
+    ["the phone's settings. With the"] = "activo en el móvil. Con el bloqueo,",
+    ["lock on, the game stays as it is."] = "el juego se queda como está.",
+    ["PC never changes."] = "En PC nada cambia.",
+  },
+}
+
+mod_loc_register{
+  fr = {
+    ["- XP, ranks and level rewards"] = "- XP, rangs et récompenses de niveau",
+    ["- 242 Achievements with popups"] = "- 242 succès avec leurs popups",
+    ["- Daily and weekly Quests, Journeys"] = "- Quêtes du jour, de la semaine, Parcours",
+    ["- The Casino: Market, Tailor, Forge"] = "- Le Casino : Marché, Tailleur, Forge",
+    ["- Multiplayer modes and Ranked"] = "- Modes multijoueur et Classé",
+    ["- Overhaul tutorial with Hologram"] = "- Tutoriel Overhaul avec Hologramme",
+    ["- Hands, antes and bosses"] = "- Mains, mises initiales et boss",
+    ["- Winning runs (more on"] = "- Parties gagnées (plus sur",
+    ["  higher stakes)"] = "  les mises élevées)",
+    ["- Quests and Journeys"] = "- Quêtes et Parcours",
+    ["- Achievements, milestones"] = "- Succès et paliers",
+    ["Every level pays Balacoin,"] = "Chaque niveau rapporte des Balacoins,",
+    ["more at each new rank."] = "plus à chaque nouveau rang.",
+    ["Claim them in Progression."] = "Récupérez-les dans Progression.",
+    ["RANKS (7):"] = "RANGS (7) :",
+    ["Novice > Apprentice"] = "Novice > Apprenti",
+    ["Journeyman > Expert"] = "Compagnon > Expert",
+    ["Master > Grandmaster"] = "Maître > Grand maître",
+    ["Legend (level 100)"] = "Légende (niveau 100)",
+    ["NO XP:"] = "PAS D'XP :",
+    ["Runs with cheats or a seed."] = "Parties avec triches ou seed.",
+    ["Daily runs still count."] = "Les parties du jour comptent.",
+    ["- Daily: 4 a day, 1 free swap"] = "- Du jour : 4, 1 échange gratuit",
+    ["- Weekly: 4 a week"] = "- De la semaine : 4",
+    ["- Journeys: lifetime goals"] = "- Parcours : objectifs de carrière",
+    ["  in 3 to 5 stages"] = "  en 3 à 5 étapes",
+    ["WHERE:"] = "OÙ :",
+    ["Progression > Quests, or"] = "Progression > Quêtes, ou",
+    ["The Casino > Tavern > Quests."] = "Le Casino > Taverne > Quêtes.",
+    ["WHEN ONE IS DONE:"] = "QUAND UNE EST FINIE :",
+    ["A popup shows up: CLAIM now,"] = "Une popup s'affiche : RÉCUPÉRER,",
+    ["or LATER from Progression."] = "ou PLUS TARD dans Progression.",
+    ["- Win runs, beat bosses"] = "- Gagner des parties, battre des boss",
+    ["- Play a multiplayer match"] = "- Jouer un match multijoueur",
+    ["- Make a joker in The Forge"] = "- Créer un joker à la Forge",
+    ["- XP and Balacoin"] = "- XP et Balacoins",
+    ["Cheats or seeded: no progress."] = "Triches ou seed : rien ne compte.",
+    ["The Casino > Tailor."] = "Le Casino > Tailleur.",
+    ["Open packs at the Market."] = "Ouvrez des paquets au Marché.",
+    ["MARKET"] = "MARCHÉ",
+    ["The Casino > The Forge"] = "Le Casino > La Forge",
+    ["52 colour sets, all clearly"] = "52 jeux de couleurs bien",
+    ["different, plus Polychromatic."] = "distincts, plus Polychrome.",
+  },
+  es = {
+    ["- XP, ranks and level rewards"] = "- XP, rangos y premios de nivel",
+    ["- 242 Achievements with popups"] = "- 242 logros con avisos",
+    ["- Daily and weekly Quests, Journeys"] = "- Misiones diarias, semanales, Trayectos",
+    ["- The Casino: Market, Tailor, Forge"] = "- El Casino: Mercado, Sastre, Forja",
+    ["- Multiplayer modes and Ranked"] = "- Modos multijugador y Clasificatoria",
+    ["- Overhaul tutorial with Hologram"] = "- Tutorial de Overhaul con Holograma",
+    ["- Hands, antes and bosses"] = "- Manos, apuestas iniciales y jefes",
+    ["- Winning runs (more on"] = "- Partidas ganadas (más en",
+    ["  higher stakes)"] = "  pozos altos)",
+    ["- Quests and Journeys"] = "- Misiones y Trayectos",
+    ["- Achievements, milestones"] = "- Logros e hitos",
+    ["Every level pays Balacoin,"] = "Cada nivel da Balacoin,",
+    ["more at each new rank."] = "más en cada rango nuevo.",
+    ["Claim them in Progression."] = "Reclámalos en Progresión.",
+    ["RANKS (7):"] = "RANGOS (7):",
+    ["Novice > Apprentice"] = "Novato > Aprendiz",
+    ["Journeyman > Expert"] = "Oficial > Experto",
+    ["Master > Grandmaster"] = "Maestro > Gran maestro",
+    ["Legend (level 100)"] = "Leyenda (nivel 100)",
+    ["NO XP:"] = "SIN XP:",
+    ["Runs with cheats or a seed."] = "Partidas con trucos o código.",
+    ["Daily runs still count."] = "Las diarias sí cuentan.",
+    ["- Daily: 4 a day, 1 free swap"] = "- Diarias: 4, 1 cambio gratis",
+    ["- Weekly: 4 a week"] = "- Semanales: 4",
+    ["- Journeys: lifetime goals"] = "- Trayectos: metas de carrera",
+    ["  in 3 to 5 stages"] = "  en 3 a 5 etapas",
+    ["WHERE:"] = "DÓNDE:",
+    ["Progression > Quests, or"] = "Progresión > Misiones, o",
+    ["The Casino > Tavern > Quests."] = "El Casino > Taberna > Misiones.",
+    ["WHEN ONE IS DONE:"] = "AL TERMINAR UNA:",
+    ["A popup shows up: CLAIM now,"] = "Sale un aviso: RECLAMAR ya,",
+    ["or LATER from Progression."] = "o MÁS TARDE en Progresión.",
+    ["- Win runs, beat bosses"] = "- Ganar partidas, vencer jefes",
+    ["- Play a multiplayer match"] = "- Jugar una partida multijugador",
+    ["- Make a joker in The Forge"] = "- Crear un comodín en la Forja",
+    ["- XP and Balacoin"] = "- XP y Balacoin",
+    ["Cheats or seeded: no progress."] = "Trucos o código: no cuenta.",
+    ["The Casino > Tailor."] = "El Casino > Sastre.",
+    ["Open packs at the Market."] = "Abre sobres en el Mercado.",
+    ["MARKET"] = "MERCADO",
+    ["The Casino > The Forge"] = "El Casino > La Forja",
+    ["52 colour sets, all clearly"] = "52 juegos de colores bien",
+    ["different, plus Polychromatic."] = "distintos, más Policromo.",
+  },
+}
+end

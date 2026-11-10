@@ -1,0 +1,265 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 151
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+local P = require "functions/minigames/poker"
+
+local min, max, floor, sin = math.min, math.max, math.floor, math.sin
+
+local Game = {}
+Game.__index = Game
+
+local SPINS, STOP, SHOW = 10, 0.4, 1.0
+local SYMBOLS = {"j_joker", "j_gros_michel", "j_8_ball", "j_lucky_cat", "j_golden", "j_blueprint"}
+local NS = #SYMBOLS
+local JIMBO = SYMBOLS[1]
+local LOOKALIKE = {j_jolly = true, j_zany = true, j_mad = true, j_crazy = true, j_droll = true, j_sly = true, j_wily = true, j_clever = true, j_devious = true, j_crafty = true}
+
+function Game.draw_symbols(rng, pool)
+    local rest, seen = {}, {[JIMBO] = true}
+    for k in pairs(LOOKALIKE) do seen[k] = true end
+    for _, k in ipairs(pool or {}) do
+        if not seen[k] then
+            seen[k] = true
+            rest[#rest + 1] = k
+        end
+    end
+    K.shuffle(rng, rest)
+    local out = {JIMBO}
+    for i = 1, NS - 1 do out[#out + 1] = rest[i] end
+    for i = 2, NS do
+        if #out >= NS then break end
+        if not seen[SYMBOLS[i]] then
+            seen[SYMBOLS[i]] = true
+            out[#out + 1] = SYMBOLS[i]
+        end
+    end
+    return out
+end
+local JACKPOT, TRIPLE, DOUBLE = 150, 50, 10
+
+function Game:start()
+    self.score = 0
+    self.spins = SPINS
+    self.pops = K.pops(3)
+    self.s = min(0.85, (self.H - 1.75) / (K.card_h() * 1.15))
+    self.bw, self.bh = K.card_w() * self.s * 1.2, K.card_h() * self.s * 1.12
+    self.mid = self.W * 0.4
+    self.gap = self.bw + 0.2
+    self.top = max(0.2, (self.H - self.bh - 0.3 - (UIK.touch() and 0.9 or 0.8) - 0.6) / 2)
+    self.symbols = Game.draw_symbols(self.rng, K.jokers and K.jokers() or nil)
+    self.reels = {}
+    for i = 1, 3 do
+        local strip = {}
+        for j = 1, NS do strip[j] = self.symbols[j] end
+        K.shuffle(self.rng, strip)
+        self.reels[i] = {strip = strip, pos = self.rng:random(0, NS - 1), v = 0, state = "idle", t = 0, p0 = 0, target = 0}
+    end
+    local touch = UIK.touch()
+    local w, h = 3 * self.gap - 0.2, touch and 0.9 or 0.8
+    self.btn = {x = self.mid - w / 2, y = self.top + self.bh + 0.3, w = w, h = h, label = L("Spin"), colour = G.C.GREEN, scale = touch and 0.55 or 0.5}
+    self.rx = self.mid + 1.5 * self.gap + (self.W - self.mid - 1.5 * self.gap) / 2
+    self.rows = {
+        {text = "+" .. JACKPOT, name = nil},
+        {text = "+" .. TRIPLE, name = P.hand_name("Three of a Kind")},
+        {text = "+" .. DOUBLE, name = P.hand_name("Pair")},
+    }
+    self.state = "idle"
+    self.next_stop = 1
+    self.spin_text = ""
+    self.wins, self.top_win, self.win_row = 0, 0, nil
+    self.row_j = {{}, {}, {}}
+    self.end_sound = "whoosh1"
+    self:spins_label()
+end
+
+function Game:spins_label()
+    self.spin_text = string.format(L("Spins left: %d"), self.spins)
+end
+
+function Game:symbol(r)
+    return r.strip[floor(r.pos + 0.5) % NS + 1]
+end
+
+function Game:act()
+    if self.state == "idle" then
+        if self.spins <= 0 then return end
+        self.spins = self.spins - 1
+        self:spins_label()
+        for i = 1, 3 do
+            local r = self.reels[i]
+            r.state, r.v = "spin", 4.5 + i * 0.8 + self.rng:random() * 0.5
+        end
+        self.state = "spin"
+        self.next_stop = 1
+        self.btn.label, self.btn.colour = L("Stop"), G.C.RED
+        K.press(self.btn)
+        K.sound("chips2", 1, 0.6)
+    elseif self.state == "spin" then
+        local r = self.reels[self.next_stop]
+        r.state, r.t, r.p0 = "stop", 0, r.pos
+        r.target = floor(r.pos) + 1
+        self.next_stop = self.next_stop + 1
+        if self.next_stop > 3 then self.state = "stopping" end
+        K.press(self.btn)
+        K.sound("button", 1, 0.5)
+    end
+end
+
+function Game:press() self:act() end
+
+function Game:key(k)
+    if k == "space" or k == "return" then self:act() end
+end
+
+function Game:pay()
+    local a, b, c = self:symbol(self.reels[1]), self:symbol(self.reels[2]), self:symbol(self.reels[3])
+    local win = 0
+    if a == b and b == c then
+        win = a == JIMBO and JACKPOT or TRIPLE
+        for i = 1, 3 do K.juice(self.reels[i], 0.6) end
+    elseif a == b or b == c or a == c then
+        win = DOUBLE
+        for i = 1, 3 do
+            local s = self:symbol(self.reels[i])
+            local n = (s == a and 1 or 0) + (s == b and 1 or 0) + (s == c and 1 or 0)
+            if n >= 2 then K.juice(self.reels[i], 0.4) end
+        end
+    end
+    self.last_win = win
+    self.score = self.score + win
+    self.win_row = (win >= JACKPOT and 1) or (win >= TRIPLE and 2) or (win > 0 and 3) or nil
+    if win > 0 then
+        self.wins = self.wins + 1
+        self.top_win = max(self.top_win, win)
+        K.juice(self.row_j[self.win_row], 0.5)
+        K.pop(self.pops, "+" .. win, self.mid, self.top + self.bh / 2, win >= JACKPOT and G.C.GOLD or G.C.CHIPS, win >= TRIPLE and 1 or 0.8)
+        K.sound(win >= TRIPLE and "multhit2" or "chips1", 1, 0.7)
+        if win >= JACKPOT then
+            K.flash(G.C.GOLD, 0.3)
+            K.shake(0.12)
+            K.sound("coin3", 1, 0.6)
+        elseif win >= TRIPLE then
+            K.flash(G.C.CHIPS, 0.18)
+            K.shake(0.06)
+        end
+    else
+        K.sound("cancel", 1, 0.4)
+    end
+    self.state = "show"
+    self.t = 0
+end
+
+r 10 2449 - -
+l 106
+    local all = true
+    for i = 1, 3 do
+        local r = self.reels[i]
+        if r.state == "spin" then
+            r.pos = (r.pos + r.v * dt)
+            all = false
+        elseif r.state == "stop" then
+            r.t = r.t + dt
+            local u = min(1, r.t / STOP)
+            r.pos = r.p0 + (r.target - r.p0) * K.out_back(u)
+            if u >= 1 then
+                r.pos = r.target % NS
+                r.state = "idle"
+                K.juice(r, 0.25)
+                K.shake(0.02)
+                K.sound("card1", 1.1, 0.5)
+            else
+                all = false
+            end
+        end
+    end
+    if self.state == "stopping" and all then self:pay() end
+    if self.state == "show" then
+        self.t = self.t + dt
+        if self.t >= SHOW then
+            self.win_row = nil
+            if self.spins <= 0 then
+                self.result = "Out of spins"
+                self.result_col = G.C.GOLD
+                self.summary = string.format(L("Wins: %d of %d   Best win: +%d"), self.wins, SPINS, self.top_win)
+                self.over = true
+            else
+                self.state = "idle"
+                self.btn.label, self.btn.colour = L("Spin"), G.C.GREEN
+            end
+        end
+    end
+end
+
+function Game:draw(ox, oy)
+    local s, bw, bh = self.s, self.bw, self.bh
+    local ch = K.card_h() * s
+    for i = 1, 3 do
+        local r = self.reels[i]
+        local cx = self.mid + (i - 2) * self.gap
+        local j = K.jk(r)
+        K.panel(ox + cx - bw / 2, oy + self.top, bw, bh, G.C.BLACK, 0.12, 0.6)
+        local p = r.pos
+        local base = floor(p)
+        local u = p - base
+        local cur = r.strip[base % NS + 1]
+        local nxt = r.strip[(base + 1) % NS + 1]
+        local y0 = oy + self.top + (bh - ch) / 2
+        if u < 0.001 then
+            K.center(cur, ox + cx, y0 + ch / 2, s * j, {r = K.jr(r)})
+        else
+            K.center(nxt, ox + cx, y0 + u * ch / 2, s, {vk = u, shadow = false})
+            K.center(cur, ox + cx, y0 + (1 + u) * ch / 2, s, {vk = 1 - u, shadow = false})
+        end
+    end
+    local off = self.state == "stopping" or self.state == "show" or (self.state == "idle" and self.spins <= 0)
+    self.btn.disabled = off
+    K.button(self.btn, 1, ox, oy)
+    local rx = ox + self.rx
+    local y = oy + self.top + 0.35
+    for i = 1, 3 do
+        local row = self.rows[i]
+        if self.win_row == i then
+            K.outline(rx - 1.05, y - 0.3, 2.1, 0.98, i == 1 and G.C.GOLD or G.C.CHIPS, 0.1, 0.05, 0.6 + 0.4 * sin(K.now() * 10))
+        end
+        local rj = K.jk(self.row_j[i])
+        if row.name then
+            K.text(row.name, rx, y, 0.36 * rj, G.C.UI.TEXT_LIGHT, "c")
+        else
+            for k = -1, 1 do K.center(JIMBO, rx + k * 0.42, y, 0.17 * rj, {shadow = false}) end
+        end
+        K.text(row.text, rx, y + 0.42, 0.5 * rj, i == 1 and G.C.GOLD or G.C.CHIPS, "c")
+        y = y + 1.05
+    end
+    K.text(self.spin_text, ox + self.mid, oy + self.btn.y + self.btn.h + 0.38, 0.4, G.C.UI.TEXT_LIGHT, "c")
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "slots",
+    name = "Slot Machine",
+    desc = "Spin three reels of jokers and stop them one by one",
+    how = "Spin, then tap to stop each reel. Three Jimbos pay 150. 10 spins.",
+    score = "Chips",
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Slot Machine"] = "Machine à sous", ["Spin three reels of jokers and stop them one by one"] = "Lancez trois rouleaux de jokers et arrêtez-les un par un",
+            ["Spin, then tap to stop each reel. Three Jimbos pay 150. 10 spins."] = "Lancez, puis touchez pour arrêter chaque rouleau. Trois Jimbo paient 150. 10 tours.",
+            ["Spin"] = "Lancer", ["Stop"] = "Arrêter", ["Spins left: %d"] = "Tours restants : %d", ["Wins: %d of %d   Best win: +%d"] = "Gains : %d sur %d   Meilleur gain : +%d",
+            ["Out of spins"] = "Plus de tours"},
+        es = {["Slot Machine"] = "Tragaperras", ["Spin three reels of jokers and stop them one by one"] = "Gira tres rodillos de comodines y páralos uno a uno",
+            ["Spin, then tap to stop each reel. Three Jimbos pay 150. 10 spins."] = "Gira y toca para parar cada rodillo. Tres Jimbos pagan 150. 10 giros.",
+            ["Spin"] = "Girar", ["Stop"] = "Parar", ["Spins left: %d"] = "Giros restantes: %d", ["Wins: %d of %d   Best win: +%d"] = "Premios: %d de %d   Mejor premio: +%d",
+            ["Out of spins"] = "Sin giros"},
+    }
+end
+
+return Game
+end

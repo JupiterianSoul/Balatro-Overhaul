@@ -1,0 +1,107 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 12
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -10
+
+# Add starting params
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 12 1877 - -
+l 13
+'''
+payload = '''
+play_limit = 5,
+discard_limit = 5,
+no_limit = '',
+'''
+# Reset visual indicators
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 10 2039 - -
+l 13
+'''
+payload = '''
+SMODS.update_hand_limit_text(true, true)
+'''
+
+
+# Change hand limit
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 4 2049 - %20
+l 12
+'''
+payload = '''
+if #G.hand.highlighted <= 0 or G.GAME.blind.block_play or #G.hand.highlighted > math.max(G.GAME.starting_params.play_limit, 1) then 
+'''
+
+# Change discard limit
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 4 2093 - %20
+l 12
+'''
+payload = '''
+if G.GAME.current_round.discards_left <= 0 or #G.hand.highlighted <= 0 or #G.hand.highlighted > math.max(G.GAME.starting_params.discard_limit, 0) then 
+'''
+
+# Add play limit indicator to UI
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 15 990 - -
+r 15 991 %20%20%20%20 -
+l 14
+}},
+'''
+payload = '''
+{n=G.UIT.R, config={align = "bcm", padding = 0}, nodes = {
+    {n=G.UIT.T, config={ref_table = SMODS.hand_limit_strings, ref_value = 'play', scale = text_scale * 0.65, colour = G.C.UI.TEXT_LIGHT}}
+}},
+'''
+# Add discard limit indicator to UI
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 15 629 - -
+r 15 997 %20%20%20%20 -
+l 2
+}}'''
+payload = '''
+r 15 629 - -
+r 15 997 %20%20%20%20 -
+l 1
+}},
+r 15 629 - -
+l 3
+    {n=G.UIT.T, config={ref_table = SMODS.hand_limit_strings, ref_value = 'discard', scale = text_scale * 0.65, colour = G.C.UI.TEXT_LIGHT}}
+}},
+'''
+end

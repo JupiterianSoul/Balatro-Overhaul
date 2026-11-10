@@ -1,0 +1,521 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 78
+local C = require("functions/shop/tavern_catalog")
+local S = require("functions/shop/tavern_store")
+local A = require("functions/shop/tavern_apply")
+local TC = require("functions/shop/tavern_cards")
+local FX = require("functions/shop/tavern_open_fx")
+
+local U = {open = nil}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+
+local function txt(s, scale, colour, o)
+  o = o or {}
+  local t = {n = G.UIT.T, config = {text = s, scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = o.shadow}}
+  if o.maxw then return {n = G.UIT.C, config = {align = "cm", maxw = o.maxw}, nodes = {t}} end
+  return t
+end
+
+local function row(nodes, o)
+  o = o or {}
+  return {n = G.UIT.R, config = {align = o.align or "cm", minw = o.w, minh = o.h, padding = o.padding or 0}, nodes = nodes}
+end
+
+local function fmt(n)
+  local s = tostring(math.floor(n or 0))
+  local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+  return (out:gsub("^,", ""))
+end
+U.fmt = fmt
+
+local function types_lines(pack)
+  if not pack.types then return {L("Everything")} end
+  local parts = {}
+  for _, t in ipairs(pack.types) do
+    local def = C.TYPES[C.TYPE_INDEX[t]]
+    parts[#parts + 1] = L(def and def.plural or t)
+  end
+  local lines = {}
+  for i = 1, #parts, 2 do
+    lines[#lines + 1] = parts[i + 1] and (parts[i] .. ", " .. parts[i + 1] .. (parts[i + 2] and "," or "")) or parts[i]
+  end
+  return lines
+end
+
+local function types_rows(pack, w, scale)
+  local rows = {}
+  for _, line in ipairs(types_lines(pack)) do
+    rows[#rows + 1] = row({txt(line, scale, G.C.UI.TEXT_INACTIVE, {maxw = w - 0.2})}, {w = w, h = 0.26})
+  end
+  return rows
+end
+
+local function extra_text(pack)
+  if S.pool_size(pack) == 0 then return L("Nothing to find yet") end
+  if pack.last == "rare" then return L("Last card Rare or better") end
+  if pack.last == "epic" then return L("Last card Epic or better") end
+  local have, all = S.pack_progress(pack)
+  return L("Owned") .. " " .. have .. " / " .. all
+end
+
+local function odds_row(pack)
+  local odds = pack.last and C.pack_odds(pack, pack.cards) or C.ODDS
+  local nodes = {}
+  for i, w in ipairs(odds) do
+    if w > 0 then
+      if #nodes > 0 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = 0.12}, nodes = {}} end
+      nodes[#nodes + 1] = {n = G.UIT.C, config = {align = "cm"}, nodes = {txt(w .. "%", 0.28, TC.rarity_colour(C.RARITIES[i].key))}}
+    end
+  end
+  return nodes
+end
+
+function U.pack_sprite(pack, scale)
+  local w, h = G.CARD_W * scale, G.CARD_H * scale
+  local spr = A.pack_sprite(pack, w, h)
+  if not spr then return {n = G.UIT.R, config = {minw = w, minh = h}, nodes = {}} end
+  local send = {0, 0}
+  spr.draw = function(self)
+r 2 447 %20%20%20%20 -
+l 6
+    local t = G.TIMERS.REAL
+    send[1] = t / 28
+    send[2] = t
+    self:draw_shader("dissolve", 0.1)
+    self:draw_shader("dissolve")
+    self:draw_shader("booster", nil, send)
+r 2 461 %20%20%20%20 -
+l 106
+  end
+  return {n = G.UIT.O, config = {object = spr}}
+end
+
+local function pack_tile(pack, w)
+  local empty = S.pool_size(pack) == 0
+  local can = S.balance() >= pack.price and not empty
+  local scale = 0.95
+  local k = touch() and 0.04 or 0
+  local lines = {
+    row({U.pack_sprite(pack, scale)}, {w = w, padding = 0.08}),
+    row({txt(L(pack.name), 0.36, G.C.WHITE, {shadow = true, maxw = w - 0.2})}, {w = w, h = 0.42}),
+    row({txt(pack.cards .. " " .. L("cards"), 0.28 + k, G.C.UI.TEXT_LIGHT, {maxw = w - 0.2})}, {w = w, h = 0.3}),
+    row({{n = G.UIT.C, config = {align = "cm", minh = 0.52}, nodes = types_rows(pack, w, 0.26 + k)}}, {w = w}),
+    row({txt(extra_text(pack), 0.24 + k, pack.last and G.C.GOLD or G.C.UI.TEXT_INACTIVE, {maxw = w - 0.2})}, {w = w, h = 0.3}),
+    row(odds_row(pack), {w = w, h = 0.34}),
+    row({UIK.button{label = L("OPEN") .. "  " .. fmt(pack.price), button = "tavern_buy_pack", ref_table = {id = pack.id}, colour = G.C.MONEY, w = w - 0.35, disabled = not can}}, {w = w, padding = 0.06}),
+  }
+  return {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0.04, r = 0.12, colour = UIK.C.section, emboss = 0.04}, nodes = lines}
+end
+
+local function balance_row()
+  local nodes = {txt(fmt(S.balance()) .. " " .. L("Balacoin"), 0.4, G.C.MONEY, {shadow = true})}
+  return row(nodes, {w = UIK.W, h = 0.5})
+end
+
+local function tiles(ids)
+  local per = (UIK.portrait and UIK.portrait()) and 3 or #ids
+  local n = math.min(per, #ids)
+  local gap = 0.18
+  local w = math.min(3.4, (UIK.W - 0.3 - gap * (n - 1)) / n)
+  local out = {balance_row()}
+  local nodes = {}
+  for i, id in ipairs(ids) do
+    if #nodes > 0 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = gap}, nodes = {}} end
+    nodes[#nodes + 1] = pack_tile(C.PACK_BY_ID[id], w)
+    if i % per == 0 or i == #ids then
+      out[#out + 1] = {n = G.UIT.R, config = {align = "tm", padding = 0.05}, nodes = nodes}
+      nodes = {}
+    end
+  end
+  if #out == 2 then return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = out} end
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = out},
+  }}
+end
+
+local function tab_packs() return tiles({"palette", "jester", "sleeve", "shine", "title"}) end
+local function tab_big() return tiles({"palette_jumbo", "jester_jumbo", "crate", "legend"}) end
+
+local function cell(s, w, colour, scale)
+  return {n = G.UIT.C, config = {align = "cm", minw = w, minh = 0.5}, nodes = {txt(s, scale or 0.34, colour, {maxw = w - 0.1})}}
+end
+
+local function tab_odds()
+  local cw = {2.6, 2.6, 2.6, 2.6, 2.6}
+  local head = {L("Rarity"), L("Each card"), L("Tavern Crate last"), L("Legend Crate last"), L("Duplicate gives")}
+  local rows = {}
+  local hn = {}
+  for i, h in ipairs(head) do hn[#hn + 1] = cell(h, cw[i], G.C.GOLD, 0.34) end
+  rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", colour = UIK.C.section, r = 0.08}, nodes = hn}
+  for i, r in ipairs(C.RARITIES) do
+    local function pct(v) return v > 0 and (v .. "%") or "-" end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {
+      cell(L(r.name), cw[1], TC.rarity_colour(r.key)),
+      cell(pct(C.ODDS[i]), cw[2]),
+      cell(pct(C.ODDS_RARE_PLUS[i]), cw[3]),
+      cell(pct(C.ODDS_EPIC_PLUS[i]), cw[4]),
+      cell("+" .. r.refund .. " " .. L("Balacoin"), cw[5], G.C.MONEY),
+    }}
+  end
+  local have, all = S.counts()
+  local notes = {
+    L("Items you do not own yet are three times as likely."),
+    L("Legend Crate: a Legendary at least every 40 cards.") .. " " .. L("Next one within") .. " " .. S.pity_left() .. " " .. L("cards"),
+    L("Collection") .. ": " .. have .. " / " .. all,
+  }
+  for _, n in ipairs(notes) do rows[#rows + 1] = row({txt(n, 0.34, G.C.UI.TEXT_LIGHT, {maxw = 13})}, {h = 0.46}) end
+  local st = S.state() or {}
+  U.fast = U.fast or {}
+  U.fast.on = st.fast == true
+  rows[#rows + 1] = row({UIK.toggle{label = L("Fast opening"), ref_table = U.fast, ref_value = "on", w = 5,
+    callback = function(v) local s = S.state(); if s then s.fast = v and true or false end end}}, {padding = 0.1})
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W}, nodes = {
+    {n = G.UIT.C, config = {align = "tm", padding = 0.04}, nodes = rows},
+  }}
+end
+
+function U.shop_def(tab)
+  S.invalidate()
+  return UIK.window{
+    id = "tavern_shop",
+    title = L("MARKET"),
+    tab = tab,
+    tabs = {
+      {key = "packs", label = L("Packs"), build = tab_packs},
+      {key = "big", label = L("Jumbo and Crates"), build = tab_big},
+      {key = "odds", label = L("Odds"), build = tab_odds},
+    },
+    back_func = "tavern_shop_back",
+    back_inline = not UIK.portrait(),
+    footer = {UIK.button{label = L("CUSTOMIZE"), button = "tavern_open_custom", colour = G.C.BLUE}},
+  }
+end
+
+G.FUNCS.tavern_open_shop = function(e)
+r 4 1381 %20%20 -
+l 220
+  A.install_hooks()
+  U.open = nil
+  G.FUNCS.overlay_menu{definition = U.shop_def(e and e.config and e.config.ref_table and e.config.ref_table.tab)}
+end
+
+G.FUNCS.tavern_shop_back = function(e)
+  if G.FUNCS.open_tavern_hub then return G.FUNCS.open_tavern_hub(e) end
+  G.FUNCS.exit_overlay_menu(e)
+end
+
+G.FUNCS.tavern_buy_pack = function(e)
+  local ref = e and e.config and e.config.ref_table or {}
+  local pack = ref.id and C.PACK_BY_ID[ref.id]
+  if not pack then return end
+  if S.balance() < pack.price then
+    pcall(play_sound, "cancel", 1, 0.6)
+    return
+  end
+  if pack.price >= 500 and not ref.confirmed then return U.confirm(pack) end
+  U.start_open(pack)
+end
+
+function U.confirm(pack)
+  U.pending = pack
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "tavern_confirm",
+    compact = true,
+    w = 7,
+    title = L(pack.name),
+    tabs = {{key = "c", label = "", build = function()
+      return UIK.stack({
+        row({U.pack_sprite(pack, 0.9)}, {padding = 0.1}),
+        row({txt(L("Open it for") .. " " .. fmt(pack.price) .. " " .. L("Balacoin") .. "?", 0.36, G.C.WHITE, {maxw = 6.4})}, {h = 0.5}),
+        row({txt(fmt(S.balance()) .. " " .. L("Balacoin"), 0.3, G.C.MONEY)}, {h = 0.4}),
+      }, {w = 7})
+    end}},
+    back_func = "tavern_open_shop",
+    footer = {UIK.button{label = L("OPEN"), button = "tavern_confirm_yes", colour = G.C.MONEY}},
+  }}
+end
+
+G.FUNCS.tavern_confirm_yes = function()
+  local pack = U.pending
+  U.pending = nil
+  if pack then G.FUNCS.tavern_buy_pack({config = {ref_table = {id = pack.id, confirmed = true}}}) end
+end
+
+G.FUNCS.tavern_col_state = function(e)
+  local col = e.config.ref_table
+  local want = (col and col.revealed) and 1.4 or 0
+  if e.config.outline ~= want then e.config.outline = want end
+end
+
+local function rarity_sound(rk)
+  local i = C.RARITY_INDEX[rk] or 1
+  if i >= 5 then
+    pcall(play_sound, "polychrome1", 1.2, 0.7)
+    pcall(play_sound, "explosion_release1", 1.0, 0.45)
+  elseif i == 4 then
+    pcall(play_sound, "polychrome1", 1.0, 0.6)
+  elseif i == 3 then
+    pcall(play_sound, "holo1", 1.0, 0.55)
+  elseif i == 2 then
+    pcall(play_sound, "foil1", 1.0, 0.5)
+  else
+    pcall(play_sound, "tarot2", 1.0, 0.45)
+  end
+end
+
+local function ev(delay, fn)
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = delay, blockable = false, blocking = false, timer = "REAL", func = function()
+    fn()
+    return true
+  end}))
+end
+
+local function fast() local st = S.state(); return st and st.fast end
+
+function U.reveal(i)
+  local o = U.open
+  if not o or not o.cols[i] or o.cols[i].shown then return end
+  local col = o.cols[i]
+  col.shown = true
+  local card = col.card
+  if card and not card.REMOVED then
+    card:flip()
+    pcall(play_sound, "card1", 0.9 + 0.05 * i, 0.6)
+  end
+  ev(fast() and 0.05 or 0.18, function()
+    if U.open ~= o then return end
+    local r = col.res
+    local it = r.item
+    col.name = TC.name(it)
+    col.kind = L((C.TYPES[C.TYPE_INDEX[it.type]] or {}).name or it.type)
+    col.rarity = L((C.RARITIES[C.RARITY_INDEX[it.rarity]] or {}).name or "")
+    col.status = r.dupe and ("+" .. r.refund .. " " .. L("Balacoin")) or L("NEW")
+    col.btn = S.is_equipped(it) and L("EQUIPPED") or L("EQUIP")
+    col.revealed = true
+    if card and not card.REMOVED then
+      card:juice_up(0.5, 0.4)
+      local ri = C.RARITY_INDEX[it.rarity] or 1
+      if ri >= 4 and G.ROOM then G.ROOM.jiggle = (G.ROOM.jiggle or 0) + (ri >= 5 and 1.2 or 0.5) end
+      if ri >= 3 and Particles then
+        local p = Particles(1, 1, 0, 0, {timer = 0.015, scale = 0.3, initialize = true, lifespan = 0.9, speed = 3 + ri, padding = -1,
+          attach = card, colours = {TC.rarity_colour(it.rarity), G.C.WHITE}, fill = true})
+        ev(0.6, function() if p and not p.REMOVED then p:fade(0.4) end end)
+        ev(1.1, function() if p and not p.REMOVED then p:remove() end end)
+      end
+    end
+    rarity_sound(it.rarity)
+    o.left = o.left - 1
+    if o.left <= 0 then o.done = true end
+  end)
+end
+
+function U.reveal_all()
+  local o = U.open
+  if not o then return end
+  for i = 1, #o.cols do
+    if not o.cols[i].shown then ev((i - 1) * 0.06, function() if U.open == o then U.reveal(i) end end) end
+  end
+end
+
+local function deal(o)
+  local step = fast() and 0.04 or 0.14
+  for i, col in ipairs(o.cols) do
+    ev(step * i, function()
+      if U.open ~= o then return end
+      local card = TC.make(col.res.item, G.CARD_W, G.CARD_H)
+      card.facing = "back"
+      card.sprite_facing = "back"
+      local at = o.burst_at
+      if at then
+        card:hard_set_T(at.x - card.T.w / 2, at.y - card.T.h / 2, card.T.w, card.T.h)
+        card.VT.scale = 0.3
+      else
+        card:hard_set_T(col.area.T.x + col.area.T.w / 2 - card.T.w / 2, G.ROOM.T.h + 2, card.T.w, card.T.h)
+      end
+      col.area:emplace(card, nil, true)
+      col.card = card
+      pcall(play_sound, "card1", 1 + 0.04 * i, 0.5)
+    end)
+  end
+  local start = step * #o.cols + (fast() and 0.1 or 0.45)
+  local gap = fast() and 0.06 or 0.42
+  for i = 1, #o.cols do
+    ev(start + gap * (i - 1), function() if U.open == o then U.reveal(i) end end)
+  end
+end
+
+local function open_body()
+  local o = U.open
+  if not o then return {n = G.UIT.R, config = {}, nodes = {}} end
+  if o.phase == "pack" then
+    o.pack_area = TC.area(G.CARD_W * 1.4, G.CARD_H * 1.4, 1)
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - 0.3}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = {
+        row({{n = G.UIT.O, config = {object = o.pack_area}}}, {padding = 0.1}),
+        row({txt(L(o.pack.name), 0.45, G.C.WHITE, {shadow = true})}, {h = 0.6}),
+      }},
+    }}
+  end
+  local n = #o.cols
+  local gap = 0.15
+  local w = math.min(3.6, (UIK.W - 0.3 - gap * (n - 1)) / n)
+  local nodes = {}
+  for i, col in ipairs(o.cols) do
+    col.area = TC.area(G.CARD_W * 1.05, G.CARD_H * 1.05, 1)
+    col.name = col.name or "?"
+    col.kind = col.kind or ""
+    col.rarity = col.rarity or ""
+    col.status = col.status or ""
+    col.btn = col.btn or L("EQUIP")
+    local rc = TC.rarity_colour(col.res.item.rarity)
+    if i > 1 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = gap}, nodes = {}} end
+    nodes[#nodes + 1] = {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0.04, r = 0.12, colour = UIK.C.section, emboss = 0.04,
+      func = "tavern_col_state", ref_table = col, outline = 0, outline_colour = rc}, nodes = {
+      row({{n = G.UIT.O, config = {object = col.area}}}, {w = w, padding = 0.06}),
+      row({{n = G.UIT.C, config = {align = "cm", maxw = w - 0.2}, nodes = {{n = G.UIT.T, config = {ref_table = col, ref_value = "name", scale = 0.34, colour = G.C.WHITE, shadow = true}}}}}, {w = w, h = 0.4}),
+      row({{n = G.UIT.C, config = {align = "cm", maxw = w - 0.2}, nodes = {{n = G.UIT.T, config = {ref_table = col, ref_value = "kind", scale = 0.27, colour = G.C.UI.TEXT_INACTIVE}}}}}, {w = w, h = 0.3}),
+      row({{n = G.UIT.C, config = {align = "cm", maxw = w - 0.2}, nodes = {{n = G.UIT.T, config = {ref_table = col, ref_value = "rarity", scale = 0.3, colour = rc}}}}}, {w = w, h = 0.32}),
+      row({{n = G.UIT.C, config = {align = "cm", maxw = w - 0.2}, nodes = {{n = G.UIT.T, config = {ref_table = col, ref_value = "status", scale = 0.32, colour = col.res.dupe and G.C.MONEY or G.C.GOLD, shadow = true}}}}}, {w = w, h = 0.36}),
+      row({{n = G.UIT.C, config = {align = "cm", minw = w - 0.35, minh = touch() and 0.8 or 0.62, r = 0.1, hover = true, shadow = true, colour = G.C.UI.BACKGROUND_INACTIVE,
+        button = "tavern_equip_drawn", func = "tavern_equip_state", ref_table = col, focus_args = {nav = "wide"}}, nodes = {
+        {n = G.UIT.T, config = {ref_table = col, ref_value = "btn", scale = touch() and 0.42 or 0.36, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+      }}}, {w = w, padding = 0.06}),
+    }}
+  end
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W}, nodes = {
+    balance_row(),
+    {n = G.UIT.R, config = {align = "tm", padding = 0.05}, nodes = nodes},
+  }}
+end
+
+local function open_def()
+  local o = U.open
+  local next_ok = {}
+  return UIK.window{
+    id = "tavern_open",
+    title = L(o.pack.name),
+    tabs = {{key = "open", label = L(o.pack.name), build = open_body}},
+    back_func = "tavern_open_shop",
+    footer = {
+      UIK.button{label = L("REVEAL ALL"), button = "tavern_reveal_all", colour = G.C.ORANGE, func = "tavern_btn_state", ref_table = {kind = "reveal"}},
+      UIK.button{label = L("BUY ANOTHER") .. "  " .. fmt(o.pack.price), button = "tavern_open_again", colour = G.C.MONEY, func = "tavern_btn_state", ref_table = {kind = "again", ok = next_ok}},
+      UIK.button{label = L("CUSTOMIZE"), button = "tavern_open_custom", colour = G.C.BLUE, func = "tavern_btn_state", ref_table = {kind = "custom"}},
+    },
+  }
+end
+
+function U.start_open(pack)
+  local res, err = S.open(pack.id)
+  if not res then
+    pcall(play_sound, "cancel", 1, 0.6)
+    print("[TAVERN] open failed: " .. tostring(err))
+    return
+  end
+  local o = {pack = pack, res = res, cols = {}, left = #res.cards, phase = fast() and "cards" or "pack"}
+  for i, r in ipairs(res.cards) do o.cols[i] = {res = r, i = i} end
+  U.open = o
+r 4 1381 %20%20 -
+l 97
+  G.FUNCS.overlay_menu{definition = open_def()}
+  if o.phase == "pack" then
+    local pack_card = Card(0, 0, G.CARD_W * 1.27, G.CARD_H * 1.27, G.P_CARDS.empty, G.P_CENTERS.p_arcana_normal_1, {bypass_discovery_center = true, bypass_discovery_ui = true})
+    local art = S.art.packs and S.art.packs[pack.art]
+    local a = art and A.atlas("tavern_packs")
+    if a then
+      pack_card.children.center.atlas = a
+      pack_card.children.center:set_sprite_pos(art)
+    else
+      pack_card.children.center:set_sprite_pos(pack.booster)
+    end
+    pack_card.states.drag.can = false
+    pack_card.states.hover.can = false
+    pack_card.states.collide.can = false
+    pack_card.hover = function(self) Node.hover(self) end
+    o.pack_area:emplace(pack_card)
+    o.pack_card = pack_card
+    FX.play(o, pack_card, function() return U.open == o end, function()
+      o.phase = "cards"
+      UIK.refresh()
+      FX.clear(o)
+      deal(o)
+    end)
+  else
+    deal(o)
+  end
+end
+
+G.FUNCS.tavern_reveal_all = function() U.reveal_all() end
+
+G.FUNCS.tavern_open_again = function()
+  local o = U.open
+  if not (o and o.done) then return end
+  if S.balance() < o.pack.price then
+    pcall(play_sound, "cancel", 1, 0.6)
+    return
+  end
+  U.start_open(o.pack)
+end
+
+G.FUNCS.tavern_btn_state = function(e)
+  local r = e.config.ref_table or {}
+  local o = U.open
+  local on = true
+  if r.kind == "reveal" then on = o and not o.done and o.phase == "cards"
+  elseif r.kind == "again" then on = o and o.done and S.balance() >= o.pack.price
+  elseif r.kind == "custom" then on = o and o.done end
+  r.base = r.base or e.config.colour
+  r.btn = r.btn or e.config.button
+  e.config.colour = on and r.base or G.C.UI.BACKGROUND_INACTIVE
+  e.config.button = on and r.btn or nil
+end
+
+G.FUNCS.tavern_equip_state = function(e)
+  local col = e.config.ref_table
+  local it = col and col.res and col.res.item
+  local can = col and col.revealed and it and it.type ~= "deck"
+  local eq = can and S.is_equipped(it)
+  e.config.colour = can and (eq and G.C.GREEN or G.C.BLUE) or G.C.UI.BACKGROUND_INACTIVE
+  e.config.button = (can and not eq) and "tavern_equip_drawn" or nil
+  if can then col.btn = eq and L("EQUIPPED") or L("EQUIP") end
+end
+
+G.FUNCS.tavern_equip_drawn = function(e)
+  local col = e.config.ref_table
+  local it = col and col.res and col.res.item
+  if not it then return end
+  if S.equip(it) then
+    pcall(play_sound, "card1", 1.1, 0.6)
+    if U.open then
+      for _, c in ipairs(U.open.cols) do
+        if c.revealed then c.btn = S.is_equipped(c.res.item) and L("EQUIPPED") or L("EQUIP") end
+      end
+    end
+  end
+end
+
+G.FUNCS.tavern_open_custom = function(e)
+  local it
+  local o = U.open
+  if o and o.done then
+    for _, c in ipairs(o.cols) do
+      if not c.res.dupe then it = c.res.item break end
+    end
+    it = it or (o.cols[1] and o.cols[1].res.item)
+  end
+  local tab
+  if it and Tavern and Tavern.custom then
+    for _, t in ipairs(Tavern.custom.TABS) do
+      for _, ty in ipairs(t.types) do if ty == it.type then tab = tab or t.key end end
+    end
+  end
+  if G.FUNCS.tavern_custom then return G.FUNCS.tavern_custom({config = {ref_table = {from = "shop", tab = tab}}}) end
+  if G.FUNCS.open_profile_menu then return G.FUNCS.open_profile_menu(e) end
+end
+
+return U
+end

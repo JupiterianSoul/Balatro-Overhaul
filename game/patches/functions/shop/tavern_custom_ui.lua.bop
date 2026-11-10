@@ -1,0 +1,399 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 348
+local C = require("functions/shop/tavern_catalog")
+local S = require("functions/shop/tavern_store")
+local A = require("functions/shop/tavern_apply")
+local TC = require("functions/shop/tavern_cards")
+
+local V = {page = {}, sel = {}}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+
+local TABS = {
+  {key = "icon", label = "Icon", types = {"portrait", "icon"}},
+  {key = "effect", label = "Shine", types = {"effect"}},
+  {key = "title", label = "Title", types = {"title"}},
+  {key = "palette", label = "Colours", types = {"palette"}},
+  {key = "felt", label = "Table", types = {"felt"}},
+  {key = "back", label = "Backs", types = {"back", "deck"}},
+  {key = "flair", label = "Flair", types = {"flame", "celebration"}},
+  {key = "jimbo", label = "Jimbo", types = {"jimbo"}},
+}
+V.TABS = TABS
+local TAB_BY_KEY = {}
+for _, t in ipairs(TABS) do TAB_BY_KEY[t.key] = t end
+
+local function txt(s, scale, colour, o)
+  o = o or {}
+  local t = {n = G.UIT.T, config = {text = s, scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = o.shadow}}
+  if o.maxw then return {n = G.UIT.C, config = {align = "cm", maxw = o.maxw}, nodes = {t}} end
+  return t
+end
+
+local function row(nodes, o)
+  o = o or {}
+  return {n = G.UIT.R, config = {align = o.align or "cm", minw = o.w, minh = o.h, padding = o.padding or 0}, nodes = nodes}
+end
+
+local function icon_name(c, key)
+  local real = c.key or key
+  local nm
+  pcall(function()
+    local d = G.localization.descriptions.Joker[real]
+    if d and type(d.name) == "string" then nm = d.name end
+  end)
+  if nm then return nm end
+  if type(c.name) == "string" and c.name ~= "" then return c.name end
+  return C.title_case((real:gsub("^j_mp_", ""):gsub("^j_", "")))
+end
+
+local function real_icon_key(key)
+  local c = key and G.P_CENTERS[key]
+  return c and c.key or key
+end
+
+local function won_icons()
+  local out, seen = {}, {}
+  local p = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+  local list = p and p.progression and p.progression.unlocked_icons or {}
+  for _, key in ipairs(list) do
+    local c = G.P_CENTERS[key]
+    local real = c and c.key or key
+    if c and not seen[real] and not (c.mp_mode_card and c.atlas == "mp_jokers") then
+      seen[real] = true
+      out[#out + 1] = {id = "icon:" .. real, type = "icon", key = real, name = icon_name(c, key), rarity = C.JOKER_RARITY[math.min(4, math.max(1, tonumber(c.rarity) or 1))] or "common", earned = true}
+    end
+  end
+  return out
+end
+
+local DEFAULT_NAMES = {flame = "Classic Flame", celebration = "No Celebration", title = "No title", effect = "No Shine"}
+
+local function default_item(type_key)
+  return {id = "none:" .. type_key, type = type_key, none = true, name = DEFAULT_NAMES[type_key] or "Default", rarity = "common"}
+end
+
+function V.none_face(it)
+  if it.type == "flame" then return {type = "flame", classic = true, name = it.name, rarity = "common"} end
+  return {type = "title", name = it.name, rarity = "common"}
+end
+
+local function owns(it)
+  if it.none or it.earned then return true end
+  return S.owns(it)
+end
+
+local function equipped(it)
+  if it.type == "icon" then
+    return not S.equipped("portrait") and ProfileRewardsManager and ProfileRewardsManager.get_equipped_icon and real_icon_key(ProfileRewardsManager.get_equipped_icon()) == it.key
+  end
+  if it.none then
+    if it.type == "portrait" then
+      return not S.equipped("portrait") and not (ProfileRewardsManager and ProfileRewardsManager.get_equipped_icon and ProfileRewardsManager.get_equipped_icon())
+    end
+    if it.type == "jimbo" then return S.equipped("jimbo") == "j_joker" end
+    return S.equipped(it.type) == nil
+  end
+  return S.is_equipped(it)
+end
+
+local function items_for(tab)
+  local out = {}
+  out[#out + 1] = default_item(tab.types[1])
+  if tab.key == "flair" then out[#out + 1] = default_item("celebration") end
+  local owned, locked = {}, {}
+  for _, t in ipairs(tab.types) do
+    local list = t == "icon" and won_icons() or S.items(t)
+    for _, it in ipairs(list) do
+      if owns(it) then owned[#owned + 1] = it else locked[#locked + 1] = it end
+    end
+  end
+  for _, it in ipairs(owned) do out[#out + 1] = it end
+  for _, it in ipairs(locked) do out[#out + 1] = it end
+  return out, #owned
+end
+
+local function pack_for(it)
+  for _, p in ipairs(C.PACKS) do
+    if p.types and not p.cards_only then
+      for _, t in ipairs(p.types) do if t == it.type then return p end end
+    end
+  end
+  return C.PACK_BY_ID.crate
+end
+
+local function status_text(it)
+  if it.none then return equipped(it) and L("Equipped") or L("Default look") end
+  if it.type == "icon" then return equipped(it) and L("Equipped") or L("Won with this joker") end
+  if not owns(it) then return L("Found in") .. " " .. L(pack_for(it).name) end
+  if it.type == "deck" then return L("Pick it in Customize Deck") end
+  return equipped(it) and L("Equipped") or L("Owned")
+end
+
+local function port() return UIK and UIK.portrait and UIK.portrait() end
+
+local function per_page()
+  if port() then return 4, 3 end
+  if touch() then return 4, 2 end
+  return 5, 2
+end
+
+local function select_item(tab, it)
+  V.sel[tab.key] = it
+  if it and owns(it) and it.type ~= "deck" then V.equip(it) end
+  UIK.refresh()
+end
+
+function V.equip(it)
+  if not it then return false end
+  if rawget(_G, "ProgressEvents") then pcall(ProgressEvents.emit, "cosmetic_equipped", {type = it.type}) end
+  if it.none then
+    if it.type == "portrait" then
+      S.unequip("portrait")
+      pcall(function()
+        local p = G.PROFILES[G.SETTINGS.profile]
+        p.progression.equipped_icon = nil
+        if G.save_progress then G:save_progress() end
+      end)
+      A.refresh_icon()
+    else
+      S.unequip(it.type)
+    end
+    pcall(play_sound, "card1", 0.9, 0.5)
+    return true
+  end
+  if it.type == "icon" then
+    S.unequip("portrait")
+    if ProfileRewardsManager and ProfileRewardsManager.equip_icon then ProfileRewardsManager.equip_icon(it.key) end
+    A.refresh_icon()
+    pcall(play_sound, "card1", 1.1, 0.6)
+    return true
+  end
+  if S.equip(it) then
+    pcall(play_sound, "card1", 1.1, 0.6)
+    return true
+  end
+  return false
+end
+
+local function preview_card(it, scale, locked)
+  local area = TC.area(G.CARD_W * scale * 1.05, G.CARD_H * scale * 1.05, 1)
+  if it and not it.none then
+    local mk = it
+    if it.type == "icon" then mk = {type = "jimbo", key = it.key, name = it.name, rarity = it.rarity} end
+    local card = TC.make(mk, G.CARD_W * scale, G.CARD_H * scale, locked and {locked = true, rarity = it.rarity} or nil)
+    if locked then TC.tag(card, "LOCKED", G.C.RED) end
+    area:emplace(card, nil, locked)
+  elseif it and it.none then
+    local card = TC.make(V.none_face(it), G.CARD_W * scale, G.CARD_H * scale)
+    area:emplace(card)
+  end
+  return {n = G.UIT.O, config = {object = area}}
+end
+
+local function profile_preview(it)
+  local opts = {}
+  if it and not it.none then
+    if it.type == "portrait" then opts.portrait = it.key
+    elseif it.type == "icon" then opts.portrait = false; opts.joker = it.key
+    elseif it.type == "effect" then opts.effect = it.key end
+  elseif it and it.none then
+    if it.type == "effect" then opts.effect = false end
+  end
+  opts.fallback = "j_joker"
+  local spr = A.icon_sprite(G.CARD_W * 0.8, G.CARD_H * 0.8, opts)
+  local name = G.PROFILES[G.SETTINGS.profile].name or "Player"
+  local title_name = ""
+  if it and it.type == "title" then
+    local title_key = (not it.none) and it.key or nil
+    for _, t in ipairs(rawget(_G, "TITLES") or {}) do if title_key and t.id == title_key then title_name = L(t.name) break end end
+  else
+    local SC = rawget(_G, "BO_SHOWCASE")
+    local t = SC and SC.my_title and SC.my_title()
+    title_name = t and L(t.text) or ""
+  end
+  return {n = G.UIT.R, config = {align = "cm", r = 0.1, colour = G.C.L_BLACK, padding = 0.1, emboss = 0.04}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", r = 0.08, colour = G.C.BLACK, padding = 0.06, outline = 1, outline_colour = G.C.GOLD, minw = G.CARD_W * 0.8, minh = G.CARD_H * 0.8}, nodes = {
+      spr and {n = G.UIT.O, config = {object = spr}} or txt("?", 0.6, G.C.GREY),
+    }},
+    {n = G.UIT.C, config = {align = "cm", padding = 0.06, minw = 1.6}, nodes = {
+      row({txt(name, 0.38, G.C.WHITE, {shadow = true, maxw = 1.8})}),
+      row({txt(title_name ~= "" and title_name or L("No title"), 0.28, title_name ~= "" and G.C.GOLD or G.C.UI.TEXT_INACTIVE, {maxw = 1.8})}),
+    }},
+  }}
+end
+
+local function preview_panel(tab, it, w, p)
+  local nodes = {}
+  local k = p and 1.2 or 1
+  local profile_tab = tab.key == "icon" or tab.key == "effect" or tab.key == "title"
+  local locked = it and not owns(it)
+  if profile_tab then
+    nodes[#nodes + 1] = row({profile_preview((not locked) and it or nil)}, {w = w, padding = 0.08})
+  else
+    nodes[#nodes + 1] = row({preview_card(it, 1.05, locked)}, {w = w, padding = 0.06})
+  end
+  if it then
+    local rc = TC.rarity_colour(it.rarity)
+    local kind = it.none and "" or L((C.TYPES[C.TYPE_INDEX[it.type]] or {}).name or (it.type == "icon" and "Joker icon" or it.type))
+    nodes[#nodes + 1] = row({txt(it.none and L(it.name) or TC.name(it), 0.38 * k, G.C.WHITE, {shadow = true, maxw = w - 0.2})}, {w = w, h = 0.44})
+    nodes[#nodes + 1] = row({txt(kind, 0.27 * k, G.C.UI.TEXT_INACTIVE, {maxw = w - 0.2})}, {w = w, h = 0.3})
+    nodes[#nodes + 1] = row({txt(it.none and "" or L((C.RARITIES[C.RARITY_INDEX[it.rarity]] or {}).name or ""), 0.3 * k, rc)}, {w = w, h = 0.32})
+    nodes[#nodes + 1] = row({txt(status_text(it), 0.28 * k, owns(it) and G.C.GREEN or G.C.GOLD, {maxw = w - 0.2})}, {w = w, h = 0.32})
+  else
+    nodes[#nodes + 1] = row({txt(L("Tap a card to equip it"), 0.3 * k, G.C.UI.TEXT_LIGHT, {maxw = w - 0.2})}, {w = w, h = 0.44})
+  end
+  if tab.key == "palette" and it and it.key == "polychromatic" and owns(it) then
+    nodes[#nodes + 1] = row({UIK.button{label = L("EDIT COLOURS"), button = "tavern_edit_poly", colour = G.C.PURPLE, w = w - 0.4}}, {w = w, padding = 0.06})
+  end
+  if p then
+    local top = table.remove(nodes, 1)
+    top.config.minw = nil
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W - 0.1, r = 0.12, colour = UIK.C.section, emboss = 0.04, padding = 0.05}, nodes = {
+      {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {top}},
+      {n = G.UIT.C, config = {align = "cm", minw = w, padding = 0}, nodes = nodes},
+    }}
+  end
+  return {n = G.UIT.C, config = {align = "cm", minw = w, minh = UIK.H - 0.3, r = 0.12, colour = UIK.C.section, emboss = 0.04, padding = 0.05}, nodes = nodes}
+end
+
+local function grid(tab, w)
+  local list, owned_n = items_for(tab)
+  local cols, rows = per_page()
+  local per = cols * rows
+  local pages = math.max(1, math.ceil(#list / per))
+  local page = math.max(1, math.min(pages, V.page[tab.key] or 1))
+  V.page[tab.key] = page
+  local scale = port() and 0.84 or touch() and 0.82 or 0.78
+  local nodes = {}
+  local sel = V.sel[tab.key]
+  for r = 1, rows do
+    local area = CardArea(G.ROOM.T.x, G.ROOM.T.h, cols * G.CARD_W * scale * 1.12, G.CARD_H * scale * 1.06,
+      {card_limit = cols, type = "title", highlight_limit = 0, collection = true})
+    for c = 1, cols do
+      local it = list[(page - 1) * per + (r - 1) * cols + c]
+      if it then
+        local mk = it
+        if it.type == "icon" then mk = {type = "jimbo", key = it.key, name = it.name, rarity = it.rarity} end
+        if it.none then mk = V.none_face(it) end
+        local card = TC.make(mk, G.CARD_W * scale, G.CARD_H * scale, {
+          locked = not owns(it),
+          rarity = it.rarity,
+          equipped = equipped(it),
+          on_click = function() select_item(tab, it) end,
+        })
+        if sel and sel.id == it.id then card:juice_up(0.2, 0.2) end
+        area:emplace(card, nil, not owns(it))
+      end
+    end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04, no_fill = true}, nodes = {{n = G.UIT.O, config = {object = area}}}}
+  end
+  local have = owned_n
+  local total = #list - (list[1] and list[1].none and 1 or 0)
+  for _, it in ipairs(list) do if it.none and it ~= list[1] then total = total - 1 end end
+  V.count_text = L("Owned") .. " " .. have .. " / " .. total
+  V.page_text = localize("k_page") .. " " .. page .. "/" .. pages
+  nodes[#nodes + 1] = UIK.pager{prev = "tavern_custom_prev", next = "tavern_custom_next", ref_table = V, ref_value = "page_text",
+    prev_disabled = page <= 1, next_disabled = page >= pages, side_w = touch() and 2.7 or 2.4, text_w = touch() and 2.2 or nil, side_ref_table = V, side_ref_value = "count_text", w = w}
+  return {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0.02}, nodes = nodes}
+end
+
+local function build(tab)
+  return function()
+    local pw = touch() and 3.9 or 4.1
+    local gw = UIK.W - pw - 0.3
+    local it = V.sel[tab.key]
+    if not it then
+      local list = items_for(tab)
+      for _, x in ipairs(list) do if equipped(x) then it = x break end end
+      it = it or list[1]
+      V.sel[tab.key] = it
+    end
+    if port() then
+      local profile_tab = tab.key == "icon" or tab.key == "effect" or tab.key == "title"
+      return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", padding = 0, portrait_keep = true}, nodes = {
+        preview_panel(tab, it, UIK.W - (profile_tab and 4.2 or 3.0), true),
+        {n = G.UIT.R, config = {minh = 0.15}, nodes = {}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {grid(tab, UIK.W)}},
+      }}}}
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+      preview_panel(tab, it, pw),
+      {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+      grid(tab, gw),
+    }}
+  end
+end
+
+function V.def(tab)
+  S.invalidate()
+  local tabs = {}
+  for _, t in ipairs(TABS) do tabs[#tabs + 1] = {key = t.key, label = L(t.label), build = build(t)} end
+  return UIK.window{
+    id = "tavern_custom",
+    title = L("CUSTOMIZATION"),
+    tab = tab,
+    tabs = tabs,
+    back_func = "tavern_custom_back",
+    footer = {
+      UIK.button{label = L("SHOP"), button = "tavern_custom_to_shop", colour = G.C.MONEY},
+    },
+  }
+end
+
+local function cur_tab()
+  local k = UIK._win and UIK._win._cur
+  return TAB_BY_KEY[k] or TABS[1]
+end
+
+G.FUNCS.tavern_custom = function(e)
+r 4 1381 %20%20 -
+l 43
+  A.install_hooks()
+  V.sel = {}
+  V.from = e and e.config and e.config.ref_table and e.config.ref_table.from or nil
+  local tab = e and e.config and e.config.ref_table and e.config.ref_table.tab
+  G.FUNCS.overlay_menu{definition = V.def(tab)}
+end
+
+G.FUNCS.tavern_custom_back = function(e)
+  if V.from == "shop" and G.FUNCS.tavern_open_shop then
+    V.from = nil
+    return G.FUNCS.tavern_open_shop(e)
+  end
+  if G.FUNCS.open_tavern_hub then return G.FUNCS.open_tavern_hub(e) end
+  G.FUNCS.exit_overlay_menu(e)
+end
+
+G.FUNCS.tavern_custom_to_shop = function(e)
+  V.from = nil
+  return G.FUNCS.tavern_open_shop(e)
+end
+
+G.FUNCS.tavern_custom_prev = function()
+  local t = cur_tab()
+  V.page[t.key] = math.max(1, (V.page[t.key] or 1) - 1)
+  UIK.refresh()
+end
+
+G.FUNCS.tavern_custom_next = function()
+  local t = cur_tab()
+  V.page[t.key] = (V.page[t.key] or 1) + 1
+  UIK.refresh()
+end
+
+G.FUNCS.tavern_custom_more = function(e)
+  local f = G.FUNCS.open_profile_menu_classic or G.FUNCS.open_profile_menu
+  if f then return f(e) end
+end
+
+G.FUNCS.tavern_edit_poly = function(e)
+  require("functions/shop/poly_editor").open(V.from)
+end
+
+return V
+end

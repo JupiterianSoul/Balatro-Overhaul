@@ -1,0 +1,110 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 85
+local Q = QOL
+local M = Q.feature("collection_pages", {})
+
+M.pages = {}
+M.CHALLENGE_CB = "change_challenge_list_page"
+
+function M.is_page_cb(name)
+    return type(name) == "string" and (name == "SMODS_card_collection_page" or name == M.CHALLENGE_CB or name:find("^your_collection_.*_page$") ~= nil)
+end
+
+function M.is_opener(name)
+    return type(name) == "string" and name:find("^your_collection_") ~= nil and not M.is_page_cb(name) and name:find("exit") == nil
+end
+
+function M.find_arrow(node, depth)
+    depth = depth or 0
+    if type(node) ~= "table" or depth > 60 then return nil end
+    local c = node.config
+    if c and c.button == "option_cycle" and c.ref_value ~= "l" and type(c.ref_table) == "table" and M.is_page_cb(c.ref_table.opt_callback) then
+        return node
+    end
+    for _, v in pairs(node.children or {}) do
+        local r = M.find_arrow(v, depth + 1)
+        if r then return r end
+    end
+    local o = c and c.object
+    if type(o) == "table" and o.UIRoot then return M.find_arrow(o.UIRoot, depth + 1) end
+    return nil
+end
+
+function M.restore(key)
+    local page = M.pages[key]
+    if not (page and page > 1) then return end
+    local box = G.OVERLAY_MENU
+    if type(box) ~= "table" or not box.UIRoot then return end
+    local arrow = M.find_arrow(box.UIRoot)
+    local cycle = arrow and arrow.config.ref_table
+    if not (cycle and type(cycle.options) == "table") then return end
+    page = math.min(page, #cycle.options)
+    if page <= 1 or cycle.current_option == page then return end
+    cycle.current_option = page - 1
+    G.FUNCS.option_cycle(arrow)
+    local first = arrow.UIBox and arrow.UIBox:get_UIE_by_ID('pip_1', arrow.parent and arrow.parent.parent)
+    if first then first.config.colour = G.C.BLACK end
+end
+
+function M.opened(key)
+    M.key = key
+    M.box = G.OVERLAY_MENU
+    M.restore(key)
+end
+
+function M.changed(e)
+    local cycle = type(e) == "table" and e.config and e.config.ref_table
+    if cycle and cycle.opt_callback == M.CHALLENGE_CB then
+        if type(cycle.current_option) == "number" then M.pages.challenges = cycle.current_option end
+        return
+    end
+    if not (cycle and M.is_page_cb(cycle.opt_callback) and M.key and G.OVERLAY_MENU == M.box) then return end
+    if type(cycle.current_option) == "number" then M.pages[M.key] = cycle.current_option end
+end
+
+function M.wrap_opener(name)
+    local open = G.FUNCS[name]
+    G.FUNCS[name] = function(...)
+        local r = open(...)
+        local ok, err = pcall(M.opened, name)
+        if not ok then print("[QoL] collection pages: " .. tostring(err)) end
+        return r
+    end
+end
+
+function M.init()
+    if M._wrapped or not (G and G.FUNCS and G.FUNCS.option_cycle) then return end
+    M._wrapped = true
+    local names = {}
+    for name, fn in pairs(G.FUNCS) do
+        if type(fn) == "function" and M.is_opener(name) then names[#names + 1] = name end
+    end
+    table.sort(names)
+    for _, name in ipairs(names) do M.wrap_opener(name) end
+    if G.UIDEF and G.UIDEF.challenge_list then
+        local list = G.UIDEF.challenge_list
+        G.UIDEF.challenge_list = function(...)
+            local def = list(...)
+r 3 617 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 17
+                local ok, err = pcall(M.restore, "challenges")
+                if not ok then print("[QoL] challenge page: " .. tostring(err)) end
+                return true
+            end}))
+            return def
+        end
+    end
+    local cycle = G.FUNCS.option_cycle
+    G.FUNCS.option_cycle = function(e, ...)
+        local r = cycle(e, ...)
+        local ok, err = pcall(M.changed, e)
+        if not ok then print("[QoL] collection pages: " .. tostring(err)) end
+        return r
+    end
+end
+
+return M
+end

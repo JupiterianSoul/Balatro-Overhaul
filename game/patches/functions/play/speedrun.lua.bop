@@ -1,0 +1,877 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 288
+Speedrun = Speedrun or {}
+local SR = Speedrun
+
+do
+  local ok, err = pcall(require, "functions/fair_lock")
+  if not ok then print("[Speedrun] fair_lock: " .. tostring(err)) end
+end
+
+SR.VERSION = 1
+SR.SPEED = 4
+SR.FILE = 'speedruns.jkr'
+SR.KEEP_ATTEMPTS = 20
+SR.DECKS = {'b_red', 'b_blue', 'b_yellow', 'b_green', 'b_black', 'b_magic', 'b_nebula', 'b_ghost', 'b_abandoned',
+  'b_checkered', 'b_zodiac', 'b_painted', 'b_anaglyph', 'b_plasma', 'b_erratic'}
+SR.CATS = {
+  {key = 'ante2', label = "Ante 2", target = 2},
+  {key = 'ante4', label = "Ante 4", target = 4},
+  {key = 'any', label = "Any%", target = 8},
+}
+SR.SEEDS = {{key = 'random', label = "Random seed"}, {key = 'weekly', label = "Weekly seed"}}
+SR.FORCED = {GAMESPEED = 4, fast_score_resolve = 1.0, skip_score_animation = false,
+  hand_optimizer = false, score_preview_enabled = false, joker_display = false, qol_fast_packs = false}
+SR.view = SR.view or {time = '0:00.0', line = '', col = {1, 1, 1, 1}, line_col = {1, 1, 1, 1}}
+
+local function L(s) return mod_loc(s) end
+local function touch() return UIK.touch() end
+
+local function fmt(t)
+  t = math.max(0, tonumber(t) or 0)
+  local h = math.floor(t / 3600)
+  local m = math.floor((t % 3600) / 60)
+  local s = t % 60
+  if h > 0 then return string.format("%d:%02d:%04.1f", h, m, s) end
+  return string.format("%d:%04.1f", m, s)
+end
+SR.fmt = fmt
+
+local function delta(d)
+  if math.abs(d) < 0.05 then return "0.0" end
+  return (d < 0 and "-" or "+") .. fmt(math.abs(d))
+end
+
+local function set_col(dst, src)
+  dst[1], dst[2], dst[3], dst[4] = src[1], src[2], src[3], src[4] or 1
+end
+
+function SR.timer_on()
+  return G.SETTINGS and G.SETTINGS.speedrun_timer == true
+end
+
+function SR.cat(key)
+  for i, c in ipairs(SR.CATS) do if c.key == key then return c, i end end
+end
+
+function SR.week_id(t)
+  local days = math.floor((t or os.time()) / 86400)
+  return math.floor((days + 3) / 7)
+end
+
+function SR.week_seed(w)
+  local chars = "123456789ABCDEFGHIJKLMNPQRSTUVWXYZ"
+  local x = ((w or SR.week_id()) * 7919 + 104729) % 2147483647
+  local out = {}
+  for i = 1, 8 do
+    x = (x * 48271) % 2147483647
+    local k = x % #chars + 1
+    out[i] = chars:sub(k, k)
+  end
+  return table.concat(out)
+end
+
+function SR.decks()
+  local out = {}
+  for _, k in ipairs(SR.DECKS) do
+    local c = G.P_CENTERS[k]
+    if c and c.unlocked then out[#out + 1] = c end
+  end
+  if #out == 0 and G.P_CENTERS.b_red then out[1] = G.P_CENTERS.b_red end
+  return out
+end
+
+function SR.max_stake(key)
+  if PlayRandom and PlayRandom.max_stake then return PlayRandom.max_stake(key) end
+  return 1
+end
+
+function SR.get_cfg()
+  local S = G.SETTINGS
+  S.speedrun_cfg = type(S.speedrun_cfg) == 'table' and S.speedrun_cfg or {}
+  local c = S.speedrun_cfg
+  if not SR.cat(c.cat) then c.cat = 'any' end
+  local ok = false
+  for _, d in ipairs(SR.decks()) do if d.key == c.deck then ok = true end end
+  if not ok then c.deck = SR.decks()[1].key end
+  c.stake = math.max(1, math.min(tonumber(c.stake) or 1, SR.max_stake(c.deck)))
+  if c.seed ~= 'weekly' then c.seed = 'random' end
+  return c
+end
+
+local function deck_name(key)
+  local ok, n = pcall(localize, {type = 'name_text', set = 'Back', key = key})
+  if ok and type(n) == 'string' and n ~= '' and n ~= 'ERROR' then return n end
+  return G.P_CENTERS[key] and G.P_CENTERS[key].name or key
+end
+
+local function stake_name(i)
+  local c = G.P_CENTER_POOLS.Stake[i]
+  if not c then return tostring(i) end
+  local ok, n = pcall(localize, {type = 'name_text', set = 'Stake', key = c.key})
+  if ok and type(n) == 'string' and n ~= '' and n ~= 'ERROR' then return n end
+  return c.name or c.key
+end
+SR.deck_name, SR.stake_name = deck_name, stake_name
+
+local function data_path()
+  return tostring(G.SETTINGS.profile or 1) .. '/' .. SR.FILE
+end
+
+function SR.load()
+  local prof = G.SETTINGS.profile
+  if SR._data and SR._data_profile == prof then return SR._data end
+  local d
+  pcall(function()
+    local raw = get_compressed(data_path())
+    if raw then d = STR_UNPACK(raw) end
+  end)
+  if type(d) ~= 'table' then d = {} end
+  d.runs = type(d.runs) == 'table' and d.runs or {}
+  d.attempts = type(d.attempts) == 'table' and d.attempts or {}
+  SR._data, SR._data_profile = d, prof
+  return d
+end
+
+function SR.save()
+  local d = SR.load()
+  local ok, err = pcall(compress_and_save, data_path(), d)
+  if not ok then print("[Speedrun] save: " .. tostring(err)) end
+end
+
+function SR.new_id()
+  local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  local out = {}
+  for i = 1, 16 do
+    local k = math.random(#chars)
+    out[i] = chars:sub(k, k)
+  end
+  return table.concat(out)
+end
+
+function SR.key(cat, deck, stake, seed)
+  return table.concat({tostring(cat), tostring(deck), tostring(stake), tostring(seed)}, '|')
+end
+
+function SR.best(cat, deck, stake, seed)
+  local best
+  for _, r in ipairs(SR.load().runs) do
+    if r.cat == cat and r.deck == deck and r.stake == stake and r.seed_type == seed and (not best or r.time < best.time) then best = r end
+  end
+  return best
+end
+
+function SR.blocked()
+  if MODLOADER and MODLOADER.modded then return L("Mods are on") end
+  if DebugManager and DebugManager.is_enabled and DebugManager.is_enabled() then return L("Debug mode is on") end
+  if G.GAME and G.GAME.multiplayer then return L("Not in multiplayer") end
+  return nil
+end
+
+function SR.rule_lines()
+  return {
+    L("Game speed 4x, score speed 100%"),
+    L("No Hand Optimizer or Score Preview"),
+    L("No fast packs"),
+    L("No mods, Debug, Forge jokers or boosters"),
+    L("No custom rules or challenges"),
+    L("The timer stops while Options is open"),
+    L("Leaving the run ends the attempt"),
+    L("Breaking a rule stops the timing"),
+  }
+end
+
+function SR.force_settings()
+  local S = G.SETTINGS
+  if not S.sr_saved then
+    local saved = {}
+    for k in pairs(SR.FORCED) do
+      if S[k] == nil then saved[k] = 'nil' else saved[k] = S[k] end
+    end
+    S.sr_saved = saved
+  end
+  for k, v in pairs(SR.FORCED) do S[k] = v end
+  pcall(function() G:save_settings() end)
+end
+
+function SR.finish_settings()
+  local S = G.SETTINGS
+  local saved = S and S.sr_saved
+  if not saved then return end
+  S.sr_saved = nil
+  for k, v in pairs(saved) do
+    if S[k] == SR.FORCED[k] then
+      if v == 'nil' then S[k] = nil else S[k] = v end
+    end
+  end
+  pcall(function() G:save_settings() end)
+end
+
+function SR.break_run(c, reason)
+  if c.broken or c.done then return end
+  c.broken = reason
+  play_sound('cancel', 0.8, 0.6)
+end
+
+function SR.check_rules(c)
+  local S, g = G.SETTINGS, G.GAME
+  local reason
+  if (tonumber(S.GAMESPEED) or 1) ~= SR.SPEED then reason = "Game speed changed"
+  elseif (tonumber(S.fast_score_resolve) or 1) ~= 1 then reason = "Score speed changed"
+  elseif S.skip_score_animation then reason = "Score animation skipped"
+  elseif S.hand_optimizer ~= false then reason = "Hand Optimizer turned on"
+  elseif S.score_preview_enabled ~= false then reason = "Score Preview turned on"
+  elseif S.qol_fast_packs then reason = "Fast packs turned on"
+  elseif g.modded_run then reason = "Cheats used"
+  elseif MODLOADER and MODLOADER.modded then reason = "Mods are on"
+  elseif DebugManager and DebugManager.is_enabled and DebugManager.is_enabled() then reason = "Debug mode is on"
+  elseif g.challenge then reason = "Challenge run"
+  elseif type(g.run_rules) == 'table' and next(g.run_rules) then reason = "Custom rules"
+  end
+  if reason then SR.break_run(c, reason) end
+end
+
+function SR.playing_back()
+  local P = rawget(_G, 'bom_playback')
+  return P and P.active and P.active() and true or false
+end
+
+function SR.sp_replay()
+  local SPR = rawget(_G, 'BO_SPREPLAY')
+  local g = G.GAME
+  if not (SPR and g and g.bo_sprp and SPR.cur and SPR.cur.id == g.bo_sprp and not SPR.cur.off) then return nil end
+  local R = rawget(_G, 'bom_replay')
+  local REC = R and R._rec
+  if not (REC and REC.local_only and REC.match_id == 'sp:' .. g.bo_sprp and REC.batch and REC.batch.buf) then return nil end
+  return SPR, REC.batch.buf
+end
+
+function SR.paused_before(pauses, t)
+  local out = 0
+  for _, p in ipairs(pauses or {}) do
+    local a, b = tonumber(p.a), tonumber(p.b)
+    if a and a >= 0 and a < t then out = out + (math.min(b and b >= a and b or t, t) - a) end
+  end
+  return out
+end
+
+function SR.replay_digest(entries, target, pauses)
+  local R = rawget(_G, 'bom_replay')
+  local kinds = R and R.ACTION_KINDS or {}
+  local ante, n = 0, 0
+  local pl, bs, fb, lp = {}, {}, {}, {}
+  for _, e in ipairs(entries or {}) do
+    if type(e) == 'table' then
+      if (e.k == 'bs' or e.k == 'sk') and tonumber(e.a) then ante = tonumber(e.a) end
+      local t = tonumber(e.t)
+      if t and pauses then t = t - SR.paused_before(pauses, t) end
+      if ante >= 1 and ante <= target and t then
+        if kinds[e.k] then n = n + 1 end
+        if e.k == 'bs' then
+          bs[ante] = (bs[ante] or 0) + 1
+          if not fb[ante] then fb[ante] = t end
+        elseif e.k == 'pl' then
+          pl[ante] = (pl[ante] or 0) + 1
+          lp[ante] = t
+        end
+      end
+    end
+  end
+  local out = {n = n, pl = {}, bs = {}, fb = {}, lp = {}}
+  for a = 1, target do
+    if not (fb[a] and lp[a]) then return nil end
+    out.pl[a], out.bs[a] = pl[a] or 0, bs[a] or 0
+    out.fb[a], out.lp[a] = math.floor(fb[a] / 10 + 0.5) / 100, math.floor(lp[a] / 10 + 0.5) / 100
+  end
+  return out
+end
+
+function SR.ban_forge(g)
+  g.banned_keys = g.banned_keys or {}
+r 3 229 %20%20 -
+l 251
+    if type(v) == 'table' and v.forge then g.banned_keys[k] = true end
+  end
+end
+
+function SR.note_replay(id)
+  local d = SR.load()
+  d.sprps = type(d.sprps) == 'table' and d.sprps or {}
+  for _, v in ipairs(d.sprps) do if v == id then return end end
+  d.sprps[#d.sprps + 1] = id
+  while #d.sprps > 60 do table.remove(d.sprps, 1) end
+  SR.save()
+end
+
+function SR.replay_is_speedrun()
+  local SPR = rawget(_G, 'BO_SPREPLAY')
+  local w = SPR and SPR.watching
+  if not (w and w.id and SR.playing_back()) then return false end
+  if w.sr then return true end
+  for _, v in ipairs(SR.load().sprps or {}) do if v == w.id then return true end end
+  return false
+end
+
+function SR.keep_replays()
+  local d = SR.load()
+  local out, best = {}, {}
+  local pending = {}
+  for _, id in ipairs(d.pending or {}) do pending[id] = true end
+  for _, r in ipairs(d.runs or {}) do
+    if r.sprp then
+      local k = SR.key(r.cat, r.deck, r.stake, r.seed_type)
+      if not best[k] or r.time < best[k].time then best[k] = r end
+      if (r.id and pending[r.id]) or (r.online == 'sent' and (r.rp_up == nil or r.rp_up == 'sending')) then out[r.sprp] = true end
+    end
+  end
+  for _, r in pairs(best) do out[r.sprp] = true end
+  local list = d.sprps or {}
+  for i = math.max(1, #list - SR.KEEP_ATTEMPTS + 1), #list do out[list[i]] = true end
+  return out
+end
+
+function SR.watch(run)
+  local W = rawget(_G, 'SpeedrunWatch')
+  if W and W.begin then return W.begin(run and run.sprp) end
+  local SPR = rawget(_G, 'BO_SPREPLAY')
+  return SPR and run and run.sprp and SPR.watch(run.sprp) or false
+end
+
+function SR.clock()
+  local g = G.GAME
+  if not g or SR.playing_back() then return nil end
+  if g.speedrun then return g.speedrun end
+  if SR.timer_on() then
+    if not g.sr_clock then g.sr_clock = {t = 0, splits = {}} end
+    return g.sr_clock
+  end
+  return nil
+end
+
+local function in_run()
+  return G.STAGES and G.STAGE == G.STAGES.RUN and G.GAME and G.GAME.round_resets and not G.GAME.multiplayer
+end
+
+function SR.hook_options()
+  local cur = G.FUNCS and G.FUNCS.options
+  if type(cur) ~= 'function' or cur == SR._opt_w then return end
+  SR._opt_w = function(...)
+    if in_run() then SR._opts = true end
+    return cur(...)
+  end
+  G.FUNCS.options = SR._opt_w
+end
+
+function SR.options_open()
+  if SR._opts and not G.OVERLAY_MENU then SR._opts = nil end
+  return SR._opts == true
+end
+
+function SR.rec_ms()
+  local R = rawget(_G, 'bom_replay')
+  local REC = R and R._rec
+  local g = G.GAME
+  if not (REC and REC.on and REC.local_only and g and g.bo_sprp and REC.match_id == 'sp:' .. g.bo_sprp and REC.t0) then return nil end
+  return math.floor((love.timer.getTime() - REC.t0) * 1000)
+end
+
+function SR.note_pause(c, paused)
+  if c ~= G.GAME.speedrun then return end
+  c.pauses = c.pauses or {}
+  local last = c.pauses[#c.pauses]
+  if paused and not (last and last.b == nil) then
+    c.pauses[#c.pauses + 1] = {a = SR.rec_ms() or -1, at = c.t}
+  elseif not paused and last and last.b == nil then
+    last.b = SR.rec_ms() or -1
+  end
+end
+
+function SR.tick(c)
+  local now = love.timer.getTime()
+  local live = not c.done and not c.failed
+  local paused = live and SR.options_open()
+  if live and paused ~= (c.paused == true) then
+    c.paused = paused or nil
+    SR.note_pause(c, paused)
+  end
+  if SR._last and SR._last_clock == c and live then
+    local dt = math.max(0, now - SR._last)
+    if paused then c.paused_t = (c.paused_t or 0) + dt else c.t = c.t + dt end
+  end
+  SR._last, SR._last_clock = now, c
+end
+
+function SR.update()
+  SR.hook_options()
+  local RS = rawget(_G, 'SpeedrunResults')
+  if RS and RS.update then RS.update() end
+  if not in_run() then
+    SR._opts = nil
+    SR._last, SR._last_clock = nil, nil
+    SR.hud_remove()
+    if not SR.pending and not (G.GAME and G.GAME.speedrun and G.STAGE == G.STAGES.RUN) then SR.finish_settings() end
+    return
+  end
+  local c = SR.clock()
+  if not c then
+    SR._last, SR._last_clock = nil, nil
+    local W = rawget(_G, 'SpeedrunWatch')
+    local wc = SR.playing_back() and W and W.clock and W.clock() or nil
+    if wc then return SR.hud_update(wc) end
+    SR.hud_remove()
+    return
+  end
+  SR.tick(c)
+  if c == G.GAME.speedrun and not c.sprp and G.GAME.bo_sprp then
+    c.sprp = G.GAME.bo_sprp
+    SR.note_replay(c.sprp)
+  end
+  if not c.done and not c.failed then
+    if G.STATE == G.STATES.GAME_OVER then c.failed = true end
+    if c == G.GAME.speedrun and not c.broken then
+      local FL = rawget(_G, 'FairLock')
+      if FL and FL.enforce then pcall(FL.enforce) end
+      SR.check_rules(c)
+    end
+  end
+  SR.hud_update(c)
+end
+
+function SR.on_end_round()
+  local g = G.GAME
+  if not in_run() then return end
+  local c = SR.clock()
+  if not c or c.done or c.failed then return end
+  c.discards = (c.discards or 0) + (tonumber(g.current_round and g.current_round.discards_used) or 0)
+  local ok, won = pcall(function() return g.chips >= g.blind.chips end)
+  if not (ok and won) then return end
+  c.blinds = (c.blinds or 0) + 1
+  if not (g.blind and g.blind.boss) then return end
+  SR.tick(c)
+  local a = g.round_resets.ante
+  if c.splits[a] == nil then
+    c.splits[a] = c.t
+    c.blinds_at = c.blinds_at or {}
+    c.hands_at = c.hands_at or {}
+    c.blinds_at[a] = c.blinds
+    c.hands_at[a] = tonumber(g.hands_played) or 0
+  end
+  if a >= (c.target or g.win_ante or 8) then
+    c.done = true
+    local RS = rawget(_G, 'SpeedrunResults')
+    if RS then pcall(RS.snapshot, c) end
+    if c == g.speedrun and not c.broken then
+      SR.record(c)
+      if RS then pcall(RS.arm, c) end
+    end
+    play_sound('timpani', 1, 0.6)
+  end
+end
+
+function SR.record(c)
+  local d = SR.load()
+  local prev = SR.best(c.cat, c.deck, c.stake, c.seed_type)
+  local splits = {}
+  for k, v in pairs(c.splits or {}) do splits[k] = v end
+  local blinds, hands = {}, {}
+  for k, v in pairs(c.blinds_at or {}) do blinds[k] = v end
+  for k, v in pairs(c.hands_at or {}) do hands[k] = v end
+  local run = {id = c.id, cat = c.cat, deck = c.deck, stake = c.stake, seed_type = c.seed_type, seed = c.seed,
+    time = c.t, splits = splits, blinds = blinds, hands = hands, date = os.time(), v = SR.VERSION,
+    pauses = c.pauses and #c.pauses or nil, paused_t = c.paused_t, hands_n = c.hands_n, discards = c.discards, rerolls = c.rerolls, money = c.money}
+  local SPR, buf = SR.sp_replay()
+  if SPR then
+    local cat = SR.cat(c.cat)
+    run.rp = cat and SR.replay_digest(buf, cat.target, c.pauses) or nil
+    if SPR.set_extra and cat then
+      local sa, pa = {}, {}
+      for a = 1, cat.target do
+        sa[a] = tonumber(splits[a]) or -1
+        pa[a] = c.pb_splits and tonumber(c.pb_splits[a]) or -1
+      end
+      local pz = {}
+      for i, p in ipairs(c.pauses or {}) do pz[i] = {a = tonumber(p.a) or -1, b = tonumber(p.b) or -1} end
+      SPR.set_extra('sr', {cat = c.cat, deck = c.deck, stake = c.stake, seed_type = c.seed_type, seed = c.seed, time = c.t,
+        splits = sa, pb_splits = pa, pz = pz, paused_t = c.paused_t or 0})
+    end
+    if SPR.write_final and SPR.write_final() then
+      run.sprp = G.GAME.bo_sprp
+      if SPR.prune then pcall(SPR.prune) end
+    end
+  end
+  d.runs[#d.runs + 1] = run
+  if run.id then
+    d.pending = type(d.pending) == 'table' and d.pending or {}
+    d.pending[#d.pending + 1] = run.id
+  end
+  SR.save()
+  if SR.flush then pcall(SR.flush) end
+  c.pb = (not prev) or c.t < prev.time
+  c.prev_best = prev and prev.time or nil
+end
+
+function SR.after_start(args, pending)
+  local g = G.GAME
+  if not g or g.multiplayer then return end
+  if SR.replay_is_speedrun() then SR.ban_forge(g) end
+  if args and args.savetext then
+    if g.speedrun and not g.speedrun.done and not g.speedrun.failed then
+      g.speedrun.broken = g.speedrun.broken or "Run was resumed"
+    end
+    return
+  end
+  if not pending then return end
+  local cat = SR.cat(pending.cat) or SR.CATS[#SR.CATS]
+  g.speedrun = {id = SR.new_id(), cat = cat.key, target = cat.target, deck = pending.deck, stake = pending.stake, seed_type = pending.seed_type,
+    seed = g.pseudorandom and g.pseudorandom.seed or pending.seed, t = 0, splits = {}, v = SR.VERSION}
+  local pb = SR.best(cat.key, pending.deck, pending.stake, pending.seed_type)
+  if pb then g.speedrun.pb_splits = pb.splits end
+  SR.force_settings()
+  SR.ban_forge(g)
+  local d = SR.load()
+  local key = SR.key(cat.key, pending.deck, pending.stake, pending.seed_type)
+  d.attempts[key] = (d.attempts[key] or 0) + 1
+  SR.save()
+end
+
+function SR.start(cfg)
+  if SR.blocked() then return end
+  local cat = SR.cat(cfg.cat) or SR.CATS[#SR.CATS]
+  local center = G.P_CENTERS[cfg.deck]
+  if not (center and center.unlocked) then return end
+  local stake = math.max(1, math.min(cfg.stake or 1, SR.max_stake(cfg.deck)))
+  local seed = cfg.seed == 'weekly' and SR.week_seed() or nil
+r 4 1375 %20%20 -
+l 3
+  if RunRules then RunRules.disarm() end
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
+  if G.SAVED_GAME ~= nil and G.SAVED_GAME.GAME and not G.SAVED_GAME.GAME.won then
+r 23 900 %20%20%20%20 -
+l 16
+    pcall(function() G:save_settings() end)
+  end
+  if G.GAME.viewed_back then G.GAME.viewed_back:change_to(center) else G.GAME.viewed_back = Back(center) end
+  SR.pending = {cat = cat.key, deck = cfg.deck, stake = stake, seed_type = cfg.seed, seed = seed}
+  local bm = rawget(_G, 'BoosterManager')
+  local inv = bm and bm.get_inventory
+  if inv then bm.get_inventory = function() return {} end end
+  local ok, err = pcall(G.FUNCS.start_run, nil, {stake = stake, seed = seed})
+  if inv then bm.get_inventory = inv end
+  if not ok then
+    SR.pending = nil
+    print("[Speedrun] start: " .. tostring(err))
+  end
+end
+
+local _sr_game_start_run = Game.start_run
+r 10 2018 - -
+l 11
+  local pending = SR.pending
+  SR.pending = nil
+  SR.finish_settings()
+  SR._last, SR._last_clock = nil, nil
+  local r = _sr_game_start_run(self, args)
+  local ok, err = pcall(SR.after_start, args or {}, pending)
+  if not ok then print("[Speedrun] after start: " .. tostring(err)) end
+  return r
+end
+
+local _sr_game_update = Game.update
+r 10 2449 - -
+l 126
+  _sr_game_update(self, dt)
+  local ok, err = pcall(SR.update)
+  if not ok and not SR._warned then
+    SR._warned = true
+    print("[Speedrun] update: " .. tostring(err))
+  end
+end
+
+local _sr_end_round = end_round
+function end_round(...)
+  local ok, err = pcall(SR.on_end_round)
+  if not ok then print("[Speedrun] end_round: " .. tostring(err)) end
+  return _sr_end_round(...)
+end
+
+SR.HUD_W = 2.5
+SR.HUD_Y = 0.36
+
+function SR.hud_def()
+  local t = touch()
+  local w = t and SR.HUD_W + 0.3 or SR.HUD_W
+  local en = G.LANGUAGES and G.LANGUAGES['en-us']
+  return {n = G.UIT.ROOT, config = {align = 'cm', colour = G.C.CLEAR, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {id = 'sr_hud_box', align = 'cm', padding = 0.05, minw = w, colour = G.C.DYN_UI.BOSS_MAIN, emboss = 0.05, r = 0.1}, nodes = {
+      {n = G.UIT.R, config = {align = 'cm', r = 0.1, minw = w - 0.1, minh = t and 0.62 or 0.56, colour = G.C.DYN_UI.BOSS_DARK}, nodes = {
+        {n = G.UIT.T, config = {ref_table = SR.view, ref_value = 'time', scale = t and 0.62 or 0.56, colour = SR.view.col, shadow = true, lang = en}},
+      }},
+      {n = G.UIT.R, config = {align = 'cm', minh = t and 0.36 or 0.32, maxw = w - 0.1}, nodes = {
+        {n = G.UIT.T, config = {ref_table = SR.view, ref_value = 'line', scale = t and 0.34 or 0.3, colour = SR.view.line_col, shadow = true}},
+      }},
+    }},
+  }}
+end
+
+function SR.hud_remove()
+  if SR.hud then
+    if not SR.hud.REMOVED then SR.hud:remove() end
+    SR.hud = nil
+  end
+  SR.hud_split = nil
+end
+
+function SR.last_split(c)
+  local last
+  for a in pairs(c.splits or {}) do if type(a) == 'number' and (not last or a > last) then last = a end end
+  return last
+end
+
+function SR.hud_text(c)
+  local g = G.GAME
+  local v = SR.view
+  v.time = fmt(c.t)
+  local col, line, lcol = G.C.GOLD, '', G.C.UI.TEXT_LIGHT
+  local speedrun = c == g.speedrun or c.watch
+  if speedrun then
+    local cat = SR.cat(c.cat)
+    line = cat and (L("Goal") .. ": " .. L(cat.label)) or ''
+  else
+    line = L("Run time")
+  end
+  local last = SR.last_split(c)
+  if last then
+    line = localize('k_ante') .. " " .. last .. "  " .. fmt(c.splits[last])
+    local pb = c.pb_splits and c.pb_splits[last]
+    if pb then
+      local d = c.splits[last] - pb
+      line = line .. "  " .. delta(d)
+      lcol = d <= 0 and G.C.GREEN or G.C.RED
+    end
+  end
+  if c.paused and not c.done and not c.failed and not c.broken then
+    line, lcol = L("Paused"), G.C.UI.TEXT_LIGHT
+  end
+  if speedrun and c.broken then
+    col, line, lcol = G.C.UI.TEXT_INACTIVE, L("Not timed") .. ": " .. L(c.broken), G.C.RED
+  elseif c.done then
+    col = G.C.GREEN
+    if speedrun and c.pb then line, lcol = L("New personal best!"), G.C.GOLD end
+  elseif c.failed then
+    col = G.C.UI.TEXT_INACTIVE
+  end
+  v.line = line
+  set_col(v.col, col)
+  set_col(v.line_col, lcol)
+end
+
+function SR.hud_juice()
+  local e = SR.hud and SR.hud.get_UIE_by_ID and SR.hud:get_UIE_by_ID('sr_hud_box')
+  if e and e.juice_up then e:juice_up(0.3, 0.3) end
+end
+
+function SR.hud_update(c)
+  SR.hud_text(c)
+  if SR.hud and SR.hud.REMOVED then SR.hud = nil end
+  if not SR.hud and G.consumeables then
+    SR.hud = UIBox{definition = SR.hud_def(), config = {align = 'bm', offset = {x = 0, y = SR.HUD_Y}, major = G.consumeables, bond = 'Weak'}}
+    SR.hud_split = SR.last_split(c) or 0
+  end
+  if SR.hud and G.consumeables then
+    local A, H = G.consumeables.T, SR.hud.T
+    local P = c.watch and G.PB_BAR and not G.PB_BAR.REMOVED and G.PB_BAR.T
+    local x, y
+    if P then
+      x = P.x + P.w / 2 - A.x - A.w / 2
+      y = P.y + P.h + 0.12 - A.y - A.h
+    else
+      local right = A.x + A.w
+      local b = G.MOD_FLOATING_BUTTON
+      if b and b.T and not b.REMOVED then
+        local top = A.y + A.h + SR.HUD_Y
+        if b.T.y < top + H.h and b.T.y + b.T.h > top and b.T.x < right and b.T.x + b.T.w / 2 > right - H.w / 2 then right = b.T.x - 0.1 end
+      end
+      x, y = right - A.x - H.w / 2 - A.w / 2, SR.HUD_Y
+    end
+    local o = SR.hud.alignment and SR.hud.alignment.offset
+    if o and (math.abs((o.x or 0) - x) > 0.01 or math.abs((o.y or 0) - y) > 0.01) then SR.hud:set_alignment({offset = {x = x, y = y}}) end
+  end
+  local last = SR.last_split(c) or 0
+  if SR.hud and last ~= SR.hud_split then
+    SR.hud_split = last
+    SR.hud_juice()
+  end
+end
+
+local function swap(id, def)
+  local e = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID(id)
+r 4 1300 %20%20 -
+l 164
+  if e.config.object then e.config.object:remove() end
+  e.config.object = UIBox{definition = def, config = {offset = {x = 0, y = 0}, parent = e, type = 'cm'}}
+  e.UIBox:recalculate()
+end
+
+function SR.tab_def()
+  local cfg = SR.get_cfg()
+  local t = touch()
+  local cw = t and 6.2 or 5.8
+  local decks = SR.decks()
+  local deck_names, deck_i = {}, 1
+  for i, d in ipairs(decks) do
+    deck_names[i] = deck_name(d.key)
+    if d.key == cfg.deck then deck_i = i end
+  end
+  local stakes = {}
+  for i = 1, SR.max_stake(cfg.deck) do stakes[i] = stake_name(i) end
+  local cat_names, cat_i = {}, 1
+  for i, c in ipairs(SR.CATS) do
+    cat_names[i] = L(c.label)
+    if c.key == cfg.cat then cat_i = i end
+  end
+  local cat = SR.CATS[cat_i]
+  local weekly = cfg.seed == 'weekly'
+  local function changed() SR.refresh_tab() end
+  local left = {
+    UIK.cycle{id = 'sr_goal', label = L("Goal"), info = cat.target >= 8 and L("Win the run: beat the ante 8 boss") or (L("Beat the boss of ante") .. " " .. cat.target),
+      options = cat_names, current = cat_i, w = cw, callback = function(i) cfg.cat = SR.CATS[i].key changed() end},
+    UIK.cycle{id = 'sr_deck', label = localize('k_deck'), options = deck_names, current = deck_i, w = cw,
+      callback = function(i) cfg.deck = decks[i].key changed() end},
+    UIK.cycle{id = 'sr_stake', label = localize('k_stake'), options = stakes, current = cfg.stake, w = cw,
+      callback = function(i) cfg.stake = i changed() end},
+    UIK.cycle{id = 'sr_seed', label = L("Seed"), info = weekly and (L("Same seed for everyone this week") .. ": " .. SR.week_seed()) or L("A new seed every run"),
+      options = {L("Random seed"), L("Weekly seed")}, current = weekly and 2 or 1, w = cw, callback = function(i) cfg.seed = i == 2 and 'weekly' or 'random' changed() end},
+  }
+  if not t then table.insert(left, 1, UIK.header(L("Category"), {w = cw})) end
+  local pb = SR.best(cat.key, cfg.deck, cfg.stake, cfg.seed)
+  local tries = SR.load().attempts[SR.key(cat.key, cfg.deck, cfg.stake, cfg.seed)] or 0
+  local right = {
+    UIK.section(L("Rules"), {UIK.note(SR.rule_lines(), {w = cw - 0.3})}, {w = cw}),
+    UIK.value{id = 'sr_pb', label = L("Personal best"), value = pb and fmt(pb.time) or L("No time yet"), colour = pb and G.C.GOLD or UIK.C.muted,
+      info = L("Attempts") .. ": " .. tries, w = cw},
+  }
+  local blocked = SR.blocked()
+  local col = function(nodes)
+    return {n = G.UIT.C, config = {align = 'tm', minw = cw, padding = 0}, nodes = (function()
+      local out = {}
+      for _, n in ipairs(nodes) do out[#out + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0.03}, nodes = {n}} end
+      return out
+    end)()}
+  end
+  return {n = G.UIT.ROOT, config = {align = 'cm', colour = G.C.CLEAR, padding = 0}, nodes = {
+    {n = G.UIT.R, config = {align = 'tm', padding = 0}, nodes = {col(left), {n = G.UIT.C, config = {minw = 0.3}}, col(right)}},
+    {n = G.UIT.R, config = {align = 'cm', minh = t and (blocked and 0.4 or 0.12) or 0.34, padding = 0}, nodes = {
+      UIK.text(blocked and (L("Speedruns are off") .. ": " .. blocked) or '', {scale = t and 0.32 or 0.3, colour = G.C.RED}),
+    }},
+    UIK.button_bar({
+      UIK.button{label = L("START SPEEDRUN"), button = 'speedrun_start', colour = UIK.C.ok, disabled = blocked ~= nil, id = 'sr_start', w = t and 4.4 or 4},
+    }),
+  }}
+end
+
+function SR.refresh_tab()
+  pcall(function() G:save_settings() end)
+  swap('play_speedrun_body', SR.tab_def())
+end
+
+G.UIDEF.speedrun_tab = function()
+  return {n = G.UIT.ROOT, config = {align = 'cm', colour = G.C.CLEAR, padding = 0.1, minh = 6.4, minw = 12.4}, nodes = {
+    {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+      {n = G.UIT.O, config = {id = 'play_speedrun_body', object = UIBox{definition = SR.tab_def(), config = {offset = {x = 0, y = 0}}}}},
+    }},
+  }}
+end
+
+G.FUNCS.speedrun_start = function()
+  SR.start(SR.get_cfg())
+end
+
+function SR.settings_rows(items)
+  local S = G.SETTINGS
+  local row = UIK.toggle{id = 'set_speedrun_timer', label = L("Speedrun timer"), info = L("A timer and ante splits in solo runs"), ref_table = S, ref_value = 'speedrun_timer',
+    callback = function() pcall(function() G:save_settings() end) end}
+  local run_h = mod_loc("Run")
+  local in_run_section = false
+  for i, n in ipairs(items) do
+    if n.uik_header then
+      if in_run_section then
+        table.insert(items, i, row)
+        return
+      end
+      in_run_section = n.uik_title == run_h
+    end
+  end
+  items[#items + 1] = row
+end
+
+mod_loc_register{
+  fr = {
+    ["Speedrun"] = "Speedrun", ["Ante 2"] = "Mise initiale 2", ["Ante 4"] = "Mise initiale 4", ["Any%"] = "Any%",
+    ["Random seed"] = "Seed au hasard", ["Weekly seed"] = "Seed de la semaine",
+    ["Category"] = "Catégorie", ["Goal"] = "Objectif",
+    ["Win the run: beat the ante 8 boss"] = "Gagner la partie : battre le boss de la mise initiale 8",
+    ["Beat the boss of ante"] = "Battre le boss de la mise initiale",
+    ["Same seed for everyone this week"] = "Même seed pour tous cette semaine",
+    ["A new seed every run"] = "Une nouvelle seed à chaque partie",
+    ["Personal best"] = "Record perso", ["No time yet"] = "Pas encore de temps", ["Attempts"] = "Essais",
+    ["Speedruns are off"] = "Speedruns désactivés", ["START SPEEDRUN"] = "LANCER LE SPEEDRUN",
+    ["Mods are on"] = "Les mods sont activés", ["Debug mode is on"] = "Le mode Debug est activé", ["Not in multiplayer"] = "Pas en multijoueur",
+    ["Game speed 4x, score speed 100%"] = "Vitesse x4, vitesse du score 100 %",
+    ["No Hand Optimizer or Score Preview"] = "Sans Optimiseur de main ni Aperçu du score",
+    ["No fast packs"] = "Sans paquets rapides",
+    ["Joker Info turned on"] = "Info Joker activée", ["Fast packs turned on"] = "Paquets rapides activés",
+    ["No mods, Debug, Forge jokers or boosters"] = "Sans mods, Debug, jokers Forge ni boosters",
+    ["No custom rules or challenges"] = "Sans règles perso ni défis",
+    ["The timer stops while Options is open"] = "Le chrono s'arrête quand les Options sont ouvertes", ["Paused"] = "En pause",
+    ["Leaving the run ends the attempt"] = "Quitter la partie met fin à l'essai",
+    ["Breaking a rule stops the timing"] = "Enfreindre une règle arrête le chrono",
+    ["Game speed changed"] = "Vitesse de jeu changée", ["Score speed changed"] = "Vitesse du score changée",
+    ["Score animation skipped"] = "Animation du score passée", ["Hand Optimizer turned on"] = "Optimiseur activé",
+    ["Score Preview turned on"] = "Aperçu du score activé",
+    ["Cheats used"] = "Triches utilisées", ["Challenge run"] = "Partie défi", ["Custom rules"] = "Règles perso",
+    ["Run was resumed"] = "Partie reprise", ["Not timed"] = "Non chronométré", ["New personal best!"] = "Nouveau record perso !",
+    ["Run time"] = "Temps de partie",
+    ["Speedrun timer"] = "Chrono de speedrun", ["A timer and ante splits in solo runs"] = "Un chrono et les temps par mise initiale en solo",
+  },
+  es = {
+    ["Speedrun"] = "Speedrun", ["Ante 2"] = "Apuesta inicial 2", ["Ante 4"] = "Apuesta inicial 4", ["Any%"] = "Any%",
+    ["Random seed"] = "Código al azar", ["Weekly seed"] = "Código semanal",
+    ["Category"] = "Categoría", ["Goal"] = "Objetivo",
+    ["Win the run: beat the ante 8 boss"] = "Gana la partida: vence al jefe de la apuesta inicial 8",
+    ["Beat the boss of ante"] = "Vence al jefe de la apuesta inicial",
+    ["Same seed for everyone this week"] = "El mismo código para todos esta semana",
+    ["A new seed every run"] = "Un código nuevo en cada partida",
+    ["Personal best"] = "Mejor marca", ["No time yet"] = "Aún sin tiempo", ["Attempts"] = "Intentos",
+    ["Speedruns are off"] = "Speedruns desactivados", ["START SPEEDRUN"] = "EMPEZAR SPEEDRUN",
+    ["Mods are on"] = "Los mods están activados", ["Debug mode is on"] = "El modo Debug está activado", ["Not in multiplayer"] = "No en multijugador",
+    ["Game speed 4x, score speed 100%"] = "Velocidad x4, velocidad de puntuación 100%",
+    ["No Hand Optimizer or Score Preview"] = "Sin Optimizador de mano ni Vista previa",
+    ["No fast packs"] = "Sin sobres rápidos",
+    ["Joker Info turned on"] = "Info del Comodín activada", ["Fast packs turned on"] = "Sobres rápidos activados",
+    ["No mods, Debug, Forge jokers or boosters"] = "Sin mods, Debug, comodines Forge ni sobres",
+    ["No custom rules or challenges"] = "Sin reglas propias ni desafíos",
+    ["The timer stops while Options is open"] = "El cronómetro se detiene con las Opciones abiertas", ["Paused"] = "En pausa",
+    ["Leaving the run ends the attempt"] = "Salir de la partida acaba el intento",
+    ["Breaking a rule stops the timing"] = "Romper una regla para el cronómetro",
+    ["Game speed changed"] = "Velocidad de juego cambiada", ["Score speed changed"] = "Velocidad de puntuación cambiada",
+    ["Score animation skipped"] = "Animación de puntuación saltada", ["Hand Optimizer turned on"] = "Optimizador activado",
+    ["Score Preview turned on"] = "Vista previa activada",
+    ["Cheats used"] = "Trucos usados", ["Challenge run"] = "Partida de desafío", ["Custom rules"] = "Reglas propias",
+    ["Run was resumed"] = "Partida reanudada", ["Not timed"] = "Sin cronometrar", ["New personal best!"] = "¡Nueva mejor marca!",
+    ["Run time"] = "Tiempo de partida",
+    ["Speedrun timer"] = "Cronómetro de speedrun", ["A timer and ante splits in solo runs"] = "Un cronómetro y tiempos por apuesta inicial en solitario",
+  },
+}
+
+do
+  local ok, err = pcall(require, "functions/play/speedrun_results")
+  if not ok then print("[Speedrun] results: " .. tostring(err)) end
+  ok, err = pcall(require, "functions/play/speedrun_watch")
+  if not ok then print("[Speedrun] watch: " .. tostring(err)) end
+end
+
+return SR
+end

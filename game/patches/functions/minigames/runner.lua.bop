@@ -1,0 +1,379 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 169
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+
+local min, max, floor, sin, abs = math.min, math.max, math.floor, math.sin, math.abs
+
+local Game = {}
+Game.__index = Game
+
+local START, ACC, TOP = 6.5, 0.16, 15
+local JUMP, GRAV, BUFFER = 12.4, 40, 0.14
+local PS = 0.5
+local CHIP, CHIP_STEP = 0.62, 0.26
+local ROLL, FLY = 0.78, 0.66
+local CARD = 0.3
+local STEP, MILESTONE = 10, 100
+local DEAD = 0.9
+local STAKES = {"stake_white", "stake_red", "stake_green", "stake_black", "stake_blue", "stake_purple", "stake_orange", "stake_gold"}
+local ROLLERS = {"bl_hook", "bl_ox", "bl_wall", "bl_wheel", "bl_arm", "bl_club", "bl_fish", "bl_psychic", "bl_goad", "bl_water", "bl_window", "bl_manacle", "bl_eye", "bl_mouth", "bl_plant", "bl_serpent", "bl_pillar", "bl_needle", "bl_head", "bl_tooth", "bl_flint", "bl_mark"}
+local FLYERS = {"bl_small", "bl_big"}
+
+Game.START, Game.ACC, Game.TOP, Game.JUMP, Game.GRAV = START, ACC, TOP, JUMP, GRAV
+
+local ground_col = {0, 0, 0, 0.28}
+local edge_col = {1, 1, 1, 0.16}
+local speck_col = {1, 1, 1, 0.1}
+local star_col = {1, 1, 1, 0.06}
+local shadow_col = {0, 0, 0, 0.35}
+local far_col = {1, 1, 1, 0.04}
+local near_col = {1, 1, 1, 0.065}
+local dust_col = {1, 1, 1, 0.3}
+local line_col = {1, 1, 1, 0.2}
+
+local function word(key, fallback)
+    if localize then
+        local ok, s = pcall(localize, key)
+        if ok and type(s) == "string" and s ~= "ERROR" then return s end
+    end
+    return fallback
+end
+
+local function plus_mult()
+    if localize then
+        local ok, s = pcall(localize, {type = "variable", key = "a_mult", vars = {1}})
+        if ok and type(s) == "string" and s ~= "ERROR" then return s end
+        if ok and type(s) == "table" and type(s[1]) == "string" then return s[1] end
+    end
+    return "+1 Mult"
+end
+
+local function blind_name(key)
+    local d = G.localization and G.localization.descriptions and G.localization.descriptions.Blind
+    d = d and d[key]
+    return d and type(d.name) == "string" and d.name or key
+end
+
+function Game:start()
+    self.score = 0
+    local touch = UIK.touch()
+    self.touch = touch
+    self.gy = self.H - (touch and 0.8 or 0.85)
+    self.px = touch and 2.0 or 1.8
+    self.pw, self.ph = K.card_w() * PS, K.card_h() * PS
+    self.skin = K.skin_key()
+    self.best_y = 2.2
+    local _, hk = K.skin_shape(self.skin)
+    self.sh = self.ph * hk
+    self.jy, self.vy, self.air, self.buf = 0, 0, false, 0
+    self.speed = START
+    self.dist, self.chips, self.cstep, self.mult, self.cards = 0, 0, 0, 1, 0
+    self.since, self.gap = 0, self.W - self.px + 2.5
+    self.obs, self.picks, self.dust = {}, {}, {}
+    self.pops = K.pops(8)
+    self.me = {}
+    self.box_c, self.box_m = {}, {}
+    self.ctext, self.mtext = "0", "1"
+    self.t, self.run_t = 0, 0
+    self.state = "run"
+    self.hint = touch and L("Tap to jump") or L("Click or Space to jump")
+    self.plus = plus_mult()
+    self.end_sound = "cancel"
+    self.deck = K.deck(self.rng)
+    self.di = 0
+end
+
+function Game:jump()
+    if self.state ~= "run" then return end
+    if self.air then
+        self.buf = BUFFER
+        return
+    end
+    self.air = true
+    self.vy = JUMP
+    self.buf = 0
+    K.juice(self.me, 0.25)
+    K.sound("cardSlide1", 1.3, 0.4)
+end
+
+function Game:press(x, y)
+    self:jump()
+end
+
+function Game:key(k)
+    if k == "space" or k == "up" or k == "w" or k == "return" then self:jump() end
+end
+
+function Game:next_card()
+    self.di = self.di % #self.deck + 1
+    return self.deck[self.di].key
+end
+
+function Game:spawn()
+    local rng, t = self.rng, self.run_t
+    local x = self.W + 1
+    local roll = rng:random()
+    local o
+    if t >= 16 and roll < 0.22 then
+        o = {kind = "fly", key = FLYERS[rng:random(1, #FLYERS)], w = FLY * 0.8, h = FLY * 0.8, y = self.gy - 1.95, size = FLY, bob = rng:random() * 6, extra = 1}
+    elseif t >= 7 and roll < 0.5 then
+        o = {kind = "roll", key = ROLLERS[rng:random(1, #ROLLERS)], w = ROLL * 0.72, h = ROLL * 0.72, y = self.gy - ROLL / 2, size = ROLL, r = 0, extra = 1.5}
+    else
+        local n = rng:random(1, t >= 10 and 3 or 2)
+        local list = {}
+        for i = 1, n do list[i] = STAKES[rng:random(1, #STAKES)] end
+        local h = CHIP + (n - 1) * CHIP_STEP
+        o = {kind = "stack", list = list, n = n, w = CHIP * 0.72, h = h - 0.1, y = self.gy - h / 2, extra = 0}
+    end
+    o.x = x
+    self.obs[#self.obs + 1] = o
+    if o.kind ~= "fly" and rng:random() < 0.4 then
+        self.picks[#self.picks + 1] = {x = x, y = self.gy - 2.3, key = self:next_card(), spin = rng:random(), j = {}}
+    end
+    local s = self.speed
+    self.gap = s * (0.85 + rng:random() * 0.85) + 1
+    if o.kind == "fly" then self.gap = self.gap + s * 0.25 end
+    if t >= 12 and o.kind == "stack" and rng:random() < 0.18 then
+        local o2 = {kind = "stack", list = {STAKES[rng:random(1, #STAKES)]}, n = 1, w = CHIP * 0.72, h = CHIP - 0.1, y = self.gy - CHIP / 2, extra = 0, x = x + CHIP + 0.15}
+        self.obs[#self.obs + 1] = o2
+        self.gap = self.gap + CHIP + 0.15
+    end
+    if o.kind ~= "fly" and rng:random() < 0.2 then
+        self.picks[#self.picks + 1] = {x = x + self.gap * 0.5, y = self.gy - 1.75, key = self:next_card(), spin = rng:random(), j = {}}
+    end
+end
+
+function Game:player_box()
+    local hw = self.pw / 2 - 0.14
+    local bottom = self.gy - self.jy - 0.04
+    local top = self.gy - self.jy - self.ph + 0.14
+    return self.px - hw, top, self.px + hw, bottom
+end
+
+local function overlap(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2)
+    return ax1 < bx2 and ax2 > bx1 and ay1 < by2 and ay2 > by1
+end
+
+function Game:hit(o)
+    self.state = "dead"
+    self.t = 0
+    self.vy = 6
+    self.air = true
+    self.killer = o.kind == "stack" and L("a stack of chips") or blind_name(o.key)
+    K.juice(self.me, 0.8)
+    K.shake(0.14)
+    K.flash(G.C.RED, 0.3)
+    K.sound("crumple1", 1, 0.6)
+    K.sound("chips2", 0.7, 0.5)
+end
+
+r 10 2449 - -
+l 202
+    dt = min(dt, 1 / 30)
+    self.t = self.t + dt
+    if self.state == "dead" then
+        self.vy = self.vy - GRAV * dt
+        self.jy = self.jy + self.vy * dt
+        if self.t >= DEAD then
+            self.result = "Game over"
+            self.result_col = G.C.RED
+            self.summary = string.format(L("Chips %d X Mult %d"), self.cstep, self.mult) .. "\n" .. string.format(L("Knocked out by %s"), self.killer or "?")
+            self.over = true
+        end
+        return
+    end
+    self.run_t = self.run_t + dt
+    self.speed = min(TOP, START + ACC * self.run_t)
+    local s = self.speed
+    local dx = s * dt
+    self.dist = self.dist + dx
+    if self.air then
+        self.vy = self.vy - GRAV * dt
+        self.jy = self.jy + self.vy * dt
+        if self.buf > 0 then self.buf = self.buf - dt end
+        if self.jy <= 0 then
+            self.jy, self.vy, self.air = 0, 0, false
+            K.juice(self.me, 0.3)
+            K.sound("cardSlide2", 0.8, 0.25)
+            for i = 1, 3 do self.dust[#self.dust + 1] = {x = self.px - 0.2 + i * 0.12, y = self.gy - 0.05, t = 0, v = 0.6 + i * 0.4} end
+            if self.buf > 0 then self:jump() end
+        end
+    end
+    self.chips = self.chips + dx
+    local step = floor(self.chips / STEP) * STEP
+    if step ~= self.cstep then
+        local before = self.cstep
+        self.cstep = step
+        self.ctext = tostring(step)
+        self.score = step * self.mult
+        if floor(step / MILESTONE) ~= floor(before / MILESTONE) then
+            K.juice(self.box_c, 0.5)
+            K.sound("chips1", 1 + min(0.5, step / 4000), 0.45)
+        end
+    end
+    self.since = self.since + dx
+    if self.since >= self.gap then
+        self.since = 0
+        self:spawn()
+    end
+    local x1, y1, x2, y2 = self:player_box()
+    local obs = self.obs
+    for i = #obs, 1, -1 do
+        local o = obs[i]
+        o.x = o.x - dx - o.extra * dt
+        if o.kind == "roll" then o.r = o.r - (s + o.extra) * dt / (ROLL / 2) end
+        if o.kind == "fly" then o.bob = o.bob + dt * 4 end
+        local oy = o.y + (o.kind == "fly" and sin(o.bob) * 0.1 or 0)
+        if overlap(x1, y1, x2, y2, o.x - o.w / 2, oy - o.h / 2, o.x + o.w / 2, oy + o.h / 2) then
+            self:hit(o)
+            return
+        end
+        if o.x < -1.5 then table.remove(obs, i) end
+    end
+    local dust = self.dust
+    for i = #dust, 1, -1 do
+        local d = dust[i]
+        d.t = d.t + dt
+        d.x = d.x - (dx + d.v * dt)
+        d.y = d.y - dt * 0.4
+        if d.t > 0.4 then table.remove(dust, i) end
+    end
+    local picks = self.picks
+    local cw, ch = K.card_w() * CARD, K.card_h() * CARD
+    for i = #picks, 1, -1 do
+        local p = picks[i]
+        p.x = p.x - dx
+        p.spin = p.spin + dt * 1.6
+        if not p.got and overlap(x1, y1, x2, y2, p.x - cw / 2, p.y - ch / 2, p.x + cw / 2, p.y + ch / 2) then
+            p.got = true
+            p.t = 0
+            self.cards = self.cards + 1
+            self.mult = self.mult + 1
+            self.mtext = tostring(self.mult)
+            self.score = self.cstep * self.mult
+            K.juice(self.box_m, 0.5)
+            K.pop(self.pops, self.plus, p.x, p.y - ch / 2 - 0.1, G.C.MULT, 0.55)
+            K.sound("multhit1", 1 + min(0.4, self.mult * 0.03), 0.55)
+        end
+        if p.got then p.t = p.t + dt end
+        if p.x < -1.5 or (p.got and p.t > 0.25) then table.remove(picks, i) end
+    end
+end
+
+function Game:draw_ground(ox, oy)
+    local W, gy = self.W, self.gy
+    local off = self.dist
+    for i = 0, 13 do
+        local x = (i * 1.73 - off * 0.15) % (W + 0.4) - 0.2
+        local y = 0.95 + ((i * 7) % 11) / 11 * (gy - 2.2)
+        K.rect(ox + x, oy + y, 0.07, 0.07, star_col, 0.02)
+    end
+    for i = 0, 7 do
+        local x = (i * 1.9 - off * 0.12) % (W + 2) - 1
+        local h = 0.9 + ((i * 5) % 4) * 0.32
+        K.rect(ox + x, oy + gy - h, 0.8, h + 0.1, far_col, 0.08)
+    end
+    for i = 0, 5 do
+        local x = (i * 2.7 + 0.8 - off * 0.3) % (W + 2) - 1
+        local h = 0.55 + ((i * 3) % 3) * 0.25
+        K.rect(ox + x, oy + gy - h, 0.62, h + 0.1, near_col, 0.08)
+    end
+    local fast = (self.speed - 10) / (TOP - 10)
+    if fast > 0 and self.state == "run" then
+        for i = 0, 4 do
+            local x = (i * 3.1 - off * 2.2) % (W + 3) - 1.5
+            local y = 1.2 + ((i * 4) % 5) * (gy - 1.6) / 5
+            K.rect(ox + x, oy + y, 1.3, 0.05, line_col, 0.025, min(1, fast))
+        end
+    end
+    K.rect(ox, oy + gy, W, self.H - gy, ground_col, 0.06)
+    K.rect(ox, oy + gy, W, 0.05, edge_col, 0.02)
+    for i = 0, 15 do
+        local x = (i * 0.97 - off) % (W + 0.4) - 0.2
+        local y = gy + 0.2 + (i % 3) * 0.17
+        K.rect(ox + x, oy + y, 0.1 + (i % 2) * 0.08, 0.04, speck_col, 0.02)
+    end
+end
+
+function Game:draw(ox, oy)
+    K.clip(ox, oy, self.W, self.H)
+    self:draw_ground(ox, oy)
+    local cw = K.card_w() * CARD
+    for _, p in ipairs(self.picks) do
+        local k = p.got and max(0, 1 - p.t / 0.25) or 1
+        local fl = (p.spin % 1)
+        K.card(p.key, ox + p.x, oy + p.y + sin(p.spin * 3) * 0.06 - (p.got and p.t or 0), CARD * (1 + (1 - k) * 0.4), {flip = fl, a = k, back = "b_red"})
+    end
+    for _, o in ipairs(self.obs) do
+        if o.kind == "stack" then
+            for i = 1, o.n do
+                K.chip(o.list[i], ox + o.x, oy + self.gy - CHIP / 2 - (i - 1) * CHIP_STEP, CHIP)
+            end
+        elseif o.kind == "roll" then
+            K.blind(o.key, ox + o.x, oy + o.y, o.size, {r = o.r})
+        else
+            K.blind(o.key, ox + o.x, oy + o.y + sin(o.bob) * 0.1, o.size)
+        end
+    end
+    for _, d in ipairs(self.dust) do
+        local k = 1 - d.t / 0.4
+        K.rect(ox + d.x - 0.05, oy + d.y - 0.05, 0.1 * (1 + d.t * 2), 0.1 * (1 + d.t * 2), dust_col, 0.04, k)
+    end
+    local sk = max(0.3, 1 - self.jy / 2.5)
+    K.rect(ox + self.px - self.pw * 0.45 * sk, oy + self.gy - 0.05, self.pw * 0.9 * sk, 0.1, shadow_col, 0.05)
+    local bob, r = 0, 0
+    if self.state == "dead" then
+        r = -self.t * 9
+    elseif self.air then
+        r = -0.18 + max(-0.18, min(0.18, -self.vy * 0.02))
+    else
+        bob = abs(sin(self.dist * 1.6)) * 0.07
+        r = sin(self.dist * 1.6) * 0.06
+    end
+    local jk = K.jk(self.me)
+    local sy = self.air and 1 or (2 - jk)
+    K.skin(self.skin, ox + self.px, oy + self.gy - self.jy - bob - self.sh * sy / 2, PS * jk, {r = r + K.jr(self.me), vk = sy / jk})
+    K.unclip()
+    local bw, bh, top = 1.5, 0.7, 0.18
+    local cx = self.W / 2
+    local jc, jm = K.jk(self.box_c), K.jk(self.box_m)
+    K.panel(ox + cx - 0.3 - bw + bw * (1 - jc) / 2, oy + top, bw * jc, bh, G.C.CHIPS, 0.1)
+    K.text(self.ctext, ox + cx - 0.3 - bw / 2, oy + top + bh / 2, K.fit(self.ctext, 0.55, bw - 0.15) * jc, G.C.UI.TEXT_LIGHT, "c")
+    K.text("X", ox + cx, oy + top + bh / 2, 0.5, G.C.RED, "c")
+    K.panel(ox + cx + 0.3 + bw * (1 - jm) / 2, oy + top, bw * jm, bh, G.C.MULT, 0.1)
+    K.text(self.mtext, ox + cx + 0.3 + bw / 2, oy + top + bh / 2, K.fit(self.mtext, 0.55, bw - 0.15) * jm, G.C.UI.TEXT_LIGHT, "c")
+    if self.state == "run" and self.run_t < 3 then
+        local a = min(1, (3 - self.run_t) / 0.6) * (0.75 + 0.25 * sin(K.now() * 4))
+        local hs = self.touch and 0.5 or 0.46
+        K.text(self.hint, ox + cx, oy + top + bh + 0.55, K.fit(self.hint, hs, self.W - 0.6), G.C.GOLD, "c", a)
+    end
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "runner",
+    name = "Jimbo Run",
+    desc = "Jimbo runs, you jump. Dodge chips and Boss Blinds, grab cards for Mult",
+    how = "Jump over chips and rolling blinds, stay under floating ones, grab cards for Mult.",
+    score = "Score",
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Jimbo Run"] = "La course de Jimbo", ["Jimbo runs, you jump. Dodge chips and Boss Blinds, grab cards for Mult"] = "Jimbo court, vous sautez. Évitez jetons et Blindes Boss, attrapez des cartes pour le Multi",
+            ["Jump over chips and rolling blinds, stay under floating ones, grab cards for Mult."] = "Sautez les jetons et les blindes qui roulent, passez sous celles qui flottent, attrapez des cartes pour le Multi.",
+            ["Tap to jump"] = "Touchez pour sauter", ["Click or Space to jump"] = "Cliquez ou Espace pour sauter", ["a stack of chips"] = "une pile de jetons", ["Knocked out by %s"] = "Mis K.O. par %s", ["Chips %d X Mult %d"] = "Jetons %d X Multi %d"},
+        es = {["Jimbo Run"] = "La carrera de Jimbo", ["Jimbo runs, you jump. Dodge chips and Boss Blinds, grab cards for Mult"] = "Jimbo corre, tú saltas. Esquiva fichas y ciegas jefe, atrapa cartas para el Multi",
+            ["Jump over chips and rolling blinds, stay under floating ones, grab cards for Mult."] = "Salta fichas y ciegas que ruedan, pasa bajo las que flotan y atrapa cartas para el Multi.",
+            ["Tap to jump"] = "Toca para saltar", ["Click or Space to jump"] = "Haz clic o Espacio para saltar", ["a stack of chips"] = "una pila de fichas", ["Knocked out by %s"] = "Noqueado por %s", ["Chips %d X Mult %d"] = "Fichas %d X Multi %d"},
+    }
+end
+
+return Game
+end

@@ -1,0 +1,810 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 56
+local B = {}
+
+local PAGE_SIZE = 5
+local ROW_W = 13.8
+local PENDING_FILE = "mp_pending_join.txt"
+local PENDING_MAX_AGE = 900
+local LIST_TIMEOUT = 20
+
+B.state = { status = "idle", rooms = {}, page = 1, rtt = nil, req = 0 }
+
+local function loader()
+    return rawget(_G, "MODLOADER")
+end
+
+local function text(t, scale, colour, extra)
+    local cfg = { text = tostring(t), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true }
+    for k, v in pairs(extra or {}) do cfg[k] = v end
+    return { n = G.UIT.T, config = cfg }
+end
+
+local function row_of(nodes, cfg)
+    cfg = cfg or {}
+    cfg.align = cfg.align or "cm"
+    return { n = G.UIT.R, config = cfg, nodes = nodes }
+end
+
+function B.room_title(name)
+    local n = type(name) == "string" and name ~= "" and name or "Player"
+    local fmt = mod_loc("{name}'s room")
+    local s = fmt:gsub("{name}", function() return n end)
+    return s
+end
+
+function B.mode_name(mode)
+    if type(mode) == "string" and mode:sub(1, 6) == "party_" and bom_party then
+        return bom_party.kind_name(mode:sub(7))
+    end
+    if mode == nil or mode == "" or mode == "attrition" then mode = "nemesis" end
+    local name = type(mode) == "string" and mode ~= "" and (mode:sub(1, 1):upper() .. mode:sub(2)) or "Rivals"
+    pcall(function()
+        local GM = package.loaded["multiplayer.bom_gamemodes"]
+        local gm = GM and GM.get and GM.get(mode or "nemesis")
+        if gm and gm.display_name then name = gm.display_name end
+    end)
+    return name
+end
+
+function B.is_open()
+    return B.overlay ~= nil and G.OVERLAY_MENU ~= nil and G.OVERLAY_MENU == B.overlay
+end
+
+function B.close_state()
+    B.overlay = nil
+end
+
+local function show_overlay(definition)
+r 4 1381 %20%20%20%20 -
+l 43
+    bom_ui.overlay({ definition = definition })
+end
+
+B.create_choice = B.create_choice or { visibility = 1, mode = 1 }
+
+function B.create_modes()
+    local out = {}
+    local list = bom_gamemodes and bom_gamemodes.get_display_list and bom_gamemodes.get_display_list() or {}
+    for _, m in ipairs(list) do out[#out + 1] = { value = m.key, label = mod_loc(m.name), max = 2 } end
+    if #out == 0 then out[1] = { value = "nemesis", label = mod_loc("Rivals"), max = 2 } end
+    if bom_party then
+        for _, k in ipairs(bom_party.KINDS) do out[#out + 1] = { value = k, label = bom_party.kind_name(k), max = bom_party.MAX, party = true } end
+    end
+    return out
+end
+
+local function create_body()
+    local c = B.create_choice
+    local modes = B.create_modes()
+    c.mode = math.min(math.max(1, c.mode or 1), #modes)
+    local m = modes[c.mode]
+    local labels = {}
+    for i, x in ipairs(modes) do labels[i] = x.label end
+    local inner = B.CREATE_W - 2 * UIK.PAD
+    local info = m.party and mod_loc(bom_party.KIND_INFO[m.value]) or mod_loc("One against one")
+    return UIK.stack({
+        UIK.cycle{ w = inner, label = mod_loc("Visibility"), options = { mod_loc("Public"), mod_loc("Private") }, current = c.visibility, id = "mp_create_vis",
+            info = c.visibility == 1 and mod_loc("Anyone can join from Browse Rooms") or mod_loc("Only players with the code can join"),
+            callback = function(i) c.visibility = i; UIK.refresh() end },
+        UIK.cycle{ w = inner, label = mod_loc("Mode"), options = labels, current = c.mode, id = "mp_create_mode", info = info,
+            callback = function(i) c.mode = i; UIK.refresh() end },
+        UIK.value{ w = inner, vw = 3.2, label = mod_loc("Players"), value = m.max == 2 and "2" or ("2-" .. m.max) },
+    }, { w = inner })
+end
+
+B.CREATE_W = 6.4
+
+function B.show_create()
+    G.FUNCS.mp_create_go = function()
+        local c = B.create_choice
+        local m = B.create_modes()[c.mode] or {}
+        B.create(c.visibility == 1 and "public" or "private", m)
+    end
+r 4 1381 %20%20%20%20 -
+l 701
+    G.FUNCS.overlay_menu{ definition = UIK.window{zoom = false,
+        id = "mp_create",
+        compact = true,
+        w = B.CREATE_W,
+        title = mod_loc("CREATE ROOM"),
+        tabs = { { key = "create", label = mod_loc("Create"), build = create_body } },
+        back_func = "open_multiplayer_menu",
+        footer = { UIK.button{ label = mod_loc("Create"), button = "mp_create_go", colour = UIK.C.ok, id = "mp_create_go", w = 3.2 } },
+    } }
+end
+
+function B.create(visibility, mode)
+    B.close_state()
+    mode = type(mode) == "table" and mode or {}
+    if mode.party and bom_party then
+        B.pending_mode = nil
+        return bom_party.create(visibility, mode.value)
+    end
+    B.pending_mode = mode.value
+    if bom_ui and bom_ui.show_connecting_screen then bom_ui.show_connecting_screen() end
+    if bom_room and bom_room.create then bom_room.create(visibility) end
+end
+
+local function quality(r)
+    if type(r.ping) ~= "number" then return 0 end
+    local total = r.ping + (bom_core.rtt or B.state.rtt or 0)
+    if total < 150 then return 3 end
+    if total < 300 then return 2 end
+    return 1
+end
+
+local function ping_bars(r)
+    local q = quality(r)
+    local col = q == 3 and G.C.GREEN or q == 2 and G.C.ORANGE or G.C.RED
+    local nodes = {}
+    for i = 1, 3 do
+        if i > 1 then nodes[#nodes + 1] = { n = G.UIT.C, config = { minw = 0.05 }, nodes = {} } end
+        nodes[#nodes + 1] = { n = G.UIT.C, config = { minw = 0.09, minh = 0.1 + 0.09 * i, r = 0.02,
+            colour = (q > 0 and i <= q) and col or G.C.UI.BACKGROUND_INACTIVE }, nodes = {} }
+    end
+    return { n = G.UIT.C, config = { align = "bm", minh = 0.4 }, nodes = nodes }
+end
+
+local function chip(label, colour)
+    return { n = G.UIT.C, config = { align = "cm", padding = 0.05, r = 0.08, colour = colour or G.C.CLEAR, minw = 1.35 }, nodes = {
+        text(label, 0.3, colour and G.C.WHITE or G.C.CLEAR, colour and {} or { shadow = false }),
+    } }
+end
+
+local function gap(w)
+    return { n = G.UIT.C, config = { align = "cm", minw = w }, nodes = {} }
+end
+
+local function other_version(r)
+    return r.sameVersion == false
+end
+
+local COLS = { room = 3.4, mode = 2.4, slots = 1.0, status = 1.5, ping = 0.8, tags = 2.0, action = 1.9 }
+local function port() return UIK.portrait and UIK.portrait() end
+local function row_w() return port() and (UIK.W - 0.2) or ROW_W end
+local COL_ORDER = { "room", "mode", "slots", "status", "ping", "tags", "action" }
+local COL_GAP = 0.1
+
+local function col(key, nodes, align)
+    return { n = G.UIT.C, config = { align = align or "cm", minw = COLS[key], maxw = COLS[key] }, nodes = nodes }
+end
+
+local function line_of(cells)
+    local nodes = {}
+    for i, c in ipairs(cells) do
+        if i > 1 then nodes[#nodes + 1] = gap(COL_GAP) end
+        nodes[#nodes + 1] = c
+    end
+    return nodes
+end
+
+local function stack(a, b)
+    return {
+        { n = G.UIT.R, config = { align = "cl" }, nodes = { a } },
+        b and { n = G.UIT.R, config = { align = "cl" }, nodes = { b } } or nil,
+    }
+end
+
+local function room_row(i, r)
+    local held = r.full and not r.inMatch and r.seatHeld ~= false and not other_version(r) and bom_room.held_for and bom_room.held_for(nil, r.id)
+    local back = r.inMatch and r.seatHeld == true and not other_version(r) and bom_rejoin and bom_rejoin.held_match_for and bom_rejoin.held_match_for(r.id)
+    G.FUNCS["mp_browse_join_" .. i] = function()
+        if back then return B.rejoin_match() end
+        if held then return B.rejoin(r, held) end
+        B.join_room(r)
+    end
+    held = held or back
+    local action
+    if (r.joinable and not other_version(r)) or held then
+        action = UIBox_button({ button = "mp_browse_join_" .. i, label = { held and mod_loc("REJOIN") or mod_loc("JOIN") }, colour = G.C.GREEN,
+            minw = COLS.action, minh = _G._IS_DESKTOP and 0.6 or 0.85, scale = 0.42, col = true })
+    else
+        local label = other_version(r) and mod_loc("UPDATE") or r.inMatch and mod_loc("IN MATCH") or mod_loc("FULL")
+        action = { n = G.UIT.C, config = { align = "cm", minw = COLS.action, maxw = COLS.action, minh = 0.6, r = 0.1, colour = G.C.UI.BACKGROUND_INACTIVE }, nodes = {
+            text(label, 0.42, other_version(r) and G.C.RED or G.C.UI.TEXT_LIGHT, { maxw = COLS.action - 0.1 }),
+        } }
+    end
+    local ver_col = other_version(r) and G.C.RED or G.C.GREEN
+    local badge = nil
+    pcall(function()
+        local host = type(r.roster) == "table" and r.roster[1] or nil
+        if host and rawget(_G, "bom_badges") then badge = bom_badges.for_player(host, { h = 0.32 }) end
+    end)
+    local title = text(B.room_title(r.name), 0.4, G.C.WHITE, { maxw = COLS.room - (badge and 1.05 or 0) })
+    local room_cell = col("room", stack(
+        badge and { n = G.UIT.C, config = { align = "cl" }, nodes = { badge, gap(0.08), title } } or title,
+        text(bom_room.version_text(r.version, r.versionName) .. (other_version(r) and (" " .. mod_loc("(update)")) or ""), 0.28, ver_col, { maxw = COLS.room })), "cl")
+    local lives = tonumber(r.lives)
+    local mode_cell = col("mode", stack(
+        text(B.mode_name(r.mode), 0.32, G.C.GOLD, { maxw = COLS.mode }),
+        lives and text(lives .. " " .. mod_loc("lives"), 0.28, G.C.UI.TEXT_LIGHT) or nil), "cl")
+    local players = tostring(r.players or 1) .. "/" .. tostring(r.maxPlayers or 2)
+    local status = r.inMatch and (tonumber(r.ante) and (mod_loc("Ante") .. " " .. r.ante) or mod_loc("In match")) or mod_loc("Lobby")
+    local mods_col = r.modded and (r.sameMods == false and G.C.ORANGE or G.C.PURPLE) or nil
+    local tags = { n = G.UIT.C, config = { align = "cm", minw = COLS.tags, maxw = COLS.tags }, nodes = {
+        { n = G.UIT.R, config = { align = "cm", padding = 0.02 }, nodes = { chip(r.modded and (r.sameMods == false and mod_loc("MODS NEEDED") or mod_loc("MODDED")) or "", mods_col) } },
+        { n = G.UIT.R, config = { align = "cm", padding = 0.02 }, nodes = { chip(mod_loc("PRIVATE"), r.private and G.C.ORANGE or nil) } },
+    } }
+    local slots_cell = col("slots", { text(players, 0.4, r.full and G.C.UI.TEXT_INACTIVE or G.C.WHITE) })
+    local status_cell = col("status", { text(status, 0.32, r.inMatch and G.C.ORANGE or G.C.GREEN, { maxw = COLS.status }) })
+    local ping_cell = col("ping", { ping_bars(r) })
+    if port() then
+        local lw = row_w() - 0.2
+        return row_of({
+            { n = G.UIT.C, config = { align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.08, minw = row_w() }, nodes = {
+                row_of(line_of({ room_cell, mode_cell, slots_cell }), { minw = lw }),
+                row_of({}, { minh = 0.08 }),
+                row_of(line_of({ status_cell, ping_cell, tags, action }), { minw = lw }),
+            } },
+        }, { padding = 0.04 })
+    end
+    return row_of({
+        row_of(line_of({
+            room_cell, mode_cell,
+            slots_cell,
+            status_cell,
+            ping_cell,
+            tags, action,
+        }), { r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.08, minw = ROW_W, minh = 0.8 }),
+    }, { padding = 0.04 })
+end
+
+local function header(shown)
+    if port() then return nil end
+    local labels = { room = "ROOM", mode = "MODE", slots = "SLOTS", status = "STATUS", ping = "PING", tags = "", action = "" }
+    local cells = {}
+    for _, k in ipairs(COL_ORDER) do
+        cells[#cells + 1] = col(k, { text(labels[k] ~= "" and mod_loc(labels[k]) or "", 0.3, shown and G.C.UI.TEXT_INACTIVE or G.C.CLEAR) },
+            (k == "room" or k == "mode") and "cl" or "cm")
+    end
+    return row_of({ row_of(line_of(cells), { padding = 0.08, minw = ROW_W }) }, { padding = 0.04 })
+end
+
+B.FILTER_MODES = { "All", "1v1", "Battle Royale", "Teams", "Co-op Raid" }
+B.filter = B.filter or { mode = 1, free = 1, lobby = 1 }
+
+local function passes(r)
+    local f = B.filter
+    local m = type(r.mode) == "string" and r.mode or ""
+    if f.mode == 2 and r.party then return false end
+    if f.mode == 3 and m ~= "party_br" then return false end
+    if f.mode == 4 and m ~= "party_teams" then return false end
+    if f.mode == 5 and m ~= "party_raid" then return false end
+    if f.free == 2 and r.full then return false end
+    if f.lobby == 2 and r.inMatch then return false end
+    return true
+end
+
+function B.filtered()
+    local out = {}
+    for _, r in ipairs(B.state.rooms or {}) do if passes(r) then out[#out + 1] = r end end
+    return out
+end
+
+local function filter_chip(label, on, button, ref, w, check)
+    local t = UIK.touch()
+    local h = t and 0.66 or 0.52
+    local scale = t and 0.34 or 0.3
+    local nodes = {}
+    local tw = w - 0.2
+    if check then
+        nodes[#nodes + 1] = { n = G.UIT.C, config = { align = "cm", minw = 0.2, minh = 0.2, r = 0.05, colour = on and G.C.WHITE or { 1, 1, 1, 0.2 } }, nodes = {} }
+        nodes[#nodes + 1] = gap(0.1)
+        tw = tw - 0.3
+    end
+    local s, sc = bom_kit.fit(label, tw, scale)
+    nodes[#nodes + 1] = text(s, sc, on and G.C.WHITE or G.C.UI.TEXT_LIGHT)
+    return { n = G.UIT.C, config = { align = "cm", minw = w, maxw = w, minh = h, r = 0.1, padding = 0.04, button = button, ref_table = ref,
+        hover = true, shadow = true, emboss = 0.04, colour = on and (check and G.C.GREEN or G.C.RED) or { 0.16, 0.19, 0.22, 1 } }, nodes = nodes }
+end
+
+local function filter_bar()
+    local f = B.filter
+    local cg = 0.08
+    local t = UIK.touch()
+    local inner = ROW_W - (t and 0.7 or 0.5)
+    local tog_w = t and 2.05 or 2.15
+    local avail = inner - 2 * tog_w - 0.5 - cg * #B.FILTER_MODES
+    local labels, widths, total = {}, {}, 0
+    for i, m in ipairs(B.FILTER_MODES) do
+        labels[i] = mod_loc(m)
+        widths[i] = bom_kit.text_w(labels[i], t and 0.34 or 0.3) + 0.35
+        total = total + widths[i]
+    end
+    local extra = (avail - total) / #B.FILTER_MODES
+    if port() then
+        local pw = row_w() - (t and 0.7 or 0.5)
+        local function line(list)
+            local w = (pw - cg * (#list - 1)) / #list
+            local out = {}
+            for _, it in ipairs(list) do
+                if #out > 0 then out[#out + 1] = gap(cg) end
+                out[#out + 1] = it(w)
+            end
+            return row_of(out, { padding = 0.04 })
+        end
+        local function mode_chip(i) return function(w) return filter_chip(labels[i], f.mode == i, "mp_browse_fmode", { i = i }, w) end end
+        local first, second = {}, {}
+        for i = 1, #B.FILTER_MODES do
+            local list = i <= math.ceil(#B.FILTER_MODES / 2) and first or second
+            list[#list + 1] = mode_chip(i)
+        end
+        return row_of({
+            { n = G.UIT.C, config = { align = "cm", minw = row_w(), r = 0.1, colour = UIK.C.section, padding = 0.08 }, nodes = {
+                line(first), line(second),
+                line({
+                    function(w) return filter_chip(mod_loc("Free slots"), f.free == 2, "mp_browse_ftoggle", { key = "free" }, w, true) end,
+                    function(w) return filter_chip(mod_loc("Not started"), f.lobby == 2, "mp_browse_ftoggle", { key = "lobby" }, w, true) end,
+                }),
+            } },
+        }, { padding = 0.04 })
+    end
+    local nodes = {}
+    for i = 1, #B.FILTER_MODES do
+        if i > 1 then nodes[#nodes + 1] = gap(cg) end
+        local w = extra >= 0 and (widths[i] + extra) or (avail / #B.FILTER_MODES)
+        nodes[#nodes + 1] = filter_chip(labels[i], f.mode == i, "mp_browse_fmode", { i = i }, w)
+    end
+    nodes[#nodes + 1] = gap(0.25)
+    nodes[#nodes + 1] = { n = G.UIT.C, config = { minw = 0.04, minh = UIK.touch() and 0.56 or 0.44, r = 0.02, colour = { 1, 1, 1, 0.15 } }, nodes = {} }
+    nodes[#nodes + 1] = gap(0.21)
+    nodes[#nodes + 1] = filter_chip(mod_loc("Free slots"), f.free == 2, "mp_browse_ftoggle", { key = "free" }, tog_w, true)
+    nodes[#nodes + 1] = gap(cg)
+    nodes[#nodes + 1] = filter_chip(mod_loc("Not started"), f.lobby == 2, "mp_browse_ftoggle", { key = "lobby" }, tog_w, true)
+    return row_of({
+        row_of(nodes, { minw = ROW_W, r = 0.1, colour = UIK.C.section, padding = 0.08 }),
+    }, { padding = 0.04 })
+end
+
+local STATUS_TEXT = {
+    loading = "Loading rooms...",
+    empty = "No open rooms right now. Create one!",
+    error = "Could not reach the server.",
+    filtered = "No room matches these filters.",
+}
+
+local function page_size() if port() then return 5 end return (_G._IS_DESKTOP == false) and 3 or 4 end
+
+local function live_module()
+    local sp = rawget(_G, "bom_spectate")
+    return sp and type(sp.browse_tab) == "function" and sp or nil
+end
+B.live_module = live_module
+
+local function rooms_body()
+    local st = B.state
+    local rooms = B.filtered()
+    local per = page_size()
+    local pages = math.max(1, math.ceil(#rooms / per))
+    st.page = math.min(math.max(1, st.page or 1), pages)
+    local body = {}
+    local has_rows = st.status == "ok" and #rooms > 0
+    if has_rows then
+        local first = (st.page - 1) * per
+        for i = first + 1, math.min(first + per, #rooms) do
+            body[#body + 1] = room_row(i - first, rooms[i])
+        end
+    else
+        local key = (st.status == "ok" and #rooms == 0) and "filtered" or st.status
+        key = STATUS_TEXT[key] or STATUS_TEXT.loading
+        body[#body + 1] = row_of({
+            text(mod_loc(key), 0.42, st.status == "error" and G.C.RED or G.C.UI.TEXT_LIGHT),
+        }, { padding = 0.3 })
+    end
+    local contents = {
+        filter_bar(),
+        header(has_rows) or row_of({}, { minh = 0.1 }),
+        row_of({
+            { n = G.UIT.C, config = { align = has_rows and "tm" or "cm" }, nodes = body },
+        }, { align = has_rows and "tm" or "cm", minw = row_w() + 0.2, minh = per * (port() and 1.8 or 1.0) }),
+    }
+    if pages > 1 then
+        contents[#contents + 1] = UIK.pager{ prev = "mp_browse_prev", next = "mp_browse_next", text = tostring(st.page) .. " / " .. tostring(pages),
+            prev_disabled = st.page <= 1, next_disabled = st.page >= pages }
+    end
+    return { n = G.UIT.R, config = { align = "tm", minw = UIK.W, padding = 0 }, nodes = { { n = G.UIT.C, config = { align = "tm" }, nodes = contents } } }
+end
+
+function B.definition()
+    local tabs = { { key = "rooms", label = mod_loc("Rooms"), build = rooms_body } }
+    local sp = live_module()
+    if sp then tabs[#tabs + 1] = { key = "live", label = mod_loc("Watch live"), build = sp.browse_tab } end
+    return UIK.window{ zoom = false, id = "mp_browse", title = mod_loc("BROWSE ROOMS"), tabs = tabs, back_func = "mp_browse_back",
+        footer = { UIK.button{ label = mod_loc("REFRESH"), button = "mp_browse_refresh", colour = G.C.BLUE, id = "mp_browse_refresh" } } }
+end
+
+local register
+
+local function window_open()
+    return B.is_open() and UIK._win ~= nil and UIK._win.id == "mp_browse" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") ~= nil
+end
+
+function B.render()
+    register()
+    if window_open() then
+        UIK.refresh()
+        return
+    end
+    show_overlay(B.definition())
+    B.overlay = G.OVERLAY_MENU
+end
+
+register = function()
+    G.FUNCS.mp_browse_refresh = function()
+        local sp = live_module()
+        if sp and UIK._win and UIK._win.id == "mp_browse" and UIK._win._cur == "live" then
+            if type(sp.browse_refresh) == "function" then sp.browse_refresh() end
+            return
+        end
+        B.refresh()
+    end
+    G.FUNCS.mp_browse_reopen = function() B.show() end
+    for _, key in ipairs({ "mode", "free", "lobby" }) do
+        G.FUNCS["mp_browse_filter_" .. key] = function(args)
+            if not (args and args.cycle_config) then return end
+            B.filter[key] = args.cycle_config.current_option
+            B.state.page = 1
+            B.render()
+        end
+    end
+    G.FUNCS.mp_browse_fmode = function(e)
+        local i = e and e.config and e.config.ref_table and e.config.ref_table.i
+        if not i or B.filter.mode == i then return end
+        B.filter.mode = i
+        B.state.page = 1
+        B.render()
+    end
+    G.FUNCS.mp_browse_ftoggle = function(e)
+        local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+        if key ~= "free" and key ~= "lobby" then return end
+        B.filter[key] = B.filter[key] == 2 and 1 or 2
+        B.state.page = 1
+        B.render()
+    end
+    G.FUNCS.mp_browse_prev = function()
+        B.state.page = math.max(1, (B.state.page or 1) - 1)
+        B.render()
+    end
+    G.FUNCS.mp_browse_next = function()
+        B.state.page = (B.state.page or 1) + 1
+        B.render()
+    end
+    G.FUNCS.mp_browse_page = function(args)
+        if not (args and args.cycle_config) then return end
+        B.state.page = args.cycle_config.current_option
+        B.render()
+    end
+    G.FUNCS.mp_browse_back = function()
+        B.close_state()
+        if bom_match and bom_match.get_phase and bom_match.get_phase() == bom_match.PHASE.NONE then
+            local m = rawget(_G, "mpm_menu")
+            if not (m and m.active) then pcall(function() bom_core.disconnect() end) end
+        end
+        G.FUNCS.open_multiplayer_menu()
+    end
+end
+
+function B.request()
+    B.state.req = B.state.req + 1
+    local req = B.state.req
+    B.state.status = "loading"
+    if G.E_MANAGER and Event then
+        G.E_MANAGER:add_event(Event({ trigger = "after", delay = LIST_TIMEOUT, timer = "REAL", blocking = false, blockable = false,
+            func = function()
+                if B.state.req == req and B.state.status == "loading" then B.on_list_failed("timeout") end
+                return true
+            end }))
+    end
+    if bom_room and bom_room.list_rooms then bom_room.list_rooms() end
+end
+
+function B.show()
+    register()
+    B.state.page = 1
+    B.state.status = "loading"
+    B.render()
+    B.request()
+end
+
+function B.refresh()
+    register()
+    B.state.status = "loading"
+    if B.is_open() then B.render() end
+    B.request()
+end
+
+function B.on_list(data, rtt)
+    if rtt then B.state.rtt = rtt end
+    B.state.rooms = type(data) == "table" and type(data.rooms) == "table" and data.rooms or {}
+    B.state.status = #B.state.rooms > 0 and "ok" or "empty"
+    B.state.req = B.state.req + 1
+    if B.is_open() then B.render() end
+end
+
+function B.on_list_failed(msg)
+    B.state.status = "error"
+    B.state.rooms = {}
+    if mp_log then mp_log.warn("BOM_BROWSE", "room list failed: %s", tostring(msg)) end
+    if B.is_open() then B.render() end
+end
+
+function B.ask_code(r)
+    B.close_state()
+    bom_ui.overlay({ definition = create_UIBox_join_room_input({
+        id = r.id, back = "mp_browse_reopen", title = B.room_title(r.name),
+    }) })
+end
+
+function B.rejoin_match()
+    B.close_state()
+    bom_rejoin.rejoin_now()
+end
+
+function B.rejoin(r, held)
+    B.close_state()
+    if bom_ui and bom_ui.show_connecting_screen then bom_ui.show_connecting_screen() end
+    bom_room.join(held.code, { id = r.id, from_browse = true })
+end
+
+function B.show_version_mismatch(data, last)
+    B.close_state()
+    last = last or {}
+    local mine = data.yourVersion ~= nil and data.yourVersion or bom_room.game_version()
+    local ahead = OverhaulUpdate and OverhaulUpdate.newer and OverhaulUpdate.newer(mine, data.hostVersion) or false
+    local msg = mod_loc(ahead and "This room runs {host}, you have {mine}. The host needs to update." or "This room runs {host}, you have {mine}. Update to join.")
+    msg = msg:gsub("{host}", function() return bom_room.version_text(data.hostVersion, data.hostVersionName) end)
+    msg = msg:gsub("{mine}", function() return bom_room.version_text(mine, data.yourVersionName) end)
+    G.FUNCS.mp_version_ok = function()
+        if last.from_browse then return B.show() end
+        if bom_match and bom_match.get_phase() == bom_match.PHASE.NONE then pcall(function() bom_core.disconnect() end) end
+        G.FUNCS.open_multiplayer_menu()
+    end
+    if not ahead and OverhaulUpdate and OverhaulUpdate.known() then
+        return show_overlay(OverhaulUpdate.prompt_definition({ note = msg, later = G.FUNCS.mp_version_ok }))
+    end
+    if OverhaulUpdate and not ahead then OverhaulUpdate.check(true) end
+    show_overlay(create_UIBox_generic_options({ back_func = "mp_version_ok", no_back = true, contents = {
+        row_of({ text(mod_loc("OTHER GAME VERSION"), 0.6, G.C.GOLD) }, { padding = 0.1 }),
+        row_of({ text(msg, 0.4, G.C.UI.TEXT_LIGHT, { maxw = 9 }) }, { padding = 0.1 }),
+        row_of({
+            UIBox_button({ button = "mp_version_ok", label = { mod_loc("OK") }, colour = G.C.RED, minw = 2.6, minh = 0.75, scale = 0.45, col = true }),
+        }, { padding = 0.1 }),
+    } }))
+end
+
+function B.join_room(r)
+    if not (r and r.joinable) then return end
+    if other_version(r) then
+        return B.show_version_mismatch({ hostVersion = r.version, hostVersionName = r.versionName }, { from_browse = true })
+    end
+    if not r.sameMods then
+        return B.show_mods_required({ hostModded = r.modded, hostMods = r.mods or {}, id = r.id, private = r.private, from_browse = true, name = r.name })
+    end
+    if r.private then return B.ask_code(r) end
+    B.close_state()
+    bom_room.join(nil, { id = r.id, from_browse = true })
+end
+
+function B.on_join_refused(data, last)
+    last = last or {}
+    if data.reason == "code_required" then
+        return B.ask_code({ id = data.id or last.id })
+    end
+    if data.reason == "version_mismatch" then
+        return B.show_version_mismatch(data, last)
+    end
+    B.show_mods_required({
+        hostModded = data.hostModded, hostMods = data.hostMods or {}, id = last.id or data.id,
+        code = last.code, private = last.code ~= nil, from_browse = last.from_browse,
+    })
+end
+
+local function required_list(info)
+    local need = {}
+    for _, m in ipairs(info.hostMods or {}) do
+        if type(m) == "table" and m.id and m.id ~= "Steamodded" then
+            need[#need + 1] = { id = tostring(m.id), name = tostring(m.name or m.id), version = tostring(m.version or "") }
+        end
+    end
+    return need
+end
+
+function B.show_mods_required(info)
+    B.close_state()
+    B.info = info
+    local to_normal = not info.hostModded and bom_core.is_modded()
+    G.FUNCS.mp_mods_yes = function() B.accept(B.info) end
+    G.FUNCS.mp_mods_no = function() B.decline(B.info) end
+    local contents = {}
+    if to_normal then
+        contents[#contents + 1] = row_of({ text(mod_loc("NORMAL GAME ROOM"), 0.6, G.C.GOLD) }, { padding = 0.1 })
+        contents[#contents + 1] = row_of({ text(mod_loc("This room plays the normal game without mods."), 0.4) }, { padding = 0.05 })
+        contents[#contents + 1] = row_of({ text(mod_loc("Switch to the normal game and join?"), 0.4) }, { padding = 0.1 })
+    else
+        local mods = info.hostMods or {}
+        local rows = {}
+        local shown = math.min(#mods, 8)
+        for i = 1, shown do
+            local m = mods[i]
+            rows[#rows + 1] = row_of({
+                text(tostring(m.name or m.id), 0.4, G.C.WHITE, { maxw = 4.5 }),
+                (m.version and m.version ~= "") and text("  v" .. tostring(m.version), 0.32, G.C.GOLD, { maxw = 1.8 }) or nil,
+            }, { padding = 0.03 })
+        end
+        if #mods > shown then
+            local more = mod_loc("+{n} more"):gsub("{n}", function() return tostring(#mods - shown) end)
+            rows[#rows + 1] = row_of({ text(more, 0.32, G.C.UI.TEXT_INACTIVE) }, { padding = 0.03 })
+        end
+        contents[#contents + 1] = row_of({ text(mod_loc("MODS REQUIRED"), 0.6, G.C.GOLD) }, { padding = 0.1 })
+        contents[#contents + 1] = row_of({ text(mod_loc("This room plays with these mods:"), 0.4) }, { padding = 0.05 })
+        contents[#contents + 1] = row_of({
+            { n = G.UIT.C, config = { align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.15, minw = 6.5 }, nodes = rows },
+        }, { padding = 0.08 })
+        if info.missing and #info.missing > 0 then
+            local names = {}
+            for _, m in ipairs(info.missing) do names[#names + 1] = m.name .. ((m.version ~= "" and (" v" .. m.version)) or "") end
+            contents[#contents + 1] = row_of({ text(mod_loc("Missing: ") .. table.concat(names, ", "), 0.36, G.C.RED, { maxw = 6.5 }) }, { padding = 0.04 })
+            contents[#contents + 1] = row_of({ text(mod_loc("Install them from the Mods menu first."), 0.36, G.C.RED, { maxw = 6.5 }) }, { padding = 0.04 })
+        end
+        contents[#contents + 1] = row_of({ text(mod_loc("Install them and join?"), 0.4) }, { padding = 0.1 })
+    end
+    contents[#contents + 1] = row_of({
+        UIBox_button({ button = "mp_mods_yes", label = { mod_loc("YES") }, colour = G.C.GREEN, minw = 2.6, minh = 0.75, scale = 0.45, col = true }),
+        gap(0.3),
+        UIBox_button({ button = "mp_mods_no", label = { mod_loc("NO") }, colour = G.C.RED, minw = 2.6, minh = 0.75, scale = 0.45, col = true }),
+    }, { padding = 0.1 })
+    show_overlay(create_UIBox_generic_options({ back_func = "mp_mods_no", no_back = true, contents = contents }))
+    B.mods_overlay = G.OVERLAY_MENU
+end
+
+function B.decline(info)
+    B.mods_overlay = nil
+    if info and info.from_browse then return B.show() end
+    if bom_match and bom_match.get_phase() == bom_match.PHASE.NONE then pcall(function() bom_core.disconnect() end) end
+    G.FUNCS.open_multiplayer_menu()
+end
+
+function B.enable_exact(need)
+    local L = loader()
+    if not (L and L.status and L.set_enabled) then return end
+    local want = {}
+    for _, m in ipairs(need) do want[m.id] = true end
+    local st = L.status()
+    for _, e in ipairs(st and st.mods or {}) do
+        local on = (e.id and want[e.id]) or (e.folder and want[e.folder]) or false
+        if (e.enabled and true or false) ~= on then pcall(L.set_enabled, e.folder, on) end
+    end
+end
+
+function B.missing(need)
+    local L = loader()
+    local have = {}
+    local st = L and L.status and L.status()
+    for _, e in ipairs(st and st.mods or {}) do
+        if not e.refused then
+            if e.id then have[e.id] = tostring(e.version or "") end
+            if e.folder and not have[e.folder] then have[e.folder] = tostring(e.version or "") end
+        end
+    end
+    local miss = {}
+    for _, m in ipairs(need) do
+        local v = have[m.id]
+        if v == nil or (m.version ~= "" and v ~= m.version) then miss[#miss + 1] = m end
+    end
+    return miss
+end
+
+function B.write_pending(info)
+    pcall(function()
+        love.filesystem.write(PENDING_FILE, json.encode({
+            id = info.id, code = info.code, private = info.private and true or false, at = os.time(),
+        }))
+    end)
+end
+
+local function show_installing()
+    show_overlay(create_UIBox_generic_options({ no_back = true, contents = {
+        row_of({ text(mod_loc("INSTALLING MODS"), 0.6, G.C.GOLD) }, { padding = 0.1 }),
+        row_of({ text(mod_loc("Please wait..."), 0.4) }, { padding = 0.1 }),
+    } }))
+end
+
+local function switch_game(modded)
+    local L = loader()
+    if not modded and L and L.modded and G.FUNCS.mods_normal_game then
+        return G.FUNCS.mods_normal_game({ config = {} })
+    end
+    if L and L.switch then return L.switch(modded) end
+    bom_ui.show_error(mod_loc("Could not install the mods."))
+end
+
+function B.accept(info)
+    if not info then return end
+    if not info.hostModded then
+        B.write_pending(info)
+        return switch_game(false)
+    end
+    local need = required_list(info)
+    local function go()
+        B.enable_exact(need)
+        B.write_pending(info)
+        switch_game(true)
+    end
+    local miss = B.missing(need)
+    if #miss == 0 then return go() end
+    local W = rawget(_G, "ModWorkshop")
+    if not (W and W.install_required) then
+        info.missing = miss
+        return B.show_mods_required(info)
+    end
+    info.missing = nil
+    show_installing()
+    local ok_call, err = pcall(W.install_required, miss, function(ok, ierr)
+        if ok then
+            go()
+        else
+            B.show_mods_required(info)
+            bom_ui.show_error(ierr and tostring(ierr) or mod_loc("Could not install the mods."))
+        end
+    end)
+    if not ok_call then
+        if mp_log then mp_log.error("BOM_BROWSE", "install_required failed: %s", tostring(err)) end
+        B.show_mods_required(info)
+        bom_ui.show_error(mod_loc("Could not install the mods."))
+    end
+end
+
+function B.read_pending()
+    local raw = love.filesystem.read(PENDING_FILE)
+    if not raw then return nil end
+    love.filesystem.remove(PENDING_FILE)
+    local ok, p = pcall(json.decode, raw)
+    if not ok or type(p) ~= "table" then return nil end
+    if type(p.at) ~= "number" or os.time() - p.at > PENDING_MAX_AGE or os.time() < p.at - 60 then return nil end
+    if not p.id and not p.code then return nil end
+    return p
+end
+
+function B.resume_pending(p)
+    if not p then return end
+    if mp_log then mp_log.info("BOM_BROWSE", "resuming join id=%s code=%s", tostring(p.id), tostring(p.code)) end
+    G.FUNCS.open_multiplayer_menu()
+    if bom_ui and bom_ui.show_connecting_screen then bom_ui.show_connecting_screen() end
+    bom_room.join(p.code, { id = p.id, from_browse = p.id ~= nil and not p.code })
+end
+
+function B.init()
+    if mod_loc_register and not B._strings then
+        B._strings = true
+        mod_loc_register{
+            fr = { ["Rooms"] = "Salons", ["Watch live"] = "Regarder en direct", ["BROWSE ROOMS"] = "PARCOURIR LES SALLES", ["REFRESH"] = "ACTUALISER" },
+            es = { ["Rooms"] = "Salas", ["Watch live"] = "Ver en directo", ["BROWSE ROOMS"] = "BUSCAR SALAS", ["REFRESH"] = "ACTUALIZAR" },
+        }
+    end
+    if B._hooked or not (Game and Game.main_menu) then return end
+    B._hooked = true
+    local main_menu_ref = Game.main_menu
+    Game.main_menu = function(self, ...)
+        local r = main_menu_ref(self, ...)
+        local ok, p = pcall(B.read_pending)
+        if ok and p then
+            local tries = 0
+            G.E_MANAGER:add_event(Event({ trigger = "after", delay = 1.0, timer = "REAL", blocking = false, blockable = false,
+                func = function()
+                    if G.STAGE ~= G.STAGES.MAIN_MENU then return true end
+                    tries = tries + 1
+                    if G.OVERLAY_MENU and tries < 600 then return false end
+                    pcall(B.resume_pending, p)
+                    return true
+                end }))
+        end
+        return r
+    end
+end
+
+return B
+end

@@ -1,0 +1,444 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 318
+local D = {
+    initialized = false,
+    hooked = false,
+}
+
+D.KEYS = { 'b_mp_lilac', 'b_mp_seer', 'b_mp_tangerine', 'b_mp_cobalt', 'b_mp_gemini', 'b_mp_random' }
+D.ART_ATLAS = 'mp_decks_art'
+
+local LILAC_DISCOUNT = { [1] = 0.5, [2] = 0.3, [3] = 0.15 }
+
+local DEFS = {
+    b_mp_lilac = {
+        order = 101, name = 'Lilac Deck', ranked = true, atlas = 'mp_decks_art', pos = { x = 2, y = 0 }, config = {}, mods = { mp_lilac = true },
+        loc = {
+            en = { name = 'Lilac Deck', text = { 'Vouchers are {C:attention}50%{} off in', 'Ante {C:attention}1{}, {C:attention}30%{} off in Ante {C:attention}2{}', 'and {C:attention}15%{} off in Ante {C:attention}3{}' } },
+            fr = { name = 'Jeu lilas', text = { 'Coupons {C:attention}-50%{} à la', 'mise initiale {C:attention}1{}, {C:attention}-30%{} à la {C:attention}2{}', 'et {C:attention}-15%{} à la {C:attention}3{}' } },
+            es = { name = 'Baraja lila', text = { 'Vales con {C:attention}50%{} de descuento', 'en la apuesta inicial {C:attention}1{}, {C:attention}30%{} en la {C:attention}2{}', 'y {C:attention}15%{} en la {C:attention}3{}' } },
+        },
+    },
+    b_mp_seer = {
+        order = 102, name = 'Seer Deck', ranked = true, atlas = 'mp_decks_art', pos = { x = 3, y = 0 },
+        config = { voucher = 'v_clearance_sale', consumables = { 'c_medium' } }, mods = { mp_money_cap = 40 },
+        loc = {
+            en = { name = 'Seer Deck', text = { 'Start run with {C:spectral,T:c_medium}Medium{}', 'and {C:attention,T:v_clearance_sale}Clearance Sale{}', 'Money is capped at {C:money}$40{}', 'plus your interest cap' } },
+            fr = { name = 'Jeu du voyant', text = { 'Commencez avec {C:spectral,T:c_medium}Médium{}', 'et {C:attention,T:v_clearance_sale}Liquidation{}', 'L\'argent est plafonné à {C:money}$40{}', 'plus votre plafond d\'intérêts' } },
+            es = { name = 'Baraja del vidente', text = { 'Empieza con {C:spectral,T:c_medium}Médium{}', 'y {C:attention,T:v_clearance_sale}Liquidación{}', 'El dinero tiene un tope de {C:money}$40{}', 'más tu tope de intereses' } },
+        },
+    },
+    b_mp_tangerine = {
+        order = 103, name = 'Tangerine Deck', ranked = true, atlas = 'mp_decks_art', pos = { x = 4, y = 0 },
+        config = { consumables = { 'c_hanged_man', 'c_hanged_man' }, consumable_slot = 1 }, mods = {},
+        loc = {
+            en = { name = 'Tangerine Deck', text = { 'Start run with {C:attention}2{} copies', 'of {C:tarot,T:c_hanged_man}The Hanged Man{}', '{C:attention}+1{} consumable slot' } },
+            fr = { name = 'Jeu mandarine', text = { 'Commencez avec {C:attention}2{} exemplaires', 'du {C:tarot,T:c_hanged_man}Pendu{}', '{C:attention}+1{} emplacement de consommable' } },
+            es = { name = 'Baraja mandarina', text = { 'Empieza con {C:attention}2{} copias', 'de {C:tarot,T:c_hanged_man}El colgado{}', '{C:attention}+1{} espacio de consumible' } },
+        },
+    },
+    b_mp_cobalt = {
+        order = 104, name = 'Cobalt Deck', ranked = true, atlas = 'mp_decks_art', pos = { x = 5, y = 0 }, config = {}, mods = { mp_cobalt = true },
+        loc = {
+            en = { name = 'Cobalt Deck', text = { 'Choose {C:attention}+1{} card from', 'every {C:attention}Booster Pack{}', 'Booster Packs cost {C:money}$2{} more' } },
+            fr = { name = 'Jeu cobalt', text = { 'Choisissez {C:attention}+1{} carte dans', 'chaque {C:attention}booster{}', 'Les paquets coûtent {C:money}$2{} de plus' } },
+            es = { name = 'Baraja cobalto', text = { 'Elige {C:attention}+1{} carta de', 'cada {C:attention}paquete potenciador{}', 'Los paquetes cuestan {C:money}$2{} más' } },
+        },
+    },
+    b_mp_gemini = {
+        order = 105, name = 'Gemini Deck', ranked = true, atlas = 'mp_decks_art', pos = { x = 0, y = 0 }, config = {}, mods = { mp_gemini = true },
+        loc = {
+            en = { name = 'Gemini Deck', text = { 'When you leave the {C:attention}shop{},', 'create a {C:dark_edition}Negative{} copy of', '{C:attention}1{} random {C:tarot}Tarot{} or {C:planet}Planet{}', 'card you hold' } },
+            fr = { name = 'Jeu Gémeaux', text = { 'En quittant la {C:attention}boutique{},', 'crée une copie {C:dark_edition}Négative{}', 'd\'{C:attention}1{} carte {C:tarot}Tarot{} ou {C:planet}Planète{}', 'au hasard parmi les vôtres' } },
+            es = { name = 'Baraja Géminis', text = { 'Al salir de la {C:attention}tienda{},', 'crea una copia {C:dark_edition}negativa{} de', '{C:attention}1{} carta de {C:tarot}tarot{} o {C:planet}planeta{}', 'al azar que tengas' } },
+        },
+    },
+    b_mp_random = {
+        order = 106, name = 'Random Deck', atlas = 'mp_decks_art', pos = { x = 1, y = 0 }, config = {}, mods = { mp_random = true },
+        loc = {
+            en = { name = 'Random Deck', text = { 'Every {C:attention}poker hand{} gets random', '{C:chips}Chips{} and {C:mult}Mult{}, any hand', 'can be the best. Prices, card', 'values and {C:attention}Packs{} are rolled too' } },
+            fr = { name = 'Jeu aléatoire', text = { 'Chaque {C:attention}main de poker{} a des', '{C:chips}jetons{} et un {C:mult}multi{} au hasard,', 'n\'importe laquelle peut dominer.', 'Prix, valeurs et {C:attention}paquets{} aussi' } },
+            es = { name = 'Baraja aleatoria', text = { 'Cada {C:attention}mano de póker{} tiene', '{C:chips}fichas{} y {C:mult}multi{} al azar,', 'cualquiera puede ser la mejor.', 'Precios, valores y {C:attention}sobres{} también' } },
+        },
+    },
+}
+D.DEFS = DEFS
+
+local function hls(r, g, b)
+    local mx, mn = math.max(r, g, b), math.min(r, g, b)
+    local l = (mx + mn) / 2
+    if mx == mn then return 0, l, 0 end
+    local d = mx - mn
+    local s = l > 0.5 and d / (2 - mx - mn) or d / (mx + mn)
+    local h
+    if mx == r then h = (g - b) / d + (g < b and 6 or 0)
+    elseif mx == g then h = (b - r) / d + 2
+    else h = (r - g) / d + 4 end
+    return h / 6, l, s
+end
+
+local function hue2(p, q, t)
+    if t < 0 then t = t + 1 end
+    if t > 1 then t = t - 1 end
+    if t < 1 / 6 then return p + (q - p) * 6 * t end
+    if t < 1 / 2 then return q end
+    if t < 2 / 3 then return p + (q - p) * (2 / 3 - t) * 6 end
+    return p
+end
+
+local function rgb(h, l, s)
+    if s == 0 then return l, l, l end
+    local q = l < 0.5 and l * (1 + s) or l + s - l * s
+    local p = 2 * l - q
+    return hue2(p, q, h + 1 / 3), hue2(p, q, h), hue2(p, q, h - 1 / 3)
+end
+
+D.hls, D.rgb = hls, rgb
+
+local function is_gold(h, s)
+    return s > 0.35 and h > 25 / 360 and h < 65 / 360
+end
+
+D.ART = {
+    gemini = { src = { 3, 4 }, left = 196 / 360, right = 338 / 360, sat = 0.55 },
+    random = { src = { 2, 3 }, mark = { 6, 3 }, hues = { 0, 0.22, 0.5, 0.75 }, mark_hue = 42 / 360, plate = { 0.16, 0.13, 0.2 } },
+    lilac = { src = { 0, 0 }, stops = { { 0.36, 0.24, 0.56 }, { 0.7, 0.56, 0.94 }, { 1, 0.86, 0.5 } } },
+    seer = { src = { 3, 0 }, stops = { { 0.09, 0.05, 0.2 }, { 0.42, 0.2, 0.62 }, { 0.98, 0.72, 0.95 } }, keep_gold = true },
+    tangerine = { src = { 1, 3 }, stops = { { 0.1, 0.22, 0.26 }, { 1, 0.55, 0.16 }, { 1, 0.93, 0.78 } } },
+    cobalt = { src = { 0, 4 }, stops = { { 0.04, 0.1, 0.32 }, { 0.12, 0.36, 0.82 }, { 0.62, 0.88, 1 } } },
+}
+D.ART_ORDER = { 'gemini', 'random', 'lilac', 'seer', 'tangerine', 'cobalt' }
+
+local function build_gemini(out, src, ox, cw, ch, s)
+    local a = D.ART.gemini
+    local sx, sy = a.src[1] * cw, a.src[2] * ch
+    for y = 0, ch - 1 do
+        for x = 0, cw - 1 do
+            local r, g, b, al = src:getPixel(sx + x, sy + y)
+            if al > 0 then
+                local h, l, sat = hls(r, g, b)
+                if not is_gold(h, sat) then
+                    local th = (x < cw / 2) and a.left or a.right
+                    r, g, b = rgb(th, l, math.max(sat, a.sat * math.min(1, l * 3)))
+                end
+            end
+            out:setPixel(ox + x, y, r, g, b, al)
+        end
+    end
+end
+
+local function build_random(out, src, ox, cw, ch, s)
+    local a = D.ART.random
+    local sx, sy = a.src[1] * cw, a.src[2] * ch
+    for y = 0, ch - 1 do
+        for x = 0, cw - 1 do
+            local r, g, b, al = src:getPixel(sx + x, sy + y)
+            if al > 0 then
+                local h, l, sat = hls(r, g, b)
+                if sat > 0.2 then
+                    local q = (x < cw / 2 and 1 or 2) + (y < ch / 2 and 0 or 2)
+                    r, g, b = rgb((h + a.hues[q]) % 1, l, sat)
+                end
+            end
+            out:setPixel(ox + x, y, r, g, b, al)
+        end
+    end
+    local mx, my = a.mark[1] * cw, a.mark[2] * ch
+    local function alpha(x, y)
+        if x < 0 or y < 0 or x >= cw or y >= ch then return 0 end
+        local _, _, _, al = src:getPixel(mx + x, my + y)
+        return al
+    end
+    local gr, gg, gb = rgb(a.mark_hue, 0.58, 0.95)
+    for y = 0, ch - 1 do
+        local x0, x1
+        for x = 0, cw - 1 do
+            if alpha(x, y) > 0.2 then
+                x0 = x0 or x
+                x1 = x
+            end
+        end
+        if x0 then
+            for x = x0, x1 do
+                local r, g, b = src:getPixel(mx + x, my + y)
+                local glyph = r > 0.99 and g > 0.99 and b > 0.99
+                if glyph or x == x0 or x == x1 or alpha(x, y - 1) <= 0.2 or alpha(x, y + 1) <= 0.2 then
+                    out:setPixel(ox + x, y, gr, gg, gb, 1)
+                else
+                    out:setPixel(ox + x, y, a.plate[1], a.plate[2], a.plate[3], 1)
+                end
+            end
+        end
+    end
+end
+
+local function ramp(stops, t)
+    local n = #stops - 1
+    local f = math.max(0, math.min(1, t)) * n
+    local i = math.min(n, math.floor(f) + 1)
+    local a, b, u = stops[i], stops[i + 1], f - (i - 1)
+    return a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u
+end
+
+local function build_duo(a)
+    return function(out, src, ox, cw, ch, s)
+        local sx, sy = a.src[1] * cw, a.src[2] * ch
+        local lo, hi = 1, 0
+        for y = 0, ch - 1 do
+            for x = 0, cw - 1 do
+                local r, g, b, al = src:getPixel(sx + x, sy + y)
+                if al > 0.5 then
+                    local _, l = hls(r, g, b)
+                    lo, hi = math.min(lo, l), math.max(hi, l)
+                end
+            end
+        end
+        local span = math.max(0.01, hi - lo)
+        for y = 0, ch - 1 do
+            for x = 0, cw - 1 do
+                local r, g, b, al = src:getPixel(sx + x, sy + y)
+                if al > 0 then
+                    local h, l, sat = hls(r, g, b)
+                    if not (a.keep_gold and is_gold(h, sat)) then
+                        r, g, b = ramp(a.stops, (l - lo) / span)
+                    end
+                end
+                out:setPixel(ox + x, y, r, g, b, al)
+            end
+        end
+    end
+end
+
+local BUILDERS = {
+    gemini = build_gemini, random = build_random,
+    lilac = build_duo(D.ART.lilac), seer = build_duo(D.ART.seer),
+    tangerine = build_duo(D.ART.tangerine), cobalt = build_duo(D.ART.cobalt),
+}
+
+function D.build_art(scale)
+    local s = scale or 1
+    local ok, src = pcall(love.image.newImageData, "resources/textures/" .. s .. "x/Enhancers.png")
+    if not ok or not src then return nil end
+    local cw, ch = 71 * s, 95 * s
+    local out = love.image.newImageData(cw * #D.ART_ORDER, ch)
+    for i, k in ipairs(D.ART_ORDER) do BUILDERS[k](out, src, (i - 1) * cw, cw, ch, s) end
+    src:release()
+    return out
+end
+
+function D.register_art()
+    if not (G and G.ASSET_ATLAS and G.SETTINGS and love and love.graphics) then return end
+    local s = (G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.texture_scaling) or 2
+    local ok, data = pcall(D.build_art, s)
+    if not ok or not data then
+        if mp_log then mp_log.warn('BOM_DECKS', 'deck art failed: %s', tostring(data)) end
+        return
+    end
+    G.ASSET_ATLAS[D.ART_ATLAS] = {
+        name = D.ART_ATLAS, image = love.graphics.newImage(data, { mipmaps = true, dpiscale = s }),
+        type = 'asset_atli', px = 71, py = 95,
+    }
+end
+
+local function O() return bom_custom_objects end
+
+local function L(t)
+    if mod_loc then
+        local ok, r = pcall(mod_loc, t)
+        if ok and r then return r end
+    end
+    return t
+end
+
+local function mods()
+    return G and G.GAME and G.GAME.modifiers or {}
+end
+
+function D.list()
+    local out = {}
+    if not G or not G.P_CENTERS then return out end
+    for _, k in ipairs(D.KEYS) do if G.P_CENTERS[k] then out[#out + 1] = G.P_CENTERS[k] end end
+    return out
+end
+
+function D.options()
+    local out = {}
+    for _, c in ipairs(D.list()) do
+        if ReleaseFlags and ReleaseFlags.ai_hidden(c) then goto continue end
+        local label = c.name
+        pcall(function()
+            local n = localize { type = 'name_text', set = 'Back', key = c.key }
+            if n and n ~= 'ERROR' then label = n end
+        end)
+        out[#out + 1] = { value = c.name, label = label, raw = true }
+        ::continue::
+    end
+    return out
+end
+
+function D.is_mp_deck(name_or_key)
+    for _, k in ipairs(D.KEYS) do
+        if k == name_or_key or DEFS[k].name == name_or_key then return true end
+    end
+    return false
+end
+
+local function register_centers()
+    if not G or not G.P_CENTERS then return end
+    for _, k in ipairs(D.KEYS) do
+        if not G.P_CENTERS[k] then
+            local d = DEFS[k]
+            G.P_CENTERS[k] = {
+                key = k, name = d.name, stake = 1, unlocked = true, discovered = true, omit = true,
+                order = d.order, pos = { x = d.pos.x, y = d.pos.y }, atlas = (G.ASSET_ATLAS and G.ASSET_ATLAS[d.atlas]) and d.atlas or 'mp_decks', set = 'Back',
+                config = O() and O().clone_table(d.config) or d.config, mp_deck = true,
+            }
+        elseif G.P_CENTERS[k].atlas ~= DEFS[k].atlas and G.ASSET_ATLAS and G.ASSET_ATLAS[DEFS[k].atlas] then
+            G.P_CENTERS[k].atlas = DEFS[k].atlas
+        end
+    end
+end
+
+local function lilac_discount(card)
+    if not mods().mp_lilac or not card.ability or card.ability.set ~= 'Voucher' then return end
+    local ante = G.GAME.round_resets and G.GAME.round_resets.ante or 1
+    local pct = LILAC_DISCOUNT[ante]
+    if pct and (card.cost or 0) > 0 then
+        card.cost = math.max(1, math.floor(card.cost * (1 - pct) + 0.5))
+    end
+end
+
+local function gemini_copy()
+    if not mods().mp_gemini or not G.consumeables or not G.consumeables.cards then return end
+    local pool = {}
+    for _, c in ipairs(G.consumeables.cards) do
+        local set = c.ability and c.ability.set
+        if set == 'Tarot' or set == 'Planet' then pool[#pool + 1] = c end
+    end
+    if #pool == 0 then return end
+    local src = pseudorandom_element(pool, pseudoseed('mp_gemini'))
+    if not src then return end
+r 1 112 %20%20%20%20 -
+l 83
+        func = function()
+            local copy = copy_card(src, nil)
+            copy:set_edition({ negative = true }, true)
+            copy:add_to_deck()
+            G.consumeables:emplace(copy)
+            card_eval_status_text(copy, 'extra', nil, nil, nil, { message = localize('k_duplicated_ex'), colour = G.C.DARK_EDITION })
+            return true
+        end,
+    }))
+end
+
+local function money_cap()
+    local cap = mods().mp_money_cap
+    if not cap or not G.GAME then return end
+    local max = cap + (G.GAME.interest_cap or 25)
+    if (G.GAME.dollars or 0) > max then
+        G.GAME.dollars = max
+        if not D.cap_flash then
+            D.cap_flash = true
+            pcall(function()
+                attention_text({
+                    text = L('MAX'), scale = 0.8, hold = 0.7, cover = G.HUD and G.HUD:get_UIE_by_ID('dollar_text_UI') and G.HUD:get_UIE_by_ID('dollar_text_UI').parent,
+                    cover_colour = G.C.RED, align = 'cm',
+                })
+                play_sound('timpani', 0.9, 0.7)
+            end)
+        end
+    else
+        D.cap_flash = nil
+    end
+end
+
+local function install_hooks()
+    if D.hooked then return end
+    D.hooked = true
+
+    if Game and Game.set_render_settings then
+        local orig_render = Game.set_render_settings
+        Game.set_render_settings = function(self, ...)
+            local r = orig_render(self, ...)
+            pcall(D.register_art)
+            return r
+        end
+    end
+
+    local orig_apply = Back.apply_to_run
+    Back.apply_to_run = function(self, ...)
+        local r = orig_apply(self, ...)
+        local center = self and self.effect and self.effect.center
+        local d = center and center.mp_deck and DEFS[center.key]
+        if d and G.GAME then
+            G.GAME.modifiers = G.GAME.modifiers or {}
+            for k, v in pairs(d.mods or {}) do G.GAME.modifiers[k] = v end
+            G.GAME.mp_deck = center.key
+        end
+        return r
+    end
+
+    local orig_set_cost = Card.set_cost
+    ---@diagnostic disable-next-line: duplicate-set-field
+    Card.set_cost = function(self)
+        local r = orig_set_cost(self)
+        if self and self.ability and G.GAME and G.GAME.modifiers then
+            if G.GAME.modifiers.mp_lilac then pcall(lilac_discount, self) end
+            if G.GAME.modifiers.mp_cobalt and self.ability.set == 'Booster' and (self.cost or 0) > 0 then
+                self.cost = self.cost + 2
+            end
+        end
+        return r
+    end
+
+    local orig_open = Card.open
+    ---@diagnostic disable-next-line: duplicate-set-field
+    Card.open = function(self, ...)
+        local r = orig_open(self, ...)
+        if mods().mp_cobalt and self and self.ability and self.ability.set == 'Booster' and G.GAME.pack_choices then
+            G.GAME.pack_choices = G.GAME.pack_choices + 1
+        end
+        return r
+    end
+
+    if G and G.FUNCS and G.FUNCS.toggle_shop then
+        local orig_toggle = G.FUNCS.toggle_shop
+r 4 2481 %20%20%20%20%20%20%20%20 -
+l 33
+            if not (G.CONTROLLER and G.CONTROLLER.locks and G.CONTROLLER.locks.toggle_shop) then pcall(gemini_copy) end
+            return orig_toggle(e)
+        end
+    end
+end
+
+local function register_loc()
+    if mod_loc_register then pcall(mod_loc_register, { fr = { MAX = 'MAX' }, es = { MAX = 'MÁX' } }) end
+    if not O() or not O().register_loc then return end
+    for _, k in ipairs(D.KEYS) do O().register_loc('Back', k, DEFS[k].loc) end
+end
+
+function D.update()
+    pcall(money_cap)
+end
+
+function D.ensure_registered()
+    if G and G.ASSET_ATLAS and not G.ASSET_ATLAS[D.ART_ATLAS] then pcall(D.register_art) end
+    register_centers()
+end
+
+function D.init()
+    if D.initialized then return end
+    pcall(D.register_art)
+    register_centers()
+    register_loc()
+    if O() and O().inject_loc then O().inject_loc() end
+    local ok, err = pcall(install_hooks)
+    if not ok and mp_log then mp_log.warn('BOM_DECKS', 'hook install failed: %s', tostring(err)) end
+    D.initialized = true
+end
+
+return D
+end

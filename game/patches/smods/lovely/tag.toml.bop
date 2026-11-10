@@ -1,0 +1,179 @@
+BOP 1
+eol lf
+final 0
+base 0
+l 47
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -10
+
+### Tag API
+# Tag:apply_to_run()
+# Adds prevent_tag_trigger context
+[[patches]]
+[patches.pattern]
+target = "tag.lua"
+pattern = "function Tag:apply_to_run(_context)"
+position = 'after'
+match_indent = true
+payload = '''
+    if self.triggered then return end
+    local flags = SMODS.calculate_context({prevent_tag_trigger = self, other_context = _context})
+    if flags.prevent_trigger then return end
+    local obj = SMODS.Tags[self.key]
+    local res
+    if obj and obj.apply and type(obj.apply) == 'function' then
+        res = obj:apply(self, _context)
+    end
+    if res then return res end
+'''
+
+# Tag:set_ability()
+[[patches]]
+[patches.pattern]
+target = "tag.lua"
+pattern = "function Tag:set_ability()"
+position = 'after'
+match_indent = true
+payload = '''
+    local obj = SMODS.Tags[self.key]
+    local res
+    if obj and obj.set_ability and type(obj.set_ability) == 'function' then
+        obj:set_ability(self)
+    end
+'''
+
+# Orbital Tag's set_ability
+# Initialize fallback Poker Hand
+[[patches]]
+[patches.pattern]
+target = "tag.lua"
+pattern = '''
+r 5 107 - -
+r 5 108 %20%20%20%20 -
+r 5 109 %20%20%20%20%20%20%20%20 %20%20%20%20%20%20%20
+l 7
+    end
+end
+'''
+position = 'after'
+match_indent = true
+payload = '''
+if self.ability.orbital_hand == '['..localize('k_poker_hand')..']' then
+r 3 312 %20%20%20%20 -
+r 3 313 %20%20%20%20 -
+l 12
+        if SMODS.is_poker_hand_visible(k) then _poker_hands[#_poker_hands+1] = k end
+    end
+    self.ability.orbital_hand = pseudorandom_element(_poker_hands, pseudoseed('orbital'))
+end
+'''
+# Safeguard
+[[patches]]
+[patches.pattern]
+target = 'tag.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 5 108 - -
+l 51
+'''
+payload = '''
+if G.GAME.orbital_choices and G.GAME.orbital_choices[G.GAME.round_resets.ante] and G.GAME.orbital_choices[G.GAME.round_resets.ante][self.ability.blind_type] then
+'''
+
+
+# Tag:generate_UI()
+[[patches]]
+[patches.regex]
+target = "tag.lua"
+pattern = 'G.ASSET_ATLAS\["tags"\]'
+position = 'at'
+payload = 'G.ASSET_ATLAS[(not self.hide_ability) and G.P_TAGS[self.key].atlas or "tags"]'
+
+# Tag:get_uibox_table()
+[[patches]]
+[patches.pattern]
+target = "tag.lua"
+pattern = '''function Tag:get_uibox_table(tag_sprite)'''
+position = 'at'
+match_indent = true
+payload = '''function Tag:get_uibox_table(tag_sprite, vars_only)'''
+[[patches]]
+[patches.pattern]
+target = "tag.lua"
+pattern = '''tag_sprite.ability_UIBox_table = generate_card_ui(G.P_TAGS[self.key], nil, loc_vars, (self.hide_ability) and 'Undiscovered' or 'Tag', nil, (self.hide_ability))'''
+position = 'at'
+match_indent = true
+payload = '''if vars_only then return loc_vars end
+tag_sprite.ability_UIBox_table = generate_card_ui(G.P_TAGS[self.key], nil, loc_vars, (self.hide_ability) and 'Undiscovered' or 'Tag', nil, (self.hide_ability), nil, nil, self)'''
+
+# generate_card_ui()
+
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = "elseif _c.set == 'Tag' then"
+position = "after"
+match_indent = true
+payload = '''specific_vars = specific_vars or Tag.get_uibox_table({ name = _c.name, config = _c.config, ability = { orbital_hand = '['..localize('k_poker_hand')..']' }}, nil, true)
+'''
+
+# Prevent Boss Tag from crashing when triggered at a bad time
+# by quietly rerolling it if blind select UI is not there
+[[patches]]
+[patches.pattern]
+target = "functions/button_callbacks.lua"
+pattern = "G.FUNCS.reroll_boss = function(e)"
+position = "after"
+match_indent = true
+payload = '''if not G.blind_select_opts then
+r 4 2802 %20%20%20%20 -
+r 4 2803 %20%20%20%20 -
+r 4 2804 %20%20%20%20 -
+r 4 2820 %20%20%20%20 -
+r 15 1266 %20%20%20%20 -
+r 4 2618 %20%20%20%20%20%20%20%20 -
+l 11
+    end
+    return true
+end'''
+
+# Prevent G.FUNCS.reroll_boss from reverting blind completion if called outside the blind select UI
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 15 1446 - -
+l 10
+'''
+payload = '''
+G.GAME.round_resets.blind_states[G.GAME.blind_on_deck] = 'Select'
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 15 1489 - -
+l 15
+'''
+payload = '''
+--if not run_info then G.GAME.round_resets.blind_states[G.GAME.blind_on_deck] = 'Select' end
+'''
+
+# Tag:generate_UI() -- Add tag_sprite.prototype()
+[[patches]]
+[patches.pattern]
+target = "tag.lua"
+pattern = "tag_sprite.config = {tag = self, force_focus = true}"
+position = 'after'
+match_indent = true
+payload = '''
+tag_sprite.prototype = function(sprite_obj) return SMODS.Tag.get_prototype_object(sprite_obj) end
+'''
+end

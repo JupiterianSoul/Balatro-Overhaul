@@ -1,0 +1,172 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 66
+require "functions/art/release_art"
+
+local PACK_CELL = 12
+local SCALE = 2
+local CARD_W, CARD_H = 71, 95
+local LABEL_Y = 67
+local LINE_GAP = 1
+local OUTLINE = 1
+local FONT_FILE = "resources/fonts/m6x11plus.ttf"
+local FONT_SIZE = 16
+local INK = {0.16, 0.13, 0.2, 1}
+local SMALL_FIRST = {fr = true, es = true}
+
+local ATLAS = {name = "mp_trap_pack", type = "asset_atli", px = CARD_W, py = CARD_H}
+local fonts = {}
+local ready = false
+
+mod_loc_register{
+    ["en-us"] = {bom_trap_pack_word = "TRAP", bom_trap_pack_kind = "PACK"},
+    fr = {bom_trap_pack_word = "PIÈGES", bom_trap_pack_kind = "PAQUET DE"},
+    es = {bom_trap_pack_word = "TRAMPAS", bom_trap_pack_kind = "SOBRE DE"},
+}
+
+local function lang()
+    local l = G and G.SETTINGS and G.SETTINGS.language or "en-us"
+    if l == "fr" then return "fr" end
+    if type(l) == "string" and l:sub(1, 2) == "es" then return "es" end
+    return "en"
+end
+
+local function font_of(size)
+    if not fonts[size] then
+        local f = love.graphics.newFont(FONT_FILE, size, "mono", 1)
+        f:setFilter("nearest", "nearest")
+        fonts[size] = f
+    end
+    return fonts[size]
+end
+
+local function ink_box(data)
+    local w, h = data:getDimensions()
+    local x0, y0, x1, y1
+    for y = 0, h - 1 do
+        for x = 0, w - 1 do
+            local _, _, _, a = data:getPixel(x, y)
+            if a > 0.5 then
+                x0 = math.min(x0 or x, x)
+                x1 = math.max(x1 or x, x)
+                y0 = y0 or y
+                y1 = y
+            end
+        end
+    end
+    return x0, y0, x1, y1
+end
+
+local function line_image(text, size)
+    local font = font_of(size)
+    local o = OUTLINE*SCALE
+    local pad = o + 2
+    local w = font:getWidth(text) + pad*2
+    local h = font:getHeight() + pad*2
+    local canvas = love.graphics.newCanvas(w, h, {dpiscale = 1})
+    love.graphics.push("all")
+    love.graphics.setCanvas(canvas)
+    love.graphics.clear(0, 0, 0, 0)
+r 19 278 %20%20%20%20 -
+l 98
+    love.graphics.setFont(font)
+    love.graphics.setColor(INK)
+    for dx = -o, o do
+        for dy = -o, o do
+            if dx ~= 0 or dy ~= 0 then love.graphics.print(text, pad + dx, pad + dy) end
+        end
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print(text, pad, pad)
+    love.graphics.pop()
+    local data = canvas:newImageData()
+    canvas:release()
+    local x0, y0, x1, y1 = ink_box(data)
+    if not x0 then return nil end
+    return {data = data, x = x0, y = y0, w = x1 - x0 + 1, h = y1 - y0 + 1}
+end
+
+local function stamp(base, line, left, top)
+    local bw, bh = base:getDimensions()
+    for y = 0, line.h - 1 do
+        for x = 0, line.w - 1 do
+            local r, g, b, a = line.data:getPixel(line.x + x, line.y + y)
+            local tx, ty = left + x, top + y
+            if a > 0.5 and tx >= 0 and ty >= 0 and tx < bw and ty < bh then base:setPixel(tx, ty, r, g, b, 1) end
+        end
+    end
+end
+
+local function lines_for(l)
+    local word = {mod_loc("bom_trap_pack_word"), FONT_SIZE*SCALE}
+    local kind = {mod_loc("bom_trap_pack_kind"), FONT_SIZE*SCALE/2}
+    if SMALL_FIRST[l] then return {kind, word} end
+    return {word, kind}
+end
+
+local function build()
+    local src = love.image.newImageData("resources/textures/2x/MPTraps.png")
+    local cw, ch = CARD_W*2, CARD_H*2
+    local cell = love.image.newImageData(cw, ch)
+    cell:paste(src, 0, 0, PACK_CELL*cw, 0, cw, ch)
+    src:release()
+    local base = cell
+    if SCALE ~= 2 then
+        base = love.image.newImageData(CARD_W*SCALE, CARD_H*SCALE)
+        base:mapPixel(function(x, y) return cell:getPixel(math.floor(x*2/SCALE), math.floor(y*2/SCALE)) end)
+    end
+    local ok = pcall(function()
+        local imgs, total = {}, 0
+        for i, spec in ipairs(lines_for(lang())) do
+            local li = spec[1] ~= "" and line_image(spec[1], spec[2])
+            if li then
+                imgs[#imgs + 1] = li
+                total = total + li.h + (#imgs > 1 and LINE_GAP*SCALE or 0)
+            end
+        end
+        local top = math.floor(LABEL_Y*SCALE - total/2 + 0.5)
+        for _, li in ipairs(imgs) do
+            stamp(base, li, math.floor((CARD_W*SCALE - li.w)/2 + 0.5), top)
+            top = top + li.h + LINE_GAP*SCALE
+            li.data:release()
+        end
+    end)
+    local img = love.graphics.newImage(base, {mipmaps = true, dpiscale = SCALE})
+    local ref = G.ASSET_ATLAS and G.ASSET_ATLAS.mp_traps and G.ASSET_ATLAS.mp_traps.image
+    if ref then
+        img:setFilter(ref:getFilter())
+        local mf, sharp = ref:getMipmapFilter()
+        if mf then img:setMipmapFilter(mf, sharp) end
+    end
+    ATLAS.image = img
+    ATLAS.bom_label_lang = ok and lang() or nil
+    G.ASSET_ATLAS.mp_trap_pack = ATLAS
+    ready = true
+end
+
+function trap_pack_label_refresh()
+    if not (G and G.ASSET_ATLAS and love and love.graphics) then return end
+    local ok, err = pcall(build)
+    if not ok then print("[trap_pack_label] " .. tostring(err)) end
+end
+
+function trap_pack_label_ready()
+    return ready and G and G.ASSET_ATLAS and G.ASSET_ATLAS.mp_trap_pack == ATLAS and ATLAS.image ~= nil
+end
+
+local set_render_ref = Game.set_render_settings
+function Game:set_render_settings(...)
+    local r = set_render_ref(self, ...)
+    trap_pack_label_refresh()
+    return r
+end
+
+local set_language_ref = Game.set_language
+function Game:set_language(...)
+    local r = set_language_ref(self, ...)
+    if ATLAS.bom_label_lang ~= lang() then trap_pack_label_refresh() end
+    return r
+end
+end

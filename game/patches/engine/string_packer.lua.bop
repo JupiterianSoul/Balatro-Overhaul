@@ -1,0 +1,82 @@
+BOP 2
+eol lf
+final 1
+base 31
+l 7
+if not love.mod_filesystem then
+    love.mod_filesystem = {}
+    for _, name in ipairs({'getDirectoryItems', 'getInfo', 'read', 'remove', 'getSourceBaseDirectory', 'createDirectory', 'write'}) do
+        love.mod_filesystem[name] = love.filesystem[name]
+    end
+end
+
+c 21
+l 1
+
+c 31
+l 34
+
+function keep_bad_copy(_file, _raw)
+    if _raw and _raw ~= '' and not love.mod_filesystem.getInfo(_file .. '.bad') then
+        pcall(love.mod_filesystem.write, _file .. '.bad', _raw)
+    end
+end
+
+load_local_file = function(_file)
+    if string.find(_file, 'unlock_notify', 1, true) or not love.mod_filesystem.getInfo(_file) then return end
+    local raw = love.mod_filesystem.read(_file)
+    local t = get_table_from_string(raw)
+    if t == nil then keep_bad_copy(_file, raw) end
+    return t
+end
+
+get_table_from_string = function(file_string)
+    if not file_string or file_string == '' then return end
+    local text = file_string
+    if string.sub(text, 1, 6) ~= 'return' then
+        local inflated, out = pcall(love.data.decompress, 'string', 'deflate', text)
+        if not inflated then return end
+        text = out
+    end
+    local ok, t = pcall(STR_UNPACK, text)
+    if ok and type(t) == 'table' then return t end
+    print('[SAVE] unreadable file skipped: ' .. tostring(t))
+end
+
+compress_table_to_string = function(_table)
+    local packed = type(_table) == 'table' and STR_PACK(_table) or _table
+    if NO_COMPRESS then return packed end
+    return love.data.compress('string', 'deflate', packed, 1)
+end
+
+c 1
+s 1
+e 31 54 %20%20%20%20 - =23,+%6D%6F%64%5F,=25
+c 1
+s 1
+e 31 56 %20%20%20%20%20%20%20%20 - =25,+%6D%6F%64%5F,=22
+c 12
+s 3
+e 31 71 %20%20%20%20 - =5,+%6D%6F%64%5F,=23,+%63%6F%6D%70%72%65,=1,+%73%5F%74,=1,-1,+%62%6C,=1,+%5F%74%6F,=7,+%28%5F%64%61%74%61,=1,+%29
+c 1
+l 1
+
+r 12 979 - -
+r 12 980 %20%20%20%20 -
+l 1
+    local copy
+r 12 982 %20%20%20%20 -
+l 1
+        copy = {}
+r 12 984 %20%20%20%20%20%20%20%20 -
+r 12 985 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        end
+r 12 987 %20%20%20%20%20%20%20%20 -
+l 5
+    else
+        copy = O
+    end
+    return copy
+end
+end

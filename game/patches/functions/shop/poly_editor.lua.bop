@@ -1,0 +1,366 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 102
+local PE = {}
+
+local KEYS = {"blue", "red", "green", "yellow"}
+local NAMES = {blue = "Chips", red = "Mult", green = "Chance", yellow = "Money"}
+local DEFAULT = {blue = {0, 157, 255}, red = {254, 95, 85}, green = {75, 194, 146}, yellow = {255, 255, 0}}
+local QUICK = {
+  "ff4b4b", "ff8a3d", "ffc23d", "fff34d", "b8ff4d", "4dff88", "3dffd1", "3dc8ff",
+  "4d8aff", "8a5cff", "d05cff", "ff5cc8", "ffffff", "b0b8c0", "6b7480", "2b2f36",
+}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function port() return UIK and UIK.portrait and UIK.portrait() end
+
+local function clamp(v, a, b) return math.max(a, math.min(b, v)) end
+
+local function rgb_to_hsv(r, g, b)
+  r, g, b = r / 255, g / 255, b / 255
+  local mx, mn = math.max(r, g, b), math.min(r, g, b)
+  local d = mx - mn
+  local h = 0
+  if d > 0 then
+    if mx == r then h = ((g - b) / d) % 6
+    elseif mx == g then h = (b - r) / d + 2
+    else h = (r - g) / d + 4 end
+    h = h * 60
+  end
+  return math.floor(h + 0.5) % 360, math.floor((mx > 0 and d / mx or 0) * 100 + 0.5), math.floor(mx * 100 + 0.5)
+end
+
+local function hsv_to_rgb(h, s, v)
+  h, s, v = (h % 360) / 60, clamp(s, 0, 100) / 100, clamp(v, 0, 100) / 100
+  local c = v * s
+  local x = c * (1 - math.abs(h % 2 - 1))
+  local m = v - c
+  local r, g, b
+  if h < 1 then r, g, b = c, x, 0
+  elseif h < 2 then r, g, b = x, c, 0
+  elseif h < 3 then r, g, b = 0, c, x
+  elseif h < 4 then r, g, b = 0, x, c
+  elseif h < 5 then r, g, b = x, 0, c
+  else r, g, b = c, 0, x end
+  return math.floor((r + m) * 255 + 0.5), math.floor((g + m) * 255 + 0.5), math.floor((b + m) * 255 + 0.5)
+end
+
+local function from_hex(h)
+  return {tonumber(h:sub(1, 2), 16), tonumber(h:sub(3, 4), 16), tonumber(h:sub(5, 6), 16)}
+end
+
+local function sync(key)
+  local st = PE.state
+  local v, c = st.rgb[key], st.cols[key]
+  c[1], c[2], c[3], c[4] = v[1] / 255, v[2] / 255, v[3] / 255, 1
+  local d = st.dark[key]
+  d[1], d[2], d[3], d[4] = c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 1
+  st.hex[key] = string.format("#%02X%02X%02X", v[1], v[2], v[3])
+end
+
+local function set_rgb(key, rgb)
+  local st = PE.state
+  st.rgb[key] = {clamp(rgb[1], 0, 255), clamp(rgb[2], 0, 255), clamp(rgb[3], 0, 255)}
+  sync(key)
+end
+
+local function load_hsv()
+  local st = PE.state
+  local v = st.rgb[st.sel]
+  st.hsv.h, st.hsv.s, st.hsv.v = rgb_to_hsv(v[1], v[2], v[3])
+end
+
+local function load_all(src)
+  for _, k in ipairs(KEYS) do set_rgb(k, src[k]) end
+  load_hsv()
+end
+
+local function poly_to_src(poly)
+  local src = {}
+  for _, k in ipairs(KEYS) do
+    local d = DEFAULT[k]
+    src[k] = {tonumber(poly and poly[k .. "_r"]) or d[1], tonumber(poly and poly[k .. "_g"]) or d[2], tonumber(poly and poly[k .. "_b"]) or d[3]}
+  end
+  return src
+end
+
+local function owned_sets()
+  local list = {{name = L("Default"), src = DEFAULT}}
+  local p = G.PROFILES and G.PROFILES[G.SETTINGS.profile]
+  local owned = {}
+  for _, id in ipairs(p and p.progression and p.progression.owned_color_sets or {}) do owned[id] = true end
+  for _, set in ipairs(SHOP_COLOR_SETS or {}) do
+    if owned[set.id] and set.blue and set.red and set.green and set.yellow then
+      list[#list + 1] = {name = set.name and L(set.name) or set.id, src = {blue = set.blue, red = set.red, green = set.green, yellow = set.yellow}}
+    end
+  end
+  return list
+end
+
+function PE.open(from)
+  local poly = AshCardManager and AshCardManager.get_poly_colors and AshCardManager.get_poly_colors() or nil
+  PE.state = {cols = {}, dark = {}, rgb = {}, hex = {}, hsv = {}, sel = "blue", start = 1, from = from}
+  for _, k in ipairs(KEYS) do PE.state.cols[k], PE.state.dark[k] = {0, 0, 0, 1}, {0, 0, 0, 1} end
+  load_all(poly_to_src(poly))
+r 4 1381 %20%20 -
+l 182
+  G.FUNCS.overlay_menu{definition = PE.def()}
+end
+
+local function txt(s, scale, colour, o)
+  o = o or {}
+  return {n = G.UIT.T, config = {text = s, scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = o.shadow ~= false, ref_table = o.ref_table, ref_value = o.ref_value}}
+end
+
+local function row(nodes, o)
+  o = o or {}
+  return {n = G.UIT.R, config = {align = o.align or "cm", minw = o.w, minh = o.h, padding = o.padding or 0.04}, nodes = nodes}
+end
+
+local function ink(k)
+  local v = PE.state.rgb[k]
+  return (0.299 * v[1] + 0.587 * v[2] + 0.114 * v[3]) / 255 > 0.68 and G.C.UI.TEXT_DARK or G.C.UI.TEXT_LIGHT
+end
+
+local function chip_box(colour, label, value, w, h)
+  return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, r = 0.1, colour = colour, emboss = 0.05, padding = 0.04}, nodes = {
+    row({txt(label, 0.28, G.C.UI.TEXT_LIGHT)}, {padding = 0}),
+    row({txt(value, 0.5, G.C.UI.TEXT_LIGHT)}, {padding = 0}),
+  }}
+end
+
+local function fake_button(label, k, w, h)
+  return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, r = 0.1, colour = PE.state.cols[k], shadow = true, padding = 0.05}, nodes = {
+    txt(label, touch() and 0.36 or 0.32, ink(k), {shadow = ink(k) == G.C.UI.TEXT_LIGHT}),
+  }}
+end
+
+local function preview(w)
+  local st = PE.state
+  local c = st.cols
+  local half = (w - 0.5) / 2
+  local bh = touch() and 0.62 or 0.55
+  local rows = {
+    row({
+      chip_box(c.blue, L("Chips"), "120", half, 0.9),
+      {n = G.UIT.C, config = {align = "cm", minw = 0.3}, nodes = {txt("X", 0.5, c.red)}},
+      chip_box(c.red, L("Mult"), "8", half, 0.9),
+    }, {w = w}),
+    row({
+      {n = G.UIT.C, config = {align = "cm", minw = half}, nodes = {txt("$25", 0.6, c.yellow)}},
+      {n = G.UIT.C, config = {align = "cm", minw = 0.3}, nodes = {}},
+      {n = G.UIT.C, config = {align = "cm", minw = half}, nodes = {txt(L("1 in 4"), 0.42, c.green)}},
+    }, {w = w, h = 0.7}),
+    row({
+      fake_button(L("Play Hand"), "blue", half, bh),
+      {n = G.UIT.C, config = {align = "cm", minw = 0.3}, nodes = {}},
+      fake_button(L("Discard"), "red", half, bh),
+    }, {w = w}),
+    row({
+      fake_button(L("Cash Out"), "yellow", half, bh),
+      {n = G.UIT.C, config = {align = "cm", minw = 0.3}, nodes = {}},
+      fake_button(L("Reroll"), "green", half, bh),
+    }, {w = w}),
+  }
+  return UIK.section(L("PREVIEW"), rows, {w = w})
+end
+
+local function swatch_row(k, w)
+  local st = PE.state
+  local on = st.sel == k
+  local sw = touch() and 1.5 or 1.3
+  local h = touch() and 0.82 or 0.72
+  return {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", minw = w, minh = h + 0.1, r = 0.12, padding = 0.05, hover = true, shadow = true,
+      colour = G.C.BLACK, button = "poly_pick", ref_table = {key = k},
+      outline = on and 1.5 or nil, outline_colour = on and G.C.GOLD or nil}, nodes = {
+      {n = G.UIT.C, config = {align = "cm", minw = sw, minh = h, r = 0.1, colour = st.cols[k], emboss = 0.05}, nodes = {}},
+      {n = G.UIT.C, config = {align = "cl", minw = w - sw - 0.3, padding = 0.08}, nodes = {
+        row({txt(L(NAMES[k]), touch() and 0.42 or 0.38, on and G.C.GOLD or G.C.UI.TEXT_LIGHT)}, {align = "cl", padding = 0}),
+        row({txt("", 0.3, G.C.UI.TEXT_INACTIVE, {shadow = false, ref_table = st.hex, ref_value = k})}, {align = "cl", padding = 0}),
+      }},
+    }},
+  }}
+end
+
+local function swatch_grid(w)
+  local s = touch() and 0.56 or 0.46
+  local per = 8
+  local rows = {}
+  for r = 1, math.ceil(#QUICK / per) do
+    local cells = {}
+    for i = (r - 1) * per + 1, math.min(#QUICK, r * per) do
+      cells[#cells + 1] = {n = G.UIT.C, config = {align = "cm", padding = 0.03}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = s, minh = s, r = 0.08, colour = HEX(QUICK[i]), hover = true, shadow = true,
+          button = "poly_quick", ref_table = {hex = QUICK[i]}}, nodes = {}},
+      }}
+    end
+    rows[#rows + 1] = row(cells, {w = w, padding = 0})
+  end
+  return rows
+end
+
+local function editor(w)
+  local st = PE.state
+  local k = st.sel
+  local function cb() local r, g, b = hsv_to_rgb(st.hsv.h, st.hsv.s, st.hsv.v); set_rgb(k, {r, g, b}) end
+  local rows = {
+    row({
+      {n = G.UIT.C, config = {align = "cm", minw = w - 0.3, minh = touch() and 0.62 or 0.52, r = 0.1, colour = st.cols[k], emboss = 0.05}, nodes = {
+        txt("", 0.36, ink(k), {ref_table = st.hex, ref_value = k, shadow = ink(k) == G.C.UI.TEXT_LIGHT}),
+      }},
+    }, {w = w}),
+    UIK.slider{label = L("Hue"), ref_table = st.hsv, ref_value = "h", min = 0, max = 359, w = w, colour = st.cols[k], callback = cb},
+    UIK.slider{label = L("Saturation"), ref_table = st.hsv, ref_value = "s", min = 0, max = 100, w = w, colour = st.cols[k], callback = cb},
+    UIK.slider{label = L("Brightness"), ref_table = st.hsv, ref_value = "v", min = 0, max = 100, w = w, colour = st.cols[k], callback = cb},
+    row({txt(L("Quick colours"), 0.3, G.C.UI.TEXT_INACTIVE, {shadow = false})}, {w = w, padding = 0.02}),
+  }
+  for _, r in ipairs(swatch_grid(w)) do rows[#rows + 1] = r end
+  return UIK.section(string.format(L("EDIT %s"), string.upper(L(NAMES[k]))), rows, {w = w, colour = st.cols[k]})
+end
+
+local function start_from(w)
+  local st = PE.state
+  local sets = owned_sets()
+  local names = {}
+  for i, s in ipairs(sets) do names[i] = s.name end
+  st.start = clamp(st.start or 1, 1, #names)
+  return UIK.cycle{label = L("Start from a palette"), options = names, current = st.start, w = w, no_pips = #names > 12, callback = function(i)
+    st.start = i
+    if sets[i] then load_all(sets[i].src) end
+    UIK.refresh()
+  end}
+end
+
+local function body()
+  local W = UIK.W
+  local st = PE.state
+  if port() then
+    local w = W - 0.2
+    local strip = {}
+    for _, k in ipairs(KEYS) do
+      local on = st.sel == k
+      strip[#strip + 1] = {n = G.UIT.C, config = {align = "cm", padding = 0.05}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = (w - 0.6) / 4, minh = 1.0, r = 0.12, colour = st.cols[k], hover = true, shadow = true,
+          button = "poly_pick", ref_table = {key = k}, outline = on and 1.5 or nil, outline_colour = on and G.C.GOLD or nil, padding = 0.05}, nodes = {
+          row({txt(L(NAMES[k]), 0.36, ink(k), {shadow = ink(k) == G.C.UI.TEXT_LIGHT})}, {padding = 0}),
+        }},
+      }}
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = W, padding = 0.05}, nodes = {
+      {n = G.UIT.C, config = {align = "tm"}, nodes = {
+        preview(w),
+        row(strip, {w = w}),
+        editor(w),
+        start_from(w),
+      }},
+    }}
+  end
+  local cw = (W - 0.5) / 3
+  local mid = {}
+  mid[#mid + 1] = row({txt(L("Tap a colour to edit it"), 0.3, G.C.UI.TEXT_INACTIVE, {shadow = false})}, {w = cw, padding = 0.02})
+  for _, k in ipairs(KEYS) do mid[#mid + 1] = swatch_row(k, cw - 0.2) end
+  return {n = G.UIT.R, config = {align = "tm", minw = W, padding = 0.05}, nodes = {
+    {n = G.UIT.C, config = {align = "tm", minw = cw, padding = 0.04}, nodes = {preview(cw), start_from(cw)}},
+    {n = G.UIT.C, config = {align = "tm", minw = cw, padding = 0.04}, nodes = {UIK.section(L("COLOURS"), mid, {w = cw})}},
+    {n = G.UIT.C, config = {align = "tm", minw = cw, padding = 0.04}, nodes = {editor(cw)}},
+  }}
+end
+
+function PE.def()
+  return UIK.window{
+    id = "poly_editor",
+    title = L("POLYCHROMATIC"),
+    tabs = {{key = "edit", label = L("Polychromatic"), build = body}},
+    back_func = "poly_back",
+    footer = {
+      UIK.button{label = L("RESET"), button = "poly_reset", colour = UIK.C.warn},
+      UIK.button{label = L("APPLY"), button = "poly_apply", colour = UIK.C.ok},
+    },
+  }
+end
+
+local function back_to_tailor()
+  local from = PE.state and PE.state.from
+  PE.state = nil
+  if G.FUNCS.tavern_custom then
+    return G.FUNCS.tavern_custom({config = {ref_table = {tab = "palette", from = from}}})
+  end
+r 4 1375 %20%20 -
+l 72
+end
+
+G.FUNCS.poly_pick = function(e)
+  local st = PE.state
+  local k = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not st or not k or st.sel == k then return end
+  st.sel = k
+  load_hsv()
+  play_sound("paper1", 1.1, 0.5)
+  UIK.refresh()
+end
+
+G.FUNCS.poly_quick = function(e)
+  local st = PE.state
+  local h = e and e.config and e.config.ref_table and e.config.ref_table.hex
+  if not st or not h then return end
+  set_rgb(st.sel, from_hex(h))
+  load_hsv()
+  play_sound("generic1", 1.2, 0.4)
+  UIK.refresh()
+end
+
+G.FUNCS.poly_reset = function()
+  if not PE.state then return end
+  PE.state.start = 1
+  load_all(DEFAULT)
+  play_sound("cancel", 1, 0.5)
+  UIK.refresh()
+end
+
+G.FUNCS.poly_apply = function()
+  local st = PE.state
+  if not st then return end
+  local poly = {}
+  for _, k in ipairs(KEYS) do
+    poly[k .. "_r"], poly[k .. "_g"], poly[k .. "_b"] = st.rgb[k][1], st.rgb[k][2], st.rgb[k][3]
+  end
+  if AshCardManager and AshCardManager.save_poly_colors then AshCardManager.save_poly_colors(poly) end
+  local S = require("functions/shop/tavern_store")
+  if not S.equip({type = "palette", key = "polychromatic", id = "palette:polychromatic"}) and apply_color_set then
+    pcall(apply_color_set, "polychromatic")
+  end
+  play_sound("polychrome1", 1.2, 0.6)
+  back_to_tailor()
+end
+
+G.FUNCS.poly_back = function()
+  back_to_tailor()
+end
+
+if mod_loc_register then
+  mod_loc_register{
+    fr = {
+      ["POLYCHROMATIC"] = "POLYCHROME", ["Polychromatic"] = "Polychrome", ["PREVIEW"] = "APERÇU", ["COLOURS"] = "COULEURS",
+      ["Chips"] = "Jetons", ["Mult"] = "Mult", ["Chance"] = "Chance", ["Money"] = "Argent", ["EDIT %s"] = "MODIFIER : %s",
+      ["Hue"] = "Teinte", ["Saturation"] = "Saturation", ["Brightness"] = "Luminosité", ["Quick colours"] = "Couleurs rapides",
+      ["Start from a palette"] = "Partir d'une palette", ["Default"] = "Par défaut", ["RESET"] = "RÉINITIALISER", ["APPLY"] = "APPLIQUER",
+      ["Play Hand"] = "Jouer", ["Discard"] = "Défausser", ["Cash Out"] = "Encaisser", ["Reroll"] = "Relancer", ["1 in 4"] = "1 sur 4",
+      ["Tap a colour to edit it"] = "Touche une couleur pour la modifier",
+    },
+    es = {
+      ["POLYCHROMATIC"] = "POLICROMÁTICO", ["Polychromatic"] = "Policromático", ["PREVIEW"] = "VISTA PREVIA", ["COLOURS"] = "COLORES",
+      ["Chips"] = "Fichas", ["Mult"] = "Mult", ["Chance"] = "Probabilidad", ["Money"] = "Dinero", ["EDIT %s"] = "EDITAR: %s",
+      ["Hue"] = "Tono", ["Saturation"] = "Saturación", ["Brightness"] = "Brillo", ["Quick colours"] = "Colores rápidos",
+      ["Start from a palette"] = "Partir de una paleta", ["Default"] = "Por defecto", ["RESET"] = "RESTABLECER", ["APPLY"] = "APLICAR",
+      ["Play Hand"] = "Jugar", ["Discard"] = "Descartar", ["Cash Out"] = "Cobrar", ["Reroll"] = "Renovar", ["1 in 4"] = "1 de 4",
+      ["Tap a colour to edit it"] = "Toca un color para editarlo",
+    },
+  }
+end
+
+return PE
+end

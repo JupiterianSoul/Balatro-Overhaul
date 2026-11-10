@@ -1,0 +1,151 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 74
+local Q = QOL
+local M = Q.feature("interest_guard", {})
+
+M.WINDOW = 5
+M.HOLD = 1.8
+
+Q.default("qol_interest_guard", false)
+
+function M.interest(dollars)
+    local g = G.GAME
+    if not g or (g.modifiers and g.modifiers.no_interest) then return 0 end
+    local cap = math.floor((g.interest_cap or 25) / 5)
+    local steps = math.max(0, math.min(math.floor((dollars or 0) / 5), cap))
+    return steps * (g.interest_amount or 1)
+end
+
+function M.loss(cost)
+    local g = G.GAME
+    if not g or type(cost) ~= "number" or cost <= 0 then return 0 end
+    local dollars = g.dollars or 0
+    if dollars - cost < (g.bankrupt_at or 0) then return 0 end
+    return M.interest(dollars) - M.interest(dollars - cost)
+end
+
+local function now() return G.TIMERS and G.TIMERS.REAL or 0 end
+
+function M.pressed(e)
+    if bom_playback and bom_playback.active and bom_playback.active() then return false end
+    return type(e) == "table" and UIElement ~= nil and type(e.is) == "function" and e:is(UIElement) or false
+end
+
+function M.check(key, cost, anchor)
+    if not (Q.on("qol_interest_guard") and Q.in_run() and M.pressed(anchor)) then return true end
+    local lost = M.loss(cost)
+    if lost <= 0 then return true end
+    local a = M.armed
+    if a and a.key == key and a.dollars == G.GAME.dollars and now() - a.t <= M.WINDOW then
+        M.armed = nil
+        return true
+    end
+    M.armed = {key = key, t = now(), dollars = G.GAME.dollars}
+    M.warn(lost, anchor)
+    return false
+end
+
+function M.warn(lost, anchor)
+    if play_sound then play_sound('cancel', 0.9, 0.5) end
+    local text = string.format(mod_loc("-$%d interest, press again"), lost)
+    local major = anchor and anchor.T and anchor or G.ROOM_ATTACH
+    if attention_text then
+        local on_button = major ~= G.ROOM_ATTACH
+        attention_text({text = text, scale = 0.4, hold = M.HOLD * (G.SPEEDFACTOR or 1), align = on_button and 'bm' or 'cm', offset = {x = 0, y = on_button and 0.2 or -2.8},
+            major = major, colour = G.C.WHITE, maxw = 4})
+    end
+    if anchor and anchor.juice_up then pcall(anchor.juice_up, anchor, 0.3, 0.3) end
+end
+
+local function card_of(e)
+    local c = e and e.config and e.config.ref_table
+    if type(c) == "table" and c.is and Card and c:is(Card) then return c end
+end
+
+local function shop_area(card)
+    return card.area and (card.area == G.shop_vouchers or card.area == G.shop_booster)
+end
+
+function M.wrap()
+    local buy = G.FUNCS.buy_from_shop
+    if buy then
+        G.FUNCS.buy_from_shop = function(e, ...)
+            local c = card_of(e)
+            if c then
+                local ok, pass = pcall(M.check, c, c.cost, e)
+                if ok and not pass then
+r 4 2165 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+                    return false
+                end
+            end
+            return buy(e, ...)
+        end
+    end
+    local reroll = G.FUNCS.reroll_shop
+    if reroll then
+        G.FUNCS.reroll_shop = function(e, ...)
+            local cost = G.GAME and G.GAME.current_round and G.GAME.current_round.reroll_cost
+            local ok, pass = pcall(M.check, "reroll", cost, e)
+            if ok and not pass then
+                if e then e.disable_button = nil end
+                return
+            end
+            return reroll(e, ...)
+        end
+    end
+    local use = G.FUNCS.use_card
+    if use then
+        G.FUNCS.use_card = function(e, ...)
+            local c = card_of(e)
+            if c and shop_area(c) then
+                local ok, pass = pcall(M.check, c, c.cost, e)
+                if ok and not pass then
+r 4 2165 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 42
+                    return
+                end
+            end
+            return use(e, ...)
+        end
+    end
+end
+
+Q.row("Shop", function()
+    return Q.toggle('set_qol_interest_guard', "Interest guard", "Buys that cost interest need two presses", 'qol_interest_guard')
+end)
+
+local function strings()
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {["Interest guard"] = "Garde des intérêts", ["Buys that cost interest need two presses"] = "Deux appuis si un achat coûte des intérêts",
+            ["-$%d interest, press again"] = "-%d$ d'intérêts, appuie encore"},
+        es = {["Interest guard"] = "Guardia de intereses", ["Buys that cost interest need two presses"] = "Dos toques si una compra cuesta interés",
+            ["-$%d interest, press again"] = "-$%d de interés, pulsa otra vez"},
+    }
+end
+
+function M.guards_off_once()
+    local S = G and G.SETTINGS
+    if not S or S.guards_off_1106 then return end
+    S.guards_off_1106 = true
+    S.qol_interest_guard = false
+    S.safe_sell = false
+    Q.save()
+end
+
+function M.init()
+    strings()
+    pcall(M.guards_off_once)
+    if M._wrapped or not (G and G.FUNCS) then return end
+    M._wrapped = true
+    M.wrap()
+end
+
+strings()
+
+return M
+end

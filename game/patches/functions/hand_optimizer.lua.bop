@@ -1,0 +1,701 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 297
+OPTIMIZER = OPTIMIZER or {}
+local O = OPTIMIZER
+
+O.MAX_EXACT = 420
+O.SHOW = 5
+O.BUDGET = 0.006
+O.results = nil
+O.job = nil
+O.stats = {jobs = 0, sims = 0, ms = 0, last_ms = 0}
+
+local function now() return love.timer.getTime() end
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+local function touch()
+    return UIK and UIK.touch and UIK.touch() or false
+end
+
+local function setting_on()
+    return G and G.SETTINGS and G.SETTINGS.hand_optimizer == true
+end
+
+function O.allowed()
+    local FL = rawget(_G, "FairLock")
+    if FL and FL.blocks then
+        local ok, why = pcall(FL.blocks, "hand_optimizer")
+        if ok and why then return false end
+    end
+    if FL and FL.mp_setting_locked and FL.mp_setting_locked("hand_optimizer") then return false end
+    return true
+end
+
+local function playing_state()
+    return G and G.STAGE == G.STAGES.RUN and G.GAME and G.hand and G.hand.cards
+        and (G.STATE == G.STATES.SELECTING_HAND)
+end
+
+local function active()
+    return setting_on() and O.allowed() and playing_state() and PREVIEW and PREVIEW.compute and true or false
+end
+
+local function card_key(c)
+    local b = c.base or {}
+    local ed = c.edition
+    return table.concat({tostring(c.sort_id or c.ID), tostring(b.id), tostring(b.suit), tostring(c.config and c.config.center and c.config.center.key),
+        tostring(type(ed) == "table" and (ed.type or ed.key) or ed), tostring(c.seal), c.debuff and "d" or "", tostring(c.facing)}, ":")
+end
+
+function O.state_key()
+    local g = G.GAME
+    local parts = {}
+    for _, c in ipairs(G.hand.cards) do parts[#parts + 1] = card_key(c) end
+    parts[#parts + 1] = "|"
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do parts[#parts + 1] = card_key(j) end
+    parts[#parts + 1] = "|"
+    for _, c in ipairs(G.consumeables and G.consumeables.cards or {}) do parts[#parts + 1] = tostring(c.sort_id) end
+    local cr = g.current_round or {}
+    local b = g.blind or {}
+    local lv = 0
+    for _, h in pairs(g.hands or {}) do if type(h) == "table" then lv = lv + (tonumber(h.level) or 0) * 7 + (tonumber(h.played) or 0) end end
+    parts[#parts + 1] = table.concat({tostring(g.dollars), tostring(cr.hands_left), tostring(cr.discards_left), tostring(g.hands_played),
+        tostring(b.name), tostring(b.disabled), tostring(lv), tostring(#(G.deck and G.deck.cards or {}))}, ",")
+    return table.concat(parts, " ")
+end
+
+local function play_limit()
+    local lim = G.hand and G.hand.config and tonumber(G.hand.config.highlighted_limit) or 5
+    if lim < 1 then lim = 5 end
+    return math.min(lim, 6)
+end
+
+local function subsets(cards, kmax)
+    local out = {}
+    local n = #cards
+    local pick = {}
+    local function rec(start, depth)
+        if depth > 0 then
+            local s = {}
+            for i = 1, depth do s[i] = pick[i] end
+            out[#out + 1] = s
+        end
+        if depth == kmax then return end
+        for i = start, n do
+            pick[depth + 1] = cards[i]
+            rec(i + 1, depth + 1)
+        end
+    end
+    rec(1, 0)
+    return out
+end
+
+local function hand_info(sel)
+    local fn = PREVIEW and PREVIEW.hand_info or G.FUNCS.get_poker_hand_info
+    local ok, name, _, _, scoring = pcall(fn, sel)
+    if not ok then return nil end
+    return name, scoring
+end
+
+local function rough(sel)
+    local name, scoring = hand_info(sel)
+    if not name or name == "NULL" then return 0 end
+    local h = G.GAME.hands and G.GAME.hands[name]
+    if not h then return 0 end
+    local chips = tonumber(h.chips) or 0
+    for _, c in ipairs(scoring or {}) do
+        local b = c.base
+        if b and not c.debuff then chips = chips + (tonumber(b.nominal) or 0) end
+    end
+    return chips * (tonumber(h.mult) or 1) + #sel * 0.01
+end
+
+local function candidates(cards)
+    local all = subsets(cards, play_limit())
+    if #all <= O.MAX_EXACT then return all, #all end
+    local scored = {}
+    for i, s in ipairs(all) do scored[i] = {s = s, v = rough(s)} end
+    table.sort(scored, function(a, b) return a.v > b.v end)
+    local out = {}
+    for i = 1, math.min(O.MAX_EXACT, #scored) do out[i] = scored[i].s end
+    return out, #all
+end
+
+local function num(v)
+    if type(v) == "number" then return v end
+    if type(v) == "table" and to_number then
+        local ok, n = pcall(to_number, v)
+        if ok and type(n) == "number" then return n end
+    end
+    return tonumber(v) or 0
+end
+
+local function sig(play)
+    local ids = {}
+    for _, c in ipairs(play.scoring or play.cards) do ids[#ids + 1] = tostring(c.sort_id or c.ID) end
+    table.sort(ids)
+    return tostring(play.name) .. "#" .. table.concat(ids, ",") .. "#" .. tostring(play.lo) .. "#" .. tostring(play.hi)
+end
+
+local function better(a, b)
+    local alo, blo = num(a.lo), num(b.lo)
+    if alo ~= blo then return alo > blo end
+    local ahi, bhi = num(a.hi), num(b.hi)
+    if ahi ~= bhi then return ahi > bhi end
+    return #a.cards < #b.cards
+end
+
+local function finish(job)
+    table.sort(job.plays, better)
+    local seen, top = {}, {}
+    for _, p in ipairs(job.plays) do
+        local k = sig(p)
+        if not seen[k] then
+            seen[k] = true
+            top[#top + 1] = p
+            if #top >= O.SHOW then break end
+        end
+    end
+    local ms = (now() - job.t0) * 1000
+    O.stats.jobs = O.stats.jobs + 1
+    O.stats.last_ms = ms
+    O.stats.ms = O.stats.ms + ms
+    O.results = {key = job.key, plays = top, all = job.plays, tried = job.done, total = job.total, exact = job.total == #job.list, ms = ms}
+    O.job = nil
+    O.refresh_hud()
+    if O.on_done then pcall(O.on_done, O.results) end
+end
+
+local function face_up_cards()
+    local out = {}
+    for _, c in ipairs(G.hand.cards) do
+        if c.facing ~= "back" and not c.removed then out[#out + 1] = c end
+    end
+    return out
+end
+
+function O.start()
+    local key = O.state_key()
+    local list, total = candidates(face_up_cards())
+    O.job = {key = key, list = list, total = total, i = 0, done = 0, plays = {}, t0 = now()}
+    O.results = nil
+    O.hide_hud()
+    O._mini, O._retry_at = false, 0
+    O.refresh_hud()
+end
+
+function O.evaluate(sel)
+    local res = PREVIEW.compute(sel)
+    if not res then return nil end
+    local lo, hi = num(res.lo), num(res.hi)
+    if lo <= 0 and hi <= 0 then return nil end
+    local name, scoring = hand_info(sel)
+    return {cards = sel, name = res.name or name, lo = res.lo, hi = res.hi, chips = res.chips, mult = res.mult, chance = res.chance, scoring = scoring}
+end
+
+local function step(job, budget)
+    local t_end = now() + budget
+    while job.i < #job.list do
+        job.i = job.i + 1
+        local sel = job.list[job.i]
+        local ok, play = pcall(O.evaluate, sel)
+        O.stats.sims = O.stats.sims + 1
+        job.done = job.done + 1
+        if ok and play then job.plays[#job.plays + 1] = play end
+        if now() >= t_end then return false end
+    end
+    return true
+end
+
+function O.run_all()
+    if not playing_state() then return nil end
+    O.start()
+    while O.job do
+        if step(O.job, 10) then finish(O.job) end
+    end
+    return O.results
+end
+
+function O.update(dt)
+    if not active() then
+        if O.job then O.job = nil end
+        if O._hud then O.hide_hud() end
+        return
+    end
+    local t = now()
+    if O.job then
+        if t - (O._key_at or 0) > 0.3 then
+            O._key_at = t
+            if O.state_key() ~= O.job.key then O.start() end
+        end
+        if step(O.job, touch() and 0.005 or O.BUDGET) then finish(O.job) end
+    elseif t - (O._key_at or 0) > 0.3 then
+        O._key_at = t
+        local key = O.state_key()
+        if not O.results or O.results.key ~= key then O.start() end
+    end
+    if not O._hud then O.refresh_hud() end
+    O.keep_hud()
+end
+
+function O.refresh()
+    O.results, O.job = nil, nil
+    O.hide_hud()
+end
+
+local RANKS = {[14] = "A", [13] = "K", [12] = "Q", [11] = "J"}
+local function rank_text(c)
+    local id = c.base and c.base.id
+    if c.ability and c.ability.effect == "Stone Card" then return "S" end
+    return RANKS[id] or tostring(id or "?")
+end
+
+local function suit_colour(c)
+    local s = c.base and c.base.suit
+    if c.ability and c.ability.effect == "Stone Card" then return G.C.GREY end
+    return (G.C.SO_1 and G.C.SO_1[s]) or (G.C.SUITS and G.C.SUITS[s]) or G.C.WHITE
+end
+
+local function cards_row(cards, scale)
+    local nodes = {}
+    local list = {}
+    for i, c in ipairs(cards) do list[i] = c end
+    table.sort(list, function(a, b) return (a.T and a.T.x or 0) < (b.T and b.T.x or 0) end)
+    for i, c in ipairs(list) do
+        nodes[#nodes + 1] = {n = G.UIT.C, config = {align = "cm", padding = 0.02, r = 0.04, colour = G.C.WHITE, minw = scale * 1.15, minh = scale * 1.55, emboss = 0.02}, nodes = {
+            {n = G.UIT.T, config = {text = rank_text(c), scale = scale, colour = suit_colour(c)}},
+        }}
+        if i < #list then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = 0.05}} end
+    end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = nodes}
+end
+
+local function fmt(v)
+    local ok, s = pcall(number_format, v)
+    if ok and type(s) == "string" then return s end
+    return tostring(v)
+end
+
+function O.score_text(play)
+    if not play then return "" end
+    if num(play.lo) < num(play.hi) then
+        return (L("{1} to {2}"):gsub("{1}", fmt(play.lo)):gsub("{2}", fmt(play.hi)))
+    end
+    return fmt(play.lo)
+end
+
+local function hand_name(play)
+    local ok, s = pcall(localize, play.name, "poker_hands")
+    if ok and type(s) == "string" and s ~= "ERROR" then return s end
+    return tostring(play.name)
+end
+
+function O.select(i)
+    local r = O.results
+    local play = r and r.plays and r.plays[i or 1]
+    if not play then return false end
+    if not playing_state() then return false end
+    if G.play and G.play.cards and G.play.cards[1] then return false end
+    if (G.GAME.STOP_USE or 0) > 0 then return false end
+r 2 582 %20%20%20%20 -
+l 12
+    local in_hand = {}
+    for _, c in ipairs(G.hand.cards) do in_hand[c] = true end
+    for _, c in ipairs(play.cards) do
+        if in_hand[c] and not c.highlighted then G.hand:add_to_highlighted(c, true) end
+    end
+    pcall(play_sound, "cardSlide1")
+    return true
+end
+
+G.FUNCS.ho_select_best = function(e)
+    local i = e and e.config and e.config.ref_table and e.config.ref_table.index or 1
+    if O.select(i) and G.OVERLAY_MENU and e and e.config and e.config.ref_table and e.config.ref_table.close then
+r 4 1375 %20%20%20%20%20%20%20%20 -
+l 382
+    end
+end
+
+local function hud_def(mini)
+    local t = touch()
+    local r = O.results
+    local best = r and r.plays and r.plays[1]
+    local ts = t and 0.4 or 0.34
+    local bh = t and 0.7 or 0.5
+    local function buttons(bw, vertical)
+        local a = UIK.button{label = L("Pick"), button = "ho_select_best", colour = UIK.C.accent, w = bw, h = bh, scale = ts, col = not vertical, disabled = not best}
+        local b = UIK.button{label = L("More"), button = "ho_open", colour = UIK.C.money, w = bw, h = bh, scale = ts, col = not vertical, disabled = not best}
+        if vertical then
+            return {n = G.UIT.C, config = {align = "cm"}, nodes = {a, {n = G.UIT.R, config = {minh = 0.08}}, b}}
+        end
+        return {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {a, {n = G.UIT.C, config = {minw = 0.1}}, b}}
+    end
+    local status = O.job and L("Thinking...") or (not best and L("No hand scores here")) or nil
+    local body
+    if mini then
+        local w = t and 2.9 or 2.5
+        local info = status and {UIK.text(status, {scale = ts, colour = UIK.C.muted})} or {
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.text(hand_name(best), {scale = ts, colour = UIK.C.title})}},
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.text(O.score_text(best), {scale = ts, colour = G.C.CHIPS})}},
+        }
+        body = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minw = w, minh = bh * 2 + 0.08}, nodes = info},
+            {n = G.UIT.C, config = {minw = 0.1}},
+            buttons(t and 1.6 or 1.3, true),
+        }}
+    else
+        local w = t and 4.2 or 3.5
+        local mid
+        if status then
+            mid = {UIK.text(status, {scale = ts, colour = UIK.C.muted})}
+        else
+            mid = {
+                {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {UIK.text(hand_name(best), {scale = t and 0.44 or 0.4, colour = G.C.WHITE})}},
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                    {n = G.UIT.C, config = {align = "cm"}, nodes = {cards_row(best.cards, t and 0.32 or 0.28)}},
+                    {n = G.UIT.C, config = {minw = 0.15}},
+                    {n = G.UIT.C, config = {align = "cm"}, nodes = {UIK.text(O.score_text(best), {scale = t and 0.42 or 0.38, colour = G.C.CHIPS})}},
+                }},
+            }
+        end
+        body = {n = G.UIT.C, config = {align = "cm"}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {UIK.text(L("BEST HAND"), {scale = t and 0.34 or 0.3, colour = UIK.C.title})}},
+            {n = G.UIT.R, config = {align = "cm", minw = w, minh = t and 1.05 or 0.9}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = mid}}},
+            buttons((w - 0.3) / 2),
+        }}
+    end
+    return {n = G.UIT.ROOT, config = {align = "cm", padding = 0.08, r = 0.15, colour = G.C.BLACK, emboss = 0.05}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.06, r = 0.12, colour = UIK.C.section}, nodes = {body}},
+    }}
+end
+
+function O.hide_hud()
+    if O._hud then pcall(function() O._hud:remove() end) end
+    O._hud = nil
+end
+
+local function rect(m)
+    local T = m and (m.VT or m.T)
+    if not T or not T.w then return nil end
+    return {x = T.x, y = T.y, w = T.w, h = T.h}
+end
+
+local function hits(a, b)
+    return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
+end
+
+local function preferred_spot(w, h)
+    local deck = rect(G.deck)
+    if not deck then return nil end
+    local x = deck.x + deck.w / 2 - w / 2
+    local y = deck.y - h - 0.25
+    local room_w = G.ROOM and G.ROOM.T.w or 20
+    x = math.max(0.2, math.min(x, room_w - w - 0.2))
+    return {x = x, y = y, w = w, h = h}
+end
+
+local function spot_free(r, obs)
+    local room_w, room_h = G.ROOM and G.ROOM.T.w or 20, G.ROOM and G.ROOM.T.h or 11.5
+    if r.x < 0.2 or r.y < 0.2 or r.x + r.w > room_w - 0.2 or r.y + r.h > room_h - 0.2 then return false end
+    for _, ob in ipairs(obs or {}) do
+        if hits(r, ob) then return false end
+    end
+    return true
+end
+
+local function obstacles()
+    if JIMBO_COMMENTS and JIMBO_COMMENTS.obstacles then
+        local ok, obs = pcall(JIMBO_COMMENTS.obstacles, O._hud)
+        if ok then return obs end
+    end
+    return {}
+end
+
+local function place_hud(box)
+    local w, h = box.T.w, box.T.h
+    local obs = obstacles()
+    local spot = preferred_spot(w, h)
+    if not (spot and spot_free(spot, obs)) then
+        spot = nil
+        if JIMBO_COMMENTS and JIMBO_COMMENTS.find_spot then
+            local focus = rect(G.deck)
+            spot = JIMBO_COMMENTS.find_spot(w, h, focus and {x = focus.x + focus.w / 2, y = focus.y} or nil, obs)
+        end
+    end
+    if not spot then return false end
+    box.alignment.offset.x = spot.x - G.ROOM_ATTACH.T.x
+    box.alignment.offset.y = spot.y - G.ROOM_ATTACH.T.y
+    box:align_to_major()
+    return true
+end
+
+local function new_box(mini)
+    local ok, box = pcall(UIBox, {definition = hud_def(mini), config = {align = "tli", offset = {x = -30, y = -30}, major = G.ROOM_ATTACH, bond = "Weak"}})
+    if not ok then O.last_error = box return nil end
+    return box
+end
+
+function O.refresh_hud()
+    if not active() then O.hide_hud() return end
+    local t = now()
+    local old = O._hud
+    if not old and (t < (O._retry_at or 0) or G.OVERLAY_MENU) then return end
+    local mini = old and O._mini or false
+    local box = new_box(mini)
+    if not box then return end
+    if old then
+        box.alignment.offset.x, box.alignment.offset.y = old.alignment.offset.x, old.alignment.offset.y
+        box:align_to_major()
+        pcall(function() old:remove() end)
+        O._hud = box
+        if G.OVERLAY_MENU then return end
+        local r = rect(box)
+        if r and spot_free(r, obstacles()) then return end
+    end
+    O._hud = box
+    if place_hud(box) then
+        O._mini = mini
+        if not old then box:hard_set_VT() end
+        return
+    end
+    pcall(function() box:remove() end)
+    O._hud = nil
+    if not mini then
+        box = new_box(true)
+        if box then
+            O._hud = box
+            if place_hud(box) then
+                O._mini = true
+                box:hard_set_VT()
+                return
+            end
+            pcall(function() box:remove() end)
+            O._hud = nil
+        end
+    end
+    O._retry_at = t + 1
+end
+
+function O.keep_hud()
+    local box = O._hud
+    if not box or G.OVERLAY_MENU then return end
+    local t = now()
+    if t - (O._hud_check or 0) < 0.5 then return end
+    O._hud_check = t
+    local r = rect(box)
+    if r and spot_free(r, obstacles()) then return end
+    if place_hud(box) then return end
+    O.hide_hud()
+    O._mini = false
+    O._retry_at = 0
+    O.refresh_hud()
+end
+
+local function chips_mult(play, sc)
+    if play.chance then
+        return {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.text(L("Luck based"), {scale = sc, colour = UIK.C.muted})}}
+    end
+    return {n = G.UIT.R, config = {align = "cm"}, nodes = {
+        UIK.text(fmt(play.chips), {scale = sc, colour = G.C.CHIPS}),
+        UIK.text(" X ", {scale = sc, colour = UIK.C.muted}),
+        UIK.text(fmt(play.mult), {scale = sc, colour = G.C.MULT}),
+    }}
+end
+
+local function play_row(play, i, w)
+    local t = touch()
+    local sw, bw = t and 3.0 or 2.8, t and 2.2 or 1.9
+    local nw = w - sw - bw - 0.5
+    local sub = chips_mult(play, t and 0.32 or 0.3)
+    return {n = G.UIT.R, config = {align = "cm", padding = t and 0.04 or 0.08, r = 0.12, colour = UIK.C.section, minw = w}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = 0.5}, nodes = {UIK.text(tostring(i), {scale = 0.45, colour = i == 1 and UIK.C.title or UIK.C.muted})}},
+        t and {n = G.UIT.C, config = {align = "cl", minw = nw}, nodes = {
+            {n = G.UIT.R, config = {align = "cl"}, nodes = {
+                {n = G.UIT.C, config = {align = "cl", minw = 3.2}, nodes = {UIK.text(hand_name(play), {scale = 0.44, colour = UIK.C.title})}},
+                {n = G.UIT.C, config = {align = "cm"}, nodes = {cards_row(play.cards, 0.34)}},
+            }},
+        }} or {n = G.UIT.C, config = {align = "cl", minw = nw}, nodes = {
+            {n = G.UIT.R, config = {align = "cl", padding = 0.02}, nodes = {UIK.text(hand_name(play), {scale = 0.4, colour = UIK.C.title})}},
+            {n = G.UIT.R, config = {align = "cl"}, nodes = {cards_row(play.cards, 0.3)}},
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = sw}, nodes = {
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.text(O.score_text(play), {scale = t and 0.46 or 0.42, colour = G.C.CHIPS})}},
+            sub,
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = bw}, nodes = {
+            UIK.button{label = L("Pick"), button = "ho_select_best", ref_table = {index = i, close = true}, colour = UIK.C.accent, w = bw - 0.1, h = t and 0.75 or 0.6, scale = t and 0.42 or 0.36, col = true},
+        }},
+    }}
+end
+
+local function window_body()
+    local r = O.results
+    local w = math.min(UIK.W - 0.4, touch() and 13.4 or 12.4)
+    local rows = {}
+    if not r or not r.plays or #r.plays == 0 then
+        rows[1] = {n = G.UIT.R, config = {align = "cm", minw = w, minh = 1.2}, nodes = {UIK.text(L(O.job and "Thinking..." or "No hand scores here"), {scale = 0.45, colour = UIK.C.muted})}}
+    else
+        for i, p in ipairs(r.plays) do
+            rows[#rows + 1] = play_row(p, i, w)
+            if i < #r.plays then rows[#rows + 1] = {n = G.UIT.R, config = {minh = touch() and 0.06 or 0.08}} end
+        end
+        local note = r.exact and L("Every possible hand was scored with the game's own rules.") or L("The strongest hands were scored with the game's own rules.")
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.1, minw = w}, nodes = {UIK.text(note, {scale = 0.32, colour = UIK.C.muted})}}
+    end
+    return {n = G.UIT.R, config = {align = "tm", padding = 0.05}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = rows}}}
+end
+
+local function portrait_body()
+    local r = O.results
+    local w = UIK.W - 0.4
+    local rows = {}
+    for i, p in ipairs(r and r.plays or {}) do
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.1, r = 0.12, colour = UIK.C.section, minw = w}, nodes = {
+            {n = G.UIT.C, config = {align = "cm"}, nodes = {
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.text(i .. ". " .. hand_name(p), {scale = 0.46, colour = UIK.C.title})}},
+                cards_row(p.cards, 0.36),
+                {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {UIK.text(O.score_text(p), {scale = 0.48, colour = G.C.CHIPS})}},
+                chips_mult(p, 0.34),
+                {n = G.UIT.R, config = {minh = 0.08}},
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.button{label = L("Pick"), button = "ho_select_best", ref_table = {index = i, close = true}, colour = UIK.C.accent, w = 3.2, h = 0.8, scale = 0.44}}},
+            }},
+        }}
+        if i < #(r.plays) then rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.1}} end
+    end
+    if #rows == 0 then rows[1] = {n = G.UIT.R, config = {align = "cm", minw = w, minh = 1.2}, nodes = {UIK.text(L("No hand scores here"), {scale = 0.45, colour = UIK.C.muted})}} end
+    return {n = G.UIT.R, config = {align = "tm", padding = 0.05}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = rows}}}
+end
+
+G.FUNCS.ho_open = function(e)
+    if not O.results or not O.results.plays or #O.results.plays == 0 then return end
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "ho",
+        title = L("HAND OPTIMIZER"),
+        compact = true,
+        w = UIK.portrait() and (UIK.W - 0.2) or (touch() and 13.8 or 12.8),
+        tabs = {{key = "plays", label = L("Best hands"), build = function() return UIK.portrait() and portrait_body() or window_body() end}},
+    }}
+end
+
+function O.install_check(path)
+    if O._check then return end
+    local f = io.open(path, "a")
+    if not f then return end
+    O._check = {f = f, ok = 0, miss = 0, exact = 0}
+    local raw_play = G.FUNCS.play_cards_from_highlighted
+    G.FUNCS.play_cards_from_highlighted = function(e, ...)
+        local C = O._check
+        if C and not (G.play and G.play.cards[1]) and G.hand and #G.hand.highlighted > 0 then
+            local sel = {}
+            for i, c in ipairs(G.hand.highlighted) do sel[i] = c end
+            if PREVIEW and PREVIEW.clear_cache then PREVIEW.clear_cache() end
+            local ok, play = pcall(O.evaluate, sel)
+            C.pending = ok and play or false
+            C.before = num(G.GAME.chips)
+            C.best = O.results and O.results.plays and O.results.plays[1]
+        end
+        return raw_play(e, ...)
+    end
+end
+
+function O.check_after()
+    local C = O._check
+    if not C or C.pending == nil then return end
+    local real = num(G.GAME.chips) - (C.before or 0)
+    local p = C.pending
+    C.pending = nil
+    local jk = {}
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do jk[#jk + 1] = j.config and j.config.center and j.config.center.key or "?" end
+    local b = G.GAME.blind
+    local status
+    if not p then status = real <= 0 and "ok" or "miss"
+    else
+        local lo, hi = num(p.lo), num(p.hi)
+        local tol = 1e-6 * math.max(1, math.abs(real))
+        if real >= lo - tol and real <= hi + tol then status = "ok" else status = "miss" end
+        if status == "ok" and math.abs(lo - hi) <= tol then C.exact = C.exact + 1 end
+    end
+    C[status] = C[status] + 1
+    C.f:write(string.format("OPT_CHECK %s real=%s lo=%s hi=%s hand=%s best=%s blind=%s jokers=%s\n", status, tostring(real), tostring(p and p.lo), tostring(p and p.hi),
+        tostring(p and p.name), tostring(C.best and C.best.lo), tostring(b and b.config and b.config.blind and b.config.blind.key), table.concat(jk, ",")))
+    C.f:flush()
+end
+
+mod_loc_register{
+    fr = {
+        ["BEST HAND"] = "MEILLEURE MAIN",
+        ["No hand scores here"] = "Aucune main ne marque ici",
+        ["Pick"] = "Choisir",
+        ["More"] = "Plus",
+        ["Best hands"] = "Meilleures mains",
+        ["Luck based"] = "Selon la chance",
+        ["{1} to {2}"] = "{1} à {2}",
+        ["Every possible hand was scored with the game's own rules."] = "Chaque main possible a été calculée avec les règles du jeu.",
+        ["The strongest hands were scored with the game's own rules."] = "Les mains les plus fortes ont été calculées avec les règles du jeu.",
+        ["Jimbo reacts to what happens"] = "Jimbo réagit à ce qui se passe",
+        ["How often Jimbo talks"] = "Fréquence de Jimbo",
+        ["From quiet to chatty"] = "De discret à bavard",
+        ["Finds the best hand you can play."] = "Trouve la meilleure main à jouer.",
+        ["HOW IT WORKS:"] = "COMMENT ÇA MARCHE :",
+        ["- Tries every hand you can play"] = "- Essaie chaque main jouable",
+        ["- Scores each one with the game's own rules"] = "- Calcule chacune avec les règles du jeu",
+        ["- Counts Jokers, levels, the boss and card effects"] = "- Compte Jokers, niveaux, boss et effets des cartes",
+        ["IN A ROUND:"] = "PENDANT UNE MANCHE :",
+        ["- The Best hand box shows the top play"] = "- Le cadre Meilleure main montre le meilleur coup",
+        ["- Pick selects those cards for you"] = "- Choisir sélectionne ces cartes pour vous",
+        ["- More lists the five best plays"] = "- Plus liste les cinq meilleurs coups",
+        ["- Luck based effects show a range"] = "- Les effets de chance affichent une fourchette",
+        ["Settings > Helpers > Hand Optimizer"] = "Paramètres > Aides > Optimiseur de main",
+        ["Jimbo reacts to your run!"] = "Jimbo réagit à votre partie !",
+        ["HE TALKS ABOUT:"] = "IL PARLE DE :",
+        ["- Big hands, close calls and losses"] = "- Grosses mains, fins serrées et défaites",
+        ["- Boss blinds and what they do"] = "- Blindes de boss et leurs effets",
+        ["- Rare Jokers, money and new antes"] = "- Jokers rares, argent et nouvelles mises",
+        ["- Lives and PvP blinds in multiplayer"] = "- Vies et blindes JcJ en multijoueur",
+        ["WHERE:"] = "OÙ :",
+        ["Jimbo finds free space on screen,"] = "Jimbo trouve une place libre à l'écran,",
+        ["next to what he is talking about."] = "près de ce dont il parle.",
+        ["Settings > Helpers > Jimbo Comments"] = "Paramètres > Aides > Commentaires de Jimbo",
+        ["Choose how often he talks there too."] = "Choisis aussi à quelle fréquence il parle.",
+    },
+    es = {
+        ["BEST HAND"] = "MEJOR MANO",
+        ["No hand scores here"] = "Ninguna mano puntúa aquí",
+        ["Pick"] = "Elegir",
+        ["More"] = "Más",
+        ["Best hands"] = "Mejores manos",
+        ["Luck based"] = "Depende de la suerte",
+        ["{1} to {2}"] = "{1} a {2}",
+        ["Every possible hand was scored with the game's own rules."] = "Cada mano posible se calculó con las reglas del juego.",
+        ["The strongest hands were scored with the game's own rules."] = "Las manos más fuertes se calcularon con las reglas del juego.",
+        ["Jimbo reacts to what happens"] = "Jimbo reacciona a lo que pasa",
+        ["How often Jimbo talks"] = "Cuánto habla Jimbo",
+        ["From quiet to chatty"] = "De callado a parlanchín",
+        ["Finds the best hand you can play."] = "Encuentra la mejor mano que puedes jugar.",
+        ["HOW IT WORKS:"] = "CÓMO FUNCIONA:",
+        ["- Tries every hand you can play"] = "- Prueba cada mano que puedes jugar",
+        ["- Scores each one with the game's own rules"] = "- Calcula cada una con las reglas del juego",
+        ["- Counts Jokers, levels, the boss and card effects"] = "- Cuenta comodines, niveles, jefe y efectos de cartas",
+        ["IN A ROUND:"] = "EN UNA RONDA:",
+        ["- The Best hand box shows the top play"] = "- El recuadro Mejor mano muestra la mejor jugada",
+        ["- Pick selects those cards for you"] = "- Elegir selecciona esas cartas por ti",
+        ["- More lists the five best plays"] = "- Más muestra las cinco mejores jugadas",
+        ["- Luck based effects show a range"] = "- Los efectos de suerte muestran un rango",
+        ["Settings > Helpers > Hand Optimizer"] = "Ajustes > Ayudas > Optimizador de mano",
+        ["Jimbo reacts to your run!"] = "¡Jimbo reacciona a tu partida!",
+        ["HE TALKS ABOUT:"] = "HABLA DE:",
+        ["- Big hands, close calls and losses"] = "- Manos grandes, finales ajustados y derrotas",
+        ["- Boss blinds and what they do"] = "- Ciegas jefe y lo que hacen",
+        ["- Rare Jokers, money and new antes"] = "- Comodines raros, dinero y nuevas apuestas",
+        ["- Lives and PvP blinds in multiplayer"] = "- Vidas y ciegas JcJ en multijugador",
+        ["WHERE:"] = "DÓNDE:",
+        ["Jimbo finds free space on screen,"] = "Jimbo busca un hueco libre en pantalla,",
+        ["next to what he is talking about."] = "junto a aquello de lo que habla.",
+        ["Settings > Helpers > Jimbo Comments"] = "Ajustes > Ayudas > Comentarios de Jimbo",
+        ["Choose how often he talks there too."] = "Ahí también eliges cuánto habla.",
+    },
+}
+end

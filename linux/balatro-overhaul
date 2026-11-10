@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -u
+
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+game="$here/Overhaul.love"
+update_dir="${XDG_DATA_HOME:-$HOME/.local/share}/love/Overhaul/update"
+
+love_bin="$here/love/AppRun"
+[[ -x "$love_bin" ]] || love_bin="$(command -v love || true)"
+[[ -n "$love_bin" ]] || { echo "LÖVE 11.5 is not installed"; exit 1; }
+[[ -f "$game" ]] || { echo "Missing $game"; exit 1; }
+
+apply_update() {
+    local new="$update_dir/game.love" sum="$update_dir/game.love.sha256"
+    rm -f "$update_dir/restart"
+    [[ -f "$new" && -f "$sum" ]] || return 0
+    pgrep -f "love $game" >/dev/null && return 0
+    if [[ "$(cut -d' ' -f1 "$sum")" == "$(sha256sum "$new" | cut -d' ' -f1)" ]]; then
+        mv -f "$new" "$game.new" && mv -f "$game.new" "$game" && echo "Installed the downloaded update"
+    else
+        echo "Downloaded update does not match its checksum, discarded"
+    fi
+    rm -f "$new" "$sum"
+}
+
+tunnel_pid=""
+if command -v python3 >/dev/null; then
+    python3 -I "$here/tls_tunnel.py" &
+    tunnel_pid=$!
+fi
+trap '[[ -n "$tunnel_pid" ]] && kill "$tunnel_pid" 2>/dev/null' EXIT
+
+apply_update
+while true; do
+    OVERHAUL_UPDATER=1 "$love_bin" "$game" "$@"
+    [[ -f "$update_dir/restart" ]] || break
+    apply_update
+done

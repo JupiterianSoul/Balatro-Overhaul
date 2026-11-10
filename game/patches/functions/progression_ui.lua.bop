@@ -1,0 +1,959 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 410
+ProgressionUI = ProgressionUI or {}
+local PUI = ProgressionUI
+
+PUI.queue = PUI.queue or {}
+PUI.from = PUI.from or nil
+
+local function touch() return UIK.touch() end
+local function L(s) return ProgressEvents.loc(s) end
+local function fmt(n) return number_format and number_format(n) or tostring(n) end
+local function short(n)
+  n = tonumber(n) or 0
+  local function cut(v, unit)
+    local str = string.format(v >= 100 and "%.0f" or "%.1f", v):gsub("%.0$", "")
+    return str .. unit
+  end
+  if n >= 1e9 then return cut(n / 1e9, "B") end
+  if n >= 1e6 then return cut(n / 1e6, "M") end
+  if n >= 1e4 then return cut(n / 1e3, "K") end
+  return fmt(n)
+end
+
+local function txt(s, scale, colour, shadow)
+  return {n = G.UIT.T, config = {text = tostring(s or ""), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = shadow}}
+end
+
+local function cell(nodes, w, h, align, extra)
+  local cfg = {align = align or "cm", minw = w, minh = h, maxw = w, padding = 0}
+  if extra then for k, v in pairs(extra) do cfg[k] = v end end
+  return {n = G.UIT.C, config = cfg, nodes = nodes}
+end
+
+local function bar(w, h, pct, colour)
+  pct = math.max(0, math.min(1, pct or 0))
+  local fill = {}
+  if pct > 0 then
+    fill[1] = {n = G.UIT.C, config = {align = "cm", minw = math.max(0.12, w * pct), minh = h, r = 0.08, colour = colour or G.C.BLUE}, nodes = {}}
+  end
+  return {n = G.UIT.C, config = {align = "cl", minw = w, maxw = w, minh = h, r = 0.08, colour = G.C.BLACK, emboss = 0.03}, nodes = fill}
+end
+
+local function rank_colour(rank)
+  if rank and rank.color == "PURPLE" then return {0.78, 0.6, 1, 1} end
+  return (rank and G.C[rank.color]) or G.C.WHITE
+end
+
+local function row_w(cols)
+  if UIK.portrait() then cols = 1 end
+  return UIK.col_w(cols or 2) - 2 * UIK.PAD
+end
+
+local function sizes()
+  local t = touch()
+  return {
+    name = t and 0.38 or 0.36,
+    desc = t and 0.29 or 0.28,
+    small = t and 0.3 or 0.27,
+    line = t and 0.38 or 0.36,
+    dline = t and 0.3 or 0.3,
+    bar_h = t and 0.44 or 0.38,
+    count_w = t and 1.45 or 1.3,
+    btn_w = t and 1.75 or 1.6,
+    btn_s = t and 0.34 or 0.31,
+  }
+end
+
+local function reward_text(xp, bc)
+  local parts = {}
+  if xp and xp > 0 then parts[#parts + 1] = "+" .. fmt(xp) .. " " .. L("XP") end
+  if bc and bc > 0 then parts[#parts + 1] = "+" .. fmt(bc) .. " " .. L("Balacoin") end
+  return table.concat(parts, "   ")
+end
+
+local function card_row(w, rows, done)
+  local h = 0
+  for _, r in ipairs(rows) do h = h + (r.config.minh or 0) end
+  h = h + 0.12
+  local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, r = 0.1, padding = 0.06, colour = done and {0, 0, 0, 0.28} or {0, 0, 0, 0.18}}, nodes = rows}
+  node.uik_h = h + 0.08
+  return node
+end
+
+local function line(nodes, w, h)
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = nodes}
+end
+
+local function action_cell(S, opts)
+  if opts.claim then
+    return cell({UIK.button{label = L("CLAIM"), button = "prog_claim", ref_table = {id = opts.claim}, colour = UIK.C.ok, w = S.btn_w, h = S.bar_h, scale = S.btn_s, col = true}}, S.btn_w, S.bar_h)
+  end
+  if opts.swap then
+    return cell({UIK.button{label = L("SWAP"), button = "prog_swap", ref_table = {id = opts.swap}, colour = UIK.C.warn, w = S.btn_w, h = S.bar_h, scale = S.btn_s, col = true}}, S.btn_w, S.bar_h)
+  end
+  return cell({txt(opts.text or "", S.small, opts.colour or UIK.C.text, true)}, S.btn_w, S.bar_h)
+end
+
+function PUI.quest_row(d, inst, w, allow_swap)
+  local S = sizes()
+  local QM = QuestManager
+  local name, desc = QM.text(d, inst)
+  local pct, p, t = QM.progress(d, inst)
+  local xp, bc = QM.reward(d, inst)
+  local inner = w - 0.16
+  local rw = math.min(inner * 0.5, 3.4)
+  local status
+  local done = false
+  if d.kind == "long" then
+    if QM.long_finished(d, inst) then
+      status = {text = L("Complete"), colour = G.C.GOLD}
+      done, pct = true, 1
+      xp, bc = 0, 0
+    elseif QM.long_ready(d, inst) then
+      status = {claim = d.id}
+    else
+      status = {}
+    end
+  elseif inst.claimed then
+    status = {text = L("Claimed"), colour = G.C.UI.TEXT_INACTIVE}
+    done = true
+  elseif inst.done then
+    status = {claim = d.id}
+  elseif allow_swap then
+    status = {swap = d.id}
+  else
+    status = {}
+  end
+  local rows = {
+    line({
+      cell({txt(name, S.name, done and G.C.UI.TEXT_INACTIVE or G.C.WHITE, true)}, inner - rw, S.line, "cl"),
+      cell({txt(reward_text(xp, bc), S.small, G.C.GOLD, true)}, rw, S.line, "cr"),
+    }, inner, S.line),
+    line({cell({txt(desc, S.desc, UIK.C.muted, false)}, inner, S.dline, "cl")}, inner, S.dline),
+  }
+  if d.kind == "long" then
+    local a = QM.achievement_for(d)
+    local stage = string.format(L("Stage %d of %d"), math.min((inst.s or 0) + (done and 0 or 1), #d.stages), #d.stages)
+    local extra = stage
+    if a then extra = extra .. "   " .. L("Achievement:") .. " " .. tostring(a.name) .. (a.unlocked and (" (" .. L("unlocked") .. ")") or "") end
+    rows[#rows + 1] = line({cell({txt(extra, S.small, a and a.unlocked and G.C.GREEN or G.C.FILTER, false)}, inner, S.dline, "cl")}, inner, S.dline)
+  end
+  local bw = inner - S.btn_w - 0.25 - S.count_w
+  local bar_nodes = {cell({bar(bw, S.bar_h * 0.55, pct, (done or status.claim) and G.C.GREEN or G.C.BLUE)}, bw, S.bar_h, "cl"), cell({}, 0.1, S.bar_h)}
+  local count = done and "" or (short(p) .. " / " .. short(t))
+  if d.fmt == "stake" then count = "" end
+  bar_nodes[#bar_nodes + 1] = cell({txt(count, S.small, UIK.C.text, true)}, S.count_w, S.bar_h, "cr")
+  bar_nodes[#bar_nodes + 1] = cell({}, 0.15, S.bar_h)
+  bar_nodes[#bar_nodes + 1] = action_cell(S, status)
+  rows[#rows + 1] = line(bar_nodes, inner, S.bar_h)
+  return card_row(w, rows, done)
+end
+
+local function quests_tab()
+  local QM = QuestManager
+  local q = QM.refresh()
+  local w = row_w(2)
+  local items = {}
+  if not q then
+    return UIK.flow{id = "prog_q", items = {UIK.note(L("Quests open once a profile is loaded."))}}
+  end
+  local can_swap = QM.can_reroll()
+  items[#items + 1] = UIK.header(L("Daily quests") .. "  (" .. string.format(L("new in %s"), QM.get_time_until_daily_reset()) .. ")", {w = w})
+  for _, inst in ipairs(q.daily) do
+    local d = QM.DEFS[inst.id]
+    if d then items[#items + 1] = PUI.quest_row(d, inst, w, can_swap and not inst.done and not inst.claimed) end
+  end
+  items[#items + 1] = UIK.header(L("Weekly quests") .. "  (" .. string.format(L("new in %s"), QM.get_time_until_weekly_reset()) .. ")", {w = w})
+  for _, inst in ipairs(q.weekly) do
+    local d = QM.DEFS[inst.id]
+    if d then items[#items + 1] = PUI.quest_row(d, inst, w) end
+  end
+  return UIK.flow{id = "prog_quests", items = items, cols = 2, sections = true}
+end
+
+local function journeys_tab()
+  local QM = QuestManager
+  local q = QM.refresh()
+  local w = row_w(2)
+  if not q then return UIK.flow{id = "prog_j", items = {}} end
+  local ready, todo, finished = {}, {}, {}
+  for _, d in ipairs(QM.LONG) do
+    local st = q.long[d.id] or {p = 0, s = 0}
+    local r = PUI.quest_row(d, st, w)
+    if QM.long_ready(d, st) then ready[#ready + 1] = r
+    elseif QM.long_finished(d, st) then finished[#finished + 1] = r
+    else todo[#todo + 1] = r end
+  end
+  local items = {}
+  for _, r in ipairs(ready) do items[#items + 1] = r end
+  for _, r in ipairs(todo) do items[#items + 1] = r end
+  for _, r in ipairs(finished) do items[#items + 1] = r end
+  return UIK.flow{id = "prog_journeys", items = items, cols = 2}
+end
+
+local function rewards_tab()
+  local d = get_progression_display()
+  local w = row_w(2)
+  local S = sizes()
+  local left = {UIK.header(L("Level rewards"), {w = w})}
+  local first = math.max(2, d.level - 2)
+  local waiting = progression_unclaimed_levels()
+  if waiting[1] then first = math.max(2, math.min(first, waiting[1])) end
+  local lw = w - 0.16
+  for lv = first, first + 6 do
+    local state = progression_level_state(lv)
+    local bc = progression_level_reward(lv)
+    local rank_here
+    for _, r in ipairs(PROGRESSION_CONSTANTS.RANKS) do if r.min_level == lv then rank_here = r end end
+    local label = string.format(L("Level %d"), lv)
+    if rank_here then label = label .. "  " .. L(rank_here.name) end
+    local status
+    if state == "ready" then status = {claim = "level:" .. lv}
+    elseif state == "claimed" then status = {text = L("Claimed"), colour = G.C.UI.TEXT_INACTIVE}
+    elseif state == "before" then status = {text = L("Passed"), colour = G.C.UI.TEXT_INACTIVE}
+    else status = {text = L("Locked"), colour = UIK.C.muted} end
+    local rowh = S.bar_h + 0.06
+    local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = rowh, r = 0.1, padding = 0.04, colour = lv == d.level + 1 and {1, 1, 1, 0.08} or {0, 0, 0, 0.18}}, nodes = {
+      cell({txt(label, S.name, rank_here and rank_colour(rank_here) or (state == "locked" and UIK.C.muted or G.C.WHITE), true)}, lw * 0.45, rowh, "cl"),
+      cell({txt("+" .. fmt(bc) .. " " .. L("Balacoin"), S.small, G.C.GOLD, true)}, lw * 0.55 - S.btn_w - 0.1, rowh, "cr"),
+      cell({}, 0.1, rowh),
+      action_cell(S, status),
+    }}
+    node.uik_h = rowh + 0.12
+    left[#left + 1] = node
+  end
+  local right = {UIK.header(L("Ranks"), {w = w})}
+  for i, r in ipairs(PROGRESSION_CONSTANTS.RANKS) do
+    local nextr = PROGRESSION_CONSTANTS.RANKS[i + 1]
+    local here = d.level >= r.min_level and (not nextr or d.level < nextr.min_level)
+    local span = nextr and string.format(L("Levels %d to %d"), r.min_level, nextr.min_level - 1) or string.format(L("Level %d and up"), r.min_level)
+    local rowh = S.line + 0.06
+    local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = rowh, r = 0.1, padding = 0.04, colour = here and {1, 1, 1, 0.1} or {0, 0, 0, 0.18}}, nodes = {
+      cell({txt(L(r.name), S.name, rank_colour(r), true)}, (w - 0.16) * 0.45, rowh, "cl"),
+      cell({txt(here and L("You are here") or span, S.small, here and G.C.WHITE or UIK.C.muted, here)}, (w - 0.16) * 0.55, rowh, "cr"),
+    }}
+    node.uik_h = rowh + 0.12
+    right[#right + 1] = node
+  end
+  local items = {}
+  for _, n in ipairs(left) do items[#items + 1] = n end
+  for _, n in ipairs(right) do items[#items + 1] = n end
+  return UIK.flow{id = "prog_rewards", items = items, cols = 2, sections = true}
+end
+
+local function milestone_row(m, w)
+  local S = sizes()
+  local def = m.def
+  local inner = w - 0.16
+  local t = def.threshold
+  local v = math.min(m.value or 0, t)
+  local pct = t > 0 and v / t or 0
+  if m.done then pct = 1 end
+  local rows = {
+    line({
+      cell({txt(L(def.name), S.name, m.done and G.C.UI.TEXT_INACTIVE or G.C.WHITE, true)}, inner * 0.6, S.line, "cl"),
+      cell({txt("+" .. fmt(def.xp_reward) .. " " .. L("XP"), S.small, G.C.GOLD, true)}, inner * 0.4, S.line, "cr"),
+    }, inner, S.line),
+    line({cell({txt(L(def.desc or ""), S.desc, UIK.C.muted, false)}, inner, S.dline, "cl")}, inner, S.dline),
+    line({
+      cell({bar(inner - S.count_w - 0.1, S.bar_h * 0.4, pct, m.done and G.C.GREEN or G.C.BLUE)}, inner - S.count_w - 0.1, S.bar_h * 0.6, "cl"),
+      cell({}, 0.1, S.bar_h * 0.6),
+      cell({txt(m.done and L("Done") or (def.type == "stake" and "" or (short(v) .. " / " .. short(t))), S.small, m.done and G.C.GREEN or UIK.C.text, true)}, S.count_w, S.bar_h * 0.6, "cr"),
+    }, inner, S.bar_h * 0.6),
+  }
+  return card_row(w, rows, m.done)
+end
+
+local function milestones_tab()
+  local list = progression_milestones()
+  local w = row_w(3)
+  local items = {}
+  table.sort(list, function(a, b)
+    if a.done ~= b.done then return not a.done end
+    local pa = a.value / math.max(1, a.def.threshold)
+    local pb = b.value / math.max(1, b.def.threshold)
+    if pa ~= pb then return pa > pb end
+    return a.def.threshold < b.def.threshold
+  end)
+  for _, m in ipairs(list) do items[#items + 1] = milestone_row(m, w) end
+  return UIK.flow{id = "prog_milestones", items = items, cols = 3}
+end
+
+local function value_row(label, value, colour, w)
+  local S = sizes()
+  local h = S.line + 0.04
+  local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = {
+    cell({txt(label, S.desc + 0.02, UIK.C.text, false)}, (w - 0.2) * 0.62, h, "cl"),
+    cell({txt(value, S.name, colour or G.C.WHITE, true)}, (w - 0.2) * 0.38, h, "cr"),
+  }}
+  node.uik_h = h + 0.08
+  return node
+end
+
+local function overview_tab()
+  local QM = QuestManager
+  local q = QM.refresh()
+  local d = get_progression_display()
+  local w = row_w(2)
+  local S = sizes()
+  local rc = rank_colour(d.rank)
+  local next_rank
+  for _, r in ipairs(PROGRESSION_CONSTANTS.RANKS) do
+    if d.level < r.min_level then next_rank = r break end
+  end
+  local left = {UIK.header(L("Your rank"), {w = w})}
+  local big = touch() and 0.8 or 0.72
+  local rank_row = line({cell({txt(L(d.rank.name), big, rc, true)}, w, big + 0.2)}, w, big + 0.2)
+  rank_row.uik_h = big + 0.28
+  left[#left + 1] = rank_row
+  local lvl = line({cell({txt(string.format(L("Level %d"), d.level), S.name + 0.06, G.C.WHITE, true)}, w, S.line)}, w, S.line)
+  lvl.uik_h = S.line + 0.08
+  left[#left + 1] = lvl
+  local bw = math.min(w - 0.4, 5.6)
+  local xb = line({bar(bw, S.bar_h * 0.6, d.xp_percent, rc)}, w, S.bar_h * 0.7)
+  xb.uik_h = S.bar_h * 0.7 + 0.08
+  left[#left + 1] = xb
+  local xt = line({cell({txt(fmt(d.xp) .. " / " .. fmt(d.xp_needed) .. " " .. L("XP to the next level"), S.small, UIK.C.muted, false)}, w, S.dline)}, w, S.dline)
+  xt.uik_h = S.dline + 0.08
+  left[#left + 1] = xt
+  local nexts = {}
+  nexts[#nexts + 1] = string.format(L("Next level: +%s Balacoin"), fmt(progression_level_reward(d.level + 1)))
+  if next_rank then nexts[#nexts + 1] = string.format(L("Next rank: %s at level %d"), L(next_rank.name), next_rank.min_level) end
+  local best_m, best_mp
+  for _, m in ipairs((progression_milestones())) do
+    local pct = (m.value or 0) / math.max(1, m.def.threshold)
+    if not m.done and m.def.type ~= "level" and (not best_mp or pct > best_mp) then best_m, best_mp = m, pct end
+  end
+  if best_m then
+    nexts[#nexts + 1] = string.format(L("Milestone: %s (%s / %s)"), L(best_m.def.name), short(math.min(best_m.value, best_m.def.threshold)), short(best_m.def.threshold))
+  end
+  local best_j, best_jp
+  for _, dd in ipairs(QM.LONG) do
+    local st = q and q.long[dd.id]
+    if st and not QM.long_finished(dd, st) and not QM.long_ready(dd, st) and dd.fmt ~= "stake" then
+      local t = QM.target(dd, st)
+      local pct = (st.p or 0) / math.max(1, t)
+      if not best_jp or pct > best_jp then best_j, best_jp = dd, pct end
+    end
+  end
+  if best_j then
+    local st = q.long[best_j.id]
+    nexts[#nexts + 1] = string.format(L("Journey: %s (%s / %s)"), L(best_j.name), short(st.p or 0), short(QM.target(best_j, st)))
+  end
+  local sub = line({cell({txt(L("Coming up"), touch() and 0.46 or 0.42, UIK.C.title, true)}, w, S.line + 0.1)}, w, S.line + 0.1)
+  sub.uik_h = S.line + 0.18
+  left[#left + 1] = sub
+  left[#left + 1] = UIK.note(nexts, {w = w, colour = G.C.WHITE, scale = S.desc + 0.02})
+  local daily_done, weekly_done, stages, stages_total = 0, 0, 0, 0
+  if q then
+    for _, i in ipairs(q.daily) do if i.claimed then daily_done = daily_done + 1 end end
+    for _, i in ipairs(q.weekly) do if i.claimed then weekly_done = weekly_done + 1 end end
+    for _, dd in ipairs(QM.LONG) do
+      stages_total = stages_total + #dd.stages
+      stages = stages + ((q.long[dd.id] or {}).s or 0)
+    end
+  end
+  local _, ms_done = progression_milestones()
+  local ach_n, ach_t = 0, 0
+  local AM = rawget(_G, "AchievementManager")
+  if AM and AM.count_unlocked and AM.count_achievements then
+    pcall(function() ach_n, ach_t = AM.count_unlocked(), AM.count_achievements() end)
+  end
+  local mp = get_mp_progression_display and get_mp_progression_display() or {level = 1}
+  local bal = G.PROFILES[G.SETTINGS.profile].progression and G.PROFILES[G.SETTINGS.profile].progression.balacoin or 0
+  local ready = QM.ready_count() + #progression_unclaimed_levels()
+  local right = {UIK.header(L("At a glance"), {w = w})}
+  right[#right + 1] = value_row(L("Rewards ready to claim"), tostring(ready), ready > 0 and G.C.GREEN or G.C.WHITE, w)
+  right[#right + 1] = value_row(L("Daily quests claimed"), daily_done .. " / " .. #(q and q.daily or {}), nil, w)
+  right[#right + 1] = value_row(L("Weekly quests claimed"), weekly_done .. " / " .. #(q and q.weekly or {}), nil, w)
+  right[#right + 1] = value_row(L("Journey stages"), stages .. " / " .. stages_total, nil, w)
+  right[#right + 1] = value_row(L("Milestones"), ms_done .. " / " .. #PROGRESSION_CONSTANTS.MILESTONES, nil, w)
+  right[#right + 1] = value_row(L("Achievements"), ach_n .. " / " .. ach_t, nil, w)
+  right[#right + 1] = value_row(L("Balacoin"), fmt(bal), G.C.GOLD, w)
+  right[#right + 1] = value_row(L("Multiplayer level"), tostring(mp.level or 1), G.C.BLUE, w)
+  local items = {}
+  for _, n in ipairs(left) do items[#items + 1] = n end
+  for _, n in ipairs(right) do items[#items + 1] = n end
+  return UIK.flow{id = "prog_overview", items = items, cols = 2, sections = true}
+end
+
+function PUI.footer()
+  local ready = (QuestManager and QuestManager.ready_count() or 0) + #progression_unclaimed_levels()
+  local label = ready > 0 and string.format(L("CLAIM ALL (%d)"), ready) or L("CLAIM ALL")
+  local sc = touch() and 0.5 or 0.47
+  local w = math.max(touch() and 3.0 or 2.85, UIK.text_w(label, sc) + 0.7)
+  return {UIK.button{label = label, button = "prog_claim_all", colour = UIK.C.ok, disabled = ready == 0, id = "prog_claim_all", w = w, scale = sc}}
+end
+
+function PUI.window(tab)
+  return UIK.window{
+    id = "prog",
+    title = L("PROGRESSION"),
+    tab = tab,
+    back_func = PUI.from or "exit_overlay_menu",
+    tabs = {
+      {key = "overview", label = L("Overview"), build = overview_tab},
+      {key = "quests", label = L("Quests"), build = quests_tab},
+      {key = "journeys", label = L("Journeys"), build = journeys_tab},
+      {key = "rewards", label = L("Rewards"), build = rewards_tab},
+      {key = "milestones", label = L("Milestones"), build = milestones_tab},
+    },
+    footer = PUI.footer,
+  }
+end
+
+function PUI.open(tab, from)
+  PUI.from = from
+  for i = #PUI.queue, 1, -1 do
+    if PUI.queue[i].quest then table.remove(PUI.queue, i) end
+  end
+  if QuestManager then pcall(QuestManager.init) end
+  if check_milestones then pcall(check_milestones) end
+r 4 1381 %20%20 -
+l 535
+  G.FUNCS.overlay_menu{definition = PUI.window(tab)}
+end
+
+local function reopen()
+  if not (G.OVERLAY_MENU and UIK._win and UIK._win.id == "prog") then return end
+  local tab = UIK._win._cur
+  G.FUNCS.overlay_menu{definition = PUI.window(tab)}
+end
+
+local function claim_feedback(xp, bc)
+  play_sound("coin3", 1, 0.6)
+  play_sound("tarot1", 1.2, 0.3)
+end
+
+G.FUNCS.prog_claim = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if not id then return end
+  local lv = tostring(id):match("^level:(%d+)$")
+  local ok
+  if lv then ok = progression_claim_level(tonumber(lv)) elseif QuestManager then ok = QuestManager.claim(id) end
+  if ok then
+    claim_feedback()
+    PUI.drop_toast(id)
+    reopen()
+  end
+end
+
+G.FUNCS.prog_swap = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if id and QuestManager and QuestManager.reroll(id) then
+    play_sound("cardSlide1", 1, 0.6)
+    UIK.refresh()
+  end
+end
+
+G.FUNCS.prog_claim_all = function(e)
+  local QM = QuestManager
+  local q = QM.refresh()
+  local n = 0
+  if q then
+    for _, list in ipairs({q.daily, q.weekly}) do
+      for _, i in ipairs(list) do
+        if i.done and not i.claimed and QM.claim(i.id) then n = n + 1 end
+      end
+    end
+    for _, d in ipairs(QM.LONG) do
+      local guard = 0
+      while QM.claimable(d.id) and guard < 10 do
+        guard = guard + 1
+        if QM.claim(d.id) then n = n + 1 end
+      end
+    end
+  end
+  for _, lv in ipairs(progression_unclaimed_levels()) do
+    if progression_claim_level(lv) then n = n + 1 end
+  end
+  if n > 0 then
+    claim_feedback()
+    PUI.queue = {}
+    if PUI.box then PUI.hide() end
+    reopen()
+  end
+end
+
+G.FUNCS.open_progression_screen = function(e)
+  PUI.open(nil, nil)
+  if G.FUNCS.trigger_sub_showcase_progression then pcall(G.FUNCS.trigger_sub_showcase_progression) end
+end
+
+G.FUNCS.open_quest_menu = function(e)
+  PUI.open("quests", "open_tavern_hub")
+  if G.FUNCS.trigger_sub_showcase_quests then pcall(G.FUNCS.trigger_sub_showcase_quests) end
+end
+
+local KIND_TITLE = {
+  daily = "DAILY QUEST DONE",
+  weekly = "WEEKLY QUEST DONE",
+  long = "JOURNEY STAGE DONE",
+  level = "LEVEL UP",
+  mp_level = "MULTIPLAYER LEVEL UP",
+  milestone = "MILESTONE",
+}
+
+local function toast_def(t)
+  local S = sizes()
+  local w = touch() and 5.0 or 4.3
+  local z = G.MENU_ZOOM or 1
+  if UIK.portrait() and z < 0.99 then
+    local k = math.min(2, 1 / math.max(z, 0.1))
+    for key, v in pairs(S) do S[key] = v * k end
+    w = w * k
+  end
+  local rows = {}
+  local title, name, desc, reward
+  if t.quest then
+    local d = QuestManager.DEFS[t.quest]
+    local inst = QuestManager.find(t.quest)
+    title = KIND_TITLE[d.kind]
+    name, desc = QuestManager.text(d, inst)
+    reward = reward_text(QuestManager.reward(d, inst))
+  elseif t.kind == "level" or t.kind == "mp_level" then
+    title = KIND_TITLE[t.kind]
+    name = string.format(L("Level %d"), t.a or 1)
+    if t.kind == "level" then
+      desc = L("A level reward is waiting in Progression")
+      reward = "+" .. fmt(progression_level_reward(t.a or 1)) .. " " .. L("Balacoin")
+    end
+  else
+    title = KIND_TITLE.milestone
+    name = L(t.a or "")
+    reward = reward_text(t.b, 0)
+  end
+  rows[#rows + 1] = line({cell({txt(L(title), S.small + 0.04, G.C.GOLD, true)}, w, S.line)}, w, S.line)
+  rows[#rows + 1] = line({cell({txt(name, S.name + 0.06, G.C.WHITE, true)}, w, S.line + 0.06)}, w, S.line + 0.06)
+  if desc then rows[#rows + 1] = line({cell({txt(desc, S.desc, UIK.C.muted, false)}, w, S.dline)}, w, S.dline) end
+  if reward and reward ~= "" then rows[#rows + 1] = line({cell({txt(reward, S.small + 0.02, G.C.GOLD, true)}, w, S.dline)}, w, S.dline) end
+  if t.quest then
+    local bw = (w - 0.3) / 2
+    local bh = S.bar_h + (touch() and 0.2 or 0.06)
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.06}, nodes = {
+      UIK.button{label = L("CLAIM"), button = "prog_toast_claim", ref_table = {id = t.quest}, colour = UIK.C.ok, w = bw, h = bh, scale = S.btn_s + 0.02, col = true, id = "prog_toast_claim"},
+      {n = G.UIT.C, config = {minw = 0.1}, nodes = {}},
+      UIK.button{label = L("LATER"), button = "prog_toast_later", colour = G.C.ORANGE, w = bw, h = bh, scale = S.btn_s + 0.02, col = true},
+    }}
+  end
+  return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", padding = 0.12, r = 0.15, colour = G.C.L_BLACK, outline = 1.5, outline_colour = G.C.GOLD, emboss = 0.05, shadow = true}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", padding = 0.06, r = 0.1, colour = G.C.BLACK}, nodes = rows},
+    }},
+  }}
+end
+
+local function slide(box, inside)
+  local inner = box and box.UIRoot and box.UIRoot.children and box.UIRoot.children[1]
+  if not (inner and inner.T and box.alignment) then return end
+  box.alignment.offset.x = inside and (G.ROOM.T.x - inner.T.w - 1.3) or 20
+  local fb = rawget(G, "MOD_FLOATING_BUTTON")
+  if not (inside and fb and fb.T and box.T and G.ROOM_ATTACH) then return end
+  local left = G.ROOM_ATTACH.T.x + G.ROOM_ATTACH.T.w + box.alignment.offset.x
+  local right, top = left + box.T.w, box.T.y
+  local bottom = top + box.T.h
+  local gap = 0.2
+  if right < fb.T.x - gap or left > fb.T.x + fb.T.w + gap then return end
+  if bottom < fb.T.y - gap or top > fb.T.y + fb.T.h + gap then return end
+  if fb.T.y - gap - box.T.h >= 0.3 then
+    box.alignment.offset.y = box.alignment.offset.y - (bottom - fb.T.y + gap)
+  else
+    box.alignment.offset.y = box.alignment.offset.y + (fb.T.y + fb.T.h + gap - top)
+  end
+end
+
+function PUI.hide()
+  local box = PUI.box
+  if not box then return end
+  PUI.box = nil
+  PUI.shown = nil
+  slide(box, false)
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.6, timer = "REAL", blocking = false, blockable = false, no_delete = true, func = function()
+    box:remove()
+    PUI.pump()
+    return true
+  end}), "other")
+end
+
+function PUI.drop_toast(id)
+  for i = #PUI.queue, 1, -1 do
+    if PUI.queue[i].quest == id then table.remove(PUI.queue, i) end
+  end
+  if PUI.shown and PUI.shown.quest == id then PUI.hide() end
+end
+
+local function busy()
+  if G.OVERLAY_MENU or G.achievement_notification then return true end
+  if G.STAGE == G.STAGES.RUN and G.GAME and G.GAME.multiplayer then return true end
+  return false
+end
+
+function PUI.pump()
+  if PUI.box or #PUI.queue == 0 or PUI.waiting then return end
+  if not (G and G.ROOM_ATTACH and G.E_MANAGER and UIBox) then return end
+  if busy() or (PUI.queue[1].quest and not rawget(_G, "QuestManager")) then
+    PUI.waiting = true
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = 1, timer = "REAL", blocking = false, blockable = false, no_delete = true, func = function()
+      PUI.waiting = false
+      PUI.pump()
+      return true
+    end}), "other")
+    return
+  end
+  local t = table.remove(PUI.queue, 1)
+  if t.quest and not (QuestManager and QuestManager.claimable(t.quest)) then return PUI.pump() end
+  local ok, def = pcall(toast_def, t)
+  if not ok then print("[PROGRESSION] toast: " .. tostring(def)) return PUI.pump() end
+  PUI.shown = t
+  local box = UIBox{definition = def, config = {align = "cr", offset = {x = 20, y = touch() and -0.6 or -0.9}, major = G.ROOM_ATTACH, bond = "Weak", instance_type = "ALERT"}}
+  PUI.box = box
+  play_sound("highlight1", nil, 0.5)
+  play_sound(t.quest and "foil2" or "tarot2", 0.6, 0.4)
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.05, timer = "REAL", blocking = false, blockable = false, no_delete = true, func = function()
+    slide(box, true)
+    return true
+  end}), "other")
+  local stay = t.quest and 8 or 3.5
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = stay, timer = "REAL", blocking = false, blockable = false, no_delete = true, func = function()
+    if PUI.box == box then PUI.hide() end
+    return true
+  end}), "other")
+end
+
+function PUI.toast(t)
+  if not t then return end
+  PUI.queue[#PUI.queue + 1] = t
+  PUI.pump()
+end
+
+G.FUNCS.prog_toast_claim = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if id and QuestManager and QuestManager.claim(id) then
+    claim_feedback()
+    PUI.hide()
+    reopen()
+  end
+end
+
+G.FUNCS.prog_toast_later = function(e)
+  PUI.hide()
+end
+
+if not PUI.overlay_wrapped and G.FUNCS.overlay_menu then
+  PUI.overlay_wrapped = true
+  local base = G.FUNCS.overlay_menu
+  G.FUNCS.overlay_menu = function(...)
+    if PUI.box then
+      if PUI.shown and PUI.shown.quest then table.insert(PUI.queue, 1, PUI.shown) end
+      PUI.hide()
+    end
+    return base(...)
+  end
+end
+
+QuestManager.popup = function(d, inst)
+  PUI.toast({quest = d.id})
+end
+
+function create_UIBox_progression_screen()
+  return PUI.window(nil)
+end
+
+ProgressEvents.register_loc{
+  fr = {
+    ["First Victory"] = "Première victoire",
+    ["Win your first run"] = "Gagnez votre première partie",
+    ["Seasoned Player"] = "Joueur aguerri",
+    ["Win 10 runs"] = "Gagne 10 parties",
+    ["Veteran"] = "Vétéran",
+    ["Win 50 runs"] = "Gagne 50 parties",
+    ["Champion"] = "Champion",
+    ["Win 100 runs"] = "Gagne 100 parties",
+    ["Rising Star"] = "Étoile montante",
+    ["Reach level 10"] = "Atteins le niveau 10",
+    ["Dedicated"] = "Assidu",
+    ["Reach level 25"] = "Atteins le niveau 25",
+    ["Committed"] = "Engagé",
+    ["Reach level 50"] = "Atteins le niveau 50",
+    ["Elite"] = "Élite",
+    ["Reach level 75"] = "Atteins le niveau 75",
+    ["Legendary"] = "Légendaire",
+    ["Reach level 100"] = "Atteins le niveau 100",
+    ["Gold Conqueror"] = "Conquérant d'or",
+    ["Win on Gold Stake"] = "Gagne en mise dorée",
+    ["Chaos Tamer"] = "Dompteur du chaos",
+    ["Win on Chaos Stake"] = "Gagne en mise Chaos",
+    ["Quest Taker"] = "Preneur de quêtes",
+    ["Claim 25 quests"] = "Récupère 25 quêtes",
+    ["Quest Hero"] = "Héros des quêtes",
+    ["Claim 100 quests"] = "Récupère 100 quêtes",
+    ["Long Haul"] = "Sur la durée",
+    ["Finish 10 journey stages"] = "Termine 10 étapes de parcours",
+    ["Trophy Case"] = "Vitrine à trophées",
+    ["Unlock 10 achievements"] = "Débloque 10 succès",
+    ["Trophy Hall"] = "Galerie des trophées",
+    ["Unlock 50 achievements"] = "Débloque 50 succès",
+    ["Trophy Museum"] = "Musée des trophées",
+    ["Unlock 100 achievements"] = "Débloque 100 succès",
+    ["Casino Regular"] = "Habitué du Casino",
+    ["Buy 5 items in The Casino"] = "Achète 5 articles au Casino",
+    ["Casino VIP"] = "VIP du Casino",
+    ["Buy 25 items in The Casino"] = "Achète 25 articles au Casino",
+    ["Arcade Fan"] = "Fan d'arcade",
+    ["Play 10 Arcade games"] = "Joue 10 parties d'arcade",
+    ["Sparring"] = "Galop d'essai",
+    ["Fight 5 bosses in the Training Grounds"] = "Affronte 5 boss à l'Entraînement",
+    ["First Forge"] = "Première forge",
+    ["Make a card in The Forge"] = "Crée une carte à la Forge",
+    ["Forge Master"] = "Maître de la Forge",
+    ["Make 10 cards in The Forge"] = "Crée 10 cartes à la Forge",
+    ["Deck Designer"] = "Concepteur de jeux",
+    ["Save a deck in the Deck Creator"] = "Enregistre un jeu dans le Créateur de Deck",
+    ["Pull Up a Chair"] = "Prends une chaise",
+    ["Play a Multiplayer match"] = "Joue un match multijoueur",
+    ["Table Champion"] = "Champion de la table",
+    ["Win 10 Multiplayer matches"] = "Gagne 10 matchs multijoueur",
+    ["Daily Regular"] = "Habitué du défi",
+    ["Play 7 Daily Challenges"] = "Joue 7 défis du jour",
+    ["PROGRESSION"] = "PROGRESSION",
+    ["Overview"] = "Résumé",
+    ["Quests"] = "Quêtes",
+    ["Journeys"] = "Parcours",
+    ["Rewards"] = "Récompenses",
+    ["Milestones"] = "Paliers",
+    ["CLAIM"] = "RÉCUPÉRER",
+    ["SWAP"] = "CHANGER",
+    ["LATER"] = "PLUS TARD",
+    ["CLAIM ALL"] = "TOUT RÉCUPÉRER",
+    ["CLAIM ALL (%d)"] = "TOUT RÉCUPÉRER (%d)",
+    ["Claimed"] = "Récupérée",
+    ["Complete"] = "Terminé",
+    ["Done"] = "Fait",
+    ["Locked"] = "Verrouillé",
+    ["Passed"] = "Passé",
+    ["Coming up"] = "À venir",
+    ["Milestone: %s (%s / %s)"] = "Palier : %s (%s / %s)",
+    ["Journey: %s (%s / %s)"] = "Parcours : %s (%s / %s)",
+    ["XP"] = "XP",
+    ["Balacoin"] = "Balacoin",
+    ["Daily quests"] = "Quêtes du jour",
+    ["Weekly quests"] = "Quêtes de la semaine",
+    ["new in %s"] = "nouvelles dans %s",
+    ["Stage %d of %d"] = "Étape %d sur %d",
+    ["Achievement:"] = "Succès :",
+    ["unlocked"] = "débloqué",
+    ["Level rewards"] = "Récompenses de niveau",
+    ["Ranks"] = "Rangs",
+    ["Level %d"] = "Niveau %d",
+    ["Levels %d to %d"] = "Niveaux %d à %d",
+    ["Level %d and up"] = "Niveau %d et plus",
+    ["You are here"] = "Tu es ici",
+    ["Your rank"] = "Ton rang",
+    ["XP to the next level"] = "XP avant le niveau suivant",
+    ["Next level: +%s Balacoin"] = "Niveau suivant : +%s Balacoin",
+    ["Next rank: %s at level %d"] = "Rang suivant : %s au niveau %d",
+    ["At a glance"] = "En bref",
+    ["Rewards ready to claim"] = "Récompenses à récupérer",
+    ["Daily quests claimed"] = "Quêtes du jour récupérées",
+    ["Weekly quests claimed"] = "Quêtes de la semaine récupérées",
+    ["Journey stages"] = "Étapes de parcours",
+    ["Achievements"] = "Succès",
+    ["Multiplayer level"] = "Niveau multijoueur",
+    ["Quests open once a profile is loaded."] = "Les quêtes s'ouvrent une fois un profil chargé.",
+    ["DAILY QUEST DONE"] = "QUÊTE DU JOUR ACCOMPLIE",
+    ["WEEKLY QUEST DONE"] = "QUÊTE DE LA SEMAINE ACCOMPLIE",
+    ["JOURNEY STAGE DONE"] = "ÉTAPE DE PARCOURS ATTEINTE",
+    ["LEVEL UP"] = "NIVEAU SUPÉRIEUR",
+    ["MULTIPLAYER LEVEL UP"] = "NIVEAU MULTIJOUEUR SUPÉRIEUR",
+    ["MILESTONE"] = "PALIER",
+    ["A level reward is waiting in Progression"] = "Une récompense vous attend dans Progression",
+    ["Novice"] = "Novice",
+    ["Apprentice"] = "Apprenti",
+    ["Journeyman"] = "Compagnon",
+    ["Expert"] = "Expert",
+    ["Master"] = "Maître",
+    ["Grandmaster"] = "Grand maître",
+    ["Legend"] = "Légende",
+  },
+  es = {
+    ["First Victory"] = "Primera victoria",
+    ["Win your first run"] = "Gana tu primera partida",
+    ["Seasoned Player"] = "Jugador curtido",
+    ["Win 10 runs"] = "Gana 10 partidas",
+    ["Veteran"] = "Veterano",
+    ["Win 50 runs"] = "Gana 50 partidas",
+    ["Champion"] = "Campeón",
+    ["Win 100 runs"] = "Gana 100 partidas",
+    ["Rising Star"] = "Estrella en ascenso",
+    ["Reach level 10"] = "Alcanza el nivel 10",
+    ["Dedicated"] = "Constante",
+    ["Reach level 25"] = "Alcanza el nivel 25",
+    ["Committed"] = "Comprometido",
+    ["Reach level 50"] = "Alcanza el nivel 50",
+    ["Elite"] = "Élite",
+    ["Reach level 75"] = "Alcanza el nivel 75",
+    ["Legendary"] = "Legendario",
+    ["Reach level 100"] = "Alcanza el nivel 100",
+    ["Gold Conqueror"] = "Conquistador de oro",
+    ["Win on Gold Stake"] = "Gana en apuesta dorada",
+    ["Chaos Tamer"] = "Domador del caos",
+    ["Win on Chaos Stake"] = "Gana en apuesta Caos",
+    ["Quest Taker"] = "Aceptamisiones",
+    ["Claim 25 quests"] = "Reclama 25 misiones",
+    ["Quest Hero"] = "Héroe de las misiones",
+    ["Claim 100 quests"] = "Reclama 100 misiones",
+    ["Long Haul"] = "A largo plazo",
+    ["Finish 10 journey stages"] = "Completa 10 etapas de trayecto",
+    ["Trophy Case"] = "Vitrina de trofeos",
+    ["Unlock 10 achievements"] = "Desbloquea 10 logros",
+    ["Trophy Hall"] = "Galería de trofeos",
+    ["Unlock 50 achievements"] = "Desbloquea 50 logros",
+    ["Trophy Museum"] = "Museo de trofeos",
+    ["Unlock 100 achievements"] = "Desbloquea 100 logros",
+    ["Casino Regular"] = "Habitual del Casino",
+    ["Buy 5 items in The Casino"] = "Compra 5 artículos en El Casino",
+    ["Casino VIP"] = "VIP del Casino",
+    ["Buy 25 items in The Casino"] = "Compra 25 artículos en El Casino",
+    ["Arcade Fan"] = "Fan de los recreativos",
+    ["Play 10 Arcade games"] = "Juega 10 partidas recreativas",
+    ["Sparring"] = "Combates de práctica",
+    ["Fight 5 bosses in the Training Grounds"] = "Enfréntate a 5 jefes en el Entrenamiento",
+    ["First Forge"] = "Primera forja",
+    ["Make a card in The Forge"] = "Crea una carta en La Forja",
+    ["Forge Master"] = "Maestro de La Forja",
+    ["Make 10 cards in The Forge"] = "Crea 10 cartas en La Forja",
+    ["Deck Designer"] = "Diseñador de barajas",
+    ["Save a deck in the Deck Creator"] = "Guarda una baraja en el Creador de Mazos",
+    ["Pull Up a Chair"] = "Toma asiento",
+    ["Play a Multiplayer match"] = "Juega una partida multijugador",
+    ["Table Champion"] = "Campeón de la mesa",
+    ["Win 10 Multiplayer matches"] = "Gana 10 partidas multijugador",
+    ["Daily Regular"] = "Habitual del desafío",
+    ["Play 7 Daily Challenges"] = "Juega 7 desafíos diarios",
+    ["PROGRESSION"] = "PROGRESIÓN",
+    ["Overview"] = "Resumen",
+    ["Quests"] = "Misiones",
+    ["Journeys"] = "Trayectos",
+    ["Rewards"] = "Recompensas",
+    ["Milestones"] = "Hitos",
+    ["CLAIM"] = "RECLAMAR",
+    ["SWAP"] = "CAMBIAR",
+    ["LATER"] = "MÁS TARDE",
+    ["CLAIM ALL"] = "RECLAMAR TODO",
+    ["CLAIM ALL (%d)"] = "RECLAMAR TODO (%d)",
+    ["Claimed"] = "Reclamada",
+    ["Complete"] = "Completado",
+    ["Done"] = "Hecho",
+    ["Locked"] = "Bloqueado",
+    ["Passed"] = "Pasado",
+    ["Coming up"] = "Lo próximo",
+    ["Milestone: %s (%s / %s)"] = "Hito: %s (%s / %s)",
+    ["Journey: %s (%s / %s)"] = "Trayecto: %s (%s / %s)",
+    ["XP"] = "XP",
+    ["Balacoin"] = "Balacoin",
+    ["Daily quests"] = "Misiones diarias",
+    ["Weekly quests"] = "Misiones semanales",
+    ["new in %s"] = "nuevas en %s",
+    ["Stage %d of %d"] = "Etapa %d de %d",
+    ["Achievement:"] = "Logro:",
+    ["unlocked"] = "desbloqueado",
+    ["Level rewards"] = "Recompensas de nivel",
+    ["Ranks"] = "Rangos",
+    ["Level %d"] = "Nivel %d",
+    ["Levels %d to %d"] = "Niveles %d a %d",
+    ["Level %d and up"] = "Nivel %d o más",
+    ["You are here"] = "Estás aquí",
+    ["Your rank"] = "Tu rango",
+    ["XP to the next level"] = "XP para el siguiente nivel",
+    ["Next level: +%s Balacoin"] = "Siguiente nivel: +%s Balacoin",
+    ["Next rank: %s at level %d"] = "Siguiente rango: %s en el nivel %d",
+    ["At a glance"] = "De un vistazo",
+    ["Rewards ready to claim"] = "Recompensas por reclamar",
+    ["Daily quests claimed"] = "Misiones diarias reclamadas",
+    ["Weekly quests claimed"] = "Misiones semanales reclamadas",
+    ["Journey stages"] = "Etapas de trayecto",
+    ["Achievements"] = "Logros",
+    ["Multiplayer level"] = "Nivel multijugador",
+    ["Quests open once a profile is loaded."] = "Las misiones se abren al cargar un perfil.",
+    ["DAILY QUEST DONE"] = "MISIÓN DIARIA CUMPLIDA",
+    ["WEEKLY QUEST DONE"] = "MISIÓN SEMANAL CUMPLIDA",
+    ["JOURNEY STAGE DONE"] = "ETAPA DE TRAYECTO SUPERADA",
+    ["LEVEL UP"] = "SUBES DE NIVEL",
+    ["MULTIPLAYER LEVEL UP"] = "SUBES DE NIVEL EN MULTIJUGADOR",
+    ["MILESTONE"] = "HITO",
+    ["A level reward is waiting in Progression"] = "Te espera una recompensa en Progresión",
+    ["Novice"] = "Novato",
+    ["Apprentice"] = "Aprendiz",
+    ["Journeyman"] = "Oficial",
+    ["Expert"] = "Experto",
+    ["Master"] = "Maestro",
+    ["Grandmaster"] = "Gran maestro",
+    ["Legend"] = "Leyenda",
+  },
+}
+
+PUI.badge = PUI.badge or {text = "0", n = 0, next_t = 0}
+
+function PUI.ready_total()
+  local ok, n = pcall(function()
+    local QM = QuestManager
+    if QM and QM.refresh then QM.refresh() end
+    return (QM and QM.ready_count() or 0) + #progression_unclaimed_levels()
+  end)
+  return ok and tonumber(n) or 0
+end
+
+local function badge_def(h)
+  local b = PUI.badge
+  return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", minw = h * 1.35, minh = h, r = h * 0.24, colour = G.C.RED, shadow = true}, nodes = {
+      {n = G.UIT.T, config = {ref_table = b, ref_value = "text", scale = h * 0.82, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+    }},
+  }}
+end
+
+local function badge_drop()
+  if G.progression_badge then
+    if not G.progression_badge.REMOVED then G.progression_badge:remove() end
+    G.progression_badge = nil
+  end
+  PUI.badge.major = nil
+end
+
+function PUI.badge_tick(force)
+  local b = PUI.badge
+  if G.progression_badge and (G.STAGE ~= G.STAGES.MAIN_MENU or not G.MAIN_MENU_UI or G.MAIN_MENU_UI.REMOVED or (b.major and b.major.REMOVED)) then badge_drop() end
+  local now = love.timer.getTime()
+  if not force and now < b.next_t then return end
+  b.next_t = now + 0.5
+  local menu = G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI and not G.MAIN_MENU_UI.REMOVED
+  local btn = menu and G.MAIN_MENU_UI:get_UIE_by_ID("progression_button") or nil
+  local n = btn and PUI.ready_total() or 0
+  if n <= 0 then badge_drop() return end
+  b.n = n
+  b.text = n > 9 and "9+" or tostring(n)
+  local box = G.progression_badge
+  if box and not box.REMOVED and b.major == btn then return end
+  if G.OVERLAY_MENU then return end
+  badge_drop()
+  local big = btn.T.h >= 1
+  local h = big and btn.T.h * 0.5 or 0.34
+  G.progression_badge = UIBox{definition = badge_def(h), config = {align = "cri", offset = {x = big and -0.12 or 0.16, y = 0}, major = btn}}
+  G.progression_badge.states.collide.can = false
+  b.major = btn
+end
+
+if Game and Game.update and not PUI.badge_wrapped then
+  PUI.badge_wrapped = true
+  local update = Game.update
+r 10 2449 %20%20 -
+l 4
+    update(self, dt)
+    pcall(PUI.badge_tick)
+  end
+end
+end

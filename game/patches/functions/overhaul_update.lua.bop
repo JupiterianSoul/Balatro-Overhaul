@@ -1,0 +1,338 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 74
+OverhaulUpdate = OverhaulUpdate or {}
+local U = OverhaulUpdate
+
+local DEFAULT_URL = "wss://balatro-overhaul-muliplayer.onrender.com/ws"
+local RECHECK_SECS = 1800
+local RETRY_SECS = 120
+local BOOT = rawget(_G, "OVERHAUL_BOOTSTRAP")
+if type(BOOT) ~= "table" or type(BOOT.feed) ~= "string" then BOOT = nil end
+local TARGET = BOOT and tostring(BOOT.update or "update/patch.zip") or "update/game.love"
+local PART = TARGET .. ".part"
+local SUM = TARGET .. ".sha256"
+local RESTART = "update/restart"
+local PLATFORMS = {Android = "android", Linux = "linux", Windows = "windows"}
+
+U.state = U.state or "none"
+U.ui = U.ui or {label = ""}
+
+local HASH_THREAD = [[
+require("love.filesystem")
+require "love.data"
+local path, channel = ...
+local ok, hex = pcall(function()
+    local data = love.filesystem.newFileData(path)
+    local digest = love.data.hash("sha256", data)
+    data:release()
+    return love.data.encode("string", "hex", digest)
+end)
+love.thread.getChannel(channel):push(ok and hex or "")
+]]
+
+local function platform()
+    if BOOT then return BOOT.feed end
+    if os.getenv("OVERHAUL_RUNTIME") == "1" then return nil end
+    return love.system and PLATFORMS[love.system.getOS()]
+end
+
+function U.in_game_install()
+    if BOOT then return true end
+    return platform() ~= "android" and os.getenv("OVERHAUL_UPDATER") == "1"
+end
+
+local function base_url()
+    local cfg = rawget(_G, "mp_config")
+    local ws = (type(cfg) == "table" and cfg.SERVER_URL) or DEFAULT_URL
+    return (tostring(ws):gsub("^wss://", "https://"):gsub("^ws://", "http://"):gsub("/ws/?$", ""))
+end
+
+local function decode(body)
+    local ok, chunk = pcall(love.filesystem.load, "smods/libs/json/json.lua")
+    if not ok or not chunk then return nil end
+    local ok2, lib = pcall(chunk)
+    if not ok2 then return nil end
+    local ok3, data = pcall(lib.decode, body or "")
+    return ok3 and type(data) == "table" and data or nil
+end
+
+function U.newer(a, b)
+    local pa, pb = {}, {}
+    for n in tostring(a):gmatch("%d+") do pa[#pa + 1] = tonumber(n) end
+    for n in tostring(b):gmatch("%d+") do pb[#pb + 1] = tonumber(n) end
+    for i = 1, math.max(#pa, #pb) do
+        local x, y = pa[i] or 0, pb[i] or 0
+        if x ~= y then return x > y end
+    end
+    return false
+end
+
+local function menu_ready()
+    return G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI
+end
+
+function U.refresh_menu()
+    if not menu_ready() then return end
+    if G.collection_alert then
+r 13 743 %20%20%20%20%20%20%20%20 -
+r 13 744 %20%20%20%20%20%20%20%20 -
+l 2
+    end
+    G.MAIN_MENU_UI:remove()
+r 13 754 %20%20%20%20 -
+r 13 755 %20%20%20%20%20%20%20%20 -
+l 3
+        config = {align = "bmi", offset = {x = 0, y = 10}, major = G.ROOM_ATTACH, bond = 'Weak'}
+    }
+    G.MAIN_MENU_UI.alignment.offset.y = main_menu_bar_offset()
+r 13 759 %20%20%20%20 -
+l 194
+    G.MAIN_MENU_UI:hard_set_VT()
+    if not G.OVERLAY_MENU then G.CONTROLLER:snap_to{node = G.MAIN_MENU_UI:get_UIE_by_ID('main_menu_play')} end
+end
+
+local function set_label(text)
+    if U.ui.label == text then return end
+    U.ui.label = text
+    if menu_ready() then G.MAIN_MENU_UI:recalculate() end
+end
+
+local function label_for_state()
+    if U.state == "available" then return mod_loc("UPDATE AVAILABLE") end
+    if U.state == "downloading" then return mod_loc("DOWNLOADING") .. " " .. tostring(U.percent or 0) .. "%" end
+    if U.state == "verifying" then return mod_loc("CHECKING DOWNLOAD") end
+    if U.state == "ready" then return mod_loc("RESTART TO UPDATE") end
+    if U.state == "failed" then return mod_loc("UPDATE FAILED") end
+    return ""
+end
+
+local function set_state(state)
+    local was = U.state
+    U.state = state
+    if (was == "none") ~= (state == "none") then
+        U.ui.label = label_for_state()
+        U.refresh_menu()
+    else
+        set_label(label_for_state())
+    end
+end
+
+function U.known()
+    return U.build ~= nil and U.state ~= "none"
+end
+
+function U.check(force)
+    if not platform() or U.checking then return end
+    if U.state == "downloading" or U.state == "verifying" or U.state == "ready" then return end
+    local now = love.timer.getTime()
+    if not force and U.next_check and now < U.next_check then return end
+    U.checking = true
+    ModWorkshop.request("get", {lane = "update", url = base_url() .. "/version?platform=" .. platform()}, function(res)
+        U.checking = false
+        local data = res.ok and decode(res.body)
+        if not data then
+            U.next_check = love.timer.getTime() + RETRY_SECS
+            return
+        end
+        U.next_check = love.timer.getTime() + RECHECK_SECS
+        local build = data.build
+        if type(build) == "table" and U.newer(build.version, OVERHAUL_VERSION) then
+            U.build = build
+            if U.state == "none" then set_state("available") end
+        end
+    end)
+end
+
+local function fail(err)
+    U.error = err and ModWorkshop.friendly(err) or nil
+    set_state("failed")
+end
+
+local function finish(sha)
+    if tostring(sha):lower() ~= tostring(U.build.sha256):lower() then
+        love.filesystem.remove(PART)
+        return fail()
+    end
+    local dir = love.filesystem.getSaveDirectory() .. "/"
+    os.remove(dir .. TARGET)
+    if not os.rename(dir .. PART, dir .. TARGET) then return fail() end
+    love.filesystem.write(SUM, tostring(sha):lower() .. "  " .. TARGET:match("[^/]+$") .. "\n")
+    set_state("ready")
+end
+
+local function verify()
+    set_state("verifying")
+    local channel = "overhaul_update_hash"
+    love.thread.getChannel(channel):clear()
+    local ok, thread = pcall(love.thread.newThread, HASH_THREAD)
+    if not ok then return fail() end
+    thread:start(PART, channel)
+    local function poll()
+        local sha = love.thread.getChannel(channel):pop()
+        if sha then return finish(sha) end
+        if thread:getError() then return fail() end
+        ModWorkshop.later(poll, 10)
+    end
+    ModWorkshop.later(poll, 10)
+end
+
+local function download(build)
+    U.percent = 0
+    set_state("downloading")
+    love.filesystem.remove(PART)
+    love.filesystem.remove(TARGET)
+    love.filesystem.remove(SUM)
+    ModWorkshop.request("download", {lane = "update", url = build.url, path = PART}, function(res)
+        if not res.ok then return fail(res.err) end
+        if tonumber(res.size) ~= tonumber(U.build.size) then
+            love.filesystem.remove(PART)
+            return fail()
+        end
+        verify()
+    end, function(got)
+        local percent = math.floor(100 * got / math.max(tonumber(U.build.size) or 1, 1))
+        percent = math.max(0, math.min(99, percent))
+        if percent ~= U.percent then
+            U.percent = percent
+            set_label(label_for_state())
+        end
+    end)
+end
+
+function U.start()
+    if not U.build or U.state == "downloading" or U.state == "verifying" or U.state == "ready" then return end
+    local in_game = U.in_game_install()
+    if in_game then
+        U.percent = 0
+        set_state("downloading")
+    end
+    ModWorkshop.request("get", {lane = "update", url = base_url() .. "/version?platform=" .. platform() .. "&link=1"}, function(res)
+        local data = res.ok and decode(res.body)
+        local build = data and data.build
+        if type(build) ~= "table" or type(build.url) ~= "string" then return fail(res.err) end
+        U.build = build
+        if in_game then return download(build) end
+        love.system.openURL(build.url)
+        set_state("available")
+    end)
+end
+
+local function text_row(text, scale, colour, padding)
+    return {n = G.UIT.R, config = {align = "cm", padding = padding or 0.1}, nodes = {
+        {n = G.UIT.T, config = {text = text, scale = scale, colour = colour, shadow = true, maxw = 9}},
+    }}
+end
+
+function U.prompt_definition(opts)
+    opts = opts or {}
+    U.after_prompt = opts.later
+    local rows = {text_row(mod_loc("UPDATE AVAILABLE"), 0.6, G.C.GOLD)}
+    if opts.note then rows[#rows + 1] = text_row(opts.note, 0.4, G.C.UI.TEXT_LIGHT) end
+    local versions = mod_loc("You have {mine}, the latest is {latest}.")
+    versions = versions:gsub("{mine}", function() return "V " .. tostring(OVERHAUL_NAME or OVERHAUL_VERSION) .. (OVERHAUL_NAME and OVERHAUL_VERSION and (" b" .. tostring(OVERHAUL_VERSION)) or "") end)
+    versions = versions:gsub("{latest}", function() local lb = U.build or {}
+      local nm = lb.version_name or lb.name
+      return "V " .. tostring(nm or lb.version or "?") .. ((nm and lb.version) and (" b" .. tostring(lb.version)) or "") end)
+    rows[#rows + 1] = text_row(versions, 0.4, G.C.UI.TEXT_LIGHT)
+    if U.in_game_install() then
+        local size = mod_loc("Download size: {size}")
+        size = size:gsub("{size}", function() return string.format("%d MB", math.floor((tonumber(U.build and U.build.size) or 0) / 1048576 + 0.5)) end)
+        rows[#rows + 1] = text_row(size, 0.35, G.C.UI.TEXT_INACTIVE)
+    else
+        rows[#rows + 1] = text_row(mod_loc("The download opens in your browser."), 0.35, G.C.UI.TEXT_INACTIVE)
+    end
+    if U.state == "failed" then
+        rows[#rows + 1] = text_row(U.error or mod_loc("The download was damaged, try again."), 0.35, G.C.RED)
+    end
+    local buttons = U.state == "ready" and {
+        UIBox_button({button = "overhaul_update_restart", label = {mod_loc("RESTART TO UPDATE")}, colour = G.C.GREEN, minw = 4.2, minh = 0.9, scale = 0.45, col = true}),
+    } or {
+        UIBox_button({button = "overhaul_update_go", label = {mod_loc("UPDATE")}, colour = G.C.GREEN, minw = 3, minh = 0.9, scale = 0.45, col = true}),
+    }
+    buttons[#buttons + 1] = {n = G.UIT.C, config = {align = "cm", minw = 0.25}, nodes = {}}
+    buttons[#buttons + 1] = UIBox_button({button = "overhaul_update_later", label = {mod_loc("LATER")}, colour = G.C.RED, minw = 3, minh = 0.9, scale = 0.45, col = true})
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = buttons}
+    return create_UIBox_generic_options({back_func = "overhaul_update_later", no_back = true, contents = rows})
+end
+
+function U.menu_row(w, h, scale, padding)
+    if U.state == "none" then return nil end
+    U.ui.label = label_for_state()
+    local row = UIBox_button{id = 'overhaul_update_button', button = 'overhaul_update_click', colour = G.C.GREEN, minw = w, minh = h, label = {U.ui.label}, scale = scale}
+    local function patch(node)
+        if node.n == G.UIT.T then
+            node.config.ref_table = U.ui
+            node.config.ref_value = 'label'
+            node.config.no_recalc = true
+        end
+        for _, child in pairs(node.nodes or {}) do patch(child) end
+    end
+    patch(row)
+    return {n = G.UIT.R, config = {align = "cm", padding = padding}, nodes = {row}}
+end
+
+G.FUNCS.overhaul_update_click = function()
+    if U.state == "downloading" or U.state == "verifying" then return end
+    if U.state == "ready" then return G.FUNCS.overhaul_update_restart() end
+    G.FUNCS.overlay_menu({definition = U.prompt_definition()})
+end
+
+local function leave_prompt()
+    local after = U.after_prompt
+    U.after_prompt = nil
+    if after then return after() end
+r 4 1375 %20%20%20%20 -
+l 49
+end
+
+G.FUNCS.overhaul_update_go = function()
+    leave_prompt()
+    U.start()
+end
+
+G.FUNCS.overhaul_update_later = function()
+    leave_prompt()
+end
+
+G.FUNCS.overhaul_update_restart = function()
+    if BOOT then
+        local loader = rawget(_G, "MODLOADER")
+        if type(loader) == "table" and loader.restart then return loader.restart() end
+        return love.event.quit()
+    end
+    love.filesystem.write(RESTART, "1")
+    love.event.quit()
+end
+
+local main_menu_ui = set_main_menu_UI
+function set_main_menu_UI(...)
+    main_menu_ui(...)
+    pcall(U.check)
+end
+
+mod_loc_register{
+    fr = {
+        ["UPDATE AVAILABLE"] = "MISE À JOUR DISPONIBLE", ["DOWNLOADING"] = "TÉLÉCHARGEMENT", ["CHECKING DOWNLOAD"] = "VÉRIFICATION",
+        ["RESTART TO UPDATE"] = "REDÉMARRER POUR METTRE À JOUR", ["UPDATE FAILED"] = "ÉCHEC DE LA MISE À JOUR",
+        ["UPDATE"] = "METTRE À JOUR", ["LATER"] = "PLUS TARD",
+        ["You have {mine}, the latest is {latest}."] = "Vous avez {mine}, la dernière est {latest}.",
+        ["Download size: {size}"] = "Taille du téléchargement : {size}",
+        ["The download opens in your browser."] = "Le téléchargement s'ouvre dans votre navigateur.",
+        ["The download was damaged, try again."] = "Le téléchargement est endommagé, réessayez.",
+    },
+    es = {
+        ["UPDATE AVAILABLE"] = "ACTUALIZACIÓN DISPONIBLE", ["DOWNLOADING"] = "DESCARGANDO", ["CHECKING DOWNLOAD"] = "COMPROBANDO",
+        ["RESTART TO UPDATE"] = "REINICIAR PARA ACTUALIZAR", ["UPDATE FAILED"] = "ERROR AL ACTUALIZAR",
+        ["UPDATE"] = "ACTUALIZAR", ["LATER"] = "MÁS TARDE",
+        ["You have {mine}, the latest is {latest}."] = "Tienes {mine}, la última es {latest}.",
+        ["Download size: {size}"] = "Tamaño de la descarga: {size}",
+        ["The download opens in your browser."] = "La descarga se abre en tu navegador.",
+        ["The download was damaged, try again."] = "La descarga está dañada, inténtalo de nuevo.",
+    },
+}
+
+return OverhaulUpdate
+end

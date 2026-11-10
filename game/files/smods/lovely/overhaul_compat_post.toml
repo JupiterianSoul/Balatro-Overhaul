@@ -1,0 +1,116 @@
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = 1000
+
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = "trigger = 'after',delay = 0.4,"
+position = 'at'
+payload = "trigger = 'after',delay = score_time(0.4),"
+match_indent = true
+
+[[patches]]
+[patches.regex]
+target = 'functions/state_events.lua'
+pattern = '''handname = ''(?:;return true end\)|\s*end\s*return true end\))\s*\}\)\)\s*(?<d>delay\(0\.3\))'''
+root_capture = 'd'
+position = 'at'
+payload = 'score_delay(0.3)'
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_overstock_norm =  \{order = 1,     discovered = false, unlocked = true , '''
+position = 'at'
+payload = '''v_overstock_norm =  {order = 1,     discovered = true, demo = true, unlocked = true , '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_crystal_ball=     \{order = 9,    discovered = false, unlocked = true , '''
+position = 'at'
+payload = '''v_crystal_ball=     {order = 9,     discovered = true, demo = true, unlocked = true , '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_overstock_plus=   \{order = 2,     discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_overstock_plus=   {order = 2,     discovered = true, demo = true, unlocked = true, '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_antimatter=       \{order = 24,    discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_antimatter=       {order = 24,    discovered = true, demo = true, unlocked = true, '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_tarot_tycoon=     \{order = 18,     discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_tarot_tycoon=     {order = 18,    discovered = true, demo = true, unlocked = true, '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_planet_tycoon=    \{order = 20,     discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_planet_tycoon=    {order = 20,    discovered = true, demo = true, unlocked = true, '''
+
+[[patches]]
+[patches.regex]
+target = 'functions/UI_definitions.lua'
+pattern = '''total_rate = total_rate \+ (?<a>\( )?G\.GAME\[v:lower\(\)\.\.'_rate'\]'''
+position = 'at'
+payload = "total_rate = total_rate + $a(G.GAME[v:lower()..'_rate'] or 0)"
+
+[[patches]]
+[patches.regex]
+target = 'card.lua'
+pattern = '''self\.cost = math\.max\(1, math\.floor\(\(self\.base_cost \+ self\.extra_cost \+ 0\.5\)\*\(100-G\.GAME\.discount_percent\)/100\)\)'''
+position = 'at'
+payload = 'self.cost = math.max(1, math.floor((self.base_cost + self.extra_cost + 0.5)*(100-(G.GAME.discount_percent or 0))/100))'
+
+[[patches]]
+[patches.regex]
+target = 'functions/state_events.lua'
+pattern = '''handname ~= disp_text and 0\.4 or 0\}, \{handname=disp_text'''
+position = 'at'
+payload = 'handname ~= disp_text and score_time(0.4) or 0}, {handname=disp_text'
+
+[[patches]]
+[patches.regex]
+target = 'functions/UI_definitions.lua'
+pattern = '''local challenge_unlocked = SMODS\.challenge_is_unlocked\(v, k\)\n'''
+position = 'at'
+payload = '''local challenge_unlocked = SMODS.challenge_is_unlocked(v, k) or (k > 20 and not v.mod)
+'''
+
+[[patches]]
+[patches.pattern]
+target = '=[SMODS Amulet "talisman/break_inf.lua"]'
+pattern = "if ante <= 8 then return amounts[to_number(ante)] end"
+position = 'at'
+payload = """if ante <= 8 then
+    local n = to_number(ante)
+    local lo = math.floor(n)
+    if lo == n then return amounts[n] end
+    return amounts[lo] + (amounts[lo + 1] - amounts[lo]) * (n - lo)
+end"""
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = "for _,_ in pairs(G.GAME.current_round.voucher.spawn) do vouchers_to_spawn = vouchers_to_spawn + 1 end"
+position = 'before'
+payload = """if type(G.GAME.current_round.voucher) ~= 'table' then
+    local k = G.GAME.current_round.voucher
+    G.GAME.current_round.voucher = k and {k, spawn = {[k] = true}} or {spawn = {}}
+end
+G.GAME.current_round.voucher.spawn = G.GAME.current_round.voucher.spawn or {}"""
+match_indent = true

@@ -1,0 +1,30 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 4
+MIT License
+
+Copyright (c) 2025 Efe
+
+r 31 4 - -
+r 31 5 - -
+r 31 6 - -
+r 31 7 - -
+r 31 8 - -
+r 31 9 - -
+l 1
+
+r 31 10 - -
+r 31 11 - -
+l 1
+
+r 31 12 - -
+r 31 13 - -
+r 31 14 - -
+r 31 15 - -
+r 31 16 - -
+r 31 17 - -
+l 1
+SOFTWARE.
+end

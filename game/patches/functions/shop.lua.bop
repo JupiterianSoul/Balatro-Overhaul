@@ -1,0 +1,1092 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 208
+﻿-- ============================================
+-- BALACOIN SHOP for Balatro V10.5
+-- 2 Tabs: Colors, Icon Effects
+-- Rarity-based economy with Balacoin currency
+-- REWRITE: V2.0 - Instant refresh, confirmation dialogs,
+--   paginated colors, overlay ash card, proper prices
+-- ============================================
+
+-- ===== SHOP CONSTANTS =====
+
+local SHOP_CONFIG = {
+  currency_name = "Balacoin",
+  currency_icon = "BC",
+  items_per_page = 6,
+}
+
+-- ===== SHOP MANAGER =====
+
+ShopManager = {
+  initialized_profile = nil,
+  current_tab = "titles",
+  current_page = 1,
+}
+
+function ShopManager.init()
+  if not G then return false end
+  if not G.PROFILES then return false end
+  if not G.SETTINGS then return false end
+  if not G.SETTINGS.profile then return false end
+  local prof_id = G.SETTINGS.profile
+  if ShopManager.initialized_profile == prof_id then return true end
+  local profile = G.PROFILES[prof_id]
+  if not profile then return false end
+  if not profile.progression then profile.progression = {} end
+  if not profile.progression.balacoin then profile.progression.balacoin = 0 end
+  if not profile.progression.purchases then profile.progression.purchases = {} end
+  ShopManager.initialized_profile = prof_id
+  return true
+end
+
+function ShopManager.get_balance()
+  if not ShopManager.init() then return 0 end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  if not profile or not profile.progression then return 0 end
+  return profile.progression.balacoin or 0
+end
+
+function ShopManager.add_balacoin(amount)
+  -- ANTI-CHEAT: do not award Balacoin during modded runs
+  if G and G.GAME and G.GAME.modded_run then return false end
+  if not ShopManager.init() then return false end
+  if not amount or amount <= 0 then return false end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  if not profile or not profile.progression then return false end
+  profile.progression.balacoin = (profile.progression.balacoin or 0) + amount
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+  return true
+end
+
+function ShopManager.spend_balacoin(amount)
+  if not ShopManager.init() then return false end
+  if not amount or amount <= 0 then return false end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  if not profile or not profile.progression then return false end
+  local current = profile.progression.balacoin or 0
+  if current < amount then return false end
+  profile.progression.balacoin = current - amount
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+  return true
+end
+
+function ShopManager.is_owned(item_id, category)
+  if not AshCardManager then return false end
+  if category == "color_set" then return AshCardManager.owns_color_set(item_id)
+  elseif category == "icon_effect" then return AshCardManager.owns_icon_effect(item_id)
+  end
+  return false
+end
+
+function ShopManager.purchase(item_id, category, price)
+  if not ShopManager.init() then return false, "Shop not initialized" end
+  if not AshCardManager then return false, "Not initialized" end
+  local success, msg
+  if category == "color_set" then success, msg = AshCardManager.buy_color_set(item_id)
+  elseif category == "icon_effect" then success, msg = AshCardManager.buy_icon_effect(item_id)
+  else return false, "Unknown category" end
+  if success then
+    local profile = G.PROFILES[G.SETTINGS.profile]
+    if profile and profile.progression and profile.progression.purchases then
+      table.insert(profile.progression.purchases, {id = item_id, category = category, price = price, timestamp = os.time()})
+    end
+    pcall(function() if G and G.save_progress then G:save_progress() end end)
+  end
+  return success, msg
+end
+
+-- ===== SHOP UI STATE =====
+
+local ShopUI = {
+  color_rarity_page = 1,
+  active_tab = 1,
+  jimbo_skin_page = 1,
+}
+
+-- ===== JIMBO SKIN SYSTEM =====
+-- Skins are keyed by joker center key (e.g. 'j_jolly'). Only discovered jokers appear.
+-- Prices scale by rarity: Common=5, Uncommon=15, Rare=30, Legendary=60
+local JIMBO_SKIN_PRICES = { [1]=5, [2]=15, [3]=30, [4]=60 }
+
+local function jimbo_skin_price(center)
+  if not center then return 10 end
+  return JIMBO_SKIN_PRICES[center.rarity] or 10
+end
+
+function JimboSkinManager_init()
+  if not G or not G.PROFILES or not G.SETTINGS then return false end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  if not profile then return false end
+  if not profile.progression then profile.progression = {} end
+  if not profile.progression.owned_jimbo_skins then profile.progression.owned_jimbo_skins = {} end
+  if not profile.progression.equipped_jimbo_skin then profile.progression.equipped_jimbo_skin = 'j_joker' end
+  return true
+end
+
+function JimboSkinManager_is_owned(key)
+  if not JimboSkinManager_init() then return false end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  local owned = profile.progression.owned_jimbo_skins
+  if not owned._set then
+    owned._set = {}
+    for _, v in ipairs(owned) do owned._set[v] = true end
+  end
+  -- Default joker skin is always owned
+  if key == 'j_joker' then return true end
+  return owned._set[key] == true
+end
+
+function JimboSkinManager_buy(key, price)
+  if not JimboSkinManager_init() then return false end
+  if JimboSkinManager_is_owned(key) then return false end
+  if not ShopManager.spend_balacoin(price) then return false end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  table.insert(profile.progression.owned_jimbo_skins, key)
+  profile.progression.owned_jimbo_skins._set = nil -- invalidate cache
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+  return true
+end
+
+function JimboSkinManager_equip(key)
+  if not JimboSkinManager_init() then return false end
+  if not JimboSkinManager_is_owned(key) then return false end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  profile.progression.equipped_jimbo_skin = key
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+  return true
+end
+
+function JimboSkinManager_get_equipped()
+  if not JimboSkinManager_init() then return 'j_joker' end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  return profile.progression.equipped_jimbo_skin or 'j_joker'
+end
+
+function JimboSkinManager_unlock_all()
+  if not JimboSkinManager_init() then return end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  local owned = profile.progression.owned_jimbo_skins
+  local existing = {}
+  for _, v in ipairs(owned) do existing[v] = true end
+  local pool = G.P_CENTER_POOLS and G.P_CENTER_POOLS['Joker']
+  if pool then
+    for _, center in ipairs(pool) do
+      if center.key and not existing[center.key] then
+        table.insert(owned, center.key)
+      end
+    end
+  end
+  owned._set = nil
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+end
+
+function JimboSkinManager_owned_count()
+  if not JimboSkinManager_init() then return 0 end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  return #(profile.progression.owned_jimbo_skins) + 1 -- +1 for default j_joker
+end
+
+local COLOR_PAGES = {
+  {name = "Common",    rarity_id = 1},
+  {name = "Uncommon",  rarity_id = 2},
+  {name = "Rare",      rarity_id = 3},
+  {name = "Epic",      rarity_id = 4},
+  {name = "Legendary", rarity_id = 5},
+}
+for _, g in ipairs(SHOP_COLOR_GROUPS or {}) do COLOR_PAGES[#COLOR_PAGES + 1] = {name = g, group = g} end
+
+local function rarity_colour(rarity)
+  if not rarity or not G or not G.C then return G and G.C and G.C.WHITE or {1,1,1,1} end
+  local c = rarity.color or "WHITE"
+  if c == "PURPLE" and G.C.PURPLE then return G.C.PURPLE end
+  if c == "PURPLE" then return HEX("8a2be2") end
+  return G.C[c] or G.C.WHITE
+end
+
+-- ===== INSTANT REFRESH =====
+
+local function refresh_shop()
+  pcall(function()
+r 23 214 %20%20%20%20 -
+l 14
+      local of = G.OVERLAY_MENU
+      G.OVERLAY_MENU = nil
+      of:remove()
+    end
+  end)
+  pcall(function()
+    G.FUNCS.overlay_menu{definition = create_UIBox_shop_menu()}
+  end)
+end
+
+-- ===== PURCHASE CONFIRMATION DIALOG =====
+
+local function show_purchase_confirm(item_name, item_price, on_confirm)
+  pcall(function()
+r 23 214 %20%20%20%20 -
+l 12
+      local of = G.OVERLAY_MENU
+      G.OVERLAY_MENU = nil
+      of:remove()
+    end
+  end)
+  G._shop_confirm_callback = on_confirm
+  G._shop_confirm_item_name = item_name
+  G._shop_confirm_item_price = item_price
+  pcall(function()
+    G.FUNCS.overlay_menu{definition = create_UIBox_generic_options({
+      back_func = 'shop_confirm_no',
+      contents = {
+r 15 2760 %20%20%20%20%20%20%20%20 -
+l 2
+          {n=G.UIT.T, config={text = mod_loc("CONFIRM PURCHASE"), scale = 0.5, colour = G.C.GOLD, shadow = true}}
+        }},
+r 15 71 %20%20%20%20%20%20%20%20 -
+l 8
+          {n=G.UIT.T, config={text = mod_loc("Do you want to buy this item?"), scale = 0.35, colour = G.C.WHITE}}
+        }},
+        {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+          {n=G.UIT.T, config={text = item_name, scale = 0.4, colour = G.C.GOLD, shadow = true}}
+        }},
+        {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+          {n=G.UIT.T, config={text = SHOP_CONFIG.currency_icon .. " " .. item_price, scale = 0.38, colour = G.C.MONEY}}
+        }},
+r 15 2760 %20%20%20%20%20%20%20%20 -
+l 26
+          {n=G.UIT.C, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.GREEN, hover = true,
+            button = "shop_confirm_yes", minw = 2.5, minh = 0.6, emboss = 0.05}, nodes={
+            {n=G.UIT.T, config={text = mod_loc("YES"), scale = 0.4, colour = G.C.WHITE}}
+          }},
+          {n=G.UIT.C, config={align = "cm", minw = 0.5}, nodes={}},
+          {n=G.UIT.C, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.RED, hover = true,
+            button = "shop_confirm_no", minw = 2.5, minh = 0.6, emboss = 0.05}, nodes={
+            {n=G.UIT.T, config={text = mod_loc("NO"), scale = 0.4, colour = G.C.WHITE}}
+          }},
+        }},
+      }
+    })}
+  end)
+end
+
+G.FUNCS.shop_confirm_yes = function(e)
+  local cb = G._shop_confirm_callback
+  local item_price = G._shop_confirm_item_price
+  G._shop_confirm_callback = nil
+  G._shop_confirm_item_name = nil
+  G._shop_confirm_item_price = nil
+  -- Check balance before executing purchase
+  if item_price and ShopManager and ShopManager.get_balance then
+    local balance = ShopManager.get_balance()
+    if balance < item_price then
+      pcall(function()
+r 23 214 %20%20%20%20%20%20%20%20 -
+l 7
+          local of = G.OVERLAY_MENU
+          G.OVERLAY_MENU = nil
+          of:remove()
+        end
+        G.FUNCS.overlay_menu{definition = create_UIBox_generic_options({
+          back_func = 'shop_confirm_no',
+          contents = {
+r 15 2760 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+              {n=G.UIT.T, config={text = mod_loc("NOT ENOUGH BALACOINS!"), scale = 0.45, colour = G.C.RED, shadow = true}}
+            }},
+r 15 71 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+              {n=G.UIT.T, config={text = mod_loc("You need") .. " " .. SHOP_CONFIG.currency_icon .. " " .. tostring(item_price) .. " " .. mod_loc("but only have") .. " " .. SHOP_CONFIG.currency_icon .. " " .. tostring(balance), scale = 0.3, colour = G.C.WHITE}}
+            }},
+r 15 2760 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 22
+              {n=G.UIT.C, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.RED, hover = true,
+                button = "shop_confirm_no", minw = 2.5, minh = 0.6, emboss = 0.05}, nodes={
+                {n=G.UIT.T, config={text = mod_loc("OK"), scale = 0.4, colour = G.C.WHITE}}
+              }},
+            }},
+          }
+        })}
+      end)
+      return
+    end
+  end
+  if cb then
+    local ok, err = pcall(cb)
+    if not ok then print("[SHOP] Confirm callback error: " .. tostring(err)) end
+  end
+end
+
+G.FUNCS.shop_confirm_no = function(e)
+  G._shop_confirm_callback = nil
+  G._shop_confirm_item_name = nil
+  G._shop_confirm_item_price = nil
+  pcall(function()
+r 23 214 %20%20%20%20 -
+l 19
+      local of = G.OVERLAY_MENU
+      G.OVERLAY_MENU = nil
+      of:remove()
+    end
+  end)
+  pcall(function()
+    G.FUNCS.overlay_menu{definition = create_UIBox_shop_menu()}
+  end)
+end
+
+-- ===== MAIN SHOP MENU =====
+
+function create_UIBox_shop_menu()
+  ShopManager.init()
+  pcall(function() AshCardManager.init() end)
+  local balance = ShopManager.get_balance()
+  return create_UIBox_generic_options({
+    back_func = 'exit_overlay_menu',
+    contents = {
+r 15 71 %20%20%20%20%20%20 -
+l 7
+        {n=G.UIT.C, config={align = "cl", minw = 4}, nodes={
+          {n=G.UIT.T, config={text = mod_loc("BALACOIN SHOP"), scale = 0.5, colour = G.C.GOLD, shadow = true}}
+        }},
+        {n=G.UIT.C, config={align = "cr", minw = 3}, nodes={
+          {n=G.UIT.T, config={text = SHOP_CONFIG.currency_icon .. " " .. balance, scale = 0.38, colour = G.C.MONEY}}
+        }},
+      }},
+r 15 71 %20%20%20%20%20%20 -
+l 137
+        create_tabs({
+          tabs = {
+            {label = mod_loc("Jimbo Skins"), chosen = (ShopUI.active_tab or 1) == 1,
+              tab_definition_function = create_shop_jimbo_skins_tab},
+            {label = mod_loc("Colors"), chosen = (ShopUI.active_tab or 1) == 2,
+              tab_definition_function = create_shop_colors_tab},
+            {label = mod_loc("Icon Effects"), chosen = (ShopUI.active_tab or 1) == 3,
+              tab_definition_function = create_shop_icon_effects_tab},
+          },
+          snap_to_nav = true,
+          tab_h = 7,
+          tab_alignment = "tm",
+        }),
+      }},
+    }
+  })
+end
+
+-- ===== COLORS TAB (Paginated by rarity) =====
+
+function create_shop_colors_tab()
+  local page = ShopUI.color_rarity_page or 1
+  if page < 1 then page = 1 end
+  if page > #COLOR_PAGES then page = #COLOR_PAGES end
+  local page_info = COLOR_PAGES[page]
+  local balance = ShopManager.get_balance()
+  local all_owned = false
+  pcall(function() all_owned = AshCardManager.owns_all_color_sets() end)
+  local item_nodes = {}
+  for _, set in ipairs(SHOP_COLOR_SETS) do
+    if set.rarity and ((page_info.group and set.group == page_info.group) or (not page_info.group and not set.group and set.rarity.id == page_info.rarity_id)) then
+      local owned = AshCardManager.owns_color_set(set.id)
+      local can_afford = balance >= set.price
+      local swatch_nodes = {}
+      local preview = {set.blue, set.red, set.green, set.yellow}
+      for _, clr in ipairs(preview) do
+        table.insert(swatch_nodes, {n=G.UIT.C, config={align="cm", minw=0.28, minh=0.28, r=0.05,
+          colour={clr[1]/255, clr[2]/255, clr[3]/255, 1}, padding=0.01}, nodes={}})
+      end
+      local status_text, status_color
+      if owned then
+        status_text = mod_loc("OWNED"); status_color = G.C.GREEN
+      elseif not can_afford then
+        status_text = SHOP_CONFIG.currency_icon .. " " .. set.price; status_color = G.C.UI.TEXT_INACTIVE
+      else
+        status_text = mod_loc("BUY"); status_color = G.C.BLUE
+      end
+      local price_text = SHOP_CONFIG.currency_icon .. " " .. set.price
+      local row_cfg = {align="cm", padding=0.03, r=0.08, colour=G.C.L_BLACK, minw=7.2, minh=0.55, emboss=0.03}
+      if not owned and can_afford then
+        row_cfg.hover = true; row_cfg.button = "shop_buy_color_set"
+        row_cfg.ref_table = {id=set.id, price=set.price, name=set.name}
+      end
+      table.insert(item_nodes, {n=G.UIT.R, config=row_cfg, nodes={
+        {n=G.UIT.C, config={align="cl", minw=1.8}, nodes={
+          {n=G.UIT.T, config={text=mod_loc(set.name), scale=0.38, colour=rarity_colour(set.rarity)}}
+        }},
+        {n=G.UIT.C, config={align="cm", minw=1.6}, nodes=swatch_nodes},
+        {n=G.UIT.C, config={align="cm", minw=1.3}, nodes={
+          {n=G.UIT.T, config={text=price_text, scale=0.32, colour=G.C.MONEY}}
+        }},
+        {n=G.UIT.C, config={align="cr", minw=1.5}, nodes={
+          {n=G.UIT.T, config={text=status_text, scale=0.32, colour=status_color}}
+        }},
+      }})
+    end
+  end
+  if page == 5 then
+    local poly = SHOP_POLYCHROMATIC
+    local poly_owned = AshCardManager.owns_color_set("polychromatic")
+    local poly_status, poly_color
+    if poly_owned then
+      poly_status = mod_loc("OWNED"); poly_color = G.C.GREEN
+    elseif not all_owned then
+      poly_status = mod_loc("Buy all sets first"); poly_color = G.C.GREY
+    else
+      poly_status = mod_loc("BUY"); poly_color = G.C.BLUE
+    end
+    local poly_cfg = {align="cm", padding=0.03, r=0.08, colour=G.C.L_BLACK, minw=7.2, minh=0.55, emboss=0.05}
+    if not poly_owned and all_owned then
+      poly_cfg.hover = true; poly_cfg.button = "shop_buy_color_set"
+      poly_cfg.ref_table = {id="polychromatic", price=poly.price, name=poly.name}
+    end
+    table.insert(item_nodes, {n=G.UIT.R, config=poly_cfg, nodes={
+      {n=G.UIT.C, config={align="cl", minw=3.4}, nodes={
+        {n=G.UIT.T, config={text=mod_loc("Polychromatic"), scale=0.38, colour=G.C.GOLD, shadow=true}}
+      }},
+      {n=G.UIT.C, config={align="cm", minw=1.3}, nodes={
+        {n=G.UIT.T, config={text=SHOP_CONFIG.currency_icon .. " " .. poly.price, scale=0.32, colour=G.C.MONEY}}
+      }},
+      {n=G.UIT.C, config={align="cr", minw=1.5}, nodes={
+        {n=G.UIT.T, config={text=poly_status, scale=0.32, colour=poly_color}}
+      }},
+    }})
+  end
+  local page_title_colour = G.C.WHITE
+  if page_info.rarity_id == 1 then page_title_colour = G.C.WHITE
+  elseif page_info.rarity_id == 2 then page_title_colour = G.C.GREEN
+  elseif page_info.rarity_id == 3 then page_title_colour = G.C.BLUE
+  elseif page_info.rarity_id == 4 then page_title_colour = HEX("8a2be2")
+  elseif page_info.rarity_id == 5 then page_title_colour = G.C.GOLD
+  elseif page_info.group then page_title_colour = G.C.ORANGE
+  end
+  return {n=G.UIT.ROOT, config={align="cm", padding=0.03, colour=G.C.CLEAR, minw=7.5, minh=5.5}, nodes={
+    {n=G.UIT.R, config={align="cm", padding=0.03}, nodes={
+      {n=G.UIT.T, config={text=mod_loc(page_info.name), scale=0.5, colour=page_title_colour, shadow=true}}
+    }},
+    {n=G.UIT.R, config={align="tm", padding=0.02}, nodes={
+      {n=G.UIT.C, config={align="tm", padding=0.02}, nodes=item_nodes}
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.04}, nodes={
+      {n=G.UIT.C, config={align="cm", padding=0.04, r=0.1, minw=1.1, minh=0.55,
+        colour = page > 1 and G.C.BLUE or G.C.L_BLACK,
+        hover = page > 1, button = page > 1 and "shop_color_prev" or nil}, nodes={
+        {n=G.UIT.T, config={text="<", scale=0.5, colour = page > 1 and G.C.WHITE or G.C.UI.TEXT_INACTIVE}}
+      }},
+      {n=G.UIT.C, config={align="cm", minw=2}, nodes={
+        {n=G.UIT.T, config={text=page .. " / " .. #COLOR_PAGES, scale=0.4, colour=G.C.WHITE}}
+      }},
+      {n=G.UIT.C, config={align="cm", padding=0.04, r=0.1, minw=1.1, minh=0.55,
+        colour = page < #COLOR_PAGES and G.C.BLUE or G.C.L_BLACK,
+        hover = page < #COLOR_PAGES, button = page < #COLOR_PAGES and "shop_color_next" or nil}, nodes={
+        {n=G.UIT.T, config={text=">", scale=0.5, colour = page < #COLOR_PAGES and G.C.WHITE or G.C.UI.TEXT_INACTIVE}}
+      }},
+    }},
+  }}
+end
+
+-- ===== ICON EFFECTS TAB (Edition-style cards) =====
+
+function create_shop_icon_effects_tab()
+  local balance = ShopManager.get_balance()
+
+  -- Create CardArea matching Editions collection tab
+  G.shop_icon_area = CardArea(
+    G.ROOM.T.x + 0.2*G.ROOM.T.w/2, G.ROOM.T.h,
+    4.5*G.CARD_W, 1.03*G.CARD_H,
+r 15 3628 %20%20%20%20 -
+l 57
+
+  local edition_map = {
+    {id="foil",        key="foil",        shader="foil"},
+    {id="holographic", key="holo",        shader="holo"},
+    {id="polychrome",  key="polychrome",  shader="polychrome"},
+    {id="negative",    key="negative",    shader="negative"},
+  }
+
+  for i, em in ipairs(edition_map) do
+    local card = Card(
+      G.shop_icon_area.T.x + G.shop_icon_area.T.w/2,
+      G.shop_icon_area.T.y,
+      G.CARD_W, G.CARD_H,
+      G.P_CARDS.empty,
+      G.P_CENTERS['e_'..em.key])
+    card:set_edition({[em.key] = true}, true, true)
+    card:start_materialize(nil, i > 1)
+
+    -- Find matching shop entry for this effect
+    local eff_data = nil
+    for _, eff in ipairs(SHOP_ICON_EFFECTS) do
+      if eff.id == em.id then eff_data = eff; break end
+    end
+
+    local owned = eff_data and AshCardManager.owns_icon_effect(eff_data.id) or false
+    local can_afford = eff_data and balance >= eff_data.price or false
+    local _eff_id = eff_data and eff_data.id
+    local _eff_price = eff_data and eff_data.price or 0
+    local _eff_name = eff_data and eff_data.name or em.id
+
+    -- Click to buy (same pattern as profile icon equip)
+    card.states.click.can = true
+    local function _buy_action()
+      if owned then return end
+      if not _eff_id then return end
+      show_purchase_confirm(_eff_name, _eff_price, function()
+        local ok, msg = AshCardManager.buy_icon_effect(_eff_id)
+        if ok then pcall(function() play_sound('sell', 1.0, 0.5) end) end
+        refresh_shop()
+      end)
+    end
+    card.click = _buy_action
+    card.single_tap = _buy_action
+
+    -- Hover popup with name + status
+    local popup_status = owned and mod_loc("OWNED") or
+      (can_afford and mod_loc("Tap to buy") or (SHOP_CONFIG.currency_icon .. " " .. _eff_price))
+    local popup_colour = owned and G.C.GREEN or (can_afford and G.C.BLUE or G.C.UI.TEXT_INACTIVE)
+    local popup_nodes = {
+      {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+        {n=G.UIT.T, config={text=mod_loc(_eff_name), scale=0.35, colour=G.C.WHITE, shadow=true}}
+      }},
+      {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+        {n=G.UIT.T, config={text=popup_status, scale=0.26, colour=popup_colour}}
+      }},
+    }
+    card.hover = function()
+r 2 429 %20%20%20%20%20%20 -
+l 36
+        if not card.hovering and card.states.visible then
+          card.hovering = true
+          card:juice_up(0.05, 0.02)
+          card.config.h_popup = {n=G.UIT.ROOT, config={align="cm", r=0.1, colour=G.C.L_BLACK, padding=0.1}, nodes=popup_nodes}
+          card.config.h_popup_config = {align='cl', offset={x=-0.1,y=0}, parent=card}
+          Node.hover(card)
+        end
+      end
+      card.stop_hover = function() card.hovering = false; Node.stop_hover(card) end
+    end
+
+    if owned then card.highlighted = true end
+    G.shop_icon_area:emplace(card)
+  end
+
+  return {n=G.UIT.ROOT, config={align="cm", padding=0.05, colour=G.C.CLEAR, minw=7.5, minh=5.5}, nodes={
+    {n=G.UIT.R, config={align="cm", padding=0.04}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("ICON EFFECTS"), scale=0.45, colour=G.C.WHITE, shadow=true}}
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("Visual effect on your Profile Icon"), scale=0.28, colour=G.C.GREY}}
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("Tap a card to purchase"), scale=0.24, colour=G.C.UI.TEXT_INACTIVE}}
+    }},
+    {n=G.UIT.R, config={align="cm", minw=2.5, padding=0.1, r=0.1, colour=G.C.BLACK, emboss=0.05}, nodes={
+      {n=G.UIT.R, config={align="cm", padding=0, no_fill=true}, nodes={
+        {n=G.UIT.O, config={object = G.shop_icon_area}}
+      }},
+    }},
+  }}
+end
+
+-- ===== BUTTON CALLBACKS =====
+
+G.FUNCS.open_shop_menu = function(e)
+r 4 1381 %20%20 -
+l 272
+  local ok, err = pcall(function()
+    ShopManager.init()
+    pcall(function() AshCardManager.init() end)
+    G.FUNCS.overlay_menu{definition = create_UIBox_shop_menu()}
+  end)
+  if not ok then print("[SHOP] Error: " .. tostring(err)) end
+  -- FEATURE: Sub-showcase on first visit
+  pcall(function()
+    if G.FUNCS.trigger_sub_showcase_shop then
+      G.FUNCS.trigger_sub_showcase_shop()
+    end
+  end)
+end
+
+G.FUNCS.shop_color_prev = function(e)
+  ShopUI.color_rarity_page = math.max(1, (ShopUI.color_rarity_page or 1) - 1)
+  ShopUI.active_tab = 2  -- FIX: Stay on Colors tab when paginating
+  refresh_shop()
+end
+G.FUNCS.shop_color_next = function(e)
+  ShopUI.color_rarity_page = math.min(#COLOR_PAGES, (ShopUI.color_rarity_page or 1) + 1)
+  ShopUI.active_tab = 2  -- FIX: Stay on Colors tab when paginating
+  refresh_shop()
+end
+
+G.FUNCS.shop_buy_color_set = function(e)
+  if not e or not e.config or not e.config.ref_table then return end
+  local ref = e.config.ref_table
+  show_purchase_confirm(ref.name, ref.price, function()
+    local ok, msg = AshCardManager.buy_color_set(ref.id)
+    if ok then pcall(function() play_sound('sell', 1.0, 0.5) end) end
+    refresh_shop()
+  end)
+end
+
+G.FUNCS.shop_buy_icon_effect = function(e)
+  if not e or not e.config or not e.config.ref_table then return end
+  local ref = e.config.ref_table
+  show_purchase_confirm(ref.name, ref.price, function()
+    local ok, msg = AshCardManager.buy_icon_effect(ref.id)
+    if ok then pcall(function() play_sound('sell', 1.0, 0.5) end) end
+    refresh_shop()
+  end)
+end
+
+G.FUNCS.shop_buy_item = function(e)
+  if not e or not e.config or not e.config.ref_table then return end
+  local ref = e.config.ref_table
+  show_purchase_confirm(ref.id or "Item", ref.price or 0, function()
+    local ok, msg = ShopManager.purchase(ref.id, ref.category, ref.price)
+    if ok then pcall(function() play_sound('sell', 1.0, 0.5) end) end
+    refresh_shop()
+  end)
+end
+
+-- ===== BALACOIN REWARDS =====
+
+function award_balacoin_reward(amount, source)
+  if ShopManager.add_balacoin(amount) then
+    print("[SHOP] Awarded " .. amount .. " Balacoin from: " .. (source or "unknown"))
+    return true
+  end
+  return false
+end
+
+function get_balacoin_display()
+  local balance = ShopManager.get_balance()
+  return SHOP_CONFIG.currency_icon .. " " .. balance
+end
+
+-- ===== BOOSTER SYSTEM =====
+
+local SHOP_BOOSTERS = {
+  {id = "xp_boost_1", name = "XP Boost I", description = "+50% XP earned this run", price = 200, category = "booster", effects = {xp_mult = 1.5}},
+  {id = "xp_boost_2", name = "XP Boost II", description = "+100% XP earned this run", price = 500, category = "booster", effects = {xp_mult = 2.0}},
+  {id = "xp_boost_3", name = "XP Boost III", description = "+200% XP earned this run", price = 1200, category = "booster", effects = {xp_mult = 3.0}},
+  {id = "bc_bonus_1", name = "Coin Bonus", description = "+50 Balacoins at run end", price = 200, category = "booster", effects = {bc_bonus = 50}},
+  {id = "bc_bonus_2", name = "Coin Jackpot", description = "+150 Balacoins at run end", price = 500, category = "booster", effects = {bc_bonus = 150}},
+  {id = "quest_rush", name = "Quest Rush", description = "Quest progress x1.5 this run", price = 400, category = "booster", effects = {quest_mult = 1.5}},
+  {id = "combo_pack", name = "Combo Pack", description = "+50% XP & +30 BC at run end", price = 350, category = "booster", effects = {xp_mult = 1.5, bc_bonus = 30}},
+  {id = "mega_pack", name = "Mega Pack", description = "x2 XP, quest x1.5, +50 BC", price = 900, category = "booster", effects = {xp_mult = 2.0, quest_mult = 1.5, bc_bonus = 50}},
+}
+
+local BOOSTER_MAX_ACTIVE = 3
+
+BoosterManager = {initialized_profile = nil}
+
+function BoosterManager.init()
+  if not G or not G.PROFILES or not G.SETTINGS or not G.SETTINGS.profile then return false end
+  local prof_id = G.SETTINGS.profile
+  if BoosterManager.initialized_profile == prof_id then return true end
+  local profile = G.PROFILES[prof_id]
+  if not profile then return false end
+  if not profile.progression then profile.progression = {} end
+  if not profile.progression.booster_inventory then profile.progression.booster_inventory = {} end
+  if not profile.progression.active_boosters then profile.progression.active_boosters = {} end
+  BoosterManager.initialized_profile = prof_id
+  return true
+end
+
+function BoosterManager.get_inventory()
+  if not BoosterManager.init() then return {} end
+  return G.PROFILES[G.SETTINGS.profile].progression.booster_inventory or {}
+end
+
+function BoosterManager.get_booster_count(booster_id)
+  local inv = BoosterManager.get_inventory()
+  return inv[booster_id] or 0
+end
+
+function BoosterManager.buy_booster(booster_id, price)
+  if not BoosterManager.init() then return false end
+  if ShopManager.get_balance() < price then return false end
+  if not ShopManager.spend_balacoin(price) then return false end
+  local inv = G.PROFILES[G.SETTINGS.profile].progression.booster_inventory
+  inv[booster_id] = (inv[booster_id] or 0) + 1
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+  return true
+end
+
+function BoosterManager.get_active_boosters()
+  if not BoosterManager.init() then return {} end
+  return G.PROFILES[G.SETTINGS.profile].progression.active_boosters or {}
+end
+
+function BoosterManager.activate_boosters(booster_ids)
+  if not BoosterManager.init() then return false end
+  if not booster_ids or #booster_ids == 0 then return true end
+  if #booster_ids > BOOSTER_MAX_ACTIVE then return false end
+  local profile = G.PROFILES[G.SETTINGS.profile]
+  local inv = profile.progression.booster_inventory
+  for _, bid in ipairs(booster_ids) do if (inv[bid] or 0) < 1 then return false end end
+  for _, bid in ipairs(booster_ids) do
+    inv[bid] = inv[bid] - 1
+    if inv[bid] <= 0 then inv[bid] = nil end
+  end
+  profile.progression.active_boosters = {}
+  for _, bid in ipairs(booster_ids) do table.insert(profile.progression.active_boosters, bid) end
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+  return true
+end
+
+function BoosterManager.clear_active()
+  if not BoosterManager.init() then return end
+  G.PROFILES[G.SETTINGS.profile].progression.active_boosters = {}
+  pcall(function() if G and G.save_progress then G:save_progress() end end)
+end
+
+function BoosterManager.get_xp_multiplier()
+  local active = BoosterManager.get_active_boosters()
+  if #active == 0 then return 1 end
+  local best = 1
+  for _, bid in ipairs(active) do
+    for _, b in ipairs(SHOP_BOOSTERS) do
+      if b.id == bid and b.effects and b.effects.xp_mult and b.effects.xp_mult > best then best = b.effects.xp_mult end
+    end
+  end
+  return best
+end
+
+function BoosterManager.get_quest_multiplier()
+  local active = BoosterManager.get_active_boosters()
+  if #active == 0 then return 1 end
+  local best = 1
+  for _, bid in ipairs(active) do
+    for _, b in ipairs(SHOP_BOOSTERS) do
+      if b.id == bid and b.effects and b.effects.quest_mult and b.effects.quest_mult > best then best = b.effects.quest_mult end
+    end
+  end
+  return best
+end
+
+function BoosterManager.get_bc_bonus()
+  local active = BoosterManager.get_active_boosters()
+  if #active == 0 then return 0 end
+  local total = 0
+  for _, bid in ipairs(active) do
+    for _, b in ipairs(SHOP_BOOSTERS) do
+      if b.id == bid and b.effects and b.effects.bc_bonus then total = total + b.effects.bc_bonus end
+    end
+  end
+  return total
+end
+
+function BoosterManager.on_run_end()
+  local bonus = BoosterManager.get_bc_bonus()
+  if bonus > 0 then ShopManager.add_balacoin(bonus) end
+  BoosterManager.clear_active()
+end
+
+function BoosterManager.get_booster_info(booster_id)
+  for _, b in ipairs(SHOP_BOOSTERS) do if b.id == booster_id then return b end end
+  return nil
+end
+
+-- ===== BOOSTER SHOP / SELECTION UI =====
+
+G.FUNCS.shop_buy_booster = function(e)
+  if not e or not e.config or not e.config.ref_table then return end
+  local ref = e.config.ref_table
+  show_purchase_confirm(ref.name, ref.price, function()
+    local ok = BoosterManager.buy_booster(ref.id, ref.price)
+    if ok then pcall(function() play_sound('sell', 1.0, 0.5) end) end
+    refresh_shop()
+  end)
+end
+
+function create_UIBox_booster_selection(run_args)
+  BoosterManager.init()
+  local inv = BoosterManager.get_inventory()
+  G._pending_run_args = run_args
+  G._booster_selection = {}
+  local booster_nodes = {}
+  for _, b in ipairs(SHOP_BOOSTERS) do
+    local count = inv[b.id] or 0
+    if count > 0 then
+      table.insert(booster_nodes, {n=G.UIT.R, config={align="cm", padding=0.03, r=0.08, colour=G.C.L_BLACK, minw=6, minh=0.5, emboss=0.03,
+        hover=true, button="toggle_booster_select", ref_table={id=b.id, name=b.name, count=count}}, nodes={
+        {n=G.UIT.C, config={align="cl", minw=2.5}, nodes={
+          {n=G.UIT.T, config={text=b.name, scale=0.28, colour=G.C.WHITE}}}},
+        {n=G.UIT.C, config={align="cm", minw=2}, nodes={
+          {n=G.UIT.T, config={text=b.description, scale=0.18, colour=G.C.UI.TEXT_LIGHT}}}},
+        {n=G.UIT.C, config={align="cr", minw=0.8}, nodes={
+          {n=G.UIT.T, config={text="x" .. tostring(count), scale=0.22, colour=G.C.GREEN}}}},
+      }})
+    end
+  end
+  if #booster_nodes == 0 then
+    booster_nodes = {{n=G.UIT.R, config={align="cm", padding=0.2}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("No boosters owned"), scale=0.35, colour=G.C.UI.TEXT_INACTIVE}}}}}
+  end
+  return create_UIBox_generic_options({
+    back_func = 'booster_skip_and_start',
+    contents = {
+      {n=G.UIT.R, config={align="cm", padding=0.08}, nodes={
+        {n=G.UIT.T, config={text=mod_loc("SELECT BOOSTERS"), scale=0.5, colour=G.C.GOLD, shadow=true}}}},
+      {n=G.UIT.R, config={align="cm", padding=0.03}, nodes={
+        {n=G.UIT.T, config={text=mod_loc("Choose up to ") .. BOOSTER_MAX_ACTIVE .. mod_loc(" boosters for this run"), scale=0.28, colour=G.C.UI.TEXT_LIGHT}}}},
+      {n=G.UIT.R, config={align="cm", padding=0.03}, nodes={
+        {n=G.UIT.C, config={align="cm", padding=0.03, minw=7, minh=3}, nodes=booster_nodes}}},
+      {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
+        {n=G.UIT.T, config={text=mod_loc("Selected: 0/") .. BOOSTER_MAX_ACTIVE, scale=0.3, colour=G.C.WHITE}}}},
+      {n=G.UIT.R, config={align="cm", padding=0.08}, nodes={
+        {n=G.UIT.C, config={align="cm", padding=0.05, r=0.1, colour=G.C.BLUE, hover=true, button="booster_confirm_and_start", minw=2, minh=0.5}, nodes={
+          {n=G.UIT.T, config={text=mod_loc("START RUN"), scale=0.35, colour=G.C.WHITE}}}},
+        {n=G.UIT.C, config={align="cm", minw=0.5}, nodes={}},
+        {n=G.UIT.C, config={align="cm", padding=0.05, r=0.1, colour=G.C.RED, hover=true, button="booster_skip_and_start", minw=2, minh=0.5}, nodes={
+          {n=G.UIT.T, config={text=mod_loc("SKIP"), scale=0.35, colour=G.C.WHITE}}}},
+      }},
+    }
+  })
+end
+
+G.FUNCS.toggle_booster_select = function(e)
+  if not e or not e.config or not e.config.ref_table then return end
+  local bid = e.config.ref_table.id
+  G._booster_selection = G._booster_selection or {}
+  local found = false
+  for i, sel in ipairs(G._booster_selection) do
+    if sel == bid then table.remove(G._booster_selection, i); found = true; break end
+  end
+  if not found then
+    if #G._booster_selection >= BOOSTER_MAX_ACTIVE then pcall(function() play_sound('cancel', 1.0, 0.5) end); return end
+    table.insert(G._booster_selection, bid)
+  end
+  pcall(function() play_sound('card1', 1.0, 0.5) end)
+end
+
+G.FUNCS.booster_confirm_and_start = function(e)
+  G._booster_selection = G._booster_selection or {}
+  if #G._booster_selection > 0 then BoosterManager.activate_boosters(G._booster_selection) end
+  G._booster_selection = {}
+r 4 1375 %20%20 -
+l 10
+  local args = G._pending_run_args; G._pending_run_args = nil
+  G.SETTINGS.paused = true; G.E_MANAGER:clear_queue(); G.FUNCS.wipe_on()
+  G.E_MANAGER:add_event(Event({no_delete = true, func = function() G:delete_run(); return true end}))
+  G.E_MANAGER:add_event(Event({trigger = 'immediate', no_delete = true, func = function() G:start_run(args); return true end}))
+  G.FUNCS.wipe_off()
+end
+
+G.FUNCS.booster_skip_and_start = function(e)
+  G._booster_selection = {}
+  pcall(function() BoosterManager.clear_active() end)
+r 4 1375 %20%20 -
+l 36
+  local args = G._pending_run_args; G._pending_run_args = nil
+  G.SETTINGS.paused = true; G.E_MANAGER:clear_queue(); G.FUNCS.wipe_on()
+  G.E_MANAGER:add_event(Event({no_delete = true, func = function() G:delete_run(); return true end}))
+  G.E_MANAGER:add_event(Event({trigger = 'immediate', no_delete = true, func = function() G:start_run(args); return true end}))
+  G.FUNCS.wipe_off()
+end
+
+-- ===== JIMBO SKINS TAB (CardArea grid, paginated, tap-to-buy) =====
+
+function create_shop_jimbo_skins_tab()
+  ShopUI.active_tab = 1
+  JimboSkinManager_init()
+  local balance = ShopManager.get_balance()
+
+  local joker_pool = G.P_CENTER_POOLS and G.P_CENTER_POOLS["Joker"]
+  if not joker_pool then
+    return {n=G.UIT.ROOT, config={align="cm", colour=G.C.CLEAR, minw=7.5, minh=5.5}, nodes={
+      {n=G.UIT.R, config={align="cm"}, nodes={
+        {n=G.UIT.T, config={text=mod_loc("No jokers found"), scale=0.4, colour=G.C.RED}}
+      }}
+    }}
+  end
+
+  -- Filter to discovered jokers only
+  local discovered = {}
+  for _, center in ipairs(joker_pool) do
+    if center.discovered then
+      table.insert(discovered, center)
+    end
+  end
+
+  local cards_per_row = 5
+  local num_rows = 2
+  local items_per_page = cards_per_row * num_rows
+
+  -- Build CardArea rows
+r 15 489 %20%20 -
+l 7
+  G.shop_jimbo_skin_collection = {}
+  for j = 1, num_rows do
+    G.shop_jimbo_skin_collection[j] = CardArea(
+      G.ROOM.T.x + 0.2*G.ROOM.T.w/2, G.ROOM.T.h,
+      (cards_per_row + 0.25)*G.CARD_W,
+      1.03*G.CARD_H,
+      {card_limit = cards_per_row, type = 'title', highlight_limit = 0, collection = true})
+r 15 3255 %20%20%20%20 -
+l 38
+      {n=G.UIT.R, config={align="cm", padding=0, no_fill=true}, nodes={
+        {n=G.UIT.O, config={object = G.shop_jimbo_skin_collection[j]}}
+      }})
+  end
+
+  local total_discovered = #discovered
+  local pages = math.max(1, math.ceil(total_discovered / items_per_page))
+  local page = math.min(ShopUI.jimbo_skin_page or 1, pages)
+  ShopUI.jimbo_skin_page = page
+
+  local page_options = {}
+  for i = 1, pages do
+    table.insert(page_options, localize('k_page')..' '..tostring(i)..'/'..tostring(pages))
+  end
+
+  local equipped = JimboSkinManager_get_equipped()
+  local owned_count = JimboSkinManager_owned_count()
+
+  -- Populate cards for current page
+  local function populate_skin_page(page_idx)
+    for j = 1, num_rows do
+      for i = #G.shop_jimbo_skin_collection[j].cards, 1, -1 do
+        local c = G.shop_jimbo_skin_collection[j]:remove_card(G.shop_jimbo_skin_collection[j].cards[i])
+        c:remove()
+        c = nil
+      end
+    end
+    local bal = ShopManager.get_balance()
+    local eq = JimboSkinManager_get_equipped()
+    for j = 1, num_rows do
+      for i = 1, cards_per_row do
+        local idx = i + (j-1)*cards_per_row + (items_per_page*(page_idx-1))
+        local center = discovered[idx]
+        if center then
+          local card = Card(
+            G.shop_jimbo_skin_collection[j].T.x + G.shop_jimbo_skin_collection[j].T.w/2,
+            G.shop_jimbo_skin_collection[j].T.y,
+            G.CARD_W, G.CARD_H, nil, center)
+r 15 3603 %20%20%20%20%20%20%20%20%20%20 -
+l 48
+
+          local owned = JimboSkinManager_is_owned(center.key)
+          local is_equipped = eq and center.key == eq
+          local price = jimbo_skin_price(center)
+          local can_afford = bal >= price
+          local _key = center.key
+          local _price = price
+          local _name = center.name or center.key
+
+          -- Tap to buy or info
+          card.states.click.can = true
+          local function _skin_action()
+            if is_equipped then return end -- already equipped, no action
+            if owned then
+              -- Already owned, equip it from shop? No, equip is in profile. Just show info.
+              return
+            end
+            -- Not owned: purchase flow
+            show_purchase_confirm(_name, _price, function()
+              local ok = JimboSkinManager_buy(_key, _price)
+              if ok then pcall(function() play_sound('sell', 1.0, 0.5) end) end
+              refresh_shop()
+            end)
+          end
+          card.click = _skin_action
+          card.single_tap = _skin_action
+
+          -- Hover popup
+          local popup_status, popup_colour
+          if is_equipped then
+            popup_status = mod_loc("EQUIPPED"); popup_colour = G.C.GOLD
+          elseif owned then
+            popup_status = mod_loc("OWNED"); popup_colour = G.C.GREEN
+          elseif can_afford then
+            popup_status = mod_loc("Tap to buy") .. " - " .. SHOP_CONFIG.currency_icon .. " " .. _price
+            popup_colour = G.C.BLUE
+          else
+            popup_status = SHOP_CONFIG.currency_icon .. " " .. _price; popup_colour = G.C.UI.TEXT_INACTIVE
+          end
+          local popup_nodes = {
+            {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+              {n=G.UIT.T, config={text=mod_loc(_name), scale=0.35, colour=G.C.WHITE, shadow=true}}
+            }},
+            {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+              {n=G.UIT.T, config={text=popup_status, scale=0.26, colour=popup_colour}}
+            }},
+          }
+          card.hover = function()
+r 2 429 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 44
+              if not card.hovering and card.states.visible then
+                card.hovering = true
+                card:juice_up(0.05, 0.02)
+                card.config.h_popup = {n=G.UIT.ROOT, config={align="cm", r=0.1, colour=G.C.L_BLACK, padding=0.1}, nodes=popup_nodes}
+                card.config.h_popup_config = {align='cl', offset={x=-0.1,y=0}, parent=card}
+                Node.hover(card)
+              end
+            end
+            card.stop_hover = function() card.hovering = false; Node.stop_hover(card) end
+          end
+
+          if owned then card.highlighted = true end
+          G.shop_jimbo_skin_collection[j]:emplace(card)
+        end
+      end
+    end
+  end
+
+  G._shop_jimbo_skin_populate = populate_skin_page
+  G._shop_jimbo_skin_discovered = discovered
+  populate_skin_page(page)
+
+  return {n=G.UIT.ROOT, config={align="cm", padding=0.05, colour=G.C.CLEAR, minw=7.5, minh=5.5}, nodes={
+    {n=G.UIT.R, config={align="cm", padding=0.04}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("JIMBO SKINS"), scale=0.45, colour=G.C.WHITE, shadow=true}}
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("Change Jimbo's appearance! Only discovered jokers available."), scale=0.28, colour=G.C.GREY}}
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.02}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("Tap a card to purchase") .. " • " .. mod_loc("Skins") .. " " .. owned_count .. "/150", scale=0.24, colour=G.C.UI.TEXT_INACTIVE}}
+    }},
+    {n=G.UIT.R, config={align="cm", minw=2.5, padding=0.1, r=0.1, colour=G.C.BLACK, emboss=0.05}, nodes={
+      {n=G.UIT.C, config={align="cm", padding=0, no_fill=true}, nodes=deck_tables},
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.04}, nodes={
+      create_option_cycle({options=page_options, w=4.5, cycle_shoulders=true,
+        opt_callback='shop_jimbo_skin_page', current_option=page, colour=G.C.RED,
+        no_pips=true, focus_args={snap_to=true, nav='wide'}})
+    }},
+  }}
+end
+
+G.FUNCS.shop_jimbo_skin_page = function(args)
+r 4 603 %20%20 -
+l 28
+  ShopUI.jimbo_skin_page = args.cycle_config.current_option or 1
+  if G._shop_jimbo_skin_populate then
+    pcall(function() G._shop_jimbo_skin_populate(ShopUI.jimbo_skin_page) end)
+  end
+end
+
+-- ===== EXPORTS =====
+_G.SHOP_CONFIG = SHOP_CONFIG
+_G.ShopManager = ShopManager
+_G.ShopUI = ShopUI
+_G.BoosterManager = BoosterManager
+_G.JimboSkinManager_init = JimboSkinManager_init
+_G.JimboSkinManager_is_owned = JimboSkinManager_is_owned
+_G.JimboSkinManager_buy = JimboSkinManager_buy
+_G.JimboSkinManager_equip = JimboSkinManager_equip
+_G.JimboSkinManager_get_equipped = JimboSkinManager_get_equipped
+_G.JimboSkinManager_unlock_all = JimboSkinManager_unlock_all
+_G.JimboSkinManager_owned_count = JimboSkinManager_owned_count
+_G.create_shop_jimbo_skins_tab = create_shop_jimbo_skins_tab
+_G.BOOSTER_MAX_ACTIVE = BOOSTER_MAX_ACTIVE
+_G.create_UIBox_shop_menu = create_UIBox_shop_menu
+_G.create_shop_colors_tab = create_shop_colors_tab
+_G.create_shop_icon_effects_tab = create_shop_icon_effects_tab
+_G.create_UIBox_booster_selection = create_UIBox_booster_selection
+_G.award_balacoin_reward = award_balacoin_reward
+_G.get_balacoin_display = get_balacoin_display
+
+print("[SHOP] Balacoin Shop V2.0 loaded!")
+end

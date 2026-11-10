@@ -1,0 +1,1802 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 357
+PORTRAIT = PORTRAIT or {}
+local P = PORTRAIT
+
+P.W = 10.8
+P.PAD_W = 0.4
+P.PAD_H = 0.4
+P.FILL_PAD_W = 0.1
+P.FILL_M = 0.2
+P.FILL_BLIND = 0.9235
+P.BLIND_DROP = 0.5
+P.HUD_Y = -0.2
+P.EDGE = 0.2
+P.GAP = 0.15
+P.ROW_GAP = 0.45
+P.BTN_H = 1.7
+P.BTN_LIFT = 0.4
+P.BTN_H_MAX = 2.3
+P.HAND_LIFT = 1.6
+P.BTN_BOTTOM = 0.45
+P.HAND_DROP = 1.9
+P.MIN_GAP = 0.6
+P.HAND_NUDGE = -0.06
+P.ZONE_H = 2.4
+P.active = P.active or false
+
+local land
+
+function P.allowed()
+  if P.force ~= nil then return P.force end
+  return _G._IS_DESKTOP == false
+end
+
+function P.on()
+  return P.active == true
+end
+
+function P.want(w, h)
+  return P.allowed() and h > w
+end
+
+function P.fill_on()
+  local GR = G and G.SETTINGS and G.SETTINGS.GRAPHICS
+  return GR and GR.portrait_fill == true or false
+end
+
+function P.filled()
+  return P.on() and P.fill_on()
+end
+
+function P.pad_w()
+  return P.fill_on() and P.FILL_PAD_W or P.PAD_W
+end
+
+function P.fit(w, h)
+  if not (G and G.window_prev and G.TILESIZE) then return false end
+  local want = P.want(w, h)
+  if not want and not P.active then return false end
+  local old_h = G.TILE_H
+  if want and not P.active then
+    land = {w = G.TILE_W, h = G.TILE_H, pw = G.ROOM_PADDING_W, ph = G.ROOM_PADDING_H, prev = G.window_prev}
+  end
+  if want then
+    G.ROOM_PADDING_W, G.ROOM_PADDING_H = P.pad_w(), P.PAD_H
+    G.TILE_W = P.W
+    local across = P.W + 2 * P.pad_w()
+    G.TILE_H = math.max(20, across * h / w - 3 * P.PAD_H)
+    local s = land.prev.orig_scale
+    local pw, ph = across * G.TILESIZE * s, (G.TILE_H + 3 * P.PAD_H) * G.TILESIZE * s
+    G.window_prev = {orig_scale = s, w = pw, h = ph, orig_ratio = pw / ph}
+  else
+    G.TILE_W, G.TILE_H = land.w, land.h
+    G.ROOM_PADDING_W, G.ROOM_PADDING_H = land.pw, land.ph
+    G.window_prev = land.prev
+  end
+  local changed = want ~= P.active
+  P.active = want
+  if changed and UIK and UIK.sync then UIK.sync() end
+  P.dirty = P.dirty or changed or math.abs((old_h or 0) - G.TILE_H) > 0.01
+  return changed
+end
+
+local function force_align(box)
+  if box and box.alignment and box.align_to_major then
+    box.alignment.prev_type = nil
+    box:align_to_major()
+  end
+end
+
+local function snap(box)
+  if not (box and box.alignment and box.role) then return end
+  force_align(box)
+  if box.role.major and box.move_with_major then box:move_with_major(0) end
+  box:hard_set_VT()
+  if box.recalculate then box:recalculate() end
+  box:hard_set_VT()
+end
+
+local function setw(a, w)
+  if not (a and a.T) then return end
+  a.portrait_land_w = a.portrait_land_w or a.T.w
+  a.T.w = w
+end
+
+local function restorew(a)
+  if a and a.T and a.portrait_land_w then
+    a.T.w = a.portrait_land_w
+    a.portrait_land_w = nil
+  end
+end
+
+function P.band_bottom()
+  if not (G.HUD and G.HUD.T and G.HUD.alignment and G.HUD.alignment.offset) then return 6.4 end
+  return P.HUD_Y + G.HUD.T.h
+end
+
+function P.shelf_bottom()
+  local b = P.band_bottom() + 0.3 + 2 * (G.CARD_H or 2.6) + P.ROW_GAP
+  if G.consumeables and G.consumeables.T then b = math.max(b, G.consumeables.T.y + G.consumeables.T.h) end
+  if G.deck and G.deck.T then b = math.max(b, G.deck.T.y + G.deck.T.h) end
+  return b
+end
+
+function P.stage_top()
+  return P.shelf_bottom() + 0.45
+end
+
+function P.screen_bottom()
+  local u = G.ROOM_UNZOOMED
+  if not (u and love and love.graphics and G.TILESIZE and G.TILESCALE) then
+    local top, sh = P.screen_span()
+    return top + sh
+  end
+  return love.graphics.getHeight() / (G.TILESIZE * G.TILESCALE) * (G.MENU_ZOOM or 1) - u.y
+end
+
+function P.btn_h()
+  if not (G.hand and G.hand.T and G.play and G.play.T) then return P.BTN_H end
+  local free = P.screen_bottom() - P.BTN_BOTTOM - P.shelf_bottom() - G.hand.T.h
+  return math.max(P.BTN_H, math.min(P.BTN_H_MAX, free - 2 * P.MIN_GAP - 0.3))
+end
+
+function P.btn_box_h()
+  local b = G.buttons
+  if b and not b.REMOVED and b.T and b.T.h > 0.5 then P.last_btn_box_h = b.T.h end
+  return P.last_btn_box_h or (P.btn_h() + 0.2)
+end
+
+function P.btn_top()
+  return P.screen_bottom() - P.BTN_BOTTOM - P.btn_box_h()
+end
+
+function P.hand_top()
+  return (P.shelf_bottom() + P.btn_top() - G.hand.T.h) / 2 + P.HAND_NUDGE
+end
+
+function P.play_y()
+  return (P.stage_top() + 0.3 + P.hand_top() + P.HAND_DROP) / 2 - G.play.T.h / 2
+end
+
+function P.wait_drop()
+  local wo = G.BOM_PVP_WAITING_OVERLAY
+  if not (wo and not wo.REMOVED and wo.T and P.wait_top and G.hand and G.hand.T) then return 0 end
+  local need = P.wait_top + wo.T.h + 1 - P.hand_top()
+  local room = P.btn_top() - (P.hand_top() + G.hand.T.h) - 0.15
+  return math.max(0, math.min(need, room))
+end
+
+function P.place_buttons(hand)
+  local py = G.play and G.play.T and P.play_y()
+  if py and math.abs(G.play.T.y - py) > 0.01 then G.play.T.y = py end
+  local b = G.buttons
+  if not (b and not b.REMOVED and b.alignment and b.alignment.offset and b.role and b.role.major == hand) then return end
+  local want = P.btn_top() - (P.hand_top() + P.wait_drop() + hand.T.h)
+  if math.abs(b.alignment.offset.y - want) > 0.001 then b.alignment.offset.y = want end
+end
+
+function P.blind_select_offset(box)
+  local rest = G.TILE_H - G.hand.T.h
+  return P.stage_top() + P.BLIND_DROP - (rest + G.hand.T.h - box.T.h)
+end
+
+local function def_find(n, pred)
+  if type(n) ~= 'table' then return nil end
+  if pred(n) then return n end
+  for _, c in ipairs(n.nodes or {}) do
+    local r = def_find(c, pred)
+    if r then return r end
+  end
+end
+
+function P.hud_def(t)
+  local col = def_find(t, function(n) return n.config and n.config.minh == 30 end)
+  if not (col and col.nodes and #col.nodes >= 5) then return t end
+  local function id_of(n) return n and n.config and n.config.id end
+  local blind, chips, hand, round
+  for _, n in ipairs(col.nodes) do
+    local id = id_of(n)
+    if id == 'row_blind' then blind = n
+    elseif id == 'row_dollars_chips' then chips = n
+    elseif id == 'hand_text_area' then hand = n
+    elseif id == 'row_round' then round = n end
+  end
+  if not (blind and chips and hand and round) then return t end
+  col.config.minh = nil
+  col.config.padding = 0.06
+  t.config = t.config or {}
+  t.config.portrait_hud = true
+  col.nodes = {
+    {n = G.UIT.C, config = {align = 'tm', padding = 0.05}, nodes = {blind, chips}},
+    {n = G.UIT.C, config = {align = 'tm', padding = 0.05}, nodes = {hand, round}},
+  }
+  return t
+end
+
+local function scale_text(n, sc)
+  if type(n) ~= 'table' then return end
+  if n.n == G.UIT.T and n.config then n.config.scale = sc end
+  for _, c in ipairs(n.nodes or {}) do scale_text(c, sc) end
+end
+
+local function sort_walk(n, k)
+  if type(n) ~= 'table' then return end
+  local c = n.config or {}
+  if c.button == 'sort_hand_value' or c.button == 'sort_hand_suit' then
+    c.minh, c.minw = 0.95 + 0.45 * k, 1.3 + 0.25 * k
+    scale_text(n, 0.4 + 0.08 * k)
+    return
+  end
+  if n.n == G.UIT.T then c.scale = 0.42 + 0.08 * k end
+  for _, x in ipairs(n.nodes or {}) do sort_walk(x, k) end
+end
+
+function P.buttons_def(t)
+  local bh = P.btn_h()
+  local k = (bh - P.BTN_H) / (P.BTN_H_MAX - P.BTN_H)
+  for _, n in ipairs(t.nodes or {}) do
+    local c = n.config or {}
+    if c.id == 'play_button' or c.id == 'discard_button' then
+      c.minh, c.align = bh, 'cm'
+      c.minw = 2.5 + 0.3 * k
+      for _, x in ipairs(n.nodes or {}) do if x.config then x.config.align = 'cm' end end
+      scale_text(n, 0.55 + 0.1 * k)
+    else
+      sort_walk(n, k)
+    end
+  end
+end
+
+local raw_btns = create_UIBox_buttons
+if raw_btns then
+  function create_UIBox_buttons(...)
+    local t = raw_btns(...)
+    if P.on() and type(t) == 'table' then pcall(P.buttons_def, t) end
+    return t
+  end
+end
+
+function P.rebuild_buttons()
+  local old = G.buttons
+  if not (old and not old.REMOVED and old.UIRoot and G.hand and create_UIBox_buttons) then return end
+  local shown = old.states and old.states.visible
+  local ok, box = pcall(function() return UIBox{definition = create_UIBox_buttons(), config = {align = 'bm', offset = {x = 0, y = 0.3}, major = G.hand, bond = 'Weak'}} end)
+  if not ok then print('[PORTRAIT] buttons rebuild failed: ' .. tostring(box)) return end
+  old:remove()
+  G.buttons = box
+  if shown == false then box.states.visible = false end
+end
+
+local raw_hud = create_UIBox_HUD
+if raw_hud then
+  function create_UIBox_HUD(...)
+    local t = raw_hud(...)
+    if P.on() and type(t) == 'table' then
+      local ok, err = pcall(P.hud_def, t)
+      if not ok then print('[PORTRAIT] hud layout failed: ' .. tostring(err)) end
+    end
+    return t
+  end
+end
+
+local function hud_config()
+  if P.on() then return {align = 'tmi', offset = {x = 0, y = P.HUD_Y}, major = G.ROOM_ATTACH} end
+  return {align = 'cli', offset = {x = -0.7, y = 0}, major = G.ROOM_ATTACH}
+end
+
+function P.rebuild_hud()
+  local old = G.HUD
+  if not (old and old.UIRoot and create_UIBox_HUD and G.ROOM_ATTACH) then return end
+  local bm = rawget(_G, 'bom_match')
+  local was_mp = bm and bm._starting_mp_run
+  if bm and old:get_UIE_by_ID('mp_lobby_info_btn') then bm._starting_mp_run = true end
+  local ok, box = pcall(function() return UIBox{definition = create_UIBox_HUD(), config = hud_config()} end)
+  if bm then bm._starting_mp_run = was_mp end
+  if not ok then
+    print('[PORTRAIT] hud rebuild failed: ' .. tostring(box))
+    return
+  end
+  local list = G.I and G.I.UIBOX or {}
+  local old_i
+  for i, v in ipairs(list) do if v == old then old_i = i break end end
+  old:remove()
+  G.HUD = box
+  if old_i then
+    for i = #list, 1, -1 do if list[i] == box then table.remove(list, i) break end end
+    table.insert(list, math.min(old_i, #list + 1), box)
+  end
+  local row = box:get_UIE_by_ID('row_blind')
+  for _, b in ipairs({G.HUD_blind, G.SHOP_SIGN, G.blind_prompt_box}) do
+    if type(b) == 'table' and b.role and not b.REMOVED and row then
+      b.role.major = row
+      force_align(b)
+    end
+  end
+  local ta = G.hand_text_area
+  if type(ta) == 'table' then
+    for k, id in pairs({chips = 'hand_chips', mult = 'hand_mult', ante = 'ante_UI_count', round = 'round_UI_count', chip_total = 'hand_chip_total', handname = 'hand_name', hand_level = 'hand_level', game_chips = 'chip_UI_count', blind_spacer = 'blind_spacer'}) do
+      ta[k] = box:get_UIE_by_ID(id)
+    end
+  end
+end
+
+function P.layout_hud()
+  local hud = G.HUD
+  if not (hud and hud.UIRoot) then return end
+  local is_p = hud.definition and hud.definition.config and hud.definition.config.portrait_hud or false
+  if is_p ~= P.on() then
+    P.rebuild_hud()
+    hud = G.HUD
+  else
+    local cfg = hud_config()
+    hud:set_alignment({type = cfg.align, offset = cfg.offset})
+  end
+  snap(hud)
+end
+
+function P.place_run()
+  local W, H, E = G.TILE_W, G.TILE_H, P.EDGE
+  setw(G.jokers, W - 2 * E)
+  G.jokers.T.x = E
+  G.jokers.T.y = P.band_bottom() + 0.3
+  G.consumeables.T.x = E
+  G.consumeables.T.y = G.jokers.T.y + G.jokers.T.h + P.ROW_GAP
+  G.deck.T.x = W - G.deck.T.w - E
+  G.deck.T.y = G.consumeables.T.y
+  setw(G.hand, W - 2 * E)
+  G.hand.T.x = E
+  G.hand.T.y = H - G.hand.T.h - P.BTN_LIFT
+  setw(G.play, math.min(G.play.portrait_land_w or G.play.T.w, W - 2 * E))
+  G.play.T.x = (W - G.play.T.w) / 2
+  G.play.T.y = P.play_y()
+  G.discard.T.x = W + 4
+  G.discard.T.y = H / 2
+  for _, a in ipairs({G.hand, G.play, G.jokers, G.consumeables, G.deck, G.discard}) do a:hard_set_VT() end
+end
+
+local raw_move = CardArea and CardArea.move
+if raw_move then
+r 7 229 %20%20 -
+l 7
+    if self ~= G.hand or not P.on() or G.STATE == G.STATES.TUTORIAL or not (G.play and G.play.T) then return raw_move(self, dt) end
+    local up = not G.deck_preview and (G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.DRAW_TO_HAND)
+    local want = up and (P.hand_top() + P.wait_drop()) or (G.TILE_H - self.T.h)
+    if G.STATE == G.STATES.HAND_PLAYED then want = math.min(want, P.hand_top() + P.HAND_DROP) end
+    P.place_buttons(self)
+    self.T.y = 15 * G.real_dt * want + (1 - 15 * G.real_dt) * self.T.y
+    if math.abs(want - self.T.y) < 0.01 then self.T.y = want end
+r 2 655 %20%20%20%20 -
+l 44
+    self:align_cards()
+  end
+end
+
+function P.restore_run()
+  for _, a in ipairs({G.hand, G.play, G.jokers, G.consumeables, G.deck, G.discard}) do restorew(a) end
+end
+
+local function drop_labels()
+  for _, a in ipairs({G.hand, G.play, G.jokers, G.consumeables, G.deck, G.discard}) do
+    local b = a.children and a.children.area_uibox
+    if b then
+      b:remove()
+      a.children.area_uibox = nil
+    end
+  end
+end
+
+function P.screen_span()
+  local sh = G.TILE_H
+  if love and love.graphics and G.TILESIZE and G.TILESCALE then sh = love.graphics.getHeight() / (G.TILESIZE * G.TILESCALE) end
+  return -((G.ROOM and G.ROOM.T and G.ROOM.T.y) or 0), sh
+end
+
+local raw_mbo = main_menu_bar_offset
+if raw_mbo then
+  function main_menu_bar_offset(...)
+    if P.on() and G.ROOM and G.ROOM.T then
+      local top, sh = P.screen_span()
+      return (top + sh) - G.ROOM.T.h - 0.06 * sh
+    end
+    return raw_mbo(...)
+  end
+end
+
+local raw_ssp = set_screen_positions
+function set_screen_positions(...)
+  local run = G.STAGE == G.STAGES.RUN and G.hand and G.jokers and G.play and G.consumeables and G.deck and G.discard
+  if run and not P.on() then P.restore_run() end
+  local r = raw_ssp(...)
+  if run and P.on() then P.place_run() end
+  if G.STAGE == G.STAGES.MAIN_MENU and G.title_top and P.on() then
+    local top, sh = P.screen_span()
+    G.title_top.T.y = math.max(0.3 - top, top + 0.34 * sh - G.title_top.T.h / 2)
+r 13 37 %20%20%20%20 -
+l 15
+  end
+  return r
+end
+
+local function realign(box)
+  if box and box.T and box.align_to_major then
+    if box.recalculate then box:recalculate() end
+    force_align(box)
+  end
+end
+
+function P.layout_run()
+  if not (G.STAGE == G.STAGES.RUN and G.hand and G.jokers) then return end
+  P.layout_hud()
+  drop_labels()
+r 10 1672 %20%20 -
+l 480
+  if G.blind_select and G.blind_select.alignment and G.STATE == G.STATES.BLIND_SELECT then
+    if P.on() then
+      G.blind_select.alignment.offset.y = P.blind_select_offset(G.blind_select)
+    else
+      G.blind_select.alignment.offset.y = 0.8 - (G.hand.T.y - G.jokers.T.y) + G.blind_select.T.h
+    end
+  end
+  P.settle_boxes()
+  for _, b in ipairs({G.buttons, G.shop, G.blind_select, G.round_eval, G.booster_pack, G.HUD_blind}) do realign(b) end
+  P.place_tags()
+  P.place_mods_button()
+end
+
+P.SETTLED = {shop = -5.3, round_eval = -7.8, booster_pack = -2.2}
+
+function P.box_target(name)
+  local hh = G.hand.T.h
+  local hand_top = G.TILE_H - hh
+  if name == 'shop' then return P.stage_top() - hand_top end
+  if name == 'round_eval' then return P.stage_top() - G.TILE_H end
+  if name == 'booster_pack' then
+    local ob = rawget(_G, 'SMODS') and SMODS.OPENED_BOOSTER
+    local fan = G.STATE == G.STATES.TAROT_PACK or G.STATE == G.STATES.SPECTRAL_PACK or (G.hand.cards and #G.hand.cards > 0)
+      or (ob and ob.config and ob.config.center and ob.config.center.draw_hand)
+    if fan then return P.SETTLED.booster_pack end
+    return ((P.stage_top() + hand_top) / 2 - 2.4) - hand_top
+  end
+end
+
+function P.settle_boxes()
+  if not (G.hand and G.hand.T) then return end
+  for name, land in pairs(P.SETTLED) do
+    local b = G[name]
+    local ready = name ~= 'round_eval' or P.eval_box == b
+    if ready and type(b) == 'table' and b.alignment and b.alignment.offset and not b.REMOVED then
+      local o = b.alignment.offset
+      if P.on() then
+        local want = P.box_target(name)
+        if math.abs(o.y - land) < 0.001 or (b.portrait_off and math.abs(o.y - b.portrait_off) < 0.001 and math.abs(want - b.portrait_off) > 0.001) then
+          b.portrait_off = want
+          o.y = want
+        end
+      elseif b.portrait_off then
+        if math.abs(o.y - b.portrait_off) < 0.001 then o.y = land end
+        b.portrait_off = nil
+      end
+      if o.py and b.portrait_off and math.abs(o.py - land) < 0.001 then o.py = b.portrait_off end
+    end
+  end
+end
+
+if G.FUNCS and G.FUNCS.evaluate_round then
+  local raw_eval = G.FUNCS.evaluate_round
+  G.FUNCS.evaluate_round = function(...)
+    P.eval_box = G.round_eval
+    P.watch_eval(G.round_eval)
+    return raw_eval(...)
+  end
+end
+
+local function squeeze(n, f, d)
+  if type(n) ~= 'table' or d > 30 then return end
+  local c = n.config
+  if c then
+    if c.minw and c.minw >= 1.8 then c.minw = c.minw * f end
+    if c.maxw and c.maxw >= 1.8 then c.maxw = c.maxw * f end
+  end
+  for _, k in ipairs(n.nodes or {}) do squeeze(k, f, d + 1) end
+end
+
+local raw_bc = create_UIBox_blind_choice
+if raw_bc then
+  function create_UIBox_blind_choice(kind, run_info, ...)
+    local t = raw_bc(kind, run_info, ...)
+    if P.on() and not run_info and type(t) == 'table' then pcall(squeeze, t, P.filled() and P.FILL_BLIND or 0.86, 0) end
+    return t
+  end
+end
+
+function P.shop_def(t)
+  local nr = def_find(t, function(n) return n.config and n.config.id == 'next_round_button' end)
+  local function parent_of(root, child)
+    return def_find(root, function(n)
+      for _, c in ipairs(n.nodes or {}) do if c == child then return true end end
+      return false
+    end)
+  end
+  local btns = nr and parent_of(t, nr)
+  local row1 = btns and parent_of(t, btns)
+  if not (btns and row1 and #row1.nodes == 2) then return t end
+  for _, b in ipairs(btns.nodes) do b.n = G.UIT.C end
+  btns.n = G.UIT.R
+  btns.config.padding = 0.1
+  row1.nodes[2].n = G.UIT.R
+  local main = parent_of(t, row1)
+  local last = main and main.nodes and main.nodes[#main.nodes]
+  if main and main.config and last and last ~= row1 and last.nodes and #last.nodes > 0 then
+    main.config.portrait_fill = 'main'
+    row1.nodes[2].config.portrait_fill = 'panel'
+    last.nodes[#last.nodes].config.portrait_fill = 'panel'
+    if P.fill_on() then
+      for i = #main.nodes - 1, 2, -1 do
+        local s = main.nodes[i]
+        if s ~= row1 and s.n == G.UIT.R and s.config and s.config.minh and s.config.minh <= 0.25 and #(s.nodes or {}) == 0 then table.remove(main.nodes, i) end
+      end
+    end
+  end
+  if G.shop_vouchers and G.shop_vouchers.config and (G.shop_vouchers.config.card_limit or 1) <= 1 then
+    setw(G.shop_vouchers, 1.1 * G.CARD_W)
+  end
+  return t
+end
+
+if G.UIDEF and G.UIDEF.shop then
+  local raw_shop = G.UIDEF.shop
+  G.UIDEF.shop = function(...)
+    local t = raw_shop(...)
+    if P.on() and type(t) == 'table' then
+      local ok, err = pcall(P.shop_def, t)
+      if not ok then print('[PORTRAIT] shop layout failed: ' .. tostring(err)) end
+    end
+    return t
+  end
+end
+
+local function fill_find(n, kind, out, d)
+  if type(n) ~= 'table' or d > 40 then return out end
+  if n.config and n.config.portrait_fill == kind then out[#out + 1] = n end
+  for _, c in ipairs(n.children or {}) do fill_find(c, kind, out, d + 1) end
+  return out
+end
+
+function P.fill_w()
+  local pad = G.ROOM_PADDING_W or 0
+  return G.TILE_W + 2 * pad - 2 * P.FILL_M
+end
+
+local function widen(n, d)
+  if not (n and n.T and n.config) or d <= 0 then return end
+  n.config.minw = math.max(n.config.minw or 0, n.T.w) + d
+end
+
+local function fill_box(box, fn)
+  if not (type(box) == 'table' and box.UIRoot and box.T and not box.REMOVED) or box.portrait_filled then return end
+  box.portrait_filled = true
+  if not P.filled() then return end
+  for _ = 1, 3 do
+    local delta = P.fill_w() - box.T.w
+    if math.abs(delta) < 0.01 then break end
+    if not fn(box, delta) then break end
+    box:recalculate()
+  end
+  force_align(box)
+end
+
+local function fill_find_minw(n, d)
+  if type(n) ~= 'table' or d > 12 then return nil end
+  if n.config and n.config.minw and n.config.minw >= 3.5 then return n end
+  for _, c in ipairs(n.children or {}) do
+    local r = fill_find_minw(c, d + 1)
+    if r then return r end
+  end
+end
+
+local function top_of(main, n)
+  while n and n.parent and n.parent ~= main do n = n.parent end
+  return n and n.parent == main and n or nil
+end
+
+function P.fill_shop(box)
+  fill_box(box, function(b, delta)
+    local main = fill_find(b.UIRoot, 'main', {}, 0)[1]
+    if not (main and main.T) or delta < 0 then return false end
+    widen(main, delta)
+    b:recalculate()
+    local need = main.T.w - 2 * (main.config.padding or 0)
+    local panels = fill_find(b.UIRoot, 'panel', {}, 0)
+    for _, n in ipairs(panels) do
+      local row = top_of(main, n)
+      if row and row.T and n.T and need - row.T.w > 0.01 then widen(n, need - row.T.w) end
+    end
+    b:recalculate()
+    local last = main.children[#main.children]
+    local kids = last and last.children
+    if kids and #kids > 0 then
+      local span = kids[#kids].T.x + kids[#kids].T.w - kids[1].T.x
+      for _, n in ipairs(panels) do
+        if top_of(main, n) ~= last and span - n.T.w > 0.01 then widen(n, span - n.T.w) end
+      end
+    end
+    return true
+  end)
+end
+
+function P.fill_hud(box)
+  fill_box(box, function(b, delta)
+    local inner = b.UIRoot.children[1] and b.UIRoot.children[1].children[1]
+    local cols = inner and inner.children
+    if not (cols and #cols == 2) or delta < 0 then return false end
+    widen(cols[1], delta / 2)
+    widen(cols[2], delta / 2)
+    return true
+  end)
+end
+
+function P.fill_buttons(box)
+  fill_box(box, function(b, delta)
+    local play, disc = b:get_UIE_by_ID('play_button'), b:get_UIE_by_ID('discard_button')
+    if not (play and disc) or delta < 0 then return false end
+    widen(play, delta / 2)
+    widen(disc, delta / 2)
+    return true
+  end)
+end
+
+function P.fill_pack(box)
+  if not (type(box) == 'table' and box.UIRoot and box.T and not box.REMOVED) or box.portrait_filled then return end
+  box.portrait_filled = true
+  if not P.filled() then return end
+  local root = box.UIRoot.children[1]
+  local rows = root and root.children
+  local last = rows and rows[#rows]
+  local kids = last and last.children
+  local mid = kids and #kids == 3 and kids[2]
+  local panel = mid and mid.children and mid.children[1]
+  local inner = mid and fill_find_minw(mid, 0)
+  local skip = kids and kids[3]
+  if not (panel and inner and skip and skip.T) then return end
+  kids[1].config.minw, kids[1].config.padding = 0, 0
+  skip.config.minw = nil
+  box.UIRoot.config.padding, root.config.padding = 0, 0
+  box:recalculate()
+  for _ = 1, 3 do
+    local ink = skip.T.x + skip.T.w - (skip.config.padding or 0) - panel.T.x
+    local delta = P.fill_w() - ink
+    if math.abs(delta) < 0.01 then break end
+    inner.config.minw = math.max(3.5, inner.config.minw + delta)
+    box:recalculate()
+  end
+  force_align(box)
+end
+
+local raw_eval_def = create_UIBox_round_evaluation
+if raw_eval_def then
+  function create_UIBox_round_evaluation(...)
+    local t = raw_eval_def(...)
+    if P.filled() and type(t) == 'table' and G.hand and G.hand.T then
+      local from, to = G.hand.T.w - 2, P.fill_w() - 0.53
+      local function walk(n, d)
+        if type(n) ~= 'table' or d > 20 then return end
+        if n.config and n.config.minw and math.abs(n.config.minw - from) < 0.001 then n.config.minw = to end
+        for _, c in ipairs(n.nodes or {}) do walk(c, d + 1) end
+      end
+      if to > from then walk(t, 0) end
+    end
+    return t
+  end
+end
+
+function P.set_fill()
+  if not (love and love.graphics and love.resize) then return end
+  local w, h = love.graphics.getDimensions()
+  love.resize(w, h)
+  if not P.on() or G.STAGE ~= G.STAGES.RUN then return end
+  P.rebuild_hud()
+  P.rebuild_shop()
+  P.layout_run()
+  P.rebuild_buttons()
+  realign(G.buttons)
+  P.place_floats()
+  pcall(P.settle)
+end
+
+local raw_bs = create_UIBox_blind_select
+if raw_bs then
+  function create_UIBox_blind_select(...)
+    local t = raw_bs(...)
+    if P.on() and type(t) == 'table' then
+      local row = def_find(t, function(n) return n.n == G.UIT.R and n.config and n.config.padding == 0.5 end)
+      if row then row.config.padding = 0.08 end
+    end
+    return t
+  end
+end
+
+local function settle_area(a)
+  if not (a and a.cards and a.T) then return end
+  if a.role and a.role.role_type == 'Minor' and a.move_with_major then a:move_with_major(0) end
+  a:hard_set_VT()
+  if a.align_cards then a:align_cards() end
+  for _, c in ipairs(a.cards) do
+    c:hard_set_VT()
+    for _, ch in pairs(c.children or {}) do
+      if type(ch) == 'table' and ch.role then
+        if ch.role.role_type == 'Glued' and ch.glue_to_major then
+          ch:glue_to_major(c)
+        elseif ch.role.role_type == 'Minor' and ch.alignment and ch.UIRoot then
+          snap(ch)
+        end
+      end
+    end
+  end
+end
+
+function P.settle()
+  for _, b in ipairs({G.HUD, G.HUD_blind, G.buttons, G.shop, G.blind_select, G.round_eval, G.booster_pack, G.MOD_FLOATING_BUTTON}) do
+    if type(b) == 'table' and b.alignment and not b.REMOVED then snap(b) end
+  end
+  for _, t in ipairs(G.HUD_tags or {}) do
+    if type(t) == 'table' and t.alignment and not t.REMOVED then snap(t) end
+  end
+  for _, a in ipairs({G.hand, G.play, G.jokers, G.consumeables, G.deck, G.discard, G.shop_jokers, G.shop_vouchers, G.shop_booster, G.pack_cards}) do
+    settle_area(a)
+  end
+end
+
+function P.place_tags()
+  local t = G.HUD_tags and G.HUD_tags[1]
+  if not (t and t.alignment) then return end
+  if P.on() then
+    t.portrait_tag = true
+    local up = (G.hand and G.hand.T and G.play and G.play.T) and (G.TILE_H - P.hand_top()) or 4.5
+    t:set_alignment({type = 'bli', offset = {x = P.EDGE, y = -(up + 0.25)}, major = G.ROOM_ATTACH})
+  elseif t.portrait_tag then
+    t.portrait_tag = nil
+    t:set_alignment({type = 'bri', offset = {x = 0.7, y = 0}, major = G.ROOM_ATTACH})
+  end
+  snap(t)
+end
+
+function P.place_mods_button()
+  local b = G.MOD_FLOATING_BUTTON
+  if not (b and b.alignment and G.deck and G.deck.T) or b.cheats_pinned then return end
+  if P.on() then
+    b.portrait_land = b.portrait_land or {type = b.alignment.type, x = b.alignment.offset.x, y = b.alignment.offset.y}
+    b:set_alignment({type = 'tri', offset = {x = -(P.EDGE + G.deck.T.w + 0.25), y = G.deck.T.y + 0.2}})
+  elseif b.portrait_land then
+    b:set_alignment({type = b.portrait_land.type, offset = {x = b.portrait_land.x, y = b.portrait_land.y}})
+    b.portrait_land = nil
+  end
+  snap(b)
+end
+
+P.FLOATS = {'mps_chat_open_run', 'social_emote_open_run'}
+
+local function float_key(node, depth)
+  if type(node) ~= 'table' or depth > 6 then return nil end
+  local b = node.config and node.config.button
+  if b then
+    for _, k in ipairs(P.FLOATS) do if k == b then return b end end
+  end
+  for _, c in ipairs(node.children or {}) do
+    local r = float_key(c, depth + 1)
+    if r then return r end
+  end
+end
+
+local function float_set(box, x, y)
+  if P.on() then
+    local o = box.alignment.offset
+    if not box.portrait_land then
+      box.portrait_land = {type = box.alignment.type, x = o.x, y = o.y}
+      box:set_alignment({type = 'tli', offset = {x = x, y = y}})
+      snap(box)
+    elseif math.abs(o.x - x) > 0.001 or math.abs(o.y - y) > 0.001 then
+      o.x, o.y = x, y
+      snap(box)
+    end
+  elseif box.portrait_land then
+    local l = box.portrait_land
+    box.portrait_land = nil
+    box:set_alignment({type = l.type, offset = {x = l.x, y = l.y}})
+    snap(box)
+  end
+end
+
+function P.place_floats()
+  local boxes = G.I and G.I.UIBOX
+  if not (boxes and G.ROOM_ATTACH) then return end
+  local race = rawget(_G, 'bom_race')
+  local live = race and race.S and race.S.box
+  if live and not live.REMOVED and live.alignment then live.portrait_float = 'race' end
+  local by = {}
+  for _, box in ipairs(boxes) do
+    if box.portrait_float == nil then
+      box.portrait_float = (box.role and box.role.major == G.ROOM_ATTACH and box.alignment and box.UIRoot and float_key(box.UIRoot, 0)) or false
+    end
+    if box.portrait_float and not box.REMOVED then by[box.portrait_float] = box end
+  end
+  local W, H, E = G.TILE_W, G.TILE_H, P.EDGE
+  local rb = by.race and by.race.T and by.race
+  if rb then float_set(rb, W - E - rb.T.w, P.stage_top()) end
+  local chat, emote = by.mps_chat_open_run, by.social_emote_open_run
+  local c, d = G.consumeables and G.consumeables.T, G.deck and G.deck.T
+  if not (c and d) then return end
+  local cx = (c.x + c.w + d.x) / 2
+  local mid = d.y + d.h / 2
+  local both = chat and chat.T and emote and emote.T
+  if chat and chat.T then
+    float_set(chat, cx - chat.T.w / 2, both and (mid - chat.T.h - 0.1) or (mid - chat.T.h / 2))
+  end
+  if emote and emote.T then
+    float_set(emote, cx - emote.T.w / 2, both and (mid + 0.1) or (mid - emote.T.h / 2))
+  end
+  local wo = G.BOM_PVP_WAITING_OVERLAY
+  if wo and not wo.REMOVED and wo.T and wo.alignment and G.hand and G.hand.T and G.play and G.play.T then
+    local top = d.y + d.h
+    if emote and emote.T then top = math.max(top, (both and (mid + 0.1) or (mid - emote.T.h / 2)) + emote.T.h) end
+    if chat and chat.T and not both then top = math.max(top, mid + chat.T.h / 2) end
+    local h = wo.T.h
+    P.wait_top = top
+    local y = top + math.max(0.2, (P.hand_top() + P.wait_drop() - top - h) / 2)
+    y = math.max(top + 0.2, math.min(y, P.screen_bottom() - h - E))
+    float_set(wo, (W - wo.T.w) / 2, y)
+  end
+end
+
+local function trim_dots(def, width)
+  local o = def and def.nodes and def.nodes[1] and def.nodes[1].config and def.nodes[1].config.object
+  local c = o and o.config
+  local s = c and type(c.string) == 'table' and c.string[1]
+  if not (type(s) == 'string' and s:match('^%.+$') and c.W and c.W > width) then return end
+  local nc = {}
+  for k, v in pairs(c) do nc[k] = v end
+  nc.string = {s:sub(1, math.max(1, math.floor(#s * width / c.W)))}
+  o:remove()
+  def.nodes[1].config.object = DynaText(nc)
+end
+
+function P.watch_eval(box)
+  if not (type(box) == 'table' and box.add_child) or box.portrait_watch then return end
+  box.portrait_watch = true
+  local raw_add = box.add_child
+  box.add_child = function(self, node, parent)
+    if P.on() then pcall(trim_dots, node, self.T.w - 0.51) end
+    return raw_add(self, node, parent)
+  end
+end
+
+local function zone(m, x, y, w, h)
+  m.T.x, m.T.y, m.T.w, m.T.h = x, y, w, h
+  if m.hard_set_VT then m:hard_set_VT() end
+end
+
+function P.drag_targets(card)
+  local D = G.DRAG_TARGETS
+  if not P.on() then
+    if D and D.portrait_born then
+      for _, m in pairs(D) do if type(m) == 'table' and m.remove then m:remove() end end
+      G.DRAG_TARGETS = nil
+    elseif D then
+      for _, m in pairs(D) do
+        if type(m) == 'table' and m.portrait_land then
+          zone(m, m.portrait_land.x, m.portrait_land.y, m.portrait_land.w, m.portrait_land.h)
+          m.portrait_land = nil
+        end
+      end
+    end
+    return
+  end
+  if not (card and G.STAGE == G.STAGES.RUN and G.jokers and G.consumeables and G.deck and G.play) then return end
+  if not D then
+    D = {portrait_born = true}
+    for _, k in ipairs({'S_buy', 'S_buy_and_use', 'C_sell', 'J_sell', 'C_use', 'P_select'}) do D[k] = Moveable{T = {x = 0, y = 0, w = 1, h = 1}} end
+    G.DRAG_TARGETS = D
+  end
+  for _, m in pairs(D) do
+    if type(m) == 'table' and m.T and not m.portrait_land and not D.portrait_born then
+      m.portrait_land = {x = m.T.x, y = m.T.y, w = m.T.w, h = m.T.h}
+    end
+  end
+  local W, E = G.TILE_W, P.EDGE
+  local fw = W - 2 * E
+  local j, c, d = G.jokers.T, G.consumeables.T, G.deck.T
+  local top = P.shelf_bottom() + 0.15
+  local function above(a)
+    local b = (a and a.T and a.T.y or P.stage_top() + 3) - 0.2
+    local y = math.max(top, b - P.ZONE_H)
+    return y, math.max(1, b - y)
+  end
+r 4 2158 %20%20 -
+l 10
+  local ay, ah = above(area)
+  if D.S_buy and D.S_buy_and_use then
+    local both = G.FUNCS.card_can_buy_and_use and G.FUNCS.card_can_buy_and_use(card)
+    local bw = both and (fw - 0.15) * 0.6 or fw
+    zone(D.S_buy, E, ay, bw, ah)
+    if both then zone(D.S_buy_and_use, E + bw + 0.15, ay, fw - bw - 0.15, ah) end
+  end
+  if D.C_sell then zone(D.C_sell, E, j.y - 0.2, fw, j.h + 0.4) end
+  if D.J_sell then zone(D.J_sell, E, c.y - 0.2, d.x - 0.15 - E, c.h + 0.4) end
+  if D.C_use then
+r 4 2270 %20%20%20%20 -
+l 429
+      zone(D.C_use, E, c.y + c.h + 0.3, fw, P.ZONE_H)
+    else
+      zone(D.C_use, E, ay, fw, ah)
+    end
+  end
+  if D.P_select then zone(D.P_select, E, ay, fw, ah) end
+end
+
+local raw_dtc = create_drag_target_from_card
+if raw_dtc then
+  function create_drag_target_from_card(card, ...)
+    pcall(P.drag_targets, card)
+    return raw_dtc(card, ...)
+  end
+end
+
+P.LOGO_FILL = 0.78
+P.MENU_FILL = 0.88
+
+local function grow(n, fw, fh, ft, d)
+  if type(n) ~= 'table' or (d or 0) > 12 then return end
+  local c = n.config
+  if c then
+    if c.minw then c.minw = c.minw * fw end
+    if c.maxw then c.maxw = c.maxw * fw end
+    if c.minh then c.minh = c.minh * fh end
+    if n.n == G.UIT.T and c.scale then c.scale = c.scale * ft end
+  end
+  for _, k in ipairs(n.nodes or {}) do grow(k, fw, fh, ft, (d or 0) + 1) end
+end
+
+local function node_w(n)
+  local w = 0
+  local function walk(x, d)
+    if type(x) ~= 'table' or d > 12 then return end
+    if x.config and x.config.minw then w = math.max(w, x.config.minw) end
+    for _, k in ipairs(x.nodes or {}) do walk(k, d + 1) end
+  end
+  walk(n, 0)
+  return w
+end
+
+function P.menu_width()
+  local logo = G.SPLASH_LOGO and G.SPLASH_LOGO.T and G.SPLASH_LOGO.T.w or 14.3
+  local across = (G.TILE_W or P.W) + 2 * P.PAD_W
+  return math.max(across, logo / P.LOGO_FILL) * P.MENU_FILL
+end
+
+P.SIDE_H = 2.7
+P.SIDE_T = 2.2
+P.BELL_GROW = 1.7
+
+function P.bell_def(t)
+  local function find(n, parent)
+    if type(n) ~= 'table' then return end
+    if n.config and n.config.id == 'mpm_bell' then return n, parent end
+    for _, c in pairs(n.nodes or {}) do
+      local a, b = find(c, n)
+      if a then return a, b end
+    end
+  end
+  local bell, row = find(t)
+  if not bell then return end
+  if row and row.config then row.config.minw = 0.1 end
+  grow(bell, P.BELL_GROW, P.BELL_GROW, P.BELL_GROW)
+  if bell.config.r then bell.config.r = bell.config.r * P.BELL_GROW end
+end
+
+function P.stack_menu(t)
+  local bar
+  local function find(n)
+    if bar or type(n) ~= 'table' then return end
+    if n.config and n.config.mid and n.n == G.UIT.R and n.nodes and #n.nodes >= 3 then bar = n return end
+    for _, c in pairs(n.nodes or {}) do find(c) end
+  end
+  find(t)
+  if not bar then return end
+  local kids = {}
+  for i = 1, table.maxn(bar.nodes) do if bar.nodes[i] then kids[#kids + 1] = bar.nodes[i] end end
+  if #kids < 3 then return end
+  local left, right = kids[1], kids[#kids]
+  local big = {}
+  for i = 2, #kids - 1 do big[#big + 1] = kids[i] end
+  local pad = bar.config.padding or 0.2
+  local half = (P.menu_width() - 3 * pad) / 2
+  local bw = math.max(0.1, node_w(big[2] or big[1]))
+  local sw = math.max(0.1, math.max(node_w(left), node_w(right)))
+  for i, b in ipairs(big) do
+    local fw = half / bw
+    if i == 1 and #big > 1 then fw = (2 * half + pad) / bw end
+    grow(b, fw, 1.5, 1.4)
+  end
+  grow(left, half / sw, P.SIDE_H, P.SIDE_T)
+  grow(right, half / sw, P.SIDE_H, P.SIDE_T)
+  local function find(n, ok)
+    if type(n) ~= 'table' then return end
+    if n.config and ok(n.config) then return n end
+    for _, c in pairs(n.nodes or {}) do
+      local f = find(c, ok)
+      if f then return f end
+    end
+  end
+  local side_btn = find(left, function(c) return c.button and c.minh end)
+  local side_h = side_btn and side_btn.config.minh
+  for _, id in ipairs({'skip_tutorial_button', 'overhaul_update_button'}) do
+    local b = find(t, function(c) return c.id == id end)
+    if b and b.config.minh and side_h then grow(b, half / math.max(0.1, node_w(b)), side_h / b.config.minh, P.SIDE_T) end
+  end
+  pcall(P.bell_def, t)
+  local rows = {}
+  local function row(nodes) rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = pad / 2}, nodes = nodes} end
+  if #big > 0 then row({big[1]}) end
+  local rest = {}
+  for i = 2, #big do rest[#rest + 1] = big[i] end
+  if #rest > 0 then row(rest) end
+  row({left, right})
+  bar.nodes = {{n = G.UIT.C, config = {align = 'cm'}, nodes = rows}}
+end
+
+P.KB_FILL = 0.94
+P.KB_GAP = 0.07
+
+local function screen_units()
+  local u = G.TILESIZE * G.TILESCALE
+  return love.graphics.getWidth() / u, love.graphics.getHeight() / u
+end
+
+function P.keyboard_on()
+  return P.on() or (UIK and UIK.touch and UIK.touch()) or false
+end
+
+local function kb_actions(args)
+  local acts = {}
+  if args.back_key ~= false then acts[#acts + 1] = {'back', 'b'} end
+  if args.wide then acts[#acts + 1] = {'accents'} end
+  if args.backspace_key then acts[#acts + 1] = {'backspace', 'x'} end
+  if args.return_key then acts[#acts + 1] = {'return', 'start'} end
+  return acts
+end
+
+local function kb_preview(w, h, k)
+  local a = P._kb_args
+  local t = a and a.text
+  if not (t and t.ref_table and t.ref_value) then return nil end
+  return {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h, r = 0.1, colour = a.hooked_colour or a.colour or G.C.BLUE, padding = 0.05}, nodes = {
+    {n = G.UIT.T, config = {ref_table = t.ref_table, ref_value = t.ref_value, scale = math.min(0.6, 0.45 * k), colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+  }}
+end
+
+function P.keyboard_def(args, rows)
+  local sw, sh = screen_units()
+  local gap = P.KB_GAP
+  local n = 1
+  for _, r in ipairs(rows) do n = math.max(n, #r) end
+  local acts = kb_actions(args)
+  local port = P.on()
+  local k, kw, kh
+  if port then
+    k = math.min(1.9, (sw * P.KB_FILL - 0.6 - (n + 1) * gap) / (n * 0.8))
+    kw, kh = 0.8 * k, math.max(0.95 * k, 1.1)
+  else
+    local nr = #rows
+    local kW = (sw * P.KB_FILL - 0.6 - (n + 2) * gap) / (0.8 * n + 2.6)
+    local kH = (sh * 0.7 - 0.6 - 0.8 - (nr - 1) * gap) / (0.8 * nr)
+    k = math.min(1.9, kW, kH)
+    kw, kh = 0.8 * k, 0.8 * k
+  end
+  local row_w = n * kw + (n - 1) * gap
+  local key_scale = 0.5 * k
+  local lines = {}
+  for _, r in ipairs(rows) do
+    local keys = {}
+    for _, c in ipairs(r) do
+      local w = c == ' ' and math.min(row_w, 6 * kw) or kw
+      keys[#keys + 1] = create_keyboard_button(c, c == ' ' and 'y' or nil, {w = w, h = kh, scale = key_scale})
+    end
+    lines[#lines + 1] = {n = G.UIT.R, config = {align = 'cm', padding = gap / 2, colour = G.C.CLEAR}, nodes = keys}
+  end
+  local body
+  if port then
+    local aw = (row_w - (#acts - 1) * gap) / math.max(#acts, 1)
+    local act_nodes = {}
+    for _, a in ipairs(acts) do
+      act_nodes[#act_nodes + 1] = create_keyboard_button(a[1], a[2], {w = aw, h = kh, scale = math.min(key_scale, 0.45 * k)})
+    end
+    lines[#lines + 1] = {n = G.UIT.R, config = {align = 'cm', minh = 0.08}, nodes = {}}
+    lines[#lines + 1] = {n = G.UIT.R, config = {align = 'cm', padding = gap / 2, colour = G.C.CLEAR}, nodes = act_nodes}
+    body = lines
+  else
+    local rows_h = #rows * (kh + gap)
+    local ah = (rows_h - #acts * gap) / math.max(#acts, 1)
+    local aw = 3.2 * kw
+    local col = {}
+    for _, a in ipairs(acts) do
+      col[#col + 1] = {n = G.UIT.R, config = {align = 'cm', padding = gap / 2}, nodes = {create_keyboard_button(a[1], a[2], {w = aw, h = ah, scale = math.min(key_scale, 0.42 * k)})}}
+    end
+    local full_w = row_w + aw + 3 * gap
+    body = {}
+    local pv = kb_preview(full_w, 0.7, k)
+    if pv then
+      body[#body + 1] = pv
+      body[#body + 1] = {n = G.UIT.R, config = {align = 'cm', minh = 0.1}, nodes = {}}
+    end
+    body[#body + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = lines},
+        {n = G.UIT.C, config = {align = 'cm', minw = gap}, nodes = {}},
+        {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = col},
+      }}
+  end
+  return {n = G.UIT.ROOT, config = {align = 'cm', padding = 15, r = 0.1, colour = {G.C.GREY[1], G.C.GREY[2], G.C.GREY[3], 0.7}}, nodes = {
+    {n = G.UIT.C, config = {align = 'cm', padding = 0.12, colour = G.C.BLACK, emboss = 0.05, r = 0.1, mid = true}, nodes = body},
+  }}
+end
+
+function P.place_keyboard(kb, field)
+  if not (kb and kb.T and field and field.T and G.ROOM and G.ROOM_ATTACH) then return end
+  local pad = 15
+  local iw, ih = kb.T.w - 2 * pad, kb.T.h - 2 * pad
+  local sw, sh = screen_units()
+  local left, top = -G.ROOM.T.x, -G.ROOM.T.y
+  local m = 0.3
+  local y = field.T.y + field.T.h + 0.35
+  if not P.on() then y = top + sh - m - ih end
+  if y + ih > top + sh - m then y = top + sh - m - ih end
+  if y < field.T.y + field.T.h + 0.1 and y + ih > field.T.y - 0.1 then
+    local above = field.T.y - 0.35 - ih
+    if above >= top + m then y = above end
+  end
+  if y < top + m then y = top + m end
+  local ra = G.ROOM_ATTACH.T
+  local cx, cy = left + sw / 2, y + ih / 2
+  kb:set_alignment({major = G.ROOM_ATTACH, type = 'cm', offset = {x = cx - (ra.x + ra.w / 2), y = cy - (ra.y + ra.h / 2)}})
+  kb:align_to_major()
+  kb:hard_set_T(kb.T.x, kb.T.y, kb.T.w, kb.T.h)
+  kb:hard_set_VT()
+end
+
+local raw_mm = create_UIBox_main_menu_buttons
+if raw_mm then
+  function create_UIBox_main_menu_buttons(...)
+    local t = raw_mm(...)
+    if P.on() then pcall(P.stack_menu, t) end
+    return t
+  end
+end
+
+P.JIMBO_PAD = 0.1
+
+local function jimbo_col(cfg)
+  if not cfg then return end
+  if P.on() then
+    if (cfg.padding or 0) > P.JIMBO_PAD then
+      cfg.portrait_land_pad = cfg.padding
+      cfg.padding = P.JIMBO_PAD
+    end
+  elseif cfg.portrait_land_pad then
+    cfg.padding = cfg.portrait_land_pad
+    cfg.portrait_land_pad = nil
+  end
+end
+
+function P.jimbo_def(t)
+  local function walk(n, col)
+    if type(n) ~= 'table' then return false end
+    if n.n == G.UIT.C then col = n end
+    if n.config and n.config.id == 'jimbo_spot' then
+      if col then jimbo_col(col.config) end
+      return true
+    end
+    for _, c in ipairs(n.nodes or {}) do
+      if walk(c, col) then return true end
+    end
+    return false
+  end
+  walk(t)
+  return t
+end
+
+function P.jimbo_live(box)
+  local spot = box and box.get_UIE_by_ID and box:get_UIE_by_ID('jimbo_spot')
+  local col = spot and spot.parent
+  while col and col.UIT ~= G.UIT.C do col = col.parent end
+  if col then jimbo_col(col.config) end
+end
+
+P.DECK_ROW = 4.2
+
+local function deck_row(a)
+  if not (a and a.config and a.config.view_deck and a.T) then return false end
+  if P.on() then
+    if a.T.w > P.DECK_ROW * G.CARD_W then
+      setw(a, P.DECK_ROW * G.CARD_W)
+      return true
+    end
+  elseif a.portrait_land_w then
+    restorew(a)
+    return true
+  end
+  return false
+end
+
+function P.deck_def(t)
+  local function walk(n)
+    if type(n) ~= 'table' then return end
+    if n.n == G.UIT.O and n.config then deck_row(n.config.object) end
+    for _, c in ipairs(n.nodes or {}) do walk(c) end
+  end
+  walk(t)
+  local mid = t.nodes and t.nodes[2]
+  local k = mid and mid.nodes
+  if P.on() and k and #k == 3 and k[1].n == G.UIT.C and k[3].n == G.UIT.C then
+    mid.nodes = {
+      {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {k[1]}},
+      {n = G.UIT.R, config = {align = 'cm', minh = 0.15, padding = 0}, nodes = {}},
+      {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {k[3]}},
+    }
+  end
+  return t
+end
+
+function P.deck_live(box)
+  local boxes = {}
+  local function walk(e, d)
+    if not e or d > 40 then return end
+    if e.UIT == G.UIT.O and e.config and deck_row(e.config.object) and e.UIBox then boxes[#boxes + 1] = e.UIBox end
+    for _, c in pairs(e.children or {}) do
+      if type(c) == 'table' and c.UIT then walk(c, d + 1) end
+      if type(c) == 'table' and c.UIRoot then walk(c.UIRoot, d + 1) end
+    end
+    local o = e.config and e.config.object
+    if o and o.UIRoot then walk(o.UIRoot, d + 1) end
+  end
+  if box and box.UIRoot then walk(box.UIRoot, 0) end
+  local done = {}
+  for i = #boxes, 1, -1 do
+    local b = boxes[i]
+    if not done[b] and b ~= box and b.recalculate then
+      done[b] = true
+      b:recalculate()
+    end
+  end
+end
+
+if G.UIDEF and G.UIDEF.deck_info then
+  local raw_di = G.UIDEF.deck_info
+  G.UIDEF.deck_info = function(show_remaining, ...)
+    local t = raw_di(show_remaining, ...)
+    if type(t) == 'table' and t.config then t.config.portrait_deck_info = {show = show_remaining and true or false} end
+    return t
+  end
+end
+
+if G.UIDEF and G.UIDEF.view_deck then
+  local raw_vd = G.UIDEF.view_deck
+  G.UIDEF.view_deck = function(...)
+    local t = raw_vd(...)
+    if P.on() and type(t) == 'table' then pcall(P.deck_def, t) end
+    return t
+  end
+end
+
+for _, name in ipairs({'create_UIBox_game_over', 'create_UIBox_win'}) do
+  local raw = rawget(_G, name)
+  if raw then
+    _G[name] = function(...)
+      local t = raw(...)
+      if P.on() and type(t) == 'table' then pcall(P.jimbo_def, t) end
+      return t
+    end
+  end
+end
+
+local function mg_win()
+  local mg = rawget(_G, 'Minigames')
+  local host = mg and mg.host
+  local win = host and host.win
+  if win and not win.REMOVED and win.T and not host.closing then return win end
+end
+
+function P.fit_target(t)
+  local win = mg_win()
+  if not win then return t end
+  local wt = win.T
+  local c = win.UIRoot and win.UIRoot.children and win.UIRoot.children[1]
+  if wt.w > G.TILE_W * 2 and c and c.T then wt = c.T end
+  if not t or wt.w > t.w then return wt end
+  return t
+end
+
+function P.minigames()
+  local mg = rawget(_G, 'Minigames')
+  local pk = mg and mg.pick
+  local b = pk and pk.hidden and pk.box
+  if b and b.alignment and not b.REMOVED and b.alignment.offset.y == 15 then
+    b.alignment.offset.y = G.TILE_H + 5
+    b:align_to_major()
+  end
+end
+
+function P.idle_zoom(w, h, base)
+  if not (G.STAGE == G.STAGES.MAIN_MENU and G.SPLASH_LOGO and G.SPLASH_LOGO.T) then return 1 end
+  local uw = w / (G.TILESIZE * base)
+  local z = math.min(1, uw * P.LOGO_FILL / G.SPLASH_LOGO.T.w)
+  return math.max(0.5, math.floor(z * 20) / 20)
+end
+
+function P.bg_unzoom()
+  if not (P.on() and type(G.OVERLAY_MENU) == 'table' and G.ROOM and G.ROOM.T and G.TILESIZE and G.TILESCALE) then return end
+  local z = G.MENU_ZOOM or 1
+  local w, h = love.graphics.getDimensions()
+  local zb = 1
+  if G.STAGE == G.STAGES.MAIN_MENU and ui_size_fit then zb = P.idle_zoom(w, h, ui_size_fit(w, h)) end
+  if math.abs(z - zb) < 0.01 then return end
+  local s = G.TILESIZE * G.TILESCALE
+  local k = zb / z
+  local x, y
+  if zb == 1 and G.ROOM_UNZOOMED then
+    x, y = G.ROOM_UNZOOMED.x, G.ROOM_UNZOOMED.y
+  else
+    x, y = (w / (s * k) - G.ROOM.T.w) / 2, (h / (s * k) - G.ROOM.T.h) / 2
+  end
+  return {tx = x * s * k, ty = y * s * k, s = k, rx = -G.ROOM.T.x * s, ry = -G.ROOM.T.y * s}
+end
+
+local function main_menu_rebuild()
+  if not (G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI and set_main_menu_UI) then return end
+  G.MAIN_MENU_UI:remove()
+  G.MAIN_MENU_UI = nil
+  set_main_menu_UI()
+r 10 1672 %20%20 -
+l 37
+  local logo = G.SPLASH_LOGO
+  if logo and logo.role and logo.role.major == G.title_top then
+    force_align(logo)
+    if logo.move_with_major then logo:move_with_major(0) end
+    logo:hard_set_VT()
+  end
+end
+
+P.MOD_MENU_TABS = {'mod_tab_cheats', 'mod_tab_jokers', 'mod_tab_consumables', 'mod_tab_cards', 'mod_tab_vouchers', 'mod_tab_poker_hands', 'mod_tab_settings'}
+
+local function chosen_tab(n)
+  if not n then return end
+  local c = n.config
+  if c and c.button == 'change_tab' and c.chosen and c.ref_table then return c.ref_table end
+  for _, ch in pairs(n.children or {}) do
+    local r = chosen_tab(ch)
+    if r then return r end
+  end
+end
+
+function P.mod_menu_tab(box)
+  local t = box and chosen_tab(box.UIRoot)
+  local f = t and t.tab_definition_function
+  if not f then return end
+  for i, k in ipairs(P.MOD_MENU_TABS) do
+    if G.UIDEF[k] == f then return i end
+  end
+end
+
+P.UIK_REBUILD = {mpm_profile = true, mpm_collection = true, mp_ranked = true}
+
+P.REBUILD_DEFS = {jokers = 'create_UIBox_your_collection_jokers', achievements = 'create_UIBox_achievements_main'}
+
+function P.after_resize(changed)
+  if not (G and G.ROOM) then return end
+  if not (changed or P.dirty) then return end
+  P.dirty = false
+r 3 4157 %20%20 -
+l 18
+    if changed then
+      P.rebuild_shop()
+      pcall(P.restore_bot_panel)
+    end
+    P.layout_run()
+    if changed then
+      P.rebuild_buttons()
+      realign(G.buttons)
+    end
+    P.place_floats()
+    if G.SETTINGS.paused then pcall(P.settle) end
+  end
+  if changed then
+    if G.STAGE == G.STAGES.MAIN_MENU then pcall(main_menu_rebuild) end
+    local win = mg_win()
+    if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+    P._rf_box = nil
+    if G.OVERLAY_MENU and not P.on() then pcall(P.unflow, G.OVERLAY_MENU) end
+r 23 214 %20%20%20%20 -
+l 8
+      local def = G.OVERLAY_MENU.definition
+      local a = UIK and UIK._win
+      if def and def.config and (def.config.uik_zoom or (def.config.uik_win and a and a.id == def.config.uik_id and P.UIK_REBUILD[a.id])) and a and UIK.window and not win then
+        a.tab = a._cur
+        local ok, err = xpcall(function() G.FUNCS.overlay_menu{definition = UIK.window(a)} end, debug.traceback)
+        if not ok then
+          print("[PORTRAIT] rebuild failed: " .. tostring(err))
+          if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+r 3 349 %20%20%20%20%20%20%20%20%20%20 -
+r 4 1367 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 4 1363 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 348
+          end
+        end
+      elseif G.OVERLAY_MENU_KEY == 'mods_menu' and def and def.config and def.config.back_func == 'workshop_back' and rawget(_G, 'ModWorkshop') and ModWorkshop.mod_page and G.MODS_MENU and G.MODS_MENU.ws_entry then
+        pcall(function() ModWorkshop.layout() ModWorkshop.show(ModWorkshop.mod_page(G.MODS_MENU.ws_entry)) end)
+        if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+      elseif G.OVERLAY_MENU_KEY == 'mods_menu' and create_UIBox_mods_menu and G.MODS_MENU then
+        pcall(function() G.FUNCS.overlay_menu{definition = create_UIBox_mods_menu(), key = 'mods_menu'} end)
+        if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+      elseif def and def.config and def.config.portrait_deck_info and G.UIDEF.deck_info then
+        local show = def.config.portrait_deck_info.show
+        pcall(function() G.FUNCS.overlay_menu{definition = G.UIDEF.deck_info(show)} end)
+        if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+      elseif G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID('mod_browse_enh') and G.FUNCS.mod_browse_enhancements then
+        pcall(G.FUNCS.mod_browse_enhancements)
+        if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+      elseif def and def.config and def.config.back_func == 'mod_menu_back' and create_UIBox_mod_menu_fullscreen and G.MOD_MENU_STATE then
+        G.MOD_MENU_STATE.active_tab = P.mod_menu_tab(G.OVERLAY_MENU) or G.MOD_MENU_STATE.active_tab
+        pcall(function() G.FUNCS.overlay_menu{definition = create_UIBox_mod_menu_fullscreen()} end)
+        if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+      elseif def and def.config and type(rawget(_G, P.REBUILD_DEFS[def.config.portrait_rebuild] or '')) == 'function' then
+        local build = rawget(_G, P.REBUILD_DEFS[def.config.portrait_rebuild])
+        pcall(function() G.FUNCS.overlay_menu{definition = build()} end)
+        if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+      elseif G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID('your_collection_jokers') and create_UIBox_your_collection then
+        pcall(function() G.FUNCS.overlay_menu{definition = create_UIBox_your_collection()} end)
+        if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+      elseif G.BOM_LOBBY_OVERLAY and G.OVERLAY_MENU == G.BOM_LOBBY_OVERLAY and rawget(_G, 'bom_ui') and bom_ui.show_lobby and not (G.GAME and G.GAME.bom_quick_match) then
+        pcall(bom_ui.show_lobby)
+      elseif G.OVERLAY_MENU.recalculate then
+        pcall(P.jimbo_live, G.OVERLAY_MENU)
+        pcall(P.deck_live, G.OVERLAY_MENU)
+        snap(G.OVERLAY_MENU)
+      end
+    end
+    if win then snap(win) end
+    if P.on() then pcall(P.minigames) end
+  end
+end
+
+P.SHOP_AREAS = {'shop_jokers', 'shop_vouchers', 'shop_booster'}
+
+function P.rebuild_shop()
+  local old = G.shop
+  if not (old and not old.REMOVED and old.alignment and old.alignment.offset and G.STATE == G.STATES.SHOP and not (G.pack_cards and not G.pack_cards.REMOVED) and G.UIDEF and G.UIDEF.shop and G.hand) then return end
+  local keep = {}
+  for _, k in ipairs(P.SHOP_AREAS) do keep[k] = G[k] end
+  local sign = G.SHOP_SIGN
+  local off = {x = old.alignment.offset.x, y = old.alignment.offset.y}
+  local ok, box = pcall(function() return UIBox{definition = G.UIDEF.shop(), config = {align = 'tmi', offset = off, major = G.hand, bond = 'Weak'}} end)
+  if not ok then
+    for k, a in pairs(keep) do G[k] = a end
+    if G.SHOP_SIGN ~= sign and G.SHOP_SIGN and G.SHOP_SIGN.remove then G.SHOP_SIGN:remove() end
+    G.SHOP_SIGN = sign
+    print('[PORTRAIT] shop rebuild failed: ' .. tostring(box))
+    return
+  end
+  for _, k in ipairs(P.SHOP_AREAS) do
+    local from, to = keep[k], G[k]
+    if from and to and from ~= to and from.cards then
+      local list = {}
+      for i, c in ipairs(from.cards) do list[i] = c end
+      for _, c in ipairs(list) do
+        from:remove_card(c)
+        to:emplace(c)
+      end
+    end
+  end
+  box.portrait_off = old.portrait_off
+  old:remove()
+  G.shop = box
+  if sign and sign ~= G.SHOP_SIGN and not sign.REMOVED then
+    local soff = sign.alignment and sign.alignment.offset
+    sign:remove()
+    if soff and G.SHOP_SIGN and G.SHOP_SIGN.alignment then
+      G.SHOP_SIGN.alignment.offset.x, G.SHOP_SIGN.alignment.offset.y = soff.x, soff.y
+      force_align(G.SHOP_SIGN)
+    end
+  end
+end
+
+function P.place_bot_panel()
+  local B = rawget(_G, 'BOT')
+  local U = type(B) == 'table' and B.ui
+  local box = U and U.panel_box
+  if not (box and not box.REMOVED and box.alignment and box.alignment.offset and box.T) then return end
+  if box == P._botbox then return end
+  P._botbox = box
+  if not P._bot_folded and not U.collapsed and U.rebuild_panel then
+    P._bot_folded = true
+    U.collapsed = true
+    pcall(U.rebuild_panel)
+    return
+  end
+  box.alignment.offset.x = -P.EDGE
+  box.alignment.offset.y = P.stage_top() + box.T.h / 2 - G.TILE_H / 2
+  force_align(box)
+end
+
+function P.restore_bot_panel()
+  P._botbox = nil
+  local B = rawget(_G, 'BOT')
+  local box = type(B) == 'table' and B.ui and B.ui.panel_box
+  if P.on() or not (box and not box.REMOVED and box.alignment and box.alignment.offset) then return end
+  box.alignment.offset.x, box.alignment.offset.y = -0.7, -0.5
+  force_align(box)
+end
+
+function P.menu_veil()
+  local m = G.MAIN_MENU_UI
+  if not (m and m.states) then return end
+  local hide = P.on() and G.STAGE == G.STAGES.MAIN_MENU and type(G.OVERLAY_MENU) == 'table' or false
+  if hide then
+    if m.states.visible then
+      m.portrait_hidden = true
+      m.states.visible = false
+    end
+  elseif m.portrait_hidden then
+    m.portrait_hidden = nil
+    m.states.visible = true
+  end
+end
+
+P.REFLOW_FILL = 0.94
+P.REFLOW_STEPS = 16
+
+local function overlay_inner(o)
+  local c = o.UIRoot and o.UIRoot.children and o.UIRoot.children[1]
+  if o.T.w > G.TILE_W * 2 and c and c.T then return c end
+  return o.UIRoot
+end
+
+local function reflow_keep(o)
+  local def = o.definition
+  local c = def and def.config
+  if c and c.portrait_keep then return true end
+  if mg_win() then return true end
+  return false
+end
+
+local function uik_body(o)
+  local def = o.definition
+  if not (def and def.config and (def.config.uik_zoom or def.config.uik_win) and o.get_UIE_by_ID) then return end
+  local b = o:get_UIE_by_ID('uik_body')
+  local box = b and b.config and b.config.object
+  if box and box.UIRoot and box.recalculate then return box end
+end
+
+local function flip_kids(n)
+  local list = {}
+  for _, k in pairs(n.children or {}) do
+    if type(k) == 'table' and k.UIT == G.UIT.C and k.T and not (k.config and k.config.portrait_keep) then list[#list + 1] = k end
+  end
+  return list
+end
+
+local function nat_w(n)
+  local c = n.content_dimensions
+  if not (c and c.w) or n.UIT == G.UIT.T or n.UIT == G.UIT.O or n.UIT == G.UIT.B then return n.T.w end
+  return math.max(c.w, n.config and n.config.minw or 0)
+end
+
+local function wide_node(n, box, tw, d, skip)
+  if type(n) ~= 'table' or not n.T or d > 30 or nat_w(n) <= tw then return end
+  if n.config and n.config.portrait_keep then return end
+  if n.UIT ~= G.UIT.O and not skip[n] and #flip_kids(n) >= 2 then return n, box end
+  local kids = {}
+  for _, k in pairs(n.children or {}) do
+    if type(k) == 'table' and k.T and nat_w(k) > tw then kids[#kids + 1] = k end
+  end
+  table.sort(kids, function(a, b) return nat_w(a) > nat_w(b) end)
+  for _, k in ipairs(kids) do
+    local a, b = wide_node(k, box, tw, d + 1, skip)
+    if a then return a, b end
+  end
+  local obj = n.config and n.config.object
+  if n.UIT == G.UIT.O and type(obj) == 'table' and obj.UIRoot and obj.recalculate then
+    return wide_node(obj.UIRoot, obj, tw, d + 1, skip)
+  end
+end
+
+local function narrow(n, tw, d)
+  if type(n) ~= 'table' or d > 40 then return false end
+  local hit = false
+  local c = n.config
+  if c and c.minw and c.minw > tw and n.content_dimensions and n.content_dimensions.w <= tw and n.UIT ~= G.UIT.ROOT then
+    c.minw = tw
+    hit = true
+  end
+  for _, k in pairs(n.children or {}) do
+    if type(k) == 'table' and k.UIT and narrow(k, tw, d + 1) then hit = true end
+  end
+  return hit
+end
+
+function P.reflow_width()
+  return (G.TILE_W + 2 * P.PAD_W) * P.REFLOW_FILL
+end
+
+P.FILL_MAX = 1.6
+P.FILL_MIN = 1.08
+P.FILL_ROOM = 0.96
+
+local function grow_live(n, f, d, seen)
+  if type(n) ~= 'table' or d > 40 then return end
+  local c = n.config
+  if c and not seen[c] then
+    seen[c] = true
+    if c.minw then c.minw = c.minw * f end
+    if c.maxw then c.maxw = c.maxw * f end
+    if c.minh then c.minh = c.minh * f end
+    if c.maxh then c.maxh = c.maxh * f end
+    if c.padding and n.UIT ~= G.UIT.ROOT then c.padding = c.padding * f end
+    if n.UIT == G.UIT.T and c.scale then c.scale = c.scale * f end
+  end
+  for _, k in pairs(n.children or {}) do
+    if type(k) == 'table' and k.UIT then grow_live(k, f, d + 1, seen) end
+  end
+end
+
+function P.fill_uik(o, box)
+  if box.portrait_filled then return false end
+  box.portrait_filled = true
+  local root = box.UIRoot
+  local content = root and root.children and root.children[2]
+  if not (content and content.T and content.T.w > 0 and content.T.h > 0) then return false end
+  local W, H = UIK.W or P.W, (UIK.H or 15) - (UIK.TOP or 0)
+  local f = math.min(P.FILL_MAX, W * P.FILL_ROOM / content.T.w, H * P.FILL_ROOM / content.T.h)
+  if f < P.FILL_MIN then return false end
+  grow_live(content, f, 0, {})
+  box:recalculate()
+  if content.T.w > W + 0.05 or content.T.h > H + 0.05 then
+    grow_live(content, 1 / f, 0, {})
+    box:recalculate()
+    return false
+  end
+  o.portrait_fill = {box = box, content = content, f = f}
+  return true
+end
+
+function P.unflow(o)
+  if type(o) ~= 'table' or not o.recalculate then return end
+  local hit = false
+  for _, list in ipairs(o.portrait_flips or {}) do
+    for _, k in ipairs(list) do k.UIT = G.UIT.C end
+    hit = true
+  end
+  o.portrait_flips = nil
+  local fl = o.portrait_fill
+  if fl and fl.box and not fl.box.REMOVED then
+    grow_live(fl.content, 1 / fl.f, 0, {})
+    fl.box.portrait_filled = nil
+    fl.box:recalculate()
+    hit = true
+  end
+  o.portrait_fill = nil
+  if hit then
+    local body = uik_body(o)
+    if body then body:recalculate() end
+    o:recalculate()
+    force_align(o)
+  end
+end
+
+function P.reflow(o)
+  if not (P.on() and type(o) == 'table' and o.UIRoot and o.T and o.recalculate) or reflow_keep(o) then return end
+  local body = uik_body(o)
+  local inner, tw = overlay_inner(o), P.reflow_width()
+  if body then inner, tw = body.UIRoot, (UIK.W or P.W) + 0.05 end
+  if not (inner and inner.T) then return end
+  local moved = false
+  local skip = {}
+  local flipped = {}
+  local outer = overlay_inner(o)
+  local function fit()
+    local sw, sh = G.TILE_W + 2 * P.PAD_W, G.TILE_H + 3 * P.PAD_H
+    return math.min(sw / math.max(0.1, outer.T.w), sh / math.max(0.1, outer.T.h))
+  end
+  local start = fit()
+  for _ = 1, P.REFLOW_STEPS do
+    if inner.T.w <= tw then break end
+    local n, box = wide_node(inner, body or o, tw, 0, skip)
+    if not n then break end
+    local before = nat_w(n)
+    local list = flip_kids(n)
+    for _, k in ipairs(list) do k.UIT = G.UIT.R end
+    if box ~= o then box:recalculate() end
+    o:recalculate()
+    if nat_w(n) >= before - 0.01 then
+      for _, k in ipairs(list) do k.UIT = G.UIT.C end
+      if box ~= o then box:recalculate() end
+      o:recalculate()
+      skip[n] = true
+    else
+      moved = true
+      flipped[#flipped + 1] = list
+      o.portrait_flips = o.portrait_flips or {}
+      o.portrait_flips[#o.portrait_flips + 1] = list
+    end
+  end
+  if moved and fit() < start - 0.001 then
+    for _, list in ipairs(flipped) do
+      for _, k in ipairs(list) do k.UIT = G.UIT.C end
+    end
+    if body then body:recalculate() end
+    o:recalculate()
+    moved = false
+    o.portrait_flips = nil
+  end
+  if moved and inner.T.w > tw then
+    local root = body and body.UIRoot or inner
+    if narrow(root, tw, 0) then
+      if body then body:recalculate() end
+      o:recalculate()
+    end
+  end
+  if body and inner.T.w <= tw and P.fill_uik(o, body) then
+    o:recalculate()
+    moved = true
+  end
+  if moved then force_align(o) end
+end
+
+function P.reflow_check()
+  local o = G.OVERLAY_MENU
+  if type(o) ~= 'table' or not o.T or o.REMOVED then P._rf_box = nil return end
+  local inner = overlay_inner(o)
+  local w = inner and inner.T and inner.T.w or 0
+  local body = uik_body(o)
+  if o == P._rf_box and body == P._rf_body and math.abs(w - (P._rf_w or 0)) < 0.01 then return end
+  local ok, err = pcall(P.reflow, o)
+  if not ok then print('[PORTRAIT] reflow failed: ' .. tostring(err)) end
+  P._rf_box, P._rf_body = o, uik_body(o)
+  inner = overlay_inner(o)
+  P._rf_w = inner and inner.T and inner.T.w or 0
+end
+
+function P.update(dt)
+  P.menu_veil()
+  if not P.on() then return end
+  P.reflow_check()
+  if G.STAGE == G.STAGES.RUN and G.HUD and G.jokers and (G.HUD ~= P._hud or G.jokers ~= P._jokers) then
+    P._hud, P._jokers = G.HUD, G.jokers
+    P.layout_run()
+  end
+  local t = G.HUD_tags and G.HUD_tags[1]
+  if t and not t.portrait_tag then P.place_tags() end
+  local mb = G.MOD_FLOATING_BUTTON
+  if mb and not mb.portrait_land then P.place_mods_button() end
+r 3 4157 %20%20 -
+l 19
+    P.place_floats()
+    P.settle_boxes()
+    P.place_bot_panel()
+    P.fill_all()
+  end
+  P.minigames()
+  local bs = G.blind_select
+  if bs and bs ~= P._bs and bs.alignment and G.STATE == G.STATES.BLIND_SELECT then
+    P._bs = bs
+    bs.alignment.offset.y = P.blind_select_offset(bs)
+  end
+end
+
+function P.fill_all()
+  if G.shop and not G.shop.portrait_filled then P.fill_shop(G.shop) end
+  if G.HUD and not G.HUD.portrait_filled and G.HUD.definition and G.HUD.definition.config and G.HUD.definition.config.portrait_hud then P.fill_hud(G.HUD) end
+  if G.buttons and not G.buttons.portrait_filled then P.fill_buttons(G.buttons) end
+  if G.booster_pack and not G.booster_pack.portrait_filled and G.pack_cards and G.pack_cards.cards and #G.pack_cards.cards > 0 then P.fill_pack(G.booster_pack) end
+end
+end

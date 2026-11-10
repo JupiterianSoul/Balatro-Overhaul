@@ -1,0 +1,703 @@
+BOP 1
+eol lf
+final 1
+base 34
+c 372
+l 7
+            e_mp_phantom={
+                name="Phantom",
+                text={
+                    "{C:attention}Eternal{} and {C:red}Rival-linked{}",
+                    "Created and destroyed by your {C:attention}Rival{}",
+                },
+            },
+c 58
+l 1
+                    "{C:attention}Immune{} to Boss Blind debuffs",
+c 769
+s 3
+l 3
+                    "Earn {C:money}$#1#{} for every",
+                    "{C:attention}Discard{} used during",
+                    "a {C:attention}Boss Blind{}",
+c 694
+l 5
+            apocalypse_sticker={
+                name="Apocalypse Sticker",
+                text={
+                    "Used this Joker",
+                    "to win on {C:attention}Apocalypse",
+r 34 1877 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                },
+            },
+c 8
+l 7
+                },
+            },
+            chaos_sticker={
+                name="Chaos Sticker",
+                text={
+                    "Used this Joker",
+                    "to win on {C:attention}Chaos",
+r 34 1877 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 35
+                },
+            },
+            mp_internal_sell_value={
+                name="Sell Value",
+                text={
+                    "{C:money,s:1.3}$#1#",
+                },
+            },
+            mp_sticker_persistent={
+                name="Persistent",
+                text={
+                    "Can't be destroyed",
+                    "Costs {C:red}${} to sell",
+                    "Cost increases by",
+                    "{C:red}$3{} at end of round",
+                },
+            },
+            mp_sticker_unreliable={
+                name="Unreliable",
+                text={
+                    "Doesn't trigger on",
+                    "the {C:attention}final hand{}",
+                },
+            },
+            mp_sticker_draining={
+                name="Draining",
+                text={
+                    "{X:mult,C:white}X0.75{} Mult",
+                },
+            },
+            mp_sticker_balanced={
+                name="Balanced",
+                text={
+                    "Multiplayer balance mark",
+                    "with no extra card effect",
+c 107
+l 7
+                },
+            },
+            oblivion_sticker={
+                name="Oblivion Sticker",
+                text={
+                    "Used this Joker",
+                    "to win on {C:attention}Oblivion",
+r 34 1877 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 259
+l 7
+                },
+            },
+            transcendent_sticker={
+                name="Transcendent Sticker",
+                text={
+                    "Used this Joker",
+                    "to win on {C:attention}Transcendent",
+r 34 1877 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 290
+s 1
+l 2
+                    "Shop items cost {C:money}+$1{}",
+                    "Rerolls go up by {C:money}$2{} each",
+c 47
+l 6
+                },
+            },
+            stake_chaos={
+                name="Chaos Stake",
+                text={
+                    "{C:attention}Booster Packs{} have {C:red}-1{} choice",
+r 34 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                },
+            },
+            stake_apocalypse={
+                name="Apocalypse Stake",
+                text={
+                    "{C:purple}Boss Blinds{} gain an {C:red}additional effect{}",
+r 34 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 7
+                },
+            },
+            stake_oblivion={
+                name="Oblivion Stake",
+                text={
+                    "At the start of each round,",
+                    "{C:red}1{} random {C:attention}Joker{} slot is {C:red}disabled{}",
+r 34 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                },
+            },
+            stake_transcendent={
+                name="Transcendent Stake",
+                text={
+                    "{C:purple}Boss Blinds{} are always {C:red}Finisher Blinds{}",
+r 34 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 728
+s 3
+l 13
+            _100000k="Highscore 100M",
+            _1000k="Highscore 1M",
+            _10k="Highscore 10K",
+            all_legendary="Legendary Collection",
+            ante_1="First Steps",
+            ante_4="Getting Serious",
+            ante_5="Ante Explorer",
+            ante_8="The Boss",
+            ante_10="Ante Master",
+            ante_12="Legendary",
+            ante_15="Ante Impossible",
+            ante_20="God Mode",
+            ante_39="Infinity +1",
+c 8
+l 1
+            common_only_win="Common Legend",
+c 3
+l 23
+            consumables_used_100="Consumer",
+            daily_complete_1="Daily Participant",
+            daily_complete_7="Weekly Warrior",
+            daily_complete_30="Monthly Master",
+            daily_streak_7="Weekly Streak",
+            daily_streak_30="Daily Legend",
+            deck_win_c_abandoned="Abandoned Deck Master",
+            deck_win_c_anaglyph="Anaglyph Deck Master",
+            deck_win_c_base="Red Deck Master",
+            deck_win_c_black="Black Deck Master",
+            deck_win_c_blue="Blue Deck Master",
+            deck_win_c_checkered="Checkered Deck Master",
+            deck_win_c_erratic="Erratic Deck Master",
+            deck_win_c_ghost="Ghost Deck Master",
+            deck_win_c_green="Green Deck Master",
+            deck_win_c_magic="Magic Deck Master",
+            deck_win_c_nebula="Nebula Deck Master",
+            deck_win_c_painted="Painted Deck Master",
+            deck_win_c_plasma="Plasma Deck Master",
+            deck_win_c_yellow="Yellow Deck Master",
+            deck_win_c_zodiac="Zodiac Deck Master",
+            discards_100="Discards 100",
+            discards_500="Discards 500",
+c 2
+l 3
+            hands_played_100="Hands Played 100",
+            hands_played_500="Hands Played 500",
+            hands_played_1000="Hands Played 1K",
+c 2
+l 5
+            joker_5_at_once="Joker Full House",
+            joker_10_at_once="Joker Army",
+            joker_20_at_once="Joker Overflow",
+            jokers_obtained_50="Jokers Obtained 50",
+            jokers_obtained_100="Jokers Obtained 100",
+c 1
+l 1
+            legendary_obtained="Legendary Find",
+c 2
+l 4
+            minimalist="Minimalist",
+            money_100="Money $100",
+            money_500="Money $500",
+            money_1000="Money $1K",
+c 1
+l 10
+            no_discards_win="No Discards",
+            no_jokers_win="No Funny Business",
+            perfect_ante="Perfect Ante",
+            perfectionist="Perfectionist",
+            play_five_of_kind="Five of a Kind",
+            play_flush_five="Flush Five",
+            play_flush_house="Flush House",
+            play_full_house="Full House",
+            play_royal_flush="Royal Flush",
+            play_straight_flush="Straight Flush",
+c 5
+l 14
+            score_10k="Highscore 10K",
+            score_100k="Highscore 100K",
+            score_1m="Highscore 1M",
+            score_10m="Highscore 10M",
+            score_100m="Highscore 100M",
+            score_1b="Highscore 1B",
+            secret_custom_run="Custom Creator",
+            secret_exactly_52="Classic Deck",
+            secret_jukebox="DJ",
+            secret_lucky_7="Lucky 7",
+            secret_mod_user="Modder",
+            secret_money_cap="Money Cap",
+            secret_zero_dollars="Broke",
+            sell_jokers_50="Joker Trader",
+c 1
+l 3
+            shops_visited="Shopaholic",
+            speed_demon="Speed Demon",
+            speed_runner="Speed Runner",
+c 1
+l 9
+            stake_white="White Stake Victory",
+            stake_red="Red Stake Victory",
+            stake_green="Green Stake Victory",
+            stake_black="Black Stake Victory",
+            stake_blue="Blue Stake Victory",
+            stake_purple="Purple Stake Victory",
+            stake_orange="Orange Stake Victory",
+            stake_gold="Gold Stake Victory",
+            stake_insanity="Insanity Stake Victory",
+c 1
+l 2
+            vouchers_used="Voucher Collector",
+            win_5_jokers="Joker Fan",
+c 31
+l 10
+            c_bankruptcy_1="Bankruptcy",
+            c_gauntlet_1="The Gauntlet",
+            c_tiny_hands_1="Tiny Hands",
+            c_heavy_hitter_1="Heavy Hitter",
+            c_glass_cannon_1="Glass Cannon",
+            c_collector_1="The Collector",
+            c_wildcard_1="Wildcard",
+            c_speed_run_1="Speed Run",
+            c_alchemist_1="The Alchemist",
+            c_duality_1="Duality",
+c 427
+l 5
+            mp_phantom="Phantom",
+            mp_sticker_balanced="Balanced",
+            mp_sticker_draining="Draining",
+            mp_sticker_persistent="Persistent",
+            mp_sticker_unreliable="Unreliable",
+c 372
+l 429
+            -- ==========================================
+            -- FEATURE: Overhaul Showcase text keys
+            -- ==========================================
+            sc_welcome={
+                "Hey there! Welcome to",
+                "{C:attention}Balatro Overhaul{}!",
+                "Let me show you everything",
+                "that's been added. Ready?",
+            },
+            sc_play={
+                "This is your {C:blue}Play{} button!",
+                "You now have {C:attention}Daily Runs{},",
+                "new {C:attention}Challenges{}, and a full",
+                "{C:attention}Custom Run Builder{} with sliders",
+                "for hands, discards, money & more!",
+            },
+            sc_achievements={
+                "Here's the {C:attention}Achievements{} menu!",
+                "There are over {C:attention}200 achievements{}",
+                "with {C:attention}5 rarity tiers{} to unlock.",
+                "How many can you get?",
+            },
+            sc_collection={
+                "The {C:green}Collection{} lets you browse",
+                "all jokers, tarots, planets & more.",
+                "Plus {C:attention}4 new Creative Stakes{}!",
+                "{C:attention}Chaos{}, {C:attention}Oblivion{}, {C:attention}Apocalypse{},",
+                "and {C:red}Transcendent{} await the brave!",
+            },
+            sc_progression={
+                "{C:green}Progression{} is brand new!",
+                "Earn {C:attention}XP{} from playing hands,",
+                "clearing antes, winning runs,",
+                "and {C:attention}completing quests{}!",
+                "Level up through {C:attention}7 rank tiers{}!",
+            },
+            sc_tavern={
+                "The {C:blue}Tavern{} is your hub!",
+                "Inside you'll find {C:attention}Quests{},",
+                "your {C:attention}Profile{}, the {C:money}Balacoin Shop{},",
+                "the {C:attention}Deck Creator{}, and",
+                "the {C:attention}Seed Library{}! Explore!",
+            },
+            sc_multiplayer={
+                "{C:blue}Multiplayer{} is here!",
+                "Play against friends online",
+                "in competitive Balatro matches.",
+                "May the best hand win!",
+            },
+            sc_settings={
+                "{C:attention}Settings{} has lots of new stuff!",
+                "Feature toggles, {C:attention}Performance{} tuning,",
+                "{C:attention}Optimizer{} config, {C:attention}Jimbo{} settings,",
+                "and the {E:1}Jukebox{}!",
+                "Explore each sub-menu!",
+            },
+            sc_modmenu={
+                "Turn on {C:red}Cheats{} in Play > New Run",
+                "and a {C:red}CHEATS{} button shows up.",
+                "Drag it anywhere. Cheat away!",
+                "(Counts like a seeded run.)",
+            },
+            sc_farewell={
+                "That's everything! {E:1}Have fun{}",
+                "exploring all the new features.",
+                "You can replay this tour anytime",
+                "from {C:attention}Settings {}> {C:attention}What's New{}.",
+                "Now go break some blinds!",
+            },
+            -- FEATURE: Sub-showcase text keys (contextual Jimbo tips)
+            sc_sub_tavern_intro={
+                "Welcome to the {C:blue}Tavern{}!",
+                "This is your main hub.",
+                "Check out {C:attention}Quests{}, your {C:attention}Profile{},",
+                "the {C:money}Balacoin Shop{}, {C:attention}Deck Creator{},",
+                "and the new {C:attention}Seed Library{}!",
+            },
+            sc_sub_quests={
+                "Here are your {C:attention}Quests{}!",
+                "{C:blue}Daily{}, {C:green}weekly{}, and",
+                "{C:attention}repeatable{} quests give you",
+                "{C:money}Balacoins{} and {C:attention}XP{}!",
+                "Track your streaks too!",
+            },
+            sc_sub_quests_daily={
+                "The {C:blue}Daily{} tab has quests",
+                "that reset every {C:attention}24 hours{}.",
+                "Complete them for quick",
+                "{C:money}Balacoin{} rewards!",
+            },
+            sc_sub_quests_weekly={
+                "The {C:green}Weekly{} tab has harder",
+                "quests that reset every {C:attention}7 days{}.",
+                "Bigger rewards for bigger",
+                "challenges!",
+            },
+            sc_sub_quests_repeatable={
+                "{C:attention}Repeatable{} quests never expire.",
+                "Complete them as many times",
+                "as you want for steady",
+                "{C:money}Balacoin{} income!",
+            },
+            sc_sub_profile={
+                "This is your {C:attention}Profile{}!",
+                "Customize your look with",
+                "{C:attention}6 tabs{} of options.",
+                "Let me show you each one!",
+            },
+            sc_sub_profile_colors={
+                "The {C:attention}Colors{} tab lets you",
+                "change your profile's color",
+                "palette. Unlock more from",
+                "the {C:money}Balacoin Shop{}!",
+            },
+            sc_sub_profile_icon={
+                "The {C:attention}Icon{} tab lets you",
+                "pick your profile picture.",
+                "Icons unlock as you play!",
+            },
+            sc_sub_profile_icon_effect={
+                "{C:attention}Icon Effects{} add flair",
+                "to your profile icon—",
+                "holographic, foil, and more!",
+            },
+            sc_sub_profile_decks={
+                "The {C:attention}Decks{} tab shows all",
+                "your deck backs. Includes",
+                "custom decks you've created!",
+            },
+            sc_sub_profile_badges={
+                "The {C:attention}Badges{} tab shows your",
+                "boss badges. Equip one to",
+                "{C:gold}disable{} that boss's effect!",
+            },
+            sc_sub_profile_jimbo_skin={
+                "The {E:1}Jimbo Skin{} tab lets you",
+                "change Jimbo's appearance!",
+                "Buy skins in the {C:money}Shop{}.",
+            },
+            sc_sub_shop={
+                "Welcome to the {C:money}Balacoin Shop{}!",
+                "Spend {C:money}Balacoins{} on cosmetics.",
+                "Let me show you each section!",
+            },
+            sc_sub_shop_jimbo_skins={
+                "The {E:1}Jimbo Skins{} tab has",
+                "unique skins for Jimbo.",
+                "Buy them with {C:money}Balacoins{}!",
+            },
+            sc_sub_shop_colors={
+                "The {C:attention}Colors{} tab sells",
+                "profile color palettes.",
+                "Each one changes your entire",
+                "profile look!",
+            },
+            sc_sub_shop_icon_effects={
+                "The {C:attention}Icon Effects{} tab has",
+                "special effects for your",
+                "profile icon. Make it shine!",
+            },
+            sc_sub_achievements={
+                "Browse your {C:attention}Achievements{}!",
+                "One tab for each part of the game,",
+                "the {C:attention}chip{} shows how rare it is.",
+                "Unlocks pop up while you play!",
+            },
+            sc_sub_progression={
+                "Your {C:green}Progression{} page!",
+                "See your current rank, XP bar,",
+                "and milestones. Keep playing",
+                "to climb the ranks!",
+            },
+            sc_sub_collection={
+                "The {C:green}Collection{} shows everything",
+                "you've discovered. Check the",
+                "{C:attention}Stakes{} tab for the 4 new",
+                "Creative Stakes!",
+            },
+            sc_sub_multiplayer={
+                "Welcome to {C:blue}Multiplayer{}!",
+                "Create a room or join one.",
+                "Play head-to-head against",
+                "another player online!",
+            },
+            -- FEATURE: Settings sub-showcase (per-setting walkthrough)
+            sc_sub_settings_welcome={
+                "Welcome to {C:attention}Settings{}!",
+                "Let me walk you through",
+                "all the new features here.",
+            },
+            sc_sub_settings_gamespeed={
+                "{C:attention}Game Speed{}: controls how",
+                "fast card animations play.",
+                "Higher = faster gameplay!",
+            },
+            sc_sub_settings_fps_cap={
+                "{C:attention}FPS Cap{}: limit your",
+                "frame rate to save battery",
+                "or uncap for max smoothness.",
+            },
+            sc_sub_settings_score_speed={
+                "{C:attention}Score Speed{}: how fast",
+                "the score counter ticks up.",
+                "Set to {C:red}Instant{} to skip it!",
+            },
+            sc_sub_settings_toggles={
+                "These {C:attention}toggles{} control features:",
+                "{C:attention}Cheats{}, {C:attention}Score Preview{},",
+                "{C:attention}Joker Info{}, {C:attention}Hand Optimizer{},",
+                "{C:attention}Drag Select{}, {C:attention}FPS Counter{},",
+                "{C:attention}Performance Mode{}, and more!",
+            },
+            -- FEATURE: Individual toggle/button showcase steps
+            sc_sub_tgl_modmenu={
+                "{C:attention}Disable Cheats{}: hides the",
+                "Cheats toggle and the",
+                "in-run Cheats button.",
+            },
+            sc_sub_tgl_online={
+                "{C:attention}Online Features{} toggle:",
+                "enables online connectivity",
+                "for multiplayer and more.",
+            },
+            sc_sub_tgl_score_preview={
+                "{C:attention}Score Preview{}: shows your",
+                "estimated score before you",
+                "play your hand. Very useful!",
+            },
+            sc_sub_tgl_joker_info={
+                "{C:attention}Joker Info{}: displays extra",
+                "details about each joker's",
+                "current scoring contribution.",
+            },
+            sc_sub_tgl_optimizer={
+                "{C:attention}Hand Optimizer{}: toggle the",
+                "hand analyzer that suggests",
+                "the best plays and discards.",
+            },
+            sc_sub_tgl_drag={
+                "{C:attention}Drag Select{}: select cards",
+                "by dragging across them",
+                "instead of tapping each one.",
+            },
+            sc_sub_tgl_fps={
+                "{C:attention}FPS Counter{}: shows your",
+                "frame rate in the corner.",
+                "Useful for debugging!",
+            },
+            sc_sub_tgl_perf_mode={
+                "{C:attention}Performance Mode{}: reduces",
+                "visual effects for better",
+                "performance on older devices.",
+            },
+            sc_sub_tgl_jimbo_comments={
+                "{C:attention}Jimbo Comments{}: Jimbo will",
+                "react to your plays and",
+                "events during a run!",
+            },
+            sc_sub_tgl_skip_score={
+                "{C:attention}Skip Score Animation{}: skips",
+                "the score ticking animation",
+                "for faster gameplay.",
+            },
+            sc_sub_btn_perf={
+                "{C:blue}Performance Settings{} button:",
+                "opens detailed performance",
+                "tuning options for your device.",
+            },
+            sc_sub_btn_optimizer={
+                "{C:blue}Optimizer Settings{} button:",
+                "configure the hand analyzer",
+                "and suggestion display.",
+            },
+            sc_sub_btn_profile={
+                "{C:blue}Profile{} button: view your",
+                "player profile, stats,",
+                "and progression!",
+            },
+            -- FEATURE: Performance Settings sub-showcase
+            sc_sub_perf_welcome={
+                "Welcome to {C:attention}Performance Settings{}!",
+                "Tune these options to get",
+                "the best FPS on your device.",
+            },
+            sc_sub_perf_resolution={
+                "{C:attention}Resolution Scale{}: lower it",
+                "to {C:green}75%{} or {C:green}50%{} for a big",
+                "FPS boost on weaker devices.",
+            },
+            sc_sub_perf_shader={
+                "{C:attention}Shader Quality{}: controls",
+                "visual effects like tilt, hover,",
+                "and cursor glow. {C:green}Off{} = fastest.",
+            },
+            sc_sub_perf_particles={
+                "{C:attention}Particle Effects{}: toggle",
+                "the floating particles. Disabling",
+                "them helps on low-end phones.",
+            },
+            sc_sub_perf_canvas={
+                "{C:attention}Canvas Caching{}: skips",
+                "full redraws on alternate frames.",
+                "Great FPS boost, minimal visual cost.",
+            },
+            sc_sub_perf_culling={
+                "{C:attention}Off-screen Culling{}: skips",
+                "drawing cards outside the screen.",
+                "Helps when you have many cards.",
+            },
+            sc_sub_perf_bg={
+                "{C:attention}Background Animations{}:",
+                "disable the animated background",
+                "for a nice FPS improvement.",
+            },
+            sc_sub_perf_gc={
+                "{C:attention}GC Tuning{}: adjusts Lua's",
+                "garbage collector for smoother",
+                "frame pacing. Try it!",
+            },
+            sc_sub_perf_filter={
+                "{C:attention}Texture Filter{}: choose",
+                "{C:blue}Bilinear{} (smooth) or {C:blue}Nearest{}",
+                "(pixelated). Nearest is faster.",
+            },
+            sc_sub_perf_heavy={
+                "{C:attention}Auto-Skip Heavy Scoring{}:",
+                "skips long score animations",
+                "when the total is very large.",
+            },
+            -- FEATURE: Optimizer Settings sub-showcase
+            sc_sub_opt_welcome={
+                "Welcome to {C:attention}Optimizer Settings{}!",
+                "Configure how the Hand Optimizer",
+                "analyzes your cards.",
+            },
+            sc_sub_opt_toggle={
+                "{C:attention}Hand Optimizer{} toggle:",
+                "turn the entire optimizer",
+                "on or off globally.",
+            },
+            sc_sub_opt_beginner={
+                "{C:attention}Beginner Mode{}: shows only",
+                "the {C:green}top-1{} play suggestion.",
+                "Great for learning the game!",
+            },
+            sc_sub_opt_auto_compact={
+                "{C:attention}Auto-open Compact{}: the",
+                "compact HUD strip appears",
+                "automatically during play phase.",
+            },
+            sc_sub_opt_discards={
+                "{C:attention}Show Discards{}: displays",
+                "recommended cards to discard",
+                "with exact card labels.",
+            },
+            sc_sub_opt_outs={
+                "{C:attention}Show Outs{}: displays the",
+                "probability of hitting a target",
+                "hand type after discarding.",
+            },
+            sc_sub_opt_joker_order={
+                "{C:attention}Joker Order Optimization{}:",
+                "analyzes joker permutations to",
+                "find the best scoring order.",
+            },
+            sc_sub_opt_mode={
+                "{C:attention}Mode{}: choose between",
+                "{C:blue}Score Max{}, {C:green}Survive Blind{},",
+                "or {C:attention}Conserve{} strategies.",
+            },
+            sc_sub_opt_perf={
+                "{C:attention}Performance{}: choose",
+                "{C:green}Fast{}, {C:blue}Balanced{}, or",
+                "{C:red}Deep Search{} analysis depth.",
+            },
+            sc_sub_opt_scale={
+                "{C:attention}Size sliders{}: adjust the",
+                "compact HUD and full panel",
+                "size to your preference.",
+            },
+            sc_sub_modmenu={
+                "The {C:red}Cheats{} window has {C:attention}7 tabs{}:",
+                "run, jokers, consumables, cards,",
+                "vouchers, hands and options.",
+                "Go wild! (No XP once you cheat.)",
+            },
+            sc_sub_custom_run={
+                "The {C:attention}Custom Run Builder{}!",
+                "Adjust hands, discards, joker",
+                "slots, starting money, and more",
+                "with sliders. Your rules!",
+            },
+            sc_sub_deck_creator={
+                "The {C:attention}Deck Creator{}!",
+                "Build a fully custom deck.",
+                "Set {C:green}starting items{}, {C:red}ban cards{}",
+                "& jokers, tweak {C:blue}rates{}",
+                "and {C:attention}gameplay rules{}!",
+            },
+            sc_sub_jukebox={
+                "The {E:1}Jukebox{}!",
+                "Pick your soundtrack.",
+                "Switch between {C:blue}OSTs{} and",
+                "{C:attention}remixes{} during your run!",
+            },
+            sc_sub_jukebox_own={
+                "The {E:1}Jukebox{}!",
+                "Pick your soundtrack:",
+                "add your own songs in",
+                "{C:attention}My Music{} and play them!",
+            },
+            -- FEATURE: Badge Immunity sub-showcase
+            sc_sub_badge_immunity={
+                "Equip a {C:attention}Boss Badge{}!",
+                "Your badge {C:gold}disables{} that",
+                "boss's effect entirely.",
+                "Check {C:attention}Profile > Badges{}!",
+            },
+            -- FEATURE: Seed Library sub-showcase
+            sc_sub_seed_library={
+                "Welcome to the {C:attention}Seed Library{}!",
+                "Save your favorite {C:gold}seeds{},",
+                "{C:green}copy{} or {C:green}paste{} from clipboard,",
+                "name them, and {C:blue}Quickplay{} anytime!",
+            },
+            -- FEATURE: First-launch language selector
+            sc_choose_language={
+                "Choose your language:",
+            },
+c 121
+end

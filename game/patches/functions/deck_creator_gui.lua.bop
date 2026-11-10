@@ -1,0 +1,678 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 489
+DeckCreatorGUI = DeckCreatorGUI or {}
+
+local D = DeckCreatorData
+
+local TABS = {
+    {key = "deck", label = "Deck"},
+    {key = "rules", label = "Rules"},
+    {key = "money", label = "Money"},
+    {key = "shop", label = "Shop"},
+    {key = "cards", label = "Cards"},
+    {key = "items", label = "Items"},
+    {key = "bans", label = "Bans"},
+    {key = "twists", label = "Twists"},
+}
+
+local PICKERS = {
+    {list = "customJokerList", pool = "Joker", label = "Starting Jokers", tab = "items"},
+    {list = "customTarotList", pool = "Tarot", label = "Starting Tarots", tab = "items"},
+    {list = "customPlanetList", pool = "Planet", label = "Starting Planets", tab = "items"},
+    {list = "customSpectralList", pool = "Spectral", label = "Starting Spectrals", tab = "items"},
+    {list = "customVoucherList", pool = "Voucher", label = "Starting vouchers", info = "Redeemed before the first blind", tab = "items"},
+    {list = "customTagList", pool = "Tag", label = "Starting tags", info = "Waiting for you at the first blind", tab = "items"},
+    {list = "bannedJokerList", pool = "Joker", label = "Banned Jokers", tab = "bans"},
+    {list = "bannedTarotList", pool = "Tarot", label = "Banned Tarots", tab = "bans"},
+    {list = "bannedPlanetList", pool = "Planet", label = "Banned Planets", tab = "bans"},
+    {list = "bannedSpectralList", pool = "Spectral", label = "Banned Spectrals", tab = "bans"},
+    {list = "bannedVoucherList", pool = "Voucher", label = "Banned vouchers", tab = "bans"},
+    {list = "bannedTagList", pool = "Tag", label = "Banned tags", tab = "bans"},
+    {list = "bannedBlindList", pool = "Blind", label = "Banned boss blinds", tab = "bans"},
+    {list = "bannedBoosterList", pool = "Booster", label = "Banned packs", tab = "bans"},
+}
+
+local function deck() return DeckCreatorGUI.editing_deck end
+
+local function inner_w() return UIK.col_w(2) - 4 * UIK.PAD end
+local function third_w() return UIK.col_w(3) - 4 * UIK.PAD end
+
+local function save_all()
+    pcall(DeckCreatorPersistence.saveAllDecks)
+    pcall(DeckCreatorPersistence.refreshDeckList)
+end
+
+local function list_ids(list)
+    local out = {}
+    for _, it in ipairs(list or {}) do
+        local id = type(it) == "table" and (it.id or it.key) or it
+        if type(id) == "string" then out[#out + 1] = id end
+    end
+    return out
+end
+
+local function has_id(list, id)
+    for i, it in ipairs(list or {}) do
+        local v = type(it) == "table" and (it.id or it.key) or it
+        if v == id then return i end
+    end
+end
+
+local function toggle_id(cfg, list_key, id)
+    cfg[list_key] = cfg[list_key] or {}
+    local i = has_id(cfg[list_key], id)
+    if i then table.remove(cfg[list_key], i) else table.insert(cfg[list_key], {id = id}) end
+    return not i
+end
+
+local function back_keys()
+    local out = {}
+    for _, k in ipairs(D.BACKS) do
+        if G.P_CENTERS[k] then out[#out + 1] = k end
+    end
+    return out
+end
+
+local function back_name(key)
+    local ok, n = pcall(localize, {type = 'name_text', set = 'Back', key = key})
+    if ok and type(n) == "string" and n ~= "ERROR" then return n end
+    return G.P_CENTERS[key] and G.P_CENTERS[key].name or key
+end
+
+local function back_sprite(key, w)
+    local c = G.P_CENTERS[key] or G.P_CENTERS.b_red
+    w = w or 1.4
+    local spr = Sprite(0, 0, w, w * 95 / 71, G.ASSET_ATLAS[c.atlas or "centers"], c.pos)
+    spr.states.drag.can = false
+    return {n = G.UIT.O, config = {object = spr}}
+end
+
+local function item_name(pool, id)
+    if pool == "Tag" then
+        local ok, n = pcall(localize, {type = 'name_text', set = 'Tag', key = id})
+        if ok and type(n) == "string" and n ~= "ERROR" then return n end
+        return G.P_TAGS[id] and G.P_TAGS[id].name or id
+    elseif pool == "Blind" then
+        local ok, n = pcall(localize, {type = 'name_text', set = 'Blind', key = id})
+        if ok and type(n) == "string" and n ~= "ERROR" then return n end
+        return G.P_BLINDS[id] and G.P_BLINDS[id].name or id
+    end
+    local c = G.P_CENTERS[id]
+    if not c then return id end
+    local ok, n = pcall(localize, {type = 'name_text', set = c.set, key = id})
+    if ok and type(n) == "string" and n ~= "ERROR" then return n end
+    return c.name or id
+end
+
+function DeckCreatorGUI.summary_lines(cfg)
+    local lines = {}
+    for _, o in ipairs(D.changed_options(cfg)) do
+        lines[#lines + 1] = mod_loc(o.label) .. ": " .. D.format(o, cfg[o.key])
+    end
+    for _, p in ipairs(PICKERS) do
+        local n = #(cfg[p.list] or {})
+        if n > 0 then lines[#lines + 1] = mod_loc(p.label) .. ": " .. n end
+    end
+    return lines
+end
+
+function DeckCreatorGUI.composition_line(cfg)
+    if cfg.custom_cards_set then
+        return mod_loc("Hand-made card list") .. ": " .. #(cfg.customCardList or {})
+    end
+    local c = D.composition(cfg)
+    if c.total == 0 then return mod_loc("No cards: the standard 52 are used") end
+    local per = c.total / math.max(1, #c.suits)
+    return c.total .. " " .. mod_loc("cards") .. ", " .. per .. " " .. mod_loc("per suit") .. ", " .. c.faces .. " " .. mod_loc("faces")
+end
+
+local function changed()
+    DeckCreatorGUI.dirty = true
+end
+
+local function option_row(o, cfg, refresh)
+    local cb = function()
+        changed()
+        if refresh then UIK.refresh() end
+    end
+    if o.header then return UIK.header(mod_loc(o.header)) end
+    local info = o.info and mod_loc(o.info) or nil
+    if type(o.default) == "boolean" then
+        return UIK.toggle{label = mod_loc(o.label), info = info, ref_table = cfg, ref_value = o.key, callback = cb}
+    end
+    if o.options then
+        local opts = {}
+        for i, name in ipairs(D.options_of(o)) do opts[i] = mod_loc(name) end
+        return UIK.cycle{label = mod_loc(o.label), info = info, options = opts, current = cfg[o.key] or o.default,
+            callback = function(i) cfg[o.key] = i; cb() end}
+    end
+    return UIK.stepper{label = mod_loc(o.label), info = info, ref_table = cfg, ref_value = o.key,
+        min = o.min, max = o.max, step = o.step or 1, big_step = o.big,
+        format = function(v) return D.format(o, v) end, callback = cb}
+end
+
+local function schema_rows(tab, cfg, refresh)
+    local rows = {}
+    for _, o in ipairs(D.SCHEMA) do
+        if o.tab == tab then rows[#rows + 1] = option_row(o, cfg, refresh) end
+    end
+    return rows
+end
+
+local function picker_rows(tab, cfg)
+    local rows = {}
+    for i, p in ipairs(PICKERS) do
+        if p.tab == tab then
+            local n = #(cfg[p.list] or {})
+            local names = {}
+            for _, id in ipairs(list_ids(cfg[p.list])) do
+                if #names < 3 then names[#names + 1] = item_name(p.pool, id) end
+            end
+            local info = n == 0 and mod_loc("None") or table.concat(names, ", ") .. (n > 3 and (" +" .. (n - 3)) or "")
+            rows[#rows + 1] = UIK.action{label = mod_loc(p.label) .. " (" .. n .. ")", info = info,
+                button_label = mod_loc("Choose"), button = 'dc_open_picker', ref_table = {picker = i},
+                colour = p.tab == "bans" and UIK.C.danger or UIK.C.accent}
+        end
+    end
+    return rows
+end
+
+local function build_deck_tab()
+    local d = deck()
+    local cfg = d.config
+    local keys = back_keys()
+    local cur = 1
+    for i, k in ipairs(keys) do if k == cfg.deck_back then cur = i end end
+    local names = {}
+    for i, k in ipairs(keys) do names[i] = back_name(k) end
+    local tw = third_w()
+    local left = {
+        UIK.header(mod_loc("Identity"), {w = tw}),
+        UIK.action{w = tw, label = mod_loc("Name"), info = d.name, button_label = mod_loc("Rename"), button = 'dc_rename_deck', colour = UIK.C.accent},
+        UIK.cycle{w = tw, label = mod_loc("Card back"), info = mod_loc("Only the look, not the effect"), options = names, current = cur,
+            callback = function(i) cfg.deck_back = keys[i]; changed(); UIK.refresh() end},
+    }
+    local middle = {
+        UIK.header(mod_loc("Share"), {w = tw}),
+        UIK.action{w = tw, label = mod_loc("Share code"), info = mod_loc("Copies this deck as text"), button_label = mod_loc("Copy"), button = 'dc_export_deck', colour = UIK.C.money},
+        UIK.action{w = tw, label = mod_loc("Reset deck"), info = mod_loc("Every option back to normal"), button_label = mod_loc("Reset"), button = 'dc_reset_deck', colour = UIK.C.danger},
+    }
+    local lines = DeckCreatorGUI.summary_lines(cfg)
+    local shown = {}
+    local max_lines = UIK.touch() and 5 or 8
+    for i = 1, math.min(#lines, max_lines) do shown[#shown + 1] = lines[i] end
+    if #lines > max_lines then shown[#shown + 1] = "+" .. (#lines - max_lines) .. " " .. mod_loc("more") end
+    if #shown == 0 then shown[1] = mod_loc("Standard rules") end
+    local right = {
+        {n = G.UIT.R, config = {align = "cm", minw = tw, padding = 0.1}, nodes = {back_sprite(cfg.deck_back, UIK.touch() and 1.1 or 1.3)}},
+        UIK.section(mod_loc("This deck changes"), {
+            UIK.note(DeckCreatorGUI.composition_line(cfg), {w = tw - 2 * UIK.PAD, colour = G.C.WHITE}),
+            UIK.note(shown, {w = tw - 2 * UIK.PAD}),
+        }, {w = tw}),
+    }
+    return UIK.columns({left, middle, right}, {cards = true, h = UIK.H - 2 * UIK.PAD, w = UIK.col_w(3) - 2 * UIK.PAD})
+end
+
+local function build_tab(key)
+    local d = deck()
+    if not d then return UIK.note(mod_loc("No deck")) end
+    local cfg = d.config
+    if key == "deck" then return build_deck_tab() end
+    local items = {}
+    if key == "cards" then
+        items[#items + 1] = UIK.value{label = mod_loc("Deck size"), info = DeckCreatorGUI.composition_line(cfg), value = cfg.custom_cards_set and #(cfg.customCardList or {}) or D.composition(cfg).total}
+        if cfg.custom_cards_set then
+            items[#items + 1] = UIK.action{label = mod_loc("Hand-made card list"), info = mod_loc("From an older version, overrides suits and ranks"),
+                button_label = mod_loc("Remove"), button = 'dc_drop_card_list', colour = UIK.C.danger}
+        end
+    end
+    if key == "items" or key == "bans" then
+        for _, r in ipairs(picker_rows(key, cfg)) do items[#items + 1] = r end
+    end
+    for _, r in ipairs(schema_rows(key, cfg, key == "cards")) do items[#items + 1] = r end
+    return UIK.flow{id = "dc_" .. key, items = items}
+end
+
+function DeckCreatorGUI.openEditor(tab)
+    if not deck() then return end
+    local tabs = {}
+    for _, t in ipairs(TABS) do
+        local k = t.key
+        tabs[#tabs + 1] = {key = k, label = mod_loc(t.label), build = function() return build_tab(k) end}
+    end
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = 'dc_editor',
+        title = deck().name,
+        tabs = tabs,
+        tab = tab,
+        back_func = 'dc_back_from_editor',
+        footer = {
+            UIK.button{label = mod_loc("PLAY"), button = 'dc_play_deck', colour = UIK.C.ok},
+        },
+    }}
+end
+
+local function list_row(i, d)
+    local lines = DeckCreatorGUI.summary_lines(d.config)
+    local info = lines[1] and (lines[1] .. (lines[2] and (", " .. lines[2]) or "")) or mod_loc("Standard rules")
+    if #info > 44 then info = info:sub(1, 42) .. ".." end
+    return UIK.action{w = inner_w(), label = d.name or ("Deck " .. i), info = info, button_label = mod_loc("Open"),
+        button = 'dc_select_deck', ref_table = {index = i},
+        colour = DeckCreatorGUI.selected == i and UIK.C.ok or UIK.C.accent}
+end
+
+local function build_list()
+    local decks = DeckCreatorUtils.customDeckList or {}
+    if #decks == 0 then
+        return UIK.columns({{
+            UIK.spacer(1.5),
+            {n = G.UIT.R, config = {align = "cm", minw = UIK.W}, nodes = {UIK.text(mod_loc("No custom decks yet"), {scale = 0.5, colour = UIK.C.title, shadow = true})}},
+            UIK.note(mod_loc("Make one with New deck, or paste a share code with Import"), {w = UIK.W - 1}),
+        }}, {w = UIK.W})
+    end
+    local sel = DeckCreatorGUI.selected
+    if not sel or not decks[sel] then sel = 1; DeckCreatorGUI.selected = 1 end
+    local per = UIK.touch() and 3 or 4
+    local pages = math.max(1, math.ceil(#decks / per))
+    DeckCreatorGUI.list_page = math.max(1, math.min(DeckCreatorGUI.list_page or math.ceil(sel / per), pages))
+    local lp = DeckCreatorGUI.list_page
+    local rows = {}
+    for i = (lp - 1) * per + 1, math.min(#decks, lp * per) do rows[#rows + 1] = list_row(i, decks[i]) end
+    if pages > 1 then
+        rows[#rows + 1] = UIK.pager{prev = 'dc_list_prev', next = 'dc_list_next', prev_disabled = lp <= 1, next_disabled = lp >= pages, text = lp .. " / " .. pages, text_w = 1.8, w = inner_w()}
+    end
+    local d = decks[sel]
+    local lines = DeckCreatorGUI.summary_lines(d.config)
+    local shown = {}
+    local max_lines = UIK.touch() and 3 or 5
+    for i = 1, math.min(#lines, max_lines) do shown[#shown + 1] = lines[i] end
+    if #lines > max_lines then shown[#shown + 1] = "+" .. (#lines - max_lines) .. " " .. mod_loc("more") end
+    if #shown == 0 then shown[1] = mod_loc("Standard rules") end
+    local iw = inner_w()
+    local right = {
+        {n = G.UIT.R, config = {align = "cm", minw = iw, padding = 0.05}, nodes = {back_sprite(d.config.deck_back, UIK.touch() and 0.9 or 1.1)}},
+        {n = G.UIT.R, config = {align = "cm", minw = iw}, nodes = {{n = G.UIT.C, config = {align = "cm", maxw = iw - 0.2}, nodes = {UIK.text(d.name or "", {scale = 0.45, colour = UIK.C.title, shadow = true})}}}},
+        UIK.note(DeckCreatorGUI.composition_line(d.config), {w = iw}),
+        UIK.section(mod_loc("Changes"), {UIK.note(shown, {w = iw - 2 * UIK.PAD})}, {w = iw}),
+        UIK.grid({
+            UIK.button{label = mod_loc("Edit"), button = 'dc_edit_selected', colour = UIK.C.accent},
+            UIK.button{label = mod_loc("Duplicate"), button = 'dc_duplicate_selected', colour = UIK.C.add},
+            UIK.button{label = mod_loc("Share code"), button = 'dc_export_selected', colour = UIK.C.money},
+            UIK.button{label = mod_loc("Delete"), button = 'dc_delete_selected', colour = UIK.C.danger},
+        }, 2, {w = iw, padding = 0.06}),
+    }
+    return UIK.columns({rows, right}, {cards = true, h = UIK.H - 2 * UIK.PAD, w = UIK.col_w(2) - 2 * UIK.PAD})
+end
+
+function DeckCreatorGUI.openDeckList()
+    if not G then return end
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = 'dc_list',
+        title = mod_loc("DECK CREATOR"),
+        tabs = {{key = 'decks', label = mod_loc("Decks"), build = build_list}},
+        back_func = 'dc_back_from_list',
+        footer = {
+            UIK.button{label = mod_loc("New deck"), button = 'dc_new_deck', colour = UIK.C.ok},
+            UIK.button{label = mod_loc("Import"), button = 'dc_import_deck', colour = UIK.C.money},
+        },
+    }}
+    pcall(function()
+        if G.FUNCS.trigger_sub_showcase_deck_creator then G.FUNCS.trigger_sub_showcase_deck_creator() end
+    end)
+end
+
+local function notify(text, colour)
+    DeckCreatorGUI.toast = text
+    pcall(function()
+        attention_text({text = text, scale = 0.5, hold = 1.6, major = G.ROOM_ATTACH, align = 'cm', offset = {x = 0, y = -3.5},
+            colour = colour or G.C.GREEN, backdrop_colour = G.C.BLACK})
+    end)
+    if HLOG then HLOG("dc toast " .. text) end
+end
+
+local function deep_copy(o)
+    if type(o) ~= "table" then return o end
+    local c = {}
+    for k, v in pairs(o) do c[k] = deep_copy(v) end
+    return c
+end
+
+function DeckCreatorGUI.new_deck(name)
+    local d = DeckCreatorData.CustomDeck:blankDeck()
+    d.name = name or (mod_loc("Custom Deck") .. " " .. (#DeckCreatorUtils.customDeckList + 1))
+    d.loc_txt = {name = d.name, text = {}}
+    DeckCreatorUtils.addDeckToList(d)
+    DeckCreatorGUI.selected = #DeckCreatorUtils.customDeckList
+    save_all()
+    return d
+end
+
+G.FUNCS.dc_list_prev = function() DeckCreatorGUI.list_page = (DeckCreatorGUI.list_page or 1) - 1; UIK.refresh() end
+G.FUNCS.dc_list_next = function() DeckCreatorGUI.list_page = (DeckCreatorGUI.list_page or 1) + 1; UIK.refresh() end
+
+G.FUNCS.dc_back_from_list = function() G.FUNCS.exit_overlay_menu() end
+
+G.FUNCS.dc_back_from_editor = function()
+    save_all()
+    DeckCreatorGUI.dirty = false
+    DeckCreatorGUI.editing_deck = nil
+    DeckCreatorGUI.openDeckList()
+end
+
+G.FUNCS.dc_new_deck = function()
+    DeckCreatorGUI.editing_deck = DeckCreatorGUI.new_deck()
+    DeckCreatorGUI.openEditor('deck')
+end
+
+G.FUNCS.dc_select_deck = function(e)
+    local i = e and e.config and e.config.ref_table and e.config.ref_table.index
+    if not i then return end
+    if DeckCreatorGUI.selected == i and DeckCreatorUtils.customDeckList[i] then
+        DeckCreatorGUI.editing_deck = DeckCreatorUtils.customDeckList[i]
+        return DeckCreatorGUI.openEditor()
+    end
+    DeckCreatorGUI.selected = i
+    UIK.refresh()
+end
+
+G.FUNCS.dc_edit_selected = function()
+    local d = DeckCreatorUtils.customDeckList[DeckCreatorGUI.selected or 0]
+    if not d then return end
+    DeckCreatorGUI.editing_deck = d
+    DeckCreatorGUI.openEditor()
+end
+
+G.FUNCS.dc_duplicate_selected = function()
+    local src = DeckCreatorUtils.customDeckList[DeckCreatorGUI.selected or 0]
+    if not src then return end
+    local d = DeckCreatorData.CustomDeck:blankDeck()
+    local uuid = d.config.uuid
+    d.config = deep_copy(src.config)
+    d.config.uuid = uuid
+    d.name = (src.name or "") .. " 2"
+    d.loc_txt = {name = d.name, text = {}}
+    DeckCreatorUtils.addDeckToList(d)
+    DeckCreatorGUI.selected = #DeckCreatorUtils.customDeckList
+    save_all()
+    UIK.refresh()
+end
+
+G.FUNCS.dc_delete_selected = function()
+    local i = DeckCreatorGUI.selected
+    local d = DeckCreatorUtils.customDeckList[i or 0]
+    if not d then return end
+    DeckCreatorGUI.confirm{
+        title = mod_loc("Delete this deck?"),
+        text = d.name or "",
+        yes = mod_loc("Delete"),
+        on_yes = function()
+            if d.slug then
+                DeckCreatorUtils.deletedSlugs[d.slug] = true
+                if G.P_CENTERS[d.slug] then G.P_CENTERS[d.slug] = nil end
+            end
+            table.remove(DeckCreatorUtils.customDeckList, i)
+            DeckCreatorGUI.selected = math.max(1, i - 1)
+            save_all()
+            DeckCreatorGUI.openDeckList()
+        end,
+        on_no = function() DeckCreatorGUI.openDeckList() end,
+    }
+end
+
+local function export(d)
+    local code = DeckCreatorPersistence.exportCode(d)
+    if not code then return notify(mod_loc("Could not make a code"), G.C.RED) end
+    DeckCreatorGUI.last_code = code
+    pcall(function() love.system.setClipboardText(code) end)
+    notify(mod_loc("Share code copied"))
+end
+
+G.FUNCS.dc_export_selected = function()
+    local d = DeckCreatorUtils.customDeckList[DeckCreatorGUI.selected or 0]
+    if d then export(d) end
+end
+
+G.FUNCS.dc_export_deck = function()
+    if deck() then export(deck()) end
+end
+
+function DeckCreatorGUI.import_code(code)
+    local d = DeckCreatorPersistence.importCode(code)
+    if not d then
+        notify(mod_loc("No deck code in the clipboard"), G.C.RED)
+        return nil
+    end
+    DeckCreatorUtils.addDeckToList(d)
+    DeckCreatorGUI.selected = #DeckCreatorUtils.customDeckList
+    save_all()
+    notify(mod_loc("Deck imported"))
+    return d
+end
+
+G.FUNCS.dc_import_deck = function()
+    local ok, code = pcall(love.system.getClipboardText)
+    DeckCreatorGUI.import_code(ok and code or "")
+    DeckCreatorGUI.openDeckList()
+end
+
+G.FUNCS.dc_reset_deck = function()
+    local d = deck()
+    if not d then return end
+    DeckCreatorGUI.confirm{
+        title = mod_loc("Reset every option?"),
+        text = d.name or "",
+        yes = mod_loc("Reset"),
+        on_yes = function()
+            local uuid = d.config.uuid
+            d.config = D.defaults()
+            d.config.uuid = uuid
+            save_all()
+            DeckCreatorGUI.openEditor('deck')
+        end,
+        on_no = function() DeckCreatorGUI.openEditor('deck') end,
+    }
+end
+
+G.FUNCS.dc_drop_card_list = function()
+    local d = deck()
+    if not d then return end
+    d.config.custom_cards_set = nil
+    d.config.customCardList = nil
+    changed()
+    UIK.refresh()
+end
+
+function DeckCreatorGUI.play(d)
+    d = d or deck()
+    if not d then return end
+    save_all()
+    local center = G.P_CENTERS[d.slug]
+    if not center then return end
+    G.GAME.viewed_back = Back(center)
+r 4 1375 %20%20%20%20 -
+l 181
+    G.FUNCS.start_run(nil, {stake = 1})
+end
+
+G.FUNCS.dc_play_deck = function() DeckCreatorGUI.play() end
+
+function DeckCreatorGUI.confirm(args)
+    G.FUNCS.dc_confirm_yes = function() args.on_yes() end
+    G.FUNCS.dc_confirm_no = function() args.on_no() end
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = 'dc_confirm',
+        title = args.title,
+        tabs = {{key = 'c', label = args.title, build = function()
+            return UIK.columns({{
+                UIK.spacer(2),
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.text(args.text, {scale = 0.55, colour = G.C.WHITE})}},
+                UIK.spacer(0.4),
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.button{label = args.yes, button = 'dc_confirm_yes', colour = UIK.C.danger, w = 3}}},
+            }}, {w = UIK.W})
+        end}},
+        back_func = 'dc_confirm_no',
+    }}
+end
+
+G.FUNCS.dc_rename_deck = function()
+    local d = deck()
+    if not d then return end
+    local ref = {name = d.name or ""}
+    G.FUNCS.dc_rename_ok = function()
+        local n = (ref.name or ""):match("^%s*(.-)%s*$")
+        if n ~= "" then
+            d.name = n
+            d.loc_txt = {name = n, text = {}}
+            save_all()
+        end
+        DeckCreatorGUI.openEditor('deck')
+    end
+    G.FUNCS.dc_rename_cancel = function() DeckCreatorGUI.openEditor('deck') end
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = 'dc_rename',
+        title = mod_loc("Rename deck"),
+        tabs = {{key = 'r', label = mod_loc("Name"), build = function()
+            return UIK.columns({{
+                UIK.spacer(1.6),
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                    create_text_input({w = 6, max_length = 24, prompt_text = mod_loc("Type a name"), ref_table = ref, ref_value = 'name',
+                        extended_corpus = true, keyboard_offset = 3, callback = G.FUNCS.dc_rename_ok}),
+                }},
+                UIK.spacer(0.3),
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.note(mod_loc("Tap the field to type, Enter to confirm"))}},
+            }}, {w = UIK.W})
+        end}},
+        back_func = 'dc_rename_cancel',
+        footer = {UIK.button{label = mod_loc("Confirm"), button = 'dc_rename_ok', colour = UIK.C.ok}},
+    }}
+end
+
+local function picker_pool(p)
+    local out = {}
+    if p.pool == "Tag" then
+        for _, t in ipairs(DeckCreatorUtils.tagKeys()) do out[#out + 1] = t.id end
+    elseif p.pool == "Blind" then
+        for k, v in pairs(G.P_BLINDS) do if v.boss then out[#out + 1] = k end end
+        table.sort(out, function(a, b) return item_name("Blind", a) < item_name("Blind", b) end)
+    elseif p.pool == "Booster" then
+        for _, t in ipairs(DeckCreatorUtils.boosterKeys()) do out[#out + 1] = t.id end
+    else
+        for _, c in ipairs(G.P_CENTER_POOLS[p.pool] or {}) do out[#out + 1] = c.key end
+    end
+    return out
+end
+
+local function card_picker(p, cfg)
+    local pool = picker_pool(p)
+    local cols = UIK.touch() and 5 or 6
+    local rows_n = 2
+    local per = cols * rows_n
+    local pages = math.max(1, math.ceil(#pool / per))
+    DeckCreatorGUI.picker_page = math.max(1, math.min(DeckCreatorGUI.picker_page or 1, pages))
+    local page = DeckCreatorGUI.picker_page
+    local scale = UIK.touch() and 0.8 or 0.85
+    local nodes = {}
+    G.dc_picker_areas = {}
+    for j = 1, rows_n do
+        local area = CardArea(0, 0, (cols + 0.25) * G.CARD_W * scale, G.CARD_H * scale,
+            {card_limit = cols, type = 'title', highlight_limit = 0, collection = true})
+        G.dc_picker_areas[j] = area
+        for i = 1, cols do
+            local key = pool[(page - 1) * per + (j - 1) * cols + i]
+            local center = key and G.P_CENTERS[key]
+            if center then
+                local card = Card(area.T.x, area.T.y, G.CARD_W * scale, G.CARD_H * scale, nil, center, {bypass_discovery_center = true, bypass_discovery_ui = true})
+                card.states.click.can = true
+                card.highlighted = has_id(cfg[p.list], key) ~= nil
+                local function flip()
+                    card.highlighted = toggle_id(cfg, p.list, key)
+                    card:juice_up(0.3, 0.3)
+                    play_sound('cardSlide1')
+                    changed()
+                end
+                card.click = flip
+                card.single_tap = flip
+                area:emplace(card)
+            end
+        end
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {{n = G.UIT.O, config = {object = area}}}}
+    end
+    nodes[#nodes + 1] = UIK.pager{prev = 'dc_picker_prev', next = 'dc_picker_next', prev_disabled = page <= 1, next_disabled = page >= pages, text = page .. " / " .. pages, w = UIK.W}
+    return {n = G.UIT.C, config = {align = "cm", minw = UIK.W}, nodes = {
+        UIK.note(mod_loc("Tap a card to add or remove it") .. "  (" .. #(cfg[p.list] or {}) .. ")", {w = UIK.W}),
+        UIK.spacer(0.25),
+        unpack(nodes),
+    }}
+end
+
+local function list_picker(p, cfg)
+    local items = {}
+    for _, key in ipairs(picker_pool(p)) do
+        local ref = {on = has_id(cfg[p.list], key) ~= nil}
+        items[#items + 1] = UIK.toggle{label = item_name(p.pool, key), ref_table = ref, ref_value = 'on',
+            callback = function(v)
+                local now = has_id(cfg[p.list], key) ~= nil
+                if now ~= v then toggle_id(cfg, p.list, key) end
+                changed()
+            end}
+    end
+    return UIK.flow{id = 'dc_pick_' .. p.list, items = items}
+end
+
+function DeckCreatorGUI.openPicker(i)
+    local p = PICKERS[i]
+    local d = deck()
+    if not p or not d then return end
+    DeckCreatorGUI.picker = i
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = 'dc_picker',
+        title = mod_loc(p.label),
+        tabs = {{key = 'p', label = mod_loc(p.label), build = function()
+            if p.pool == "Tag" or p.pool == "Blind" or p.pool == "Booster" then return list_picker(p, d.config) end
+            return card_picker(p, d.config)
+        end}},
+        back_func = 'dc_picker_back',
+        footer = {UIK.button{label = mod_loc("Clear"), button = 'dc_picker_clear', colour = UIK.C.danger}},
+    }}
+end
+
+G.FUNCS.dc_open_picker = function(e)
+    local i = e and e.config and e.config.ref_table and e.config.ref_table.picker
+    if not i then return end
+    DeckCreatorGUI.picker_page = 1
+    DeckCreatorGUI.openPicker(i)
+end
+
+G.FUNCS.dc_picker_prev = function()
+    DeckCreatorGUI.picker_page = (DeckCreatorGUI.picker_page or 1) - 1
+    UIK.refresh()
+end
+
+G.FUNCS.dc_picker_next = function()
+    DeckCreatorGUI.picker_page = (DeckCreatorGUI.picker_page or 1) + 1
+    UIK.refresh()
+end
+
+G.FUNCS.dc_picker_clear = function()
+    local p = PICKERS[DeckCreatorGUI.picker or 0]
+    if p and deck() then
+        deck().config[p.list] = {}
+        changed()
+        UIK.refresh()
+    end
+end
+
+G.FUNCS.dc_picker_back = function()
+    local p = PICKERS[DeckCreatorGUI.picker or 0]
+    save_all()
+    DeckCreatorGUI.openEditor(p and p.tab or nil)
+end
+
+G.FUNCS.dc_open_deck_creator = function() DeckCreatorGUI.openDeckList() end
+
+DeckCreatorGUI.TABS = TABS
+DeckCreatorGUI.PICKERS = PICKERS
+end

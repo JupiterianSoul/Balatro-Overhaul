@@ -1,0 +1,678 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 364
+BO_DAILY = BO_DAILY or {}
+local DY = BO_DAILY
+
+local VANILLA_DECKS = {
+  "b_red", "b_blue", "b_yellow", "b_green", "b_black", "b_magic", "b_nebula", "b_ghost",
+  "b_abandoned", "b_checkered", "b_zodiac", "b_painted", "b_anaglyph", "b_plasma", "b_erratic",
+}
+
+local BANNED_VOUCHERS = {v_hieroglyph = true, v_petroglyph = true}
+
+local function clamp(v, lo, hi)
+  if v < lo then return lo end
+  if hi and v > hi then return hi end
+  return v
+end
+
+local function make_rng(seed)
+  local s = math.floor(seed) % 2147483647
+  if s <= 0 then s = s + 2147483646 end
+  for _ = 1, 8 do s = (s * 48271) % 2147483647 end
+  return function(a, b)
+    s = (s * 16807) % 2147483647
+    local r = (s - 1) / 2147483646
+    if a then return a + math.floor(r * (b - a + 1)) end
+    return r
+  end
+end
+
+local function hash_string(str)
+  local h = 2166136261
+  for i = 1, #str do
+    h = bit.bxor(h, string.byte(str, i))
+    h = bit.tobit(h * 16777619 % 4294967296)
+  end
+  h = bit.bxor(h, bit.rshift(h, 16))
+  h = bit.tobit((h % 4294967296) * 73244475 % 4294967296)
+  h = bit.bxor(h, bit.rshift(h, 16))
+  return (h % 2147483646) + 1
+end
+
+function DY.today()
+  local ok, d = pcall(os.date, "!%Y-%m-%d")
+  if ok and type(d) == "string" then return d end
+  return "2026-01-01"
+end
+
+local function date_to_time(date)
+  local y, m, d = tostring(date):match("^(%d+)-(%d+)-(%d+)$")
+  if not y then return nil end
+  return os.time({year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12})
+end
+
+local function shift_date(date, days)
+  local t = date_to_time(date)
+  if not t then return date end
+  return os.date("%Y-%m-%d", t + days * 86400)
+end
+DY.shift_date = shift_date
+
+function DY.countdown()
+  local ok, now = pcall(os.date, "!*t")
+  if not ok or type(now) ~= "table" then return "--:--:--" end
+  local secs = (23 - now.hour) * 3600 + (59 - now.min) * 60 + (60 - now.sec)
+  return string.format("%02d:%02d:%02d", math.floor(secs / 3600), math.floor((secs % 3600) / 60), secs % 60)
+end
+
+local function deck_cfg(key)
+  local c = G.P_CENTERS and G.P_CENTERS[key]
+  return (c and type(c.config) == "table") and c.config or {}
+end
+
+local function base_params(deck_key)
+  local sp = get_starting_params()
+  local c = deck_cfg(deck_key)
+  sp.hands = sp.hands + (tonumber(c.hands) or 0)
+  sp.discards = sp.discards + (tonumber(c.discards) or 0)
+  sp.hand_size = sp.hand_size + (tonumber(c.hand_size) or 0)
+  sp.joker_slots = sp.joker_slots + (tonumber(c.joker_slot) or 0)
+  sp.dollars = sp.dollars + (tonumber(c.dollars) or 0)
+  sp.ante_scaling = tonumber(c.ante_scaling) or sp.ante_scaling
+  sp.no_interest = c.no_interest and true or false
+  return sp
+end
+
+DY.TWISTS = {
+  {id = "no_interest", group = "money", name = "No Interest", desc = "Earn no interest at end of round",
+    ok = function(sp) return not sp.no_interest end,
+    apply = function(g) g.modifiers.no_interest = true end},
+  {id = "broke", group = "money", name = "Broke", desc = "Start with $0",
+    ok = function(sp) return sp.dollars > 0 end,
+    apply = function(g) g.starting_params.dollars = 0 end},
+  {id = "no_hand_money", group = "money2", name = "Tight Budget", desc = "Unused hands give no money",
+    apply = function(g) g.modifiers.no_extra_hand_money = true end},
+  {id = "inflation", group = "shop", name = "Inflation", desc = "Shop prices rise by $1 after every purchase",
+    apply = function(g) g.modifiers.inflation = true end},
+  {id = "pricey_rerolls", group = "shop", name = "Pricey Rerolls", desc = "Rerolls start $3 higher",
+    apply = function(g) g.starting_params.reroll_cost = g.starting_params.reroll_cost + 3 end},
+  {id = "tight_hands", group = "hands", name = "Short Rounds", desc = "-1 hand every round",
+    ok = function(sp) return sp.hands >= 4 end,
+    apply = function(g) g.starting_params.hands = clamp(g.starting_params.hands - 1, 1) end},
+  {id = "few_discards", group = "discards", name = "Few Discards", desc = "-1 discard every round",
+    ok = function(sp) return sp.discards >= 3 end,
+    apply = function(g) g.starting_params.discards = clamp(g.starting_params.discards - 1, 0) end},
+  {id = "discard_tax", group = "discards", name = "Discard Tax", desc = "Each discard costs $1",
+    ok = function(sp) return sp.discards >= 1 end,
+    apply = function(g) g.modifiers.discard_cost = 1 end},
+  {id = "small_hand", group = "hand_size", name = "Small Hand", desc = "-1 hand size",
+    ok = function(sp) return sp.hand_size >= 8 end,
+    apply = function(g) g.starting_params.hand_size = clamp(g.starting_params.hand_size - 1, 5) end},
+  {id = "crowded", group = "jokers", name = "Crowded", desc = "-1 Joker slot",
+    ok = function(sp) return sp.joker_slots >= 5 end,
+    apply = function(g) g.starting_params.joker_slots = clamp(g.starting_params.joker_slots - 1, 1) end},
+  {id = "face_down", group = "draw", name = "Face Down", desc = "1 in 4 cards are drawn face down",
+    apply = function(g) g.modifiers.flipped_cards = 4 end},
+  {id = "tough_blinds", group = "blinds", name = "Tough Blinds", desc = "Blinds need 20% more chips",
+    ok = function(sp) return sp.ante_scaling <= 1 end,
+    apply = function(g) g.starting_params.ante_scaling = (g.starting_params.ante_scaling or 1) * 1.2 end},
+  {id = "eternal_shop", group = "jokers2", name = "Commitment", desc = "Shop Jokers are Eternal",
+    apply = function(g) g.modifiers.all_eternal = true end},
+}
+
+DY.BOONS = {
+  {id = "rich", group = "money", name = "Nest Egg", desc = "+$6 at the start",
+    apply = function(g) g.starting_params.dollars = g.starting_params.dollars + 6 end},
+  {id = "extra_hand", group = "hands", name = "Extra Hand", desc = "+1 hand every round",
+    apply = function(g) g.starting_params.hands = g.starting_params.hands + 1 end},
+  {id = "extra_discard", group = "discards", name = "Extra Discard", desc = "+1 discard every round",
+    apply = function(g) g.starting_params.discards = g.starting_params.discards + 1 end},
+  {id = "big_hand", group = "hand_size", name = "Big Hand", desc = "+1 hand size",
+    apply = function(g) g.starting_params.hand_size = g.starting_params.hand_size + 1 end},
+  {id = "roomy", group = "jokers", name = "Roomy", desc = "+1 Joker slot",
+    apply = function(g) g.starting_params.joker_slots = g.starting_params.joker_slots + 1 end},
+  {id = "pocket", group = "consumables", name = "Deep Pockets", desc = "+1 consumable slot",
+    apply = function(g) g.starting_params.consumable_slots = g.starting_params.consumable_slots + 1 end},
+  {id = "voucher", group = "voucher", name = "Head Start", desc = "Start with a Voucher"},
+  {id = "second_joker", group = "start_joker", name = "Company", desc = "Start with an extra Uncommon Joker"},
+}
+
+local function by_id(list, id)
+  for _, v in ipairs(list) do if v.id == id then return v end end
+end
+DY.twist = function(id) return by_id(DY.TWISTS, id) end
+DY.boon = function(id) return by_id(DY.BOONS, id) end
+
+local function is_modded(c)
+  return type(c) == "table" and (c.mod ~= nil or c.original_mod ~= nil)
+end
+
+local function sort_centers(t)
+  table.sort(t, function(a, b)
+    local ma, mb = is_modded(a) and 1 or 0, is_modded(b) and 1 or 0
+    if ma ~= mb then return ma < mb end
+    local oa, ob = tonumber(a.order) or 0, tonumber(b.order) or 0
+    if oa ~= ob then return oa < ob end
+    return tostring(a.key) < tostring(b.key)
+  end)
+  return t
+end
+
+function DY.deck_pool()
+  local t, seen = {}, {}
+  for _, k in ipairs(VANILLA_DECKS) do
+    local c = G.P_CENTERS and G.P_CENTERS[k]
+    if c then t[#t + 1] = c seen[k] = true end
+  end
+  local mods = {}
+  for _, c in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Back) or {}) do
+    if is_modded(c) and c.key and not seen[c.key] and not c.omit and c.key ~= "b_challenge" then
+      mods[#mods + 1] = c
+    end
+  end
+  sort_centers(mods)
+  for _, c in ipairs(mods) do t[#t + 1] = c end
+  return t
+end
+
+function DY.joker_pool(rarity)
+  local t = {}
+  for _, c in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Joker) or {}) do
+    local key = c.key or ""
+    if c.rarity == rarity and not c.in_pool and not c.no_collection and not c.omit
+      and not key:find("^j_mp_") then
+      t[#t + 1] = c
+    end
+  end
+  return sort_centers(t)
+end
+
+function DY.voucher_pool()
+  local t = {}
+  for _, c in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Voucher) or {}) do
+    local req = c.requires
+    if (not req or (type(req) == "table" and #req == 0)) and not BANNED_VOUCHERS[c.key] and not c.in_pool and not c.omit then
+      t[#t + 1] = c
+    end
+  end
+  return sort_centers(t)
+end
+
+function DY.modded_content()
+  local n = 0
+  for _, set in ipairs({"Back", "Joker", "Voucher"}) do
+    for _, c in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS[set]) or {}) do
+      if is_modded(c) then n = n + 1 end
+    end
+  end
+  return n
+end
+
+local function pick_rules(list, rnd, n, blocked_groups, sp, rules_out)
+  local avail = {}
+  for _, r in ipairs(list) do avail[#avail + 1] = r end
+  for i = #avail, 2, -1 do
+    local j = rnd(1, i)
+    avail[i], avail[j] = avail[j], avail[i]
+  end
+  for _, r in ipairs(avail) do
+    if #rules_out >= n then break end
+    if not blocked_groups[r.group] and (not r.ok or r.ok(sp)) then
+      rules_out[#rules_out + 1] = r.id
+      blocked_groups[r.group] = true
+    end
+  end
+  return rules_out
+end
+
+local SEED_CHARS = "ABCDEFGHIJKLMNPQRSTUVWXYZ123456789"
+
+function DY.build(date, force)
+  date = date or DY.today()
+  force = force or {}
+  local seed_num = hash_string("bo_daily_" .. date)
+  local rnd = make_rng(seed_num)
+  local decks = DY.deck_pool()
+  local deck = force.deck or (decks[rnd(1, math.max(1, #decks))] or {key = "b_red"}).key
+  local stake = force.stake or (rnd() < 0.6 and 1 or 2)
+  local sp = base_params(deck)
+  local groups = {}
+  if stake >= 2 then groups.reward = true end
+  local twists = {}
+  if force.twist then
+    twists[1] = force.twist
+    local tw = DY.twist(force.twist)
+    if tw then groups[tw.group] = true end
+  end
+  pick_rules(DY.TWISTS, rnd, force.twist_count or 2, groups, sp, twists)
+  local boons = {}
+  pick_rules(DY.BOONS, rnd, 1, groups, sp, boons)
+  local jokers = {}
+  local commons = DY.joker_pool(1)
+  if #commons > 0 then jokers[#jokers + 1] = commons[rnd(1, #commons)].key end
+  local vouchers = {}
+  local rv = rnd()
+  for _, b in ipairs(boons) do
+    if b == "second_joker" then
+      local unc = DY.joker_pool(2)
+      if #unc > 0 then jokers[#jokers + 1] = unc[1 + math.floor(rv * #unc)].key end
+    elseif b == "voucher" then
+      local vp = DY.voucher_pool()
+      if #vp > 0 then vouchers[#vouchers + 1] = vp[1 + math.floor(rv * #vp)].key end
+    end
+  end
+  local seed_chars = {}
+  for i = 1, 8 do
+    local k = rnd(1, #SEED_CHARS)
+    seed_chars[i] = SEED_CHARS:sub(k, k)
+  end
+  return {
+    date = date,
+    seed = table.concat(seed_chars),
+    deck = deck,
+    stake = stake,
+    twists = twists,
+    boons = boons,
+    jokers = jokers,
+    vouchers = vouchers,
+  }
+end
+
+function DY.apply_rules(R, g)
+  g = g or G.GAME
+  g.modifiers = g.modifiers or {}
+  for _, id in ipairs(R.twists or {}) do
+    local r = DY.twist(id)
+    if r and r.apply then pcall(r.apply, g) end
+  end
+  for _, id in ipairs(R.boons or {}) do
+    local r = DY.boon(id)
+    if r and r.apply then pcall(r.apply, g) end
+  end
+end
+
+local function profile_data()
+  local p = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+  if not p then return nil end
+  if type(p.bo_daily) ~= "table" then p.bo_daily = {} end
+  if type(p.bo_daily.history) ~= "table" then p.bo_daily.history = {} end
+  p.bo_daily.best_streak = tonumber(p.bo_daily.best_streak) or 0
+  return p.bo_daily
+end
+DY.profile_data = profile_data
+
+function DY.streak(today)
+  local pd = profile_data()
+  if not pd then return 0 end
+  today = today or DY.today()
+  local d = today
+  local h = pd.history
+  if not (h[d] and h[d].won) then d = shift_date(today, -1) end
+  local n = 0
+  while h[d] and h[d].won and n < 4000 do
+    n = n + 1
+    d = shift_date(d, -1)
+  end
+  return n
+end
+
+function DY.record(won)
+  if not (G.GAME and G.GAME.daily and type(G.GAME.daily_rules) == "table") then return end
+  if G.GAME.daily_recorded then return end
+  G.GAME.daily_recorded = true
+  local pd = profile_data()
+  if not pd then return end
+  local date = G.GAME.daily_rules.date or DY.today()
+  local e = pd.history[date] or {tries = 0, best_ante = 0}
+  e.tries = (tonumber(e.tries) or 0) + 1
+  local ante = (G.GAME.round_resets and tonumber(G.GAME.round_resets.ante)) or 0
+  if ante > (tonumber(e.best_ante) or 0) then e.best_ante = ante end
+  if won then e.won = true end
+  pd.history[date] = e
+  local s = DY.streak(date)
+  if s > pd.best_streak then pd.best_streak = s end
+  pcall(function() G:save_progress() end)
+end
+
+function DY.start(date, force)
+  local R = DY.build(date, force)
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
+  G.FUNCS.start_run(nil, {stake = R.stake, seed = R.seed, back = G.P_CENTERS[R.deck] or G.P_CENTERS.b_red, bo_daily = R})
+end
+
+local _daily_original_start_run = Game.start_run
+
+Game.start_run = function(self, args)
+  args = args or {}
+  local R = args.bo_daily
+  if type(R) ~= "table" or args.savetext then
+    return _daily_original_start_run(self, args)
+  end
+  local orig_apply = Back.apply_to_run
+  Back.apply_to_run = function(back, ...)
+    local res = orig_apply(back, ...)
+    pcall(DY.apply_rules, R, G.GAME)
+    return res
+  end
+  local ok, result = pcall(_daily_original_start_run, self, args)
+  Back.apply_to_run = orig_apply
+  if not ok then error(result, 0) end
+  if G.GAME then
+    G.GAME.daily = true
+    G.GAME.daily_rules = R
+    for k, id in ipairs(R.vouchers or {}) do
+      if G.P_CENTERS[id] then
+        G.GAME.used_vouchers[id] = true
+r 3 617 %20%20%20%20%20%20%20%20 -
+r 1 178 %20%20%20%20%20%20%20%20%20%20 -
+l 4
+          local center = G.P_CENTERS[id]
+          local ok, card = pcall(Card, G.ROOM.T.x, G.ROOM.T.y, G.CARD_W, G.CARD_H, nil, center,
+            {bypass_discovery_center = true, bypass_discovery_ui = true})
+          if ok and card then
+r 15 4156 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+            pcall(card.apply_to_run, card, center)
+            G.E_MANAGER:add_event(Event({func = function() pcall(card.remove, card) return true end}))
+          end
+          return true
+        end}))
+      end
+    end
+    for k, id in ipairs(R.jokers or {}) do
+      if G.P_CENTERS[id] then
+r 3 617 %20%20%20%20%20%20%20%20 -
+l 30
+          pcall(add_joker, id, nil, k ~= 1)
+          return true
+        end}))
+      end
+    end
+  end
+  return result
+end
+
+if type(win_game) == "function" then
+  local _daily_win_game = win_game
+  win_game = function(...)
+    pcall(DY.record, true)
+    return _daily_win_game(...)
+  end
+end
+
+local _daily_update_game_over = Game.update_game_over
+Game.update_game_over = function(self, dt)
+  if not G.STATE_COMPLETE then pcall(DY.record, false) end
+  return _daily_update_game_over(self, dt)
+end
+
+local function rule_rows(ids, getter, colour)
+  local rows = {}
+  for _, id in ipairs(ids or {}) do
+    local r = getter(id)
+    if r then
+      rows[#rows + 1] = {n=G.UIT.R, config={align = "cl", padding = 0.03}, nodes={
+        {n=G.UIT.C, config={align = "cm", minw = 0.12, minh = 0.12, r = 0.06, colour = colour}, nodes={}},
+r 15 1934 %20%20%20%20%20%20%20%20 -
+r 15 388 %20%20%20%20%20%20%20%20 -
+r 15 392 %20%20%20%20%20%20%20%20%20%20 -
+l 2
+            {n=G.UIT.T, config={text = mod_loc(r.name), scale = 0.34, colour = colour}}
+          }},
+r 15 392 %20%20%20%20%20%20%20%20%20%20 -
+l 54
+            {n=G.UIT.T, config={text = mod_loc(r.desc), scale = 0.28, colour = G.C.UI.TEXT_DARK}}
+          }},
+        }},
+      }}
+    end
+  end
+  if #rows == 0 then
+    rows[1] = {n=G.UIT.R, config={align = "cm"}, nodes={
+      {n=G.UIT.T, config={text = mod_loc("None"), scale = 0.3, colour = G.C.UI.TEXT_INACTIVE}}
+    }}
+  end
+  return rows
+end
+
+local function rule_panel(title, colour, rows, w)
+  return {n=G.UIT.C, config={align = "tm", r = 0.1, colour = colour, padding = 0.05}, nodes={
+    {n=G.UIT.R, config={align = "cm", padding = 0.06}, nodes={
+      {n=G.UIT.T, config={text = title, scale = 0.38, colour = G.C.UI.TEXT_LIGHT, shadow = true}}
+    }},
+    {n=G.UIT.R, config={align = "tl", minw = w, minh = 1.75, padding = 0.08, r = 0.1, colour = G.C.WHITE}, nodes = rows},
+  }}
+end
+
+local function card_strip(keys, size, limit)
+  local area = CardArea(0, 0, math.max(1, limit) * G.CARD_W * size * 1.05, G.CARD_H * size,
+    {card_limit = math.max(1, limit), card_w = G.CARD_W * size, type = 'title_2', highlight_limit = 0})
+  for _, k in ipairs(keys or {}) do
+    if G.P_CENTERS[k] then
+      local card = Card(0, 0, G.CARD_W * size, G.CARD_H * size, nil, G.P_CENTERS[k],
+        {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true})
+      area:emplace(card)
+    end
+  end
+  return area
+end
+
+local function stake_name(stake)
+  local s = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and G.P_CENTER_POOLS.Stake[stake]
+  if s then
+    local ok, name = pcall(localize, {type = 'name_text', set = 'Stake', key = s.key})
+    if ok and type(name) == "string" and name ~= "ERROR" then return name end
+  end
+  return mod_loc(stake == 2 and "Red Stake" or "White Stake")
+end
+
+local function deck_name(key)
+  local ok, name = pcall(localize, {type = 'name_text', set = 'Back', key = key})
+  if ok and type(name) == "string" and name ~= "ERROR" then return name end
+  local c = G.P_CENTERS[key]
+  return c and c.name or key
+end
+
+local function stat_box(label, value, colour)
+  return {n=G.UIT.C, config={align = "cm", padding = 0.06, r = 0.1, colour = G.C.BLACK, minw = 2.1, minh = 0.95}, nodes={
+r 7 297 %20%20%20%20 -
+l 2
+      {n=G.UIT.T, config={text = label, scale = 0.28, colour = G.C.UI.TEXT_INACTIVE}}
+    }},
+r 7 297 %20%20%20%20 -
+l 39
+      {n=G.UIT.T, config={text = value, scale = 0.5, colour = colour, shadow = true}}
+    }},
+  }}
+end
+
+local function today_status(e)
+  if not e then return mod_loc("Not played"), G.C.UI.TEXT_LIGHT end
+  if e.won then return mod_loc("Won"), G.C.GREEN end
+  return mod_loc("Best: Ante") .. " " .. tostring(e.best_ante or 0), G.C.ORANGE
+end
+
+local function create_daily_ui()
+  local today = DY.today()
+  local R = DY.build(today)
+  DY.preview = R
+  local pd = profile_data() or {history = {}, best_streak = 0}
+  local entry = pd.history[today]
+  local streak = DY.streak(today)
+  local status, status_col = today_status(entry)
+
+  local back_center = G.P_CENTERS[R.deck] or G.P_CENTERS.b_red
+  local deck_sprite = nil
+  pcall(function()
+    local atlas = G.ASSET_ATLAS[back_center.atlas or 'centers'] or G.ASSET_ATLAS.centers
+    deck_sprite = Sprite(0, 0, G.CARD_W * 0.8, G.CARD_H * 0.8, atlas, back_center.pos or {x = 0, y = 0})
+  end)
+
+  local deck_desc = nil
+  pcall(function()
+    local shown = {}
+    for k, v in pairs(back_center) do shown[k] = v end
+    shown.unlocked = true
+    deck_desc = Back(back_center):generate_UI(shown, 0.6, 0.55)
+  end)
+
+  local stake_sprite = nil
+  pcall(function() stake_sprite = get_stake_sprite(R.stake, 0.45) end)
+
+  local deck_col = {n=G.UIT.C, config={align = "tm", padding = 0.08, r = 0.1, colour = G.C.L_BLACK, minw = 3.1}, nodes={
+r 7 297 %20%20%20%20 -
+l 8
+      {n=G.UIT.T, config={text = deck_name(R.deck), scale = 0.4, colour = G.C.WHITE, shadow = true, maxw = 3}}
+    }},
+    deck_sprite and {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+      {n=G.UIT.O, config={object = deck_sprite}}
+    }} or nil,
+    deck_desc and {n=G.UIT.R, config={align = "cm", r = 0.1, colour = G.C.WHITE, padding = 0.05}, nodes={
+      {n=G.UIT.O, config={object = UIBox{definition = deck_desc, config = {offset = {x = 0, y = 0}}}}}
+    }} or nil,
+r 15 71 %20%20%20%20 -
+l 16
+      stake_sprite and {n=G.UIT.O, config={object = stake_sprite}} or nil,
+      {n=G.UIT.B, config={w = 0.08, h = 0.1}},
+      {n=G.UIT.T, config={text = stake_name(R.stake), scale = 0.32, colour = G.C.UI.TEXT_LIGHT}},
+    }},
+  }}
+
+  local jokers = card_strip(R.jokers, 0.55, math.max(2, #R.jokers))
+  local vouchers = card_strip(R.vouchers, 0.55, 1)
+
+  local start_row = {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+    {n=G.UIT.C, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.L_BLACK}, nodes={
+      {n=G.UIT.T, config={text = localize('k_jokers_cap'), scale = 0.36, colour = G.C.UI.TEXT_LIGHT, vert = true, shadow = true}},
+      {n=G.UIT.C, config={align = "cm", minh = 0.55 * G.CARD_H, r = 0.1, colour = G.C.UI.TRANSPARENT_DARK}, nodes={
+        {n=G.UIT.O, config={object = jokers}}
+      }},
+    }},
+r 15 1934 %20%20%20%20 -
+l 11
+    {n=G.UIT.C, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.L_BLACK}, nodes={
+      {n=G.UIT.T, config={text = localize('k_vouchers_cap'), scale = 0.3, colour = G.C.UI.TEXT_LIGHT, vert = true, shadow = true}},
+      {n=G.UIT.C, config={align = "cm", minh = 0.55 * G.CARD_H, r = 0.1, colour = G.C.UI.TRANSPARENT_DARK}, nodes={
+        #R.vouchers > 0 and {n=G.UIT.O, config={object = vouchers}} or
+          {n=G.UIT.T, config={text = localize('k_none'), scale = 0.36, colour = G.C.UI.TEXT_INACTIVE}}
+      }},
+    }},
+  }}
+
+  local rules_row = {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+    rule_panel(mod_loc("Twists"), G.C.RED, rule_rows(R.twists, DY.twist, G.C.RED), 3.3),
+r 15 1934 %20%20%20%20 -
+l 7
+    rule_panel(mod_loc("Boon"), G.C.GREEN, rule_rows(R.boons, DY.boon, G.C.GREEN), 2.9),
+  }}
+
+  local modded = DY.modded_content()
+  local note = modded > 0 and mod_loc("Today's pools include your mods' content") or mod_loc("Same rules for everyone today")
+
+  return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.CLEAR, minw = 9.6, minh = 7}, nodes={
+r 15 71 %20%20%20%20 -
+l 2
+      {n=G.UIT.C, config={align = "cm", padding = 0.08, r = 0.1, colour = G.C.BLACK, minw = 9.4}, nodes={
+        {n=G.UIT.C, config={align = "cl", minw = 4.6}, nodes={
+r 15 392 %20%20%20%20%20%20%20%20%20%20 -
+l 2
+            {n=G.UIT.T, config={text = mod_loc("DAILY RUN"), scale = 0.55, colour = G.C.GOLD, shadow = true}}
+          }},
+r 15 392 %20%20%20%20%20%20%20%20%20%20 -
+l 13
+            {n=G.UIT.T, config={text = today .. "  " .. mod_loc("Seed") .. " " .. R.seed, scale = 0.28, colour = G.C.UI.TEXT_INACTIVE}}
+          }},
+        }},
+        {n=G.UIT.C, config={align = "cr", minw = 4.6}, nodes={
+          {n=G.UIT.R, config={align = "cr"}, nodes={
+            {n=G.UIT.T, config={text = mod_loc("New daily in"), scale = 0.28, colour = G.C.UI.TEXT_INACTIVE}}
+          }},
+          {n=G.UIT.R, config={align = "cr"}, nodes={
+            {n=G.UIT.T, config={text = DY.countdown(), scale = 0.42, colour = G.C.ORANGE, shadow = true}}
+          }},
+        }},
+      }},
+    }},
+r 15 71 %20%20%20%20 -
+l 1
+      deck_col,
+r 15 1934 %20%20%20%20%20%20 -
+l 2
+      {n=G.UIT.C, config={align = "tm"}, nodes={start_row, rules_row}},
+    }},
+r 15 71 %20%20%20%20 -
+l 1
+      stat_box(mod_loc("Today"), status, status_col),
+r 15 1934 %20%20%20%20%20%20 -
+l 1
+      stat_box(mod_loc("Streak"), tostring(streak), G.C.GOLD),
+r 15 1934 %20%20%20%20%20%20 -
+l 19
+      stat_box(mod_loc("Best streak"), tostring(math.max(pd.best_streak or 0, streak)), G.C.WHITE),
+    }},
+    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+      {n=G.UIT.T, config={text = note, scale = 0.26, colour = G.C.UI.TEXT_INACTIVE}}
+    }},
+    {n=G.UIT.R, config={align = "cm", padding = 0.06}, nodes={
+      {n=G.UIT.R, config={id = 'daily_play', align = "cm", padding = 0.1, minh = 0.75, minw = 9, r = 0.1, hover = true, colour = (entry and entry.won) and G.C.GREY or G.C.BLUE, button = "daily_start_challenge", shadow = true}, nodes={
+        {n=G.UIT.T, config={text = (entry and entry.won) and mod_loc("PLAY AGAIN") or localize('b_play_cap'), scale = 0.5, colour = G.C.UI.TEXT_LIGHT, func = 'set_button_pip', focus_args = {button = 'x', set_button_pip = true}}}
+      }}
+    }},
+  }}
+end
+
+function G.UIDEF.daily_run_info()
+  local R = G.GAME and G.GAME.daily_rules
+  if type(R) ~= "table" then
+    return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.CLEAR}, nodes={}}
+  end
+  return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.CLEAR, padding = 0.1}, nodes={
+r 15 71 %20%20%20%20 -
+l 2
+      {n=G.UIT.T, config={text = mod_loc("DAILY RUN") .. "  " .. tostring(R.date), scale = 0.5, colour = G.C.GOLD, shadow = true}}
+    }},
+r 15 71 %20%20%20%20 -
+l 1
+      rule_panel(mod_loc("Twists"), G.C.RED, rule_rows(R.twists, DY.twist, G.C.RED), 3.6),
+r 15 1934 %20%20%20%20%20%20 -
+l 35
+      rule_panel(mod_loc("Boon"), G.C.GREEN, rule_rows(R.boons, DY.boon, G.C.GREEN), 3.2),
+    }},
+  }}
+end
+
+if G.UIDEF and G.UIDEF.run_info then
+  local _daily_run_info = G.UIDEF.run_info
+  G.UIDEF.run_info = function(...)
+    if not (G.GAME and G.GAME.daily and type(G.GAME.daily_rules) == "table") then
+      return _daily_run_info(...)
+    end
+    local orig_create_tabs = create_tabs
+    create_tabs = function(args)
+      create_tabs = orig_create_tabs
+      if args and type(args.tabs) == "table" then
+        args.tabs[#args.tabs + 1] = {label = mod_loc("Daily"), tab_definition_function = G.UIDEF.daily_run_info}
+      end
+      return orig_create_tabs(args)
+    end
+    local ok, res = pcall(_daily_run_info, ...)
+    create_tabs = orig_create_tabs
+    if not ok then error(res, 0) end
+    return res
+  end
+end
+
+G.FUNCS = G.FUNCS or {}
+
+G.FUNCS.daily_start_challenge = function(e)
+  play_sound('button')
+  DY.start(DY.today())
+end
+
+G.UIDEF = G.UIDEF or {}
+G.UIDEF.daily_challenge_tab = create_daily_ui
+end

@@ -1,0 +1,746 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 326
+local T = {}
+
+local function L(s)
+    if mod_loc then
+        local ok, r = pcall(mod_loc, s)
+        if ok and r then return r end
+    end
+    return s
+end
+
+T.PACK = "p_mp_trap_normal"
+T.MAX_ARMED = 3
+T.LIFETIME = 2
+T.RENTAL_ROUNDS = 3
+T.PACK_CHANCE = 1 / 6
+T.RULES = 2
+T.OLD_IDS = {
+    hand_reduction = true, discard_block = true, dollar_drain = true, blind_up = true, joker_shuffle = true,
+    shop_tax = true, heckle_cash = true, heckle_discard = true,
+}
+
+local TRAPS = {
+    {key = "c_mp_trap_fire", trigger = "discard", name = "Fire Trap",
+        en = {"When your {X:purple,C:white}Rival{} discards,", "they lose {C:red}1{} more discard", "this round, or {C:money}$2{} if none are left"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} défausse,", "il perd {C:red}1{} défausse de plus", "ce tour, ou {C:money}2 ${} s'il n'en reste pas"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} descarta,", "pierde {C:red}1{} descarte más", "esta ronda, o {C:money}$2{} si no le quedan"},
+        fr_name = "Piège de feu", es_name = "Trampa de fuego"},
+    {key = "c_mp_trap_snare", trigger = "skip", name = "Snare",
+        en = {"When your {X:purple,C:white}Rival{} skips", "a Blind, you get a copy", "of the {C:attention}Tag{} they took"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} passe", "une Blinde, vous recevez une", "copie du {C:attention}Badge{} pris"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} salta", "una ciega, recibes una copia", "de la {C:attention}Etiqueta{} que tomó"},
+        fr_name = "Collet", es_name = "Lazo"},
+    {key = "c_mp_trap_toll", trigger = "reroll", name = "Tollbooth",
+        en = {"When your {X:purple,C:white}Rival{} rerolls", "the shop, they pay up to {C:money}$3{}", "more and you get it"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} relance", "la boutique, il paie jusqu'à {C:money}3 ${}", "de plus et vous les gagnez"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} renueva", "la tienda, paga hasta {C:money}$3{} más", "y tú los ganas"},
+        fr_name = "Péage", es_name = "Peaje"},
+    {key = "c_mp_trap_echo", trigger = "planet", name = "Echo",
+        en = {"When your {X:purple,C:white}Rival{} uses a", "{C:planet}Planet{} card, that poker hand", "gains {C:attention}1{} level for you too"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} utilise une", "carte {C:planet}Planète{}, cette main", "gagne aussi {C:attention}1{} niveau pour vous"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} usa una", "carta de {C:planet}Planeta{}, esa mano", "también sube {C:attention}1{} nivel para ti"},
+        fr_name = "Écho", es_name = "Eco"},
+    {key = "c_mp_trap_sticky", trigger = "tarot", name = "Sticky Fingers",
+        en = {"When your {X:purple,C:white}Rival{} uses a", "{C:tarot}Tarot{} card, you get a copy", "{C:inactive}(Must have room){}"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} utilise une", "carte {C:tarot}Tarot{}, vous en recevez", "une copie {C:inactive}(s'il y a de la place){}"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} usa una", "carta de {C:tarot}Tarot{}, recibes una", "copia {C:inactive}(si hay espacio){}"},
+        fr_name = "Doigts collants", es_name = "Dedos largos"},
+    {key = "c_mp_trap_smudge", trigger = "flush", name = "Smudge",
+        en = {"When your {X:purple,C:white}Rival{} plays a hand", "that contains a {C:attention}Flush{}, {C:attention}2{} cards", "of their most common suit", "change to another suit"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} joue une main", "avec une {C:attention}Couleur{}, {C:attention}2{} cartes", "de sa couleur la plus fréquente", "changent de couleur"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} juega una mano", "con {C:attention}Color{}, {C:attention}2{} cartas", "de su palo más común", "cambian de palo"},
+        fr_name = "Bavure", es_name = "Borrón"},
+    {key = "c_mp_trap_tripwire", trigger = "sell", name = "Tripwire",
+        en = {"When your {X:purple,C:white}Rival{} sells a", "Joker, you get its sell", "value {C:inactive}(Max {C:money}$8{C:inactive}){}"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} vend un", "Joker, vous gagnez sa valeur", "de vente {C:inactive}(Max {C:money}8 ${C:inactive}){}"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} vende un", "Comodín, ganas su valor", "de venta {C:inactive}(Máx. {C:money}$8{C:inactive}){}"},
+        fr_name = "Fil-piège", es_name = "Cable trampa"},
+    {key = "c_mp_trap_bear", trigger = "buy", name = "Bear Trap",
+        en = {"When your {X:purple,C:white}Rival{} buys a", "Joker, it is {C:attention}Rental{} for", "the next {C:attention}3{} rounds", "{C:inactive}($3 each){}"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} achète un", "Joker, il est en {C:attention}Location{}", "pendant les {C:attention}3{} manches", "suivantes {C:inactive}(3 $ chacune){}"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} compra un", "Comodín, es de {C:attention}Alquiler{}", "durante las {C:attention}3{} rondas", "siguientes {C:inactive}($3 cada una){}"},
+        fr_name = "Piège à loup", es_name = "Cepo"},
+    {key = "c_mp_trap_pit", trigger = "boss", name = "Pitfall",
+        en = {"When your {X:purple,C:white}Rival{} starts a", "{C:attention}Boss Blind{}, they get", "{C:red}-1{} hand size for it"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} commence", "une {C:attention}Blinde Boss{}, il a", "{C:red}-1{} carte en main pour celle-ci"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} empieza", "una {C:attention}ciega jefe{}, tiene", "{C:red}-1{} carta en mano en ella"},
+        fr_name = "Fosse", es_name = "Foso"},
+    {key = "c_mp_trap_smoke", trigger = "pack", name = "Smoke Bomb",
+        en = {"When your {X:purple,C:white}Rival{} opens a", "{C:attention}Booster Pack{}, it shows", "{C:attention}1{} fewer card"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} ouvre un", "{C:attention}Booster{}, il montre", "{C:attention}1{} carte de moins"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} abre un", "{C:attention}Paquete potenciador{}, muestra", "{C:attention}1{} carta menos"},
+        fr_name = "Fumigène", es_name = "Bomba de humo"},
+    {key = "c_mp_trap_ice", trigger = "big_hand", name = "Black Ice",
+        en = {"When your {X:purple,C:white}Rival{} plays a", "{C:attention}Full House{} or better, that", "hand loses {C:attention}1{} level"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} joue un", "{C:attention}Main pleine{} ou mieux, cette", "main perd {C:attention}1{} niveau"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} juega un", "{C:attention}Full{} o mejor, esa", "mano pierde {C:attention}1{} nivel"},
+        fr_name = "Verglas", es_name = "Hielo negro"},
+    {key = "c_mp_trap_alarm", trigger = "spectral", name = "Alarm",
+        en = {"When your {X:purple,C:white}Rival{} uses a", "{C:spectral}Spectral{} card, you get a", "random {C:tarot}Tarot{} {C:inactive}(Must have room){}"},
+        fr = {"Quand votre {X:purple,C:white}Rival{} utilise une", "carte {C:spectral}Spectrale{}, vous recevez", "un {C:tarot}Tarot{} au hasard {C:inactive}(si place){}"},
+        es = {"Cuando tu {X:purple,C:white}Rival{} usa una", "carta {C:spectral}Espectral{}, recibes un", "{C:tarot}Tarot{} al azar {C:inactive}(si hay espacio){}"},
+        fr_name = "Alarme", es_name = "Alarma"},
+}
+T.LIST = TRAPS
+T.BY_KEY = {}
+for i, t in ipairs(TRAPS) do t.order = 1200 + i; T.BY_KEY[t.key] = t end
+
+local LASTS = {
+    en = "{C:inactive}(Runs out after 2 Antes){}",
+    fr = "{C:inactive}(Expire après 2 mises initiales){}",
+    es = "{C:inactive}(Caduca tras 2 apuestas iniciales){}",
+}
+
+local PACK_LOC = {
+    en = {name = "Trap Pack", text = {"Choose {C:attention}1{} of up to", "{C:attention}2{} {C:red}Trap{} cards to set", "against your {X:purple,C:white}Rival{}"}},
+    fr = {name = "Paquet de pièges", text = {"Choisissez {C:attention}1{} carte {C:red}Piège{}", "parmi {C:attention}2{} à poser", "contre votre {X:purple,C:white}Rival{}"}},
+    es = {name = "Sobre de trampas", text = {"Elige {C:attention}1{} de hasta", "{C:attention}2{} cartas {C:red}Trampa{} para", "ponérsela a tu {X:purple,C:white}Rival{}"}},
+}
+
+local MSG_FR = {
+    ["Trap"] = "Piège",
+    ["Your Rival set a trap!"] = "Votre Rival a posé un piège !",
+    ["%s set a trap on you!"] = "%s vous a tendu un piège !",
+    ["Trap set on %s!"] = "Piège posé sur %s !",
+    ["%s's %s went off!"] = "Piège de %s déclenché : %s !",
+    ["Your %s went off on %s!"] = "%s : votre piège a frappé %s !",
+    ["Your %s on %s ran out"] = "%s : votre piège sur %s a expiré",
+    ["Your Rival"] = "Votre Rival",
+    ["Traps waiting: %d"] = "Pièges en attente : %d",
+    ["Trap cards"] = "Cartes piège",
+    ["Trap Packs in the shop"] = "Paquets de pièges en boutique",
+}
+local MSG_ES = {
+    ["Trap"] = "Trampa",
+    ["Your Rival set a trap!"] = "¡Tu Rival te puso una trampa!",
+    ["%s set a trap on you!"] = "¡%s te puso una trampa!",
+    ["Trap set on %s!"] = "¡Trampa puesta a %s!",
+    ["%s's %s went off!"] = "¡Saltó una trampa de %s: %s!",
+    ["Your %s went off on %s!"] = "¡%s: tu trampa saltó contra %s!",
+    ["Your %s on %s ran out"] = "%s: tu trampa contra %s caducó",
+    ["Your Rival"] = "Tu Rival",
+    ["Traps waiting: %d"] = "Trampas esperando: %d",
+    ["Trap cards"] = "Cartas trampa",
+    ["Trap Packs in the shop"] = "Sobres de trampas en la tienda",
+}
+
+local function in_mp()
+    return G and G.GAME and G.GAME.multiplayer and bom_match and bom_match.is_in_match and bom_match.is_in_match()
+end
+
+local function vs_bot()
+    local ok, r = pcall(function() return bom_match.get_state().opp_bot == true end)
+    return ok and r or false
+end
+
+local function settings()
+    local s = (G and G.GAME and G.GAME.mp_settings) or (bom_match and bom_match.get_settings and bom_match.get_settings()) or {}
+    return s
+end
+
+local function party_on()
+    local ok, r = pcall(function() return bom_party and bom_party.active and bom_party.active() end)
+    return ok and r or false
+end
+
+function T.enabled()
+    if not (in_mp() and settings().traps == true) then return false end
+    if party_on() then return T.leader() ~= nil end
+    return not vs_bot()
+end
+
+local function lang_of(t, lang)
+    if lang == "fr" then return t.fr_name or t.name, t.fr end
+    if lang == "es" then return t.es_name or t.name, t.es end
+    return t.name, t.en
+end
+
+function T.name(key)
+    local t = T.BY_KEY[key]
+    if not t then return L("Trap") end
+    local lang = bom_custom_objects and bom_custom_objects.lang and bom_custom_objects.lang() or "en"
+    return (lang_of(t, lang))
+end
+
+local function register_loc()
+    local O = bom_custom_objects
+    if not (O and O.register_loc) then return end
+    for _, t in ipairs(TRAPS) do
+        local tr = {}
+        for _, lang in ipairs({"en", "fr", "es"}) do
+            local n, txt = lang_of(t, lang)
+            local lines = {}
+            for i, line in ipairs(txt) do lines[i] = line end
+            lines[#lines + 1] = LASTS[lang]
+            tr[lang] = {name = n, text = lines}
+        end
+        O.register_loc("Other", t.key, tr)
+    end
+    O.register_loc("Other", T.PACK, PACK_LOC)
+    if O.on_language then O.on_language(T.inject_misc) end
+    if mod_loc_register then pcall(mod_loc_register, {fr = MSG_FR, es = MSG_ES}) end
+end
+
+function T.inject_misc()
+    if not (G and G.localization and G.localization.misc and G.localization.misc.dictionary) then return end
+    G.localization.misc.dictionary.k_trap = L("Trap")
+    G.localization.misc.dictionary.k_trap_pack = PACK_LOC.en.name
+    pcall(function()
+        local lang = bom_custom_objects.lang()
+        G.localization.misc.dictionary.k_trap_pack = (PACK_LOC[lang] or PACK_LOC.en).name
+    end)
+end
+
+local function register_centers()
+    if not (G and G.P_CENTERS) then return end
+    for i, t in ipairs(TRAPS) do
+        if not G.P_CENTERS[t.key] then
+            G.P_CENTERS[t.key] = {
+                key = t.key, set = "Trap", name = t.name, order = t.order, discovered = true, unlocked = true, omit = true,
+                cost = 0, consumeable = true, config = {trap = t.trigger}, pos = {x = i - 1, y = 0}, atlas = "mp_traps",
+                mp_trap = true, trigger = t.trigger, effect = "",
+            }
+        end
+    end
+    local labelled = trap_pack_label_ready and trap_pack_label_ready()
+    if not G.P_CENTERS[T.PACK] then
+        G.P_CENTERS[T.PACK] = {
+            key = T.PACK, set = "Booster", name = "Trap Pack", order = 1300, discovered = true, unlocked = true, omit = true,
+            cost = 4, weight = 0, kind = "MPTrap", atlas = labelled and "mp_trap_pack" or "mp_traps", pos = {x = labelled and 0 or #TRAPS, y = 0},
+            config = {extra = 2, choose = 1}, mp_trap_pack = true,
+        }
+    end
+    if G.C then
+        local col = G.C.RED or {0.9, 0.3, 0.3, 1}
+        G.C.SET = G.C.SET or {}
+        G.C.SECONDARY_SET = G.C.SECONDARY_SET or {}
+        G.C.SET.Trap = G.C.SET.Trap or G.C.BLACK or col
+        G.C.SECONDARY_SET.Trap = G.C.SECONDARY_SET.Trap or col
+    end
+end
+
+function T.list()
+    local out = {}
+    for _, t in ipairs(TRAPS) do if G and G.P_CENTERS and G.P_CENTERS[t.key] then out[#out + 1] = G.P_CENTERS[t.key] end end
+    return out
+end
+
+local function msg(text, colour)
+    pcall(function()
+        local in_shop = G.shop and not G.shop.REMOVED and G.jokers
+        local major = in_shop and G.jokers or G.play
+        local oy = in_shop and 0 or -2.7
+        local P = rawget(_G, "PORTRAIT")
+        if not in_shop and P and P.on and P.on() and P.shelf_bottom and G.hand and G.hand.T and major and major.T then
+            oy = (P.shelf_bottom() + 0.35 + G.hand.T.y) / 2 - (major.T.y + major.T.h / 2)
+        end
+        attention_text({
+            text = text, scale = 0.6, hold = 2.2, major = major, align = "cm",
+            maxw = major and major.T and major.T.w and major.T.w * 0.95 or nil,
+            offset = {x = 0, y = oy},
+            colour = colour or G.C.RED, silent = true,
+        })
+        play_sound("cancel", 0.8, 0.6)
+    end)
+    pcall(function() haptic_buzz(2) end)
+end
+
+local function opp_name(d)
+    if d and type(d.from_name) == "string" and d.from_name ~= "" then return d.from_name end
+    local ok, n = pcall(function() return bom_match.get_state().opp_name end)
+    if ok and type(n) == "string" and n ~= "" and n ~= "Opponent" then return n end
+    return L("Your Rival")
+end
+
+local function pid_name(pid)
+    local ok, n = pcall(function()
+        for _, p in ipairs((bom_party.S.ps or {}).players or {}) do if p.pid == pid then return p.name end end
+    end)
+    return ok and n or nil
+end
+
+function T.leader()
+    if not party_on() then return nil end
+    local ps = bom_party and bom_party.S and bom_party.S.ps
+    local me = ps and ps.myId
+    local best
+    for _, p in ipairs((ps and ps.players) or {}) do
+        if p.pid ~= me and p.alive ~= false and not p.bot then
+            local lv, sc = tonumber(p.lives) or 0, tonumber(p.live and p.live.score) or 0
+            if not best or lv > best.lv or (lv == best.lv and sc > best.sc) then best = {pid = p.pid, lv = lv, sc = sc, name = p.name} end
+        end
+    end
+    return best
+end
+
+local uid = 0
+local function new_id()
+    uid = uid + 1
+    return tostring(os.time()) .. "-" .. tostring(uid)
+end
+
+function T.arm(key)
+    if not (bom_core and bom_core.send and T.BY_KEY[key]) then return end
+    local m = {type = "sabotage", sabotage_id = "trap_set", key = key, id = new_id(), r = T.RULES}
+    local target = T.leader()
+    if target then m.to = target.pid end
+    bom_core.send(m)
+    if G and G.GAME then G.GAME.bom_sabotages_used = (G.GAME.bom_sabotages_used or 0) + 1 end
+    local who = target and target.name or opp_name(nil)
+    msg(string.format(L("Trap set on %s!"), who), G.C.GREEN)
+end
+
+local function armed()
+    G.GAME.mp_traps = G.GAME.mp_traps or {}
+    return G.GAME.mp_traps
+end
+
+local function ante() return (G.GAME.round_resets and G.GAME.round_resets.ante) or 1 end
+
+local function gone(a)
+    if a and (a.r or 1) >= T.RULES and bom_core and bom_core.send then
+        bom_core.send({type = "sabotage", sabotage_id = "trap_gone", key = a.key, id = a.id, to = a.from})
+    end
+end
+
+function T.on_set(d)
+    if not (G and G.GAME and G.GAME.multiplayer) then return end
+    local key = d.key
+    if not T.BY_KEY[key] then return end
+    local list = armed()
+    list[#list + 1] = {key = key, id = d.id, from = d.from, from_name = d.from_name, ante = ante(), r = tonumber(d.r) or 1}
+    while #list > T.MAX_ARMED do gone(table.remove(list, 1)) end
+    if d.from_name then msg(string.format(L("%s set a trap on you!"), d.from_name)) else msg(L("Your Rival set a trap!")) end
+end
+
+function T.waiting()
+    if not (G and G.GAME and G.GAME.mp_traps) then return 0 end
+    return #G.GAME.mp_traps
+end
+
+local function free_slot()
+    return G.consumeables and #G.consumeables.cards + (G.GAME.consumeable_buffer or 0) < G.consumeables.config.card_limit
+end
+
+local function give_consumable(set, key)
+    if not free_slot() then return end
+r 3 617 %20%20%20%20 -
+l 23
+        if free_slot() then
+            local c = create_card(set, G.consumeables, nil, nil, nil, nil, key, "mptrap")
+            c:add_to_deck()
+            G.consumeables:emplace(c)
+        end
+        return true
+    end}))
+end
+
+local SUITS = {"Spades", "Hearts", "Clubs", "Diamonds"}
+
+local EFFECT = {}
+function EFFECT.discard()
+    if (G.GAME.current_round.discards_left or 0) > 0 then ease_discard(-1) else ease_dollars(-math.min(2, math.max(0, G.GAME.dollars or 0))) end
+end
+function EFFECT.reroll()
+    local n = math.min(3, math.max(0, G.GAME.dollars or 0))
+    if n > 0 then ease_dollars(-n) end
+    return {amount = n}
+end
+function EFFECT.buy(data)
+    local card = data and data.card
+    if card and card.set_rental and not card.ability.eternal and not card.ability.rental then
+r 13 2145 %20%20%20%20%20%20%20%20 -
+l 5
+        card.ability.mp_trap_rental = (G.GAME.round or 0) + T.RENTAL_ROUNDS
+    end
+end
+function EFFECT.boss()
+    if G.hand and G.hand.change_size then
+r 2 188 %20%20%20%20%20%20%20%20 -
+l 256
+        G.GAME.mp_trap_handsize = (G.GAME.mp_trap_handsize or 0) + 1
+    end
+end
+function EFFECT.pack(data)
+    local card = data and data.card
+    if card and card.ability then
+        local floor = math.max(1, (card.config.center.config and card.config.center.config.choose) or 1)
+        card.ability.extra = math.max(floor, (card.ability.extra or 2) - 1)
+    end
+end
+function EFFECT.big_hand(data)
+    local h = data and data.hand
+    if h and G.GAME.hands[h] and (G.GAME.hands[h].level or 1) > 1 then level_up_hand(nil, h, true, -1) end
+end
+function EFFECT.flush()
+    local count = {}
+    for _, c in ipairs(G.playing_cards or {}) do
+        local s = c.base and c.base.suit
+        if s then count[s] = (count[s] or 0) + 1 end
+    end
+    local top, n = nil, -1
+    for _, s in ipairs(SUITS) do if (count[s] or 0) > n then top, n = s, count[s] or 0 end end
+    if not top then return end
+    local pool = {}
+    for _, c in ipairs(G.playing_cards) do if c.base and c.base.suit == top then pool[#pool + 1] = c end end
+    for i = 1, math.min(2, #pool) do
+        local j = math.floor(pseudorandom("mp_trap_smudge" .. i) * #pool) + 1
+        local c = table.remove(pool, j)
+        local others = {}
+        for _, s in ipairs(SUITS) do if s ~= top then others[#others + 1] = s end end
+        local to = others[math.floor(pseudorandom("mp_trap_smudge_s" .. i) * #others) + 1]
+        if c and to and c.change_suit then c:change_suit(to) end
+    end
+end
+
+local CAN = {}
+function CAN.buy(data)
+    local card = data and data.card
+    return card and card.set_rental and card.ability and not card.ability.eternal and not card.ability.rental and true or false
+end
+function CAN.pack(data)
+    local card = data and data.card
+    if not (card and card.ability) then return false end
+    local floor = math.max(1, (card.config.center.config and card.config.center.config.choose) or 1)
+    return (card.ability.extra or 2) - 1 >= floor
+end
+function CAN.big_hand(data)
+    local h = data and data.hand
+    return h and G.GAME.hands[h] and (G.GAME.hands[h].level or 1) > 1 or false
+end
+
+local LATE = {discard = true, reroll = true}
+
+local function new_rules(a) return (a.r or 1) >= T.RULES end
+local function old_rules(a) return not new_rules(a) end
+
+local REWARD = {}
+function REWARD.skip(d) if d.tag and G.P_TAGS and G.P_TAGS[d.tag] then add_tag(Tag(d.tag)) end end
+function REWARD.reroll(d) local n = math.max(0, math.min(3, tonumber(d.amount) or 3)); if n > 0 then ease_dollars(n) end end
+function REWARD.planet(d) if d.hand and G.GAME.hands[d.hand] then level_up_hand(nil, d.hand, true, 1) end end
+function REWARD.tarot(d) if d.card and G.P_CENTERS[d.card] then give_consumable("Tarot", d.card) end end
+function REWARD.sell(d) local n = math.max(0, math.min(8, tonumber(d.amount) or 0)); if n > 0 then ease_dollars(n) end end
+function REWARD.spectral() give_consumable("Tarot", nil) end
+
+function T.fire(trigger, data, pick)
+    if not T.enabled() or not G.GAME.mp_traps then return false end
+    local list = G.GAME.mp_traps
+    for i, a in ipairs(list) do
+        local t = T.BY_KEY[a.key]
+        if t and t.trigger == trigger and (not pick or pick(a)) and (old_rules(a) or not CAN[trigger] or CAN[trigger](data)) then
+            table.remove(list, i)
+            local function go()
+                local extra
+                if EFFECT[trigger] then
+                    local ok, r = pcall(EFFECT[trigger], data)
+                    if ok then extra = r end
+                end
+                local out = {type = "sabotage", sabotage_id = "trap_fire", key = a.key, id = a.id, to = a.from}
+                for k, v in pairs(extra or {}) do out[k] = v end
+                for k, v in pairs((data and data.send) or {}) do out[k] = v end
+                if bom_core and bom_core.send then bom_core.send(out) end
+            end
+            if LATE[trigger] and new_rules(a) and G.E_MANAGER then
+                G.E_MANAGER:add_event(Event({func = function() go() return true end}))
+            else
+                go()
+            end
+            local owner = a.from_name or opp_name(nil)
+            msg(string.format(L("%s's %s went off!"), owner, T.name(a.key)))
+            return true
+        end
+    end
+    return false
+end
+
+function T.on_fire(d)
+    if not (G and G.GAME and G.GAME.multiplayer) then return end
+    local t = T.BY_KEY[d.key]
+    if not t then return end
+    if REWARD[t.trigger] then pcall(REWARD[t.trigger], d) end
+    local who = d.from_name or pid_name(d.from) or opp_name(nil)
+    msg(string.format(L("Your %s went off on %s!"), T.name(d.key), who), G.C.GREEN)
+end
+
+function T.on_gone(d)
+    if not (G and G.GAME and G.GAME.multiplayer) then return end
+    if not T.BY_KEY[d.key] then return end
+    local who = d.from_name or pid_name(d.from) or opp_name(nil)
+    msg(string.format(L("Your %s on %s ran out"), T.name(d.key), who), G.C.ORANGE)
+end
+
+function T.receive(d)
+    if type(d) ~= "table" then return nil end
+    local id = d.sabotage_id
+    if type(id) ~= "string" then return true end
+    if id:sub(1, 4) == "mpj_" then return nil end
+    if id == "trap_set" then pcall(T.on_set, d) return true end
+    if id == "trap_fire" then pcall(T.on_fire, d) return true end
+    if id == "trap_gone" then pcall(T.on_gone, d) return true end
+    return true
+end
+
+function T.receive_heckle() end
+function T.show_pick_screen() end
+function T.send() end
+function T.get_all() return {} end
+
+local BIG = {["Full House"] = true, ["Four of a Kind"] = true, ["Straight Flush"] = true, ["Five of a Kind"] = true, ["Flush House"] = true, ["Flush Five"] = true}
+local FLUSH = {["Flush"] = true, ["Straight Flush"] = true, ["Flush House"] = true, ["Flush Five"] = true}
+
+local played = nil
+local boss_seen = nil
+
+local function watch_hands()
+    local hands = G.GAME.hands
+    if not hands then return end
+    if not played then
+        played = {}
+        for k, v in pairs(hands) do played[k] = v.played or 0 end
+        return
+    end
+    for k, v in pairs(hands) do
+        local n = v.played or 0
+        if n > (played[k] or 0) then
+            played[k] = n
+            if FLUSH[k] then T.fire("flush", {hand = k}) end
+            if BIG[k] then T.fire("big_hand", {hand = k}) end
+        elseif n < (played[k] or 0) then
+            played[k] = n
+        end
+    end
+end
+
+function T.update()
+    if not (G and G.GAME) then return end
+    if T._game ~= G.GAME then
+        T._game = G.GAME
+        played, boss_seen = nil, nil
+    end
+    if G.GAME.mp_trap_pack and G.STATE ~= G.STATES.PLANET_PACK and not (G.pack_cards and G.pack_cards.cards and #G.pack_cards.cards > 0) then
+        G.GAME.mp_trap_pack = nil
+    end
+    if G.STATE == G.STATES.SHOP and G.jokers and G.jokers.cards then
+        for _, c in ipairs(G.jokers.cards) do
+            local until_round = c.ability and c.ability.mp_trap_rental
+            if until_round and (G.GAME.round or 0) >= until_round then
+                c.ability.mp_trap_rental = nil
+                if c.ability.rental and c.set_rental then c:set_rental(false) end
+            end
+        end
+    end
+    if (G.GAME.mp_trap_handsize or 0) > 0 and G.STATE == G.STATES.SHOP and G.hand and G.hand.change_size then
+        G.hand:change_size(G.GAME.mp_trap_handsize)
+        G.GAME.mp_trap_handsize = 0
+    end
+    if not T.enabled() then played = nil return end
+    if G.GAME.mp_traps then
+        local a = ante()
+        for i = #G.GAME.mp_traps, 1, -1 do
+            if a > (G.GAME.mp_traps[i].ante or a) + T.LIFETIME then gone(table.remove(G.GAME.mp_traps, i)) end
+        end
+    end
+    pcall(watch_hands)
+    local blind = G.GAME.blind
+    local key = blind and blind.boss and G.STATE == G.STATES.SELECTING_HAND and (tostring(ante()) .. ":" .. tostring(blind.config and blind.config.blind and blind.config.blind.key))
+    if key and boss_seen ~= key then
+        boss_seen = key
+        T.fire("boss", nil, old_rules)
+    end
+end
+
+local function pick_keys(n)
+    local pool = {}
+    for _, t in ipairs(TRAPS) do pool[#pool + 1] = t.key end
+    local out = {}
+    for i = 1, math.min(n, #pool) do
+        local j = math.floor(pseudorandom(pseudoseed("mp_trap" .. ante() .. i)) * #pool) + 1
+        out[#out + 1] = table.remove(pool, j)
+    end
+    return out
+end
+
+local function install()
+    if T.installed then return end
+    T.installed = true
+
+    local orig_create_card = create_card
+    create_card = function(_type, area, legendary, _rarity, skip_materialize, soulable, forced_key, key_append)
+        if G and G.GAME and G.GAME.mp_trap_pack and _type == "Planet" and area == G.pack_cards then
+            G.GAME.mp_trap_queue = G.GAME.mp_trap_queue or {}
+            if #G.GAME.mp_trap_queue == 0 then G.GAME.mp_trap_queue = pick_keys(4) end
+            local k = table.remove(G.GAME.mp_trap_queue, 1)
+            return orig_create_card("Trap", area, nil, nil, skip_materialize, nil, k, "mptrap")
+        end
+        return orig_create_card(_type, area, legendary, _rarity, skip_materialize, soulable, forced_key, key_append)
+    end
+
+    local orig_get_pack = get_pack
+    get_pack = function(_key, _type)
+        if _key == "shop_pack" and not _type and G.GAME.first_shop_buffoon and T.enabled() and G.P_CENTERS[T.PACK]
+            and not (G.GAME.banned_keys and G.GAME.banned_keys[T.PACK])
+            and pseudorandom(pseudoseed("mp_trap_pack" .. ante())) < T.PACK_CHANCE then
+            return G.P_CENTERS[T.PACK]
+        end
+        return orig_get_pack(_key, _type)
+    end
+
+    local orig_open = Card.open
+    function Card:open()
+        if self.ability and self.ability.set == "Booster" then
+            if self.config.center and self.config.center.mp_trap_pack then
+                G.GAME.mp_trap_pack = true
+                G.GAME.mp_trap_queue = pick_keys(math.max(2, self.ability.extra or 2))
+                self.ability.name = "Celestial Trap Pack"
+            else
+                T.fire("pack", {card = self})
+            end
+        end
+        return orig_open(self)
+    end
+
+    local orig_celestial_ui = create_UIBox_celestial_pack
+    if orig_celestial_ui then
+        create_UIBox_celestial_pack = function(...)
+            local dict = G.localization and G.localization.misc and G.localization.misc.dictionary
+            if not (G.GAME and G.GAME.mp_trap_pack and dict and dict.k_trap_pack) then return orig_celestial_ui(...) end
+            local title = dict.k_celestial_pack
+            dict.k_celestial_pack = dict.k_trap_pack
+            local ok, ui = pcall(orig_celestial_ui, ...)
+            dict.k_celestial_pack = title
+            if not ok then error(ui) end
+            return ui
+        end
+    end
+
+    local orig_can_use = Card.can_use_consumeable
+r 3 1523 %20%20%20%20 -
+l 8
+        if self.ability and self.ability.set == "Trap" then
+            if not skip_check and ((G.play and #G.play.cards > 0) or G.CONTROLLER.locked or (G.GAME.STOP_USE and G.GAME.STOP_USE > 0)) then return false end
+            return true
+        end
+        return orig_can_use(self, any_state, skip_check)
+    end
+
+    local orig_use = Card.use_consumeable
+r 3 1091 %20%20%20%20 -
+l 16
+        local set = self.ability and self.ability.set
+        if set == "Trap" then
+            T.arm(self.config.center.key)
+            return
+        end
+        if set == "Planet" then
+            T.fire("planet", {send = {hand = self.ability.consumeable and self.ability.consumeable.hand_type}})
+        elseif set == "Tarot" then
+            T.fire("tarot", {send = {card = self.config.center.key}})
+        elseif set == "Spectral" then
+            T.fire("spectral")
+        end
+        return orig_use(self, area, copier)
+    end
+
+    local orig_sell = Card.sell_card
+r 3 1590 %20%20%20%20 -
+l 6
+        if self.ability and self.ability.set == "Joker" then T.fire("sell", {send = {amount = math.min(8, self.sell_cost or 0)}}) end
+        return orig_sell(self)
+    end
+
+    if Blind and Blind.set_blind then
+        local orig_set_blind = Blind.set_blind
+r 2 78 %20%20%20%20%20%20%20%20 -
+l 57
+            local r = orig_set_blind(self, blind, reset, silent)
+            if blind and not reset and self.boss and G.GAME and self == G.GAME.blind then T.fire("boss", nil, new_rules) end
+            return r
+        end
+    end
+
+    local orig_gen = generate_card_ui
+    generate_card_ui = function(_c, full_UI_table, specific_vars, card_type, badges, hide_desc, main_start, main_end, ...)
+        if type(_c) == "table" and (_c.mp_trap or _c.mp_trap_pack) then
+            local proxy = setmetatable({set = "Other"}, {__index = _c})
+            local r = orig_gen(proxy, full_UI_table, specific_vars, card_type, badges, hide_desc, main_start, main_end, ...)
+            if _c.mp_trap_pack and type(r) == "table" and (not r.name or (type(r.name) == "table" and next(r.name) == nil)) then
+                r.name = localize{type = "name", set = "Other", key = _c.key}
+            end
+            return r
+        end
+        return orig_gen(_c, full_UI_table, specific_vars, card_type, badges, hide_desc, main_start, main_end, ...)
+    end
+
+    T.wrap_funcs()
+end
+
+function T.wrap_funcs()
+    if not G or not G.FUNCS or T.funcs_wrapped then return end
+    T.funcs_wrapped = true
+    local orig_discard = G.FUNCS.discard_cards_from_highlighted
+    if orig_discard then
+        G.FUNCS.discard_cards_from_highlighted = function(e, hook, ...)
+            local r = orig_discard(e, hook, ...)
+            if not hook then T.fire("discard") end
+            return r
+        end
+    end
+    local orig_skip = G.FUNCS.skip_blind
+    if orig_skip then
+        G.FUNCS.skip_blind = function(e, ...)
+            local tag
+            pcall(function() tag = G.GAME.round_resets.blind_tags[G.GAME.blind_on_deck] end)
+            local r = orig_skip(e, ...)
+            T.fire("skip", {send = {tag = tag}})
+            return r
+        end
+    end
+    local orig_reroll = G.FUNCS.reroll_shop
+    if orig_reroll then
+        G.FUNCS.reroll_shop = function(e, ...)
+            local r = orig_reroll(e, ...)
+            T.fire("reroll")
+            return r
+        end
+    end
+    local orig_buy = G.FUNCS.buy_from_shop
+    if orig_buy then
+        G.FUNCS.buy_from_shop = function(e, ...)
+            local card = e and e.config and e.config.ref_table
+            local r = orig_buy(e, ...)
+            if card and card.ability and card.ability.set == "Joker" then
+r 3 617 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 27
+                    if card.area == G.jokers then T.fire("buy", {card = card}) end
+                    return true
+                end}))
+            end
+            return r
+        end
+    end
+end
+
+function T.init()
+    if T.initialized then
+        register_centers()
+        return
+    end
+    register_centers()
+    register_loc()
+    pcall(function() bom_custom_objects.inject_loc() end)
+    T.inject_misc()
+    pcall(install)
+    pcall(function()
+        if bom_events and bom_events.register then bom_events.register("sabotage", T.receive) end
+    end)
+    T.initialized = true
+end
+
+if mp_log then mp_log.info("BOM_TRAPS", "trap cards module loaded") end
+return T
+end

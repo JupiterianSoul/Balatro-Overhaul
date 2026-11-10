@@ -1,0 +1,469 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 232
+local M = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+M.LIST = {}
+M.BY_ID = {}
+
+local CATS = {"jokers", "consumables", "vouchers", "blinds", "tags"}
+M.CATS = CATS
+
+function M.register(def)
+    if type(def) ~= "table" or type(def.id) ~= "string" or def.id == "" then return nil end
+    def.group = def.group or def.id
+    if not M.BY_ID[def.id] then M.LIST[#M.LIST + 1] = def end
+    M.BY_ID[def.id] = def
+    return def
+end
+
+M.register{id = "clock_blitz", cat = "timer", group = "timer", name = "Rapid clock", desc = "60 s ready timer, 1 free timeout",
+    settings = {timer = true, timer_base_seconds = 60, timer_increment_seconds = 0, timer_forgiveness = 1}}
+M.register{id = "clock_pressure", cat = "timer", group = "timer", name = "Pressure clock", desc = "90 s ready timer, +15 s per ante, no free timeout",
+    settings = {timer = true, timer_base_seconds = 90, timer_increment_seconds = 15, timer_forgiveness = 0}}
+M.register{id = "clock_relaxed", cat = "timer", group = "timer", name = "Relaxed clock", desc = "240 s ready timer, +30 s per ante",
+    settings = {timer = true, timer_base_seconds = 240, timer_increment_seconds = 30, timer_forgiveness = 2}}
+M.register{id = "glass_sturdy", cat = "glass", group = "glass", name = "Sturdy glass", desc = "Glass cards give X1.5 Mult, break 1 in 8",
+    centers = {m_glass = {Xmult = 1.5, extra = 8}}}
+M.register{id = "glass_fragile", cat = "glass", group = "glass", name = "Fragile glass", desc = "Glass cards give X3 Mult, break 1 in 2",
+    centers = {m_glass = {Xmult = 3, extra = 2}}}
+M.register{id = "econ_inflation", cat = "economy", name = "Inflation", desc = "Every purchase raises all prices by $1", rules = {inflation = true}}
+M.register{id = "econ_no_interest", cat = "economy", name = "No interest", desc = "Money earns no interest", rules = {interest_amount = 0}}
+M.register{id = "econ_discard_tax", cat = "economy", name = "Discard tax", desc = "Every discard costs $1", rules = {discard_cost = 1}}
+M.register{id = "econ_frugal", cat = "economy", name = "Frugal", desc = "Earn $1 per unused discard", rules = {money_per_discard = 1}}
+M.register{id = "econ_spartan", cat = "economy", name = "Spartan", desc = "Only boss blinds pay a reward", rules = {blind_reward = "boss_only"}}
+M.register{id = "shop_bigger", cat = "shop", group = "shop_size", name = "Bigger shop", desc = "One more card slot in the shop", rules = {shop_slots = 3}}
+M.register{id = "shop_tight", cat = "shop", group = "shop_size", name = "Tight shop", desc = "One card slot, rerolls start at $3", rules = {shop_slots = 1, reroll_cost = 3}}
+M.register{id = "shop_mystery", cat = "shop", name = "Mystery prices", desc = "Every price is 50% to 200%", rules = {random_prices = true}}
+M.register{id = "shared_pockets", cat = "twist", name = "Shared pockets", desc = "Joker and consumable slots are one shared pool",
+    start = function() G.GAME.bom_pockets = nil end}
+M.register{id = "score_wobble", cat = "twist", name = "Unstable score", desc = "Each hand's score is multiplied by x0.7 to x1.4"}
+M.register{id = "no_red_seals", cat = "twist", name = "No red seals", desc = "Red Seals never appear, Deja Vu is banned",
+    bans = {consumables = {"c_deja_vu"}}}
+M.register{id = "no_gambling", cat = "twist", name = "No gambling", desc = "No Lucky or Gold cards, Magician and Devil banned",
+    bans = {consumables = {"c_magician", "c_devil"}, enhancements = {"m_lucky", "m_gold"}}}
+M.register{id = "small_world", cat = "twist", name = "Scarcity", desc = "Only one in four jokers, consumables, vouchers and tags can appear",
+    start = function(ctx) M.apply_small_world(ctx and ctx.pool_seed) end}
+M.register{id = "face_down", cat = "twist", name = "Face down", desc = "1 in 4 drawn cards come face down", rules = {flipped_cards = 4}}
+M.register{id = "all_eternal", cat = "twist", name = "Eternal jokers", desc = "Every joker is Eternal", rules = {all_eternal = true}}
+
+M.CAT_ORDER = {
+    {key = "timer", label = "Clocks"}, {key = "glass", label = "Glass"}, {key = "economy", label = "Economy"},
+    {key = "shop", label = "Shop"}, {key = "twist", label = "Twists"},
+}
+
+function M.get(id) return M.BY_ID[id] end
+
+function M.by_cat(cat)
+    local out = {}
+    for _, d in ipairs(M.LIST) do if (d.cat or "twist") == cat then out[#out + 1] = d end end
+    return out
+end
+
+function M.ids()
+    local out = {}
+    for i, d in ipairs(M.LIST) do out[i] = d.id end
+    return out
+end
+
+function M.name(id)
+    local d = M.BY_ID[id]
+    return d and L(d.name) or nil
+end
+
+function M.desc(id)
+    local d = M.BY_ID[id]
+    return d and L(d.desc) or nil
+end
+
+function M.valid(ids)
+    local out, seen, groups = {}, {}, {}
+    if type(ids) ~= "table" then return out end
+    for _, id in ipairs(ids) do
+        local d = M.BY_ID[id]
+        if d and not seen[id] and not groups[d.group] then
+            seen[id], groups[d.group] = true, true
+            out[#out + 1] = id
+        end
+    end
+    return out
+end
+
+function M.has(ids, id)
+    if type(ids) ~= "table" then return false end
+    for _, x in ipairs(ids) do if x == id then return true end end
+    return false
+end
+
+function M.toggle(ids, id, on)
+    local d = M.BY_ID[id]
+    local out = {}
+    for _, x in ipairs(M.valid(ids)) do
+        local xd = M.BY_ID[x]
+        if x ~= id and not (on and d and xd.group == d.group) then out[#out + 1] = x end
+    end
+    if on and d then out[#out + 1] = id end
+    local order = {}
+    for i, l in ipairs(M.LIST) do order[l.id] = i end
+    table.sort(out, function(a, b) return (order[a] or 999) < (order[b] or 999) end)
+    return out
+end
+
+function M.names(ids)
+    local out = {}
+    for _, id in ipairs(M.valid(ids)) do out[#out + 1] = M.name(id) end
+    return out
+end
+
+function M.settings_for(ids)
+    local out = {}
+    for _, id in ipairs(M.valid(ids)) do
+        for k, v in pairs(M.BY_ID[id].settings or {}) do out[k] = v end
+    end
+    return out
+end
+
+function M.rules_for(ids, base)
+    local out = {}
+    for k, v in pairs(base or {}) do out[k] = v end
+    for _, id in ipairs(M.valid(ids)) do
+        for k, v in pairs(M.BY_ID[id].rules or {}) do out[k] = v end
+    end
+    return out
+end
+
+function M.bans_for(ids)
+    local out = {}
+    for _, c in ipairs(CATS) do out[c] = {} end
+    out.enhancements = {}
+    for _, id in ipairs(M.valid(ids)) do
+        for cat, list in pairs(M.BY_ID[id].bans or {}) do
+            out[cat] = out[cat] or {}
+            for _, k in ipairs(list) do out[cat][#out[cat] + 1] = k end
+        end
+    end
+    return out
+end
+
+function M.active(id)
+    local set = G and G.GAME and G.GAME.bom_layers
+    return type(set) == "table" and set[id] == true
+end
+
+local saved_centers = nil
+
+function M.restore_centers()
+    if not saved_centers then return end
+    for key, cfg in pairs(saved_centers) do
+        local c = G and G.P_CENTERS and G.P_CENTERS[key]
+        if c and type(c.config) == "table" then
+            for k, v in pairs(cfg) do
+                if v == "__nil" then c.config[k] = nil else c.config[k] = v end
+            end
+        end
+    end
+    saved_centers = nil
+end
+
+function M.apply_centers(ids)
+    M.restore_centers()
+    if not (G and G.P_CENTERS) then return end
+    for _, id in ipairs(M.valid(ids)) do
+        for key, cfg in pairs(M.BY_ID[id].centers or {}) do
+            local c = G.P_CENTERS[key]
+            if c and type(c.config) == "table" then
+                saved_centers = saved_centers or {}
+                saved_centers[key] = saved_centers[key] or {}
+                for k, v in pairs(cfg) do
+                    if saved_centers[key][k] == nil then
+                        local old = c.config[k]
+                        saved_centers[key][k] = old == nil and "__nil" or old
+                    end
+                    c.config[k] = v
+                end
+            end
+        end
+    end
+end
+
+local function hash(s)
+    local h = 5381
+    s = tostring(s or "")
+    for i = 1, #s do h = (h * 33 + s:byte(i)) % 2147483647 end
+    if h == 0 then h = 1 end
+    return h
+end
+M.hash = hash
+
+local function rng(seed)
+    local state = hash(seed)
+    return function()
+        state = (state * 16807) % 2147483647
+        return state / 2147483647
+    end
+end
+M.rng = rng
+
+local SW_SETS = {Joker = true, Tarot = true, Planet = true, Spectral = true, Voucher = true}
+
+function M.small_world_bans(seed, centers, tags, banned)
+    banned = banned or {}
+    local groups = {}
+    local function add(g, key)
+        groups[g] = groups[g] or {}
+        local list = groups[g]
+        list[#list + 1] = key
+    end
+    for key, c in pairs(centers or {}) do
+        if type(c) == "table" and SW_SETS[c.set] and not banned[key] and not c.hidden and not c.requires and not c.omit
+            and key ~= "j_cavendish" and c.name ~= "The Soul" and c.name ~= "Black Hole" then
+            add(c.set == "Joker" and ("Joker" .. tostring(c.rarity or 1)) or c.set, key)
+        end
+    end
+    for key, t in pairs(tags or {}) do
+        if type(t) == "table" and not banned[key] then add("Tag", key) end
+    end
+    local names = {}
+    for g in pairs(groups) do names[#names + 1] = g end
+    table.sort(names)
+    local out = {}
+    for _, g in ipairs(names) do
+        local list = groups[g]
+        table.sort(list)
+        local next_r = rng(tostring(seed) .. ":" .. g)
+r 12 213 %20%20%20%20%20%20%20%20 -
+l 2
+            local j = 1 + math.floor(next_r() * i)
+            if j > i then j = i end
+r 12 215 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 93
+        end
+        local n = math.min(math.floor(#list * 0.75 + 0.5), #list - 1)
+        for i = 1, n do out[list[i]] = true end
+    end
+    for key, c in pairs(centers or {}) do
+        if type(c) == "table" and c.set == "Voucher" and type(c.requires) == "table" then
+            for _, req in ipairs(c.requires) do
+                if out[req] or banned[req] then out[key] = true end
+            end
+        end
+    end
+    if out.j_gros_michel or banned.j_gros_michel then out.j_cavendish = true end
+    return out
+end
+
+function M.apply_small_world(seed)
+    if not (G and G.GAME and G.P_CENTERS) then return 0 end
+    G.GAME.banned_keys = G.GAME.banned_keys or {}
+    local bans = M.small_world_bans(seed or (G.GAME.pseudorandom and G.GAME.pseudorandom.seed) or "", G.P_CENTERS, G.P_TAGS, G.GAME.banned_keys)
+    local n = 0
+    local set = {}
+    for k in pairs(bans) do
+        if not G.GAME.banned_keys[k] then
+            G.GAME.banned_keys[k] = true
+            set[k] = true
+            n = n + 1
+        end
+    end
+    G.GAME.bom_small_world = n
+    G.GAME.bom_sw_bans = set
+    return n
+end
+
+function M.ban_list(ids, banned)
+    local b = M.bans_for(ids)
+    for _, list in pairs(b) do
+        for _, k in ipairs(list) do banned[k] = true end
+    end
+end
+
+function M.start_run(ids, ctx)
+    if not (G and G.GAME) then return end
+    ids = M.valid(ids)
+    local set = {}
+    for _, id in ipairs(ids) do set[id] = true end
+    G.GAME.bom_layers = set
+    G.GAME.banned_keys = G.GAME.banned_keys or {}
+    M.ban_list(ids, G.GAME.banned_keys)
+    for _, id in ipairs(ids) do
+        local d = M.BY_ID[id]
+        if d.start then
+            local ok, err = pcall(d.start, ctx or {})
+            if not ok and mp_log then mp_log.error("BOM_LAYERS", "start %s: %s", id, tostring(err)) end
+        end
+    end
+end
+
+function M.wobble_factor()
+    local g = G and G.GAME
+    if not g then return 1 end
+    local rr = g.round_resets or {}
+    local cr = g.current_round or {}
+    local key = tostring(g.pseudorandom and g.pseudorandom.seed or "") .. ":wobble:" .. tostring(rr.ante or 1) .. ":"
+        .. tostring(g.round or 0) .. ":" .. tostring(cr.hands_played or 0)
+    local u = rng(key)()
+    return math.floor(0.7 * 2 ^ u * 100 + 0.5) / 100
+end
+
+local function sync_pockets()
+    local j, c = G.jokers, G.consumeables
+    if not (j and c and j.config and c.config and j.cards and c.cards) then return end
+    local st = G.GAME.bom_pockets
+    if type(st) ~= "table" or not st.jb then
+        st = {jb = j.config.card_limit or 5, cb = c.config.card_limit or 2}
+        G.GAME.bom_pockets = st
+    end
+    if st.jw and j.config.card_limit ~= st.jw then st.jb = st.jb + ((j.config.card_limit or 0) - st.jw) end
+    if st.cw and c.config.card_limit ~= st.cw then st.cb = st.cb + ((c.config.card_limit or 0) - st.cw) end
+    local free = math.max(0, (st.jb + st.cb) - (#j.cards + #c.cards))
+    local jl, cl = #j.cards + free, #c.cards + free
+    if j.config.card_limit ~= jl then j.config.card_limit = jl end
+    if c.config.card_limit ~= cl then c.config.card_limit = cl end
+    st.jw, st.cw = jl, cl
+end
+M.sync_pockets = sync_pockets
+
+local function in_preview()
+    local p = rawget(_G, "PREVIEW")
+    return type(p) == "table" and p._in_sandbox == true
+end
+
+local function wobble_text(f)
+    if in_preview() or not (G and G.E_MANAGER and attention_text and G.play) then return end
+r 3 617 %20%20%20%20 -
+l 13
+        pcall(function()
+            attention_text({text = "X" .. tostring(f), scale = 0.9, hold = 1.2, align = "cm", offset = {x = 0, y = -2.7}, major = G.play})
+            play_sound(f >= 1 and "multhit1" or "cancel", 1, 0.6)
+        end)
+        return true
+    end}))
+end
+
+function M.install_hooks()
+    if M._hooked then return end
+    M._hooked = true
+    if Back and Back.trigger_effect then
+        local orig_trigger = Back.trigger_effect
+r 1 108 %20%20%20%20%20%20%20%20 -
+l 50
+            local c, m = orig_trigger(self, args)
+            if args and args.context == "final_scoring_step" and M.active("score_wobble") then
+                local mult = m or args.mult
+                if type(mult) == "number" then
+                    local f = M.wobble_factor()
+                    mult = math.max(1, mult * f)
+                    pcall(function() if not in_preview() then update_hand_text({delay = 0}, {mult = mult}) end end)
+                    wobble_text(f)
+                    return c, mult
+                end
+            end
+            return c, m
+        end
+    end
+    if Card and Card.set_seal then
+        local orig_seal = Card.set_seal
+        function Card:set_seal(seal, silent, immediate)
+            if seal == "Red" and M.active("no_red_seals") then return end
+            return orig_seal(self, seal, silent, immediate)
+        end
+    end
+    if Tag and Tag.init then
+        local orig_tag = Tag.init
+        function Tag:init(tag, for_collection, blind_type)
+            if not for_collection and type(tag) == "string" and M.active("small_world") and G.GAME.banned_keys
+                and G.GAME.banned_keys[tag] and get_next_tag_key then
+                for i = 1, 6 do
+                    local ok, k = pcall(get_next_tag_key, "bom_sw" .. i)
+                    if ok and type(k) == "string" and k ~= "tag_orbital" then tag = k break end
+                end
+            end
+            return orig_tag(self, tag, for_collection, blind_type)
+        end
+    end
+    if type(get_current_pool) == "function" then
+        local orig_pool = get_current_pool
+        get_current_pool = function(ptype, ...)
+            if M.active("small_world") and G.GAME.used_jokers and (ptype == "Joker" or ptype == "Tarot" or ptype == "Planet" or ptype == "Spectral") then
+                local used = G.GAME.used_jokers
+                G.GAME.used_jokers = {}
+                local ok, a, b = pcall(orig_pool, ptype, ...)
+                G.GAME.used_jokers = used
+                if not ok then error(a, 0) end
+                return a, b
+            end
+            return orig_pool(ptype, ...)
+        end
+    end
+    if CardArea and CardArea.update then
+        local orig_update = CardArea.update
+r 7 243 %20%20%20%20%20%20%20%20 -
+l 63
+            if self == G.jokers and G.GAME then
+                if M.on_frame and G.GAME.bom_rs then pcall(M.on_frame) end
+                if M.active("shared_pockets") then pcall(sync_pockets) end
+            end
+            return orig_update(self, dt)
+        end
+    end
+end
+
+M.FR = {
+    ["Rapid clock"] = "Chrono rapide", ["60 s ready timer, 1 free timeout"] = "Minuteur de 60 s, 1 retard pardonné",
+    ["Pressure clock"] = "Chrono sous pression", ["90 s ready timer, +15 s per ante, no free timeout"] = "Minuteur de 90 s, +15 s par mise initiale, aucun retard pardonné",
+    ["Relaxed clock"] = "Chrono détendu", ["240 s ready timer, +30 s per ante"] = "Minuteur de 240 s, +30 s par mise initiale",
+    ["Sturdy glass"] = "Verre solide", ["Glass cards give X1.5 Mult, break 1 in 8"] = "Cartes de verre : X1,5 Multi, cassent 1 fois sur 8",
+    ["Fragile glass"] = "Verre fragile", ["Glass cards give X3 Mult, break 1 in 2"] = "Cartes de verre : X3 Multi, cassent 1 fois sur 2",
+    ["Inflation"] = "Inflation", ["Every purchase raises all prices by $1"] = "Chaque achat augmente tous les prix de 1 $",
+    ["No interest"] = "Sans intérêts", ["Money earns no interest"] = "L'argent ne rapporte aucun intérêt",
+    ["Discard tax"] = "Taxe de défausse", ["Every discard costs $1"] = "Chaque défausse coûte 1 $",
+    ["Frugal"] = "Frugal", ["Earn $1 per unused discard"] = "1 $ par défausse non utilisée",
+    ["Spartan"] = "Spartiate", ["Only boss blinds pay a reward"] = "Seules les blindes boss rapportent",
+    ["Bigger shop"] = "Grande boutique", ["One more card slot in the shop"] = "Un emplacement de carte en plus en boutique",
+    ["Tight shop"] = "Petite boutique", ["One card slot, rerolls start at $3"] = "Un seul emplacement, relances dès 3 $",
+    ["Mystery prices"] = "Prix mystère", ["Every price is 50% to 200%"] = "Chaque prix va de 50 % à 200 %",
+    ["Shared pockets"] = "Poches partagées", ["Joker and consumable slots are one shared pool"] = "Jokers et consommables partagent leurs emplacements",
+    ["Unstable score"] = "Score instable", ["Each hand's score is multiplied by x0.7 to x1.4"] = "Le score de chaque main est multiplié par x0,7 à x1,4",
+    ["No red seals"] = "Sans sceaux rouges", ["Red Seals never appear, Deja Vu is banned"] = "Aucun sceau rouge, Déjà Vu est interdit",
+    ["No gambling"] = "Pas de jeu d'argent", ["No Lucky or Gold cards, Magician and Devil banned"] = "Pas de cartes Chance ni Or, Magicien et Diable interdits",
+    ["Scarcity"] = "Pénurie", ["Only one in four jokers, consumables, vouchers and tags can appear"] = "Seul un quart des jokers, consommables, coupons et badges peut apparaître",
+    ["Face down"] = "Face cachée", ["1 in 4 drawn cards come face down"] = "1 carte piochée sur 4 arrive face cachée",
+    ["Eternal jokers"] = "Jokers éternels", ["Every joker is Eternal"] = "Tous les jokers sont Éternels",
+    ["Clocks"] = "Chronos", ["Glass"] = "Verre", ["Economy"] = "Économie", ["Shop"] = "Boutique", ["Twists"] = "Variantes",
+}
+
+M.ES = {
+    ["Rapid clock"] = "Reloj rápido", ["60 s ready timer, 1 free timeout"] = "Temporizador de 60 s, 1 retraso perdonado",
+    ["Pressure clock"] = "Reloj bajo presión", ["90 s ready timer, +15 s per ante, no free timeout"] = "Temporizador de 90 s, +15 s por apuesta inicial, sin retrasos perdonados",
+    ["Relaxed clock"] = "Reloj tranquilo", ["240 s ready timer, +30 s per ante"] = "Temporizador de 240 s, +30 s por apuesta inicial",
+    ["Sturdy glass"] = "Cristal resistente", ["Glass cards give X1.5 Mult, break 1 in 8"] = "Cartas de cristal: X1.5 multi, se rompen 1 de cada 8",
+    ["Fragile glass"] = "Cristal frágil", ["Glass cards give X3 Mult, break 1 in 2"] = "Cartas de cristal: X3 multi, se rompen 1 de cada 2",
+    ["Inflation"] = "Inflación", ["Every purchase raises all prices by $1"] = "Cada compra sube todos los precios $1",
+    ["No interest"] = "Sin intereses", ["Money earns no interest"] = "El dinero no genera intereses",
+    ["Discard tax"] = "Impuesto de descarte", ["Every discard costs $1"] = "Cada descarte cuesta $1",
+    ["Frugal"] = "Frugal", ["Earn $1 per unused discard"] = "$1 por cada descarte sin usar",
+    ["Spartan"] = "Espartano", ["Only boss blinds pay a reward"] = "Solo las ciegas jefe dan recompensa",
+    ["Bigger shop"] = "Tienda grande", ["One more card slot in the shop"] = "Un espacio de carta más en la tienda",
+    ["Tight shop"] = "Tienda pequeña", ["One card slot, rerolls start at $3"] = "Un solo espacio, cambios desde $3",
+    ["Mystery prices"] = "Precios misteriosos", ["Every price is 50% to 200%"] = "Cada precio va del 50% al 200%",
+    ["Shared pockets"] = "Bolsillos compartidos", ["Joker and consumable slots are one shared pool"] = "Comodines y consumibles comparten sus espacios",
+    ["Unstable score"] = "Puntuación inestable", ["Each hand's score is multiplied by x0.7 to x1.4"] = "La puntuación de cada mano se multiplica por x0.7 a x1.4",
+    ["No red seals"] = "Sin sellos rojos", ["Red Seals never appear, Deja Vu is banned"] = "No hay sellos rojos, Déjà Vu está vetado",
+    ["No gambling"] = "Sin apuestas", ["No Lucky or Gold cards, Magician and Devil banned"] = "Sin cartas de la suerte ni de oro, Mago y Diablo vetados",
+    ["Scarcity"] = "Escasez", ["Only one in four jokers, consumables, vouchers and tags can appear"] = "Solo puede salir un cuarto de los comodines, consumibles, vales y etiquetas",
+    ["Face down"] = "Boca abajo", ["1 in 4 drawn cards come face down"] = "1 de cada 4 cartas robadas sale boca abajo",
+    ["Eternal jokers"] = "Comodines eternos", ["Every joker is Eternal"] = "Todos los comodines son Eternos",
+    ["Clocks"] = "Relojes", ["Glass"] = "Cristal", ["Economy"] = "Economía", ["Shop"] = "Tienda", ["Twists"] = "Variantes",
+}
+
+function M.init()
+    if mod_loc_register then mod_loc_register({fr = M.FR, es = M.ES}) end
+    pcall(M.install_hooks)
+end
+
+return M
+end

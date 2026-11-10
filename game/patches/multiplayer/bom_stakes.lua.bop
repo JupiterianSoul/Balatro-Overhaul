@@ -1,0 +1,415 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 155
+local S = {
+    initialized = false,
+    hooked = false,
+    pending = nil,
+}
+
+S.KEYS = { 'stake_mp_planet', 'stake_mp_spectral', 'stake_mp_spectral_plus' }
+
+local AMOUNTS = {
+    [4] = { 300, 1100, 3800, 11000, 32000, 80000, 160000, 300000 },
+    [5] = { 300, 1200, 4400, 13000, 40000, 100000, 220000, 420000 },
+}
+
+local DEFS = {
+    stake_mp_planet = {
+        order = 1, name = 'Nova Stake', base = 7, no_blue = true, scaling = 3, pos = { x = 0, y = 0 }, colour = '13afce',
+        loc = {
+            en = { name = 'Nova Stake', text = { '{C:attention}Orange Stake{} rules, without', 'the Blue Stake shop tax', '{C:inactive}(no {C:money}+$1{C:inactive} per Ante, rerolls +$1){}' } },
+            fr = { name = 'Mise Nova', text = { 'Règles de la {C:attention}mise orange{}, sans', 'la taxe de boutique de la mise bleue', '{C:inactive}(pas de {C:money}+1 ${C:inactive} par mise, relances +1 $){}' } },
+            es = { name = 'Pozo Nova', text = { 'Reglas del {C:attention}pozo naranja{}, sin', 'el impuesto de tienda del pozo azul', '{C:inactive}(sin {C:money}+$1{C:inactive} por apuesta, rerolls +$1){}' } },
+        },
+    },
+    stake_mp_spectral = {
+        order = 2, name = 'Eclipse Stake', base = 8, no_blue = true, scaling = 4, pos = { x = 1, y = 0 }, colour = '7d52d9',
+        loc = {
+            en = { name = 'Eclipse Stake', text = { 'Applies {C:planet}Nova Stake{} effects', 'plus {C:money}Rental{} Jokers, and the', 'required score scales faster' } },
+            fr = { name = 'Mise Éclipse', text = { 'Applique les effets de la {C:planet}mise Nova{}', 'plus les Jokers en {C:money}location{}, et', 'le score requis monte plus vite' } },
+            es = { name = 'Pozo Eclipse', text = { 'Aplica los efectos del {C:planet}pozo Nova{}', 'más comodines de {C:money}alquiler{}, y la', 'puntuación requerida sube más rápido' } },
+        },
+    },
+    stake_mp_spectral_plus = {
+        order = 3, name = 'Eclipse+ Stake', base = 8, no_blue = true, scaling = 5, pos = { x = 2, y = 0 }, colour = 'd63a9c', shine = true,
+        loc = {
+            en = { name = 'Eclipse+ Stake', text = { 'Applies {C:purple}Eclipse Stake{} effects,', 'the required score scales', 'even faster' } },
+            fr = { name = 'Mise Éclipse+', text = { 'Applique les effets de la {C:purple}mise Éclipse{},', 'le score requis monte', 'encore plus vite' } },
+            es = { name = 'Pozo Eclipse+', text = { 'Aplica los efectos del {C:purple}pozo Eclipse{},', 'la puntuación requerida', 'sube aún más rápido' } },
+        },
+    },
+}
+S.DEFS = DEFS
+
+local NONE_LABEL = { en = 'None', fr = 'Aucune', es = 'Ninguna' }
+
+local function O() return bom_custom_objects end
+
+local function pick(tr)
+    if O() and O().pick then return O().pick(tr) end
+    return tr and tr.en
+end
+
+function S.valid(key)
+    return type(key) == 'string' and DEFS[key] ~= nil
+end
+
+function S.base(key)
+    return DEFS[key] and DEFS[key].base or nil
+end
+
+function S.name(key)
+    local d = DEFS[key]
+    if not d then return nil end
+    local e = pick(d.loc)
+    return e and e.name or d.name
+end
+
+function S.describe(key)
+    local d = DEFS[key]
+    if not d then return {} end
+    local e = pick(d.loc)
+    local out = {}
+    for _, l in ipairs(e and e.text or {}) do out[#out + 1] = l end
+    return out
+end
+
+function S.colour(key)
+    local d = DEFS[key]
+    if not d or not d.colour then return nil end
+    local h = d.colour
+    return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255, 1 }
+end
+
+S.ART_ATLAS = 'mp_stakes_art'
+S.CHIP = 29
+
+local function C() return bom_decks end
+
+S.ART = {
+    stake_mp_planet = { src = { 3, 0 },
+        accent = function(h, l, s) return C().rgb(188 / 360, l, 0.82) end,
+        dark = function(l) return 0.93, 0.98, 1 end,
+        light = function(l) return C().rgb(188 / 360, math.min(0.9, l), 0.55) end },
+    stake_mp_spectral = { src = { 4, 0 },
+        accent = function(h, l, s) return C().rgb(268 / 360, 0.66, 0.9) end,
+        dark = function(l) return 0.07 + l * 0.12, 0.05 + l * 0.08, 0.13 + l * 0.22 end,
+        light = function(l) return C().rgb(270 / 360, 0.5 + l * 0.22, 0.8) end },
+    stake_mp_spectral_plus = { src = { 4, 1 },
+        accent = function(h, l, s)
+            if h < 25 / 360 or h > 330 / 360 then return 0.2, 0.03, 0.16 end
+            return 1, 0.9, 0.97
+        end,
+        dark = function(l) return 0.2 + l * 0.25, 0.04 + l * 0.08, 0.16 + l * 0.2 end,
+        light = function(l) return C().rgb(323 / 360, 0.3 + l * 0.32, 0.72) end },
+}
+
+function S.build_art(scale)
+    local s = scale or 1
+    local ok, src = pcall(love.image.newImageData, "resources/textures/" .. s .. "x/chips.png")
+    if not ok or not src then return nil end
+    local cw = S.CHIP * s
+    local out = love.image.newImageData(cw * #S.KEYS, cw)
+    for i, k in ipairs(S.KEYS) do
+        local a = S.ART[k]
+        local sx, sy, ox = a.src[1] * cw, a.src[2] * cw, (i - 1) * cw
+        for y = 0, cw - 1 do
+            for x = 0, cw - 1 do
+                local r, g, b, al = src:getPixel(sx + x, sy + y)
+                if al > 0 then
+                    local h, l, sat = C().hls(r, g, b)
+                    if math.max(r, g, b) - math.min(r, g, b) > 0.25 then r, g, b = a.accent(h, l, sat)
+                    elseif l < 0.4 then r, g, b = a.dark(l)
+                    else r, g, b = a.light(l) end
+                end
+                out:setPixel(ox + x, y, r, g, b, al)
+            end
+        end
+    end
+    src:release()
+    return out
+end
+
+function S.register_art()
+    if not (G and G.ASSET_ATLAS and G.SETTINGS and love and love.graphics and C() and C().hls) then return end
+    local s = (G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.texture_scaling) or 2
+    local ok, data = pcall(S.build_art, s)
+    if not ok or not data then
+        if mp_log then mp_log.warn('BOM_STAKES', 'stake art failed: %s', tostring(data)) end
+        return
+    end
+    G.ASSET_ATLAS[S.ART_ATLAS] = {
+        name = S.ART_ATLAS, image = love.graphics.newImage(data, { mipmaps = true, dpiscale = s }),
+        type = 'asset_atli', px = S.CHIP, py = S.CHIP,
+    }
+end
+
+function S.sprite(key, scale)
+    local d = DEFS[key]
+    if not d or not G or not G.ASSET_ATLAS then return nil end
+    if not G.ASSET_ATLAS[S.ART_ATLAS] then pcall(S.register_art) end
+    local atlas = G.ASSET_ATLAS[S.ART_ATLAS]
+    if not atlas then return nil end
+    local sc = scale or 1
+    local spr = Sprite(0, 0, sc, sc, atlas, { x = d.pos.x, y = d.pos.y })
+    spr.states.drag.can = false
+    if d.shine then
+        spr.draw = function(_sprite)
+r 12 1823 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            _sprite.ARGS.send_to_shader[1] = math.min(_sprite.VT.r * 3, 1) + G.TIMERS.REAL / 18 + (_sprite.juice and _sprite.juice.r * 20 or 0) + 1
+r 12 1825 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 12 1827 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 12 1828 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 57
+        end
+    end
+    return spr
+end
+
+function S.current()
+    local key = G and G.GAME and G.GAME.mp_stake
+    if S.valid(key) then return key end
+    return nil
+end
+
+function S.info_rows(key)
+    local desc = {}
+    pcall(localize, { type = 'descriptions', key = key, set = 'Stake', nodes = desc })
+    local lines = {}
+    for _, v in ipairs(desc) do lines[#lines + 1] = { n = G.UIT.R, config = { align = "cm" }, nodes = v } end
+    return { n = G.UIT.R, config = { align = "cm" }, nodes = {
+        { n = G.UIT.R, config = { align = "cm", padding = 0.1, minw = 4 }, nodes = {
+            { n = G.UIT.O, config = { object = S.sprite(key, 0.8), hover = true, can_collide = false } },
+            { n = G.UIT.T, config = { text = S.name(key) or key, scale = 0.45, colour = G.C.WHITE } },
+        } },
+        { n = G.UIT.R, config = { align = "cm", padding = 0.05, colour = S.colour(key), r = 0.05 }, nodes = {
+            { n = G.UIT.R, config = { align = "cm", padding = 0.05, colour = G.C.WHITE, r = 0.05 }, nodes = {
+                { n = G.UIT.R, config = { align = "cm", padding = 0.03, minh = 0.7, minw = 3.8 }, nodes = lines },
+            } },
+        } },
+    } }
+end
+
+function S.list()
+    local out = {}
+    for _, k in ipairs(S.KEYS) do
+        local d = DEFS[k]
+        out[#out + 1] = { key = k, name = S.name(k), order = d.order, base = d.base, scaling = d.scaling, pos = { x = d.pos.x, y = d.pos.y }, atlas = S.ART_ATLAS }
+    end
+    return out
+end
+
+function S.options()
+    local out = { { value = '', label = pick({ en = NONE_LABEL.en, fr = NONE_LABEL.fr, es = NONE_LABEL.es }), raw = true } }
+    for _, k in ipairs(S.KEYS) do out[#out + 1] = { value = k, label = S.name(k), raw = true } end
+    return out
+end
+
+local function settings_key()
+    local key = nil
+    pcall(function()
+        local s = bom_match and bom_match.get_settings and bom_match.get_settings()
+        key = s and s.mp_stake
+    end)
+    if S.valid(key) then return key end
+    return nil
+end
+
+local function blind_amount(ante, scaling)
+    local amounts = AMOUNTS[scaling]
+    if not amounts then return nil end
+r 12 925 %20%20%20%20 -
+l 188
+    if ante <= 8 then return amounts[math.floor(ante)] end
+    local k = 0.75
+    local a, b, c, d = amounts[8], 1.6, ante - 8, 1 + 0.2 * (ante - 8)
+    local amount = math.floor(a * (b + (k * c) ^ d) ^ c)
+    amount = amount - amount % (10 ^ math.floor(math.log10(amount) - 1))
+    return amount
+end
+
+local function apply_overlay(key)
+    local d = DEFS[key]
+    if not d or not G.GAME then return end
+    if d.no_blue then
+        G.GAME.modifiers.ante_shop_tax = nil
+        G.GAME.modifiers.reroll_step = nil
+    end
+    G.GAME.modifiers.scaling = d.scaling
+    G.GAME.modifiers.enable_eternals_in_shop = true
+    G.GAME.modifiers.enable_perishables_in_shop = true
+    G.GAME.modifiers.no_blind_reward = G.GAME.modifiers.no_blind_reward or {}
+    G.GAME.modifiers.no_blind_reward.Small = true
+    if d.base >= 8 then G.GAME.modifiers.enable_rentals_in_shop = true end
+    G.GAME.mp_stake = key
+end
+
+local function desc_box(col)
+    local a = type(col) == 'table' and col.nodes and col.nodes[2]
+    a = a and a.nodes and a.nodes[1]
+    a = a and a.nodes and a.nodes[1]
+    if type(a) == 'table' and a.config and a.config.minh then return a end
+    return nil
+end
+
+local function box_size(box)
+    local f = G.LANG and G.LANG.font
+    if not (f and f.FONT and G.TILESIZE) then return 0, 0 end
+    local w, h = 0, 0
+    for _, row in ipairs(box.nodes or {}) do
+        local lw, lh = 0, 0
+        for _, t in ipairs(row.nodes or {}) do
+            if t.n == G.UIT.T and t.config and t.config.text then
+                local sc = t.config.scale or 1
+                lw = lw + f.FONT:getWidth(t.config.text) * (f.squish or 1) * sc * (f.FONTSCALE or 0.1) / G.TILESIZE
+                lh = math.max(lh, f.FONT:getHeight() * sc * (f.FONTSCALE or 0.1) * (f.TEXT_HEIGHT_SCALE or 1) / G.TILESIZE)
+            end
+        end
+        w = math.max(w, lw)
+        h = h + lh
+    end
+    local p = box.config.padding or 0
+    return w + 2 * p, h + (#(box.nodes or {}) + 1) * p
+end
+
+local function match_boxes(a, b)
+    if not (a and b) then return end
+    local wa, ha = box_size(a)
+    local wb, hb = box_size(b)
+    local w = math.max(wa + 0.4, wb + 0.4, a.config.minw or 0, b.config.minw or 0)
+    local h = math.max(ha + 0.12, hb + 0.12, a.config.minh or 0, b.config.minh or 0)
+    a.config.minw, b.config.minw = w, w
+    a.config.minh, b.config.minh = h, h
+end
+
+local function drop_kept_discard(key, other)
+    local d = DEFS[key]
+    local st = G.GAME and G.GAME.stake or 1
+    local pool = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake
+    if not (d and d.no_blue and st > 5 and pool and pool[5] and pool[5].key == 'stake_blue') then return end
+    if type(other) == 'table' and type(other.nodes) == 'table' and other.nodes[st - 4] then
+        table.remove(other.nodes, st - 4)
+    end
+end
+
+local function install_hooks()
+    if S.hooked then return end
+    S.hooked = true
+
+    if Game and Game.start_run then
+        local orig_start = Game.start_run
+        Game.start_run = function(self, args)
+            S.pending = nil
+            if type(args) == 'table' and not args.savetext then
+                local key = (S.valid(args.mp_stake) and args.mp_stake) or (args.mp_start and settings_key()) or nil
+                if key then
+                    args.stake = DEFS[key].base
+                    S.pending = key
+                end
+            end
+            local r = orig_start(self, args)
+            S.pending = nil
+            return r
+        end
+    end
+
+    local orig_apply = Back.apply_to_run
+    Back.apply_to_run = function(self, ...)
+        local r = orig_apply(self, ...)
+        if S.pending then
+            local key = S.pending
+            S.pending = nil
+            pcall(apply_overlay, key)
+        end
+        return r
+    end
+
+    if Game and Game.set_render_settings then
+        local orig_render = Game.set_render_settings
+        Game.set_render_settings = function(self, ...)
+            local r = orig_render(self, ...)
+            pcall(S.register_art)
+            return r
+        end
+    end
+
+    if type(get_stake_sprite) == 'function' then
+        local orig_sprite = get_stake_sprite
+        get_stake_sprite = function(st, sc)
+            local key = not S.plain and S.current()
+            if key and G.STAGE == G.STAGES.RUN and (st or 1) == G.GAME.stake then
+                local spr = S.sprite(key, sc or 1)
+                if spr then return spr end
+            end
+            return orig_sprite(st, sc)
+        end
+    end
+
+    if G and G.UIDEF and G.UIDEF.current_stake then
+        local orig_current = G.UIDEF.current_stake
+        G.UIDEF.current_stake = function(...)
+            S.plain = true
+            local ok, r = pcall(orig_current, ...)
+            S.plain = nil
+            if not ok then error(r) end
+            local key = S.current()
+            if key and type(r) == 'table' and type(r.nodes) == 'table' then
+                pcall(drop_kept_discard, key, r.nodes[2])
+                local okr, row = pcall(S.info_rows, key)
+                if okr and row then
+                    pcall(match_boxes, desc_box(row), desc_box(r.nodes[1]))
+                    local tall = rawget(_G, "UIK") and UIK.portrait and UIK.portrait()
+                    if tall or type(r.nodes[1]) ~= 'table' then
+                        table.insert(r.nodes, 1, row)
+                    else
+                        r.nodes[1] = { n = G.UIT.R, config = { align = "cm" }, nodes = {
+                            { n = G.UIT.C, config = { align = "tm", padding = 0.05 }, nodes = { row } },
+                            { n = G.UIT.C, config = { align = "tm", padding = 0.05 }, nodes = { r.nodes[1] } },
+                        } }
+                    end
+                end
+            end
+            return r
+        end
+    end
+
+    if type(get_blind_amount) == 'function' then
+        local orig_amount = get_blind_amount
+        get_blind_amount = function(ante)
+            local scaling = G and G.GAME and G.GAME.modifiers and G.GAME.modifiers.scaling or 1
+            if G and G.GAME and G.GAME.mp_stake and AMOUNTS[scaling] and type(ante) == 'number' then
+                if ante > 1 and ante < 8 and ante ~= math.floor(ante) then
+                    local lo = math.floor(ante)
+                    local a, b = blind_amount(lo, scaling), blind_amount(lo + 1, scaling)
+                    return a + (b - a) * (ante - lo)
+                end
+                return blind_amount(ante, scaling)
+            end
+            local v = orig_amount(ante)
+            if v == nil and AMOUNTS[scaling] and type(ante) == 'number' then return blind_amount(math.floor(ante), scaling) end
+            return v
+        end
+    end
+end
+
+local function register_loc()
+    if not O() or not O().register_loc then return end
+    for _, k in ipairs(S.KEYS) do O().register_loc('Stake', k, DEFS[k].loc) end
+end
+
+function S.init()
+    if S.initialized then return end
+    pcall(S.register_art)
+    register_loc()
+    if O() and O().inject_loc then O().inject_loc() end
+    local ok, err = pcall(install_hooks)
+    if not ok and mp_log then mp_log.warn('BOM_STAKES', 'hook install failed: %s', tostring(err)) end
+    S.initialized = true
+end
+
+return S
+end

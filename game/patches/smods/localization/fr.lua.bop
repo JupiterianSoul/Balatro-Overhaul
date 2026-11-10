@@ -1,0 +1,310 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 176
+return {
+    descriptions = {
+        Other = {
+            artist = { text = { "{C:inactive}Artiste" } },
+            artist_credit = { name = "Artiste", text = { "{E:1}#1#{}" } },
+            card_extra_chips = { text = { "{C:chips}#1#{} jetons en plus" } },
+            card_extra_h_chips = { text = { "{C:chips}#1#{} jetons si gardée en main" } },
+            card_extra_h_dollars = { text = { "{C:money}#1#{} si gardée en main en fin de manche" } },
+            card_extra_h_mult = { text = { "{C:mult}#1#{} Multi en plus si gardée en main" } },
+            card_extra_h_x_chips = { text = { "{X:chips,C:white}X#1#{} jetons en plus si gardée en main" } },
+            card_extra_h_x_mult = { text = { "{X:mult,C:white}X#1#{} Multi en plus si gardée en main" } },
+            card_extra_mult = { text = { "{C:mult}#1#{} Multi en plus" } },
+            card_extra_p_dollars = { text = { "{C:money}#1#{} quand elle marque" } },
+            card_extra_repetitions = { text = { "Redéclenche cette", "carte {C:attention}#1#{} #2#" } },
+            card_extra_score = { text = { "{C:purple}#1#{} de score en plus" } },
+            card_extra_x_chips = { text = { "{X:chips,C:white}X#1#{} jetons en plus" } },
+            card_extra_x_mult = { text = { "{X:mult,C:white}X#1#{} Multi en plus" } },
+            card_extra_x_score = { text = { "{X:purple,C:white}X#1#{} de score en plus" } },
+            card_h_x_chips = { text = { "{X:chips,C:white}X#1#{} jetons si gardée en main" } },
+            card_h_x_mult = { text = { "{X:mult,C:white}X#1#{} Multi si gardée en main" } },
+            card_score = { text = { "{C:purple}#1#{} de score" } },
+            card_x_chips = { text = { "{X:chips,C:white}X#1#{} jetons" } },
+            card_x_mult = { text = { "{X:mult,C:white}X#1#{} Multi" } },
+            card_x_score = { text = { "{X:purple,C:white}X#1#{} de score" } },
+            generic_card_limit = { name = "Limite de cartes", text = { "{C:dark_edition}#1#{} emplacement de zone" } },
+            generic_card_limit_pc = { name = "Taille de la main", text = { "{C:dark_edition}#1#{} carte en main" } },
+            generic_card_limit_pc_plural = { name = "Taille de la main", text = { "{C:dark_edition}#1#{} cartes en main" } },
+            generic_card_limit_plural = { name = "Limite de cartes", text = { "{C:dark_edition}#1#{} emplacements de zone" } },
+            generic_extra_slots = { name = "Emplacements pris", text = { "Prend {C:dark_edition}#1#{} emplacements" } },
+            generic_extra_slots_pc = { name = "Place en main", text = { "Prend {C:dark_edition}#1#{} places en main" } },
+            load_success = {
+                text = {
+                    'Mod chargé',
+                    '{C:green}avec succès!'
+                }
+            },
+            load_failure_d = {
+                text = {
+                    'Dépendances {C:attention}manquantes!',
+                    '#1#',
+                }
+            },
+            load_failure_c = {
+                text = {
+                    'Conflits {C:attention}non résolus!',
+                    '#1#'
+                }
+            },
+            load_failure_d_c = {
+                text = {
+                    'Dépendances {C:attention}manquantes!',
+                    '#1#',
+                    'Conflits {C:attention}non résolus!',
+                    '#2#'
+                }
+            },
+            load_failure_o = {
+                text = {
+                    '{C:attention}Obsolète!{} Steamodded',
+                    'versions {C:money}0.9.8{} et dessous',
+                    'ne sont plus supportés.'
+                }
+            },
+            load_failure_i = {
+                text = {
+                    '{C:attention}Incompatible!{} Nécessite version',
+                    '#1# de Steamodded,',
+                    'mais #2# est installé.'
+                }
+            },
+            load_failure_p = {
+                text = {
+                    '{C:attention}Conflit de Préfixe!{}',
+                    'Le préfixe de ce mod est',
+                    'le même que celui d\'un autre mod.',
+                    '({C:attention}#1#{})'
+                }
+            },
+            load_failure_m = {
+                text = {
+                    '{C:attention}Fichier principal manquant!{}',
+                    'Le fichier principal de ce mod',
+                    'n\'a pas pu être trouvé.',
+                    '({C:attention}#1#{})'
+                }
+            },
+            load_disabled = {
+                text = {
+                    'Ce mod a été',
+                    '{C:attention}désactivé!{}'
+                }
+            },
+            card_chips_minus = {
+                text = {
+                    '{C:chips}#1#{} Jetons'
+                },
+            },
+            card_h_score = {
+                text = {
+                    "{C:purple}#1#{} Score when held",
+                },
+            },
+            card_h_x_score = {
+                text = {
+                    "{X:purple,C:white}X#1#{} Score supplémentaire si vous {C:attention}l'avez{} en main",
+                },
+            },
+            card_extra_h_score = {
+                text = {
+                    "{C:purple}#1#{} Score supplémentaire si vous {C:attention}l'avez{} en main",
+                },
+            },
+            card_extra_h_x_score = {
+                text = {
+                    "{X:purple,C:white}X#1#{} Score supplémentaire si vous {C:attention}l'avez{} en main",
+                },
+            },
+            card_blind_size = {
+                text = {
+                    "{C:blind}#1#{} Taille de Blinde",
+                },
+            },
+            card_h_blind_size = {
+                text = {
+                    "{C:blind}#1#{} Taille de Blinde si vous {C:attention}l'avez{} en main",
+                },
+            },
+            card_x_blind_size = {
+                text = {
+                    "{X:blind,C:white}X#1#{} Taille de Blinde",
+                },
+            },
+            card_h_x_blind_size = {
+                text = {
+                    "{X:blind,C:white}X#1#{} Taille de Blinde si vous {C:attention}l'avez{} en main",
+                },
+            },
+            card_extra_blind_size = {
+                text = {
+                    "{C:blind}#1#{} Taille de Blinde",
+                },
+            },
+            card_extra_h_blind_size = {
+                text = {
+                    "{C:blind}#1#{} Taille de Blinde si vous {C:attention}l'avez{} en main",
+                },
+            },
+            card_extra_x_blind_size = {
+                text = {
+                    "{X:blind,C:white}X#1#{} Taille de Blinde",
+                },
+            },
+            card_extra_h_x_blind_size = {
+                text = {
+                    "{X:blind,C:white}X#1#{} Taille de Blinde si vous {C:attention}l'avez{} en main",
+                },
+            },
+        },
+        Edition = {
+            e_negative_generic = {
+                name = "Négatif",
+                text = { "{C:dark_edition}+#1#{} emplacement de zone" },
+            },
+            e_negative_playing_card = {
+                name = "Négatif",
+                text = {
+                    "{C:dark_edition}+#1#{} à la taille de la main"
+                },
+            },
+        },
+        Enhanced = {
+            m_gold={
+                name="Carte Or",
+                text={
+                    "{C:money}#1#{} si cette",
+                    "carte est en main",
+r 37 393 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                },
+            },
+            m_stone={
+                name="Carte Pierre",
+                text={
+                    "{C:chips}#1#{} Jetons",
+r 37 423 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 11
+                },
+            },
+            m_mult={
+                name="Carte Multi.",
+                text={
+                    "Multi. {C:mult}#1#{}",
+                },
+            },
+            m_lucky={
+                name="Carte Chance",
+                text={
+r 37 399 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 37 400 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    "{C:green}#6# chance(s) sur #5#{}",
+r 37 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 101
+                },
+            },
+        }
+    },
+    misc = {
+        achievement_names = {
+            hidden_achievement = "???",
+        },
+        achievement_descriptions = {
+            hidden_achievement = "Jouez plus pour découvrir!",
+        },
+        dictionary = {
+            b_limit = "Jusqu'à ",
+            b_priority = "Priorité : ",
+            b_retrigger_plural = "fois",
+            b_retrigger_single = "fois",
+            b_run_select_reduce = "Mode performance du choix de partie",
+            b_run_select_reduce_info = { "Tire moins de cartes", "et retire les animations" },
+            b_vanilla_run_select = "Choix de partie d'origine",
+            b_vanilla_run_select_info = { "Ignoré si des mods ajoutent", "des pages en plus" },
+            b_vanilla_stake = "Affichage des mises d'origine",
+            b_vanilla_stake_info = { "Active ou non l'affichage personnalisé", "des mises dans les infos de partie" },
+            k_enhanced = "Amélioration",
+            run_select_deck_choice = "Choisir un jeu",
+            run_select_deck_choice_random = "Jeu au hasard",
+            run_select_locked_stake = "Verrouillée",
+            run_select_locked_stake_and = " et ",
+            run_select_locked_stake_message = "Gagnez avec ce jeu en ",
+            run_select_nothing = "Rien",
+            run_select_play = "Jouer",
+            run_select_quick_start = "Dernière partie",
+            run_select_selected = "CHOISI",
+            run_select_stake_choice = "Choisir une mise",
+            run_select_stake_choice_random = "Mise au hasard",
+            run_setup_enable_seed = "Activer la seed",
+            b_mods = 'Mods',
+            b_mods_cap = 'MODS',
+            b_modded_version = 'Version Moddé!',
+            b_steamodded = 'Steamodded',
+            b_credits = 'Crédits',
+            b_open_mods_dir = 'Ouvrir le répertoire des mods',
+            b_no_mods = 'Aucun mod détecté...',
+            b_mod_list = 'Liste des mods activés',
+            b_mod_loader = 'Mod Loader',
+            b_developed_by = 'développé par ',
+            b_rewrite_by = 'Réécrit par ',
+            b_github_project = 'Projet Github',
+            b_github_bugs_1 = 'Vous pouvez signaler des bugs et',
+            b_github_bugs_2 = 'y faire des contributions.',
+            b_disable_mod_badges = 'Désactiver les badges de mod',
+            b_author = 'Auteur',
+            b_authors = 'Auteurs',
+            b_unknown = 'Inconnu',
+            b_lovely_mod = '(Mod Lovely) ',
+            b_by = 'Par: ',
+            b_config = "Config",
+            b_additions = 'Ajouts',
+            b_stickers = 'Autocollants',
+            b_achievements = "Succès",
+            b_applies_stakes_1 = 'Applique ',
+            b_applies_stakes_2 = '',
+            b_graphics_mipmap_level = "Niveau Mipmap",
+            b_browse = 'Parcourir',
+            b_search_prompt = 'Chercher des mods',
+            b_search_button = 'Recherche',
+            b_seeded_unlocks = 'Progression si Seed custom',
+            b_seeded_unlocks_info = 'Permet la progression et les découvertes pour les parties Seedées.',
+            ml_achievement_settings = {
+                'Désactivé',
+                'Activé',
+                'Sans restrictions'
+            },
+            b_deckskins_lc = 'Couleurs Faible Contraste',
+            b_deckskins_hc = 'Couleurs Haut Contraste',
+            b_deckskins_def = 'Couleurs par défaut',
+        },
+        v_dictionary = {
+            a_score = "#1# de score",
+            a_xscore = "X#1# de score",
+            a_xscore_minus = "-X#1# de score",
+            a_blind_size = "#1# à la taille de la blinde",
+            a_xblind_size = "X#1# à la taille de la blinde",
+            a_xblind_size_minus = "-X#1# à la taille de la blinde",
+            smods_version_mismatch = {
+                "Votre version de Steamodded a changé",
+                "depuis le début de cette partie !",
+                "La continuer peut causer des",
+                "comportements inattendus et des plantages.",
+                "Version de départ : #1#",
+                "Version actuelle : #2#",
+            },
+            c_types = '#1# Types',
+            cashout_hidden = '...et #1# de plus',
+            a_xchips = "X#1# Jetons",
+            a_xchips_minus = "-X#1# Jetons",
+            a_blind_size="#1# Taille de Blinde",
+            a_xblind_size="X#1# Taille de Blinde",
+            a_xblind_size_minus="-X#1# Taille de Blinde",
+        },
+    }
+}
+end

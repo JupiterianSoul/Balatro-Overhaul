@@ -1,0 +1,1147 @@
+BOP 2
+eol lf
+final 1
+base 13
+l 2
+local platform = require("engine.platform")
+
+c 2
+s 1
+e 13 3 %20%20%20%20%20%20%20%20 - =37,-1,+%33,=1,-1,=1,+%35
+c 8
+s 1
+e 13 12 %20%20%20%20%20%20%20%20 - =53,-1,+%38
+c 47
+s 1
+l 1
+                if chip_UI then chip_UI:juice_up() end
+c 15
+s 1
+l 1
+            col = G.C.RED
+c 2
+l 6
+          -- Quest hook: track money earned
+          if QuestManager and QuestManager.on_money_earned then
+            pcall(function() QuestManager.on_money_earned(mod) end)
+          end
+          -- Haptic: money gained (light)
+          pcall(function() haptic_buzz(1) end)
+c 10
+s 1
+l 1
+          scale = 0.8,
+c 40
+s 1
+l 1
+          scale = 0.8,
+c 38
+s 1
+l 1
+          scale = 0.8,
+c 35
+l 6
+
+          -- Quest hook: track ante reached
+          if mod > 0 and QuestManager and QuestManager.on_ante_reached then
+            pcall(function() QuestManager.on_ante_reached(G.GAME.round_resets.ante) end)
+          end
+
+c 5
+s 1
+l 1
+            scale = 1,
+c 33
+s 1
+l 1
+            scale = 1,
+c 33
+s 2
+r 13 278 %20%20%20%20%20%20%20%20 -
+r 13 279 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+s 1
+r 13 298 %20%20%20%20 -
+c 17
+s 1
+r 13 316 %20%20%20%20 -
+c 11
+s 1
+r 4 128 %20%20%20%20 -
+c 13
+s 1
+r 13 342 %20%20%20%20 -
+c 8
+s 1
+r 13 351 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 36
+s 2
+l 1
+    delay = delay or 0.1
+r 13 389 %20%20%20%20 -
+c 9
+s 1
+l 1
+            if card then
+c 15
+l 1
+                    haptic_buzz(1)
+c 14
+s 1
+r 13 389 %20%20%20%20 -
+c 25
+s 1
+l 1
+        if not silent then
+c 13
+s 1
+l 3
+    -- Haptic: hand level up (medium)
+    if not instant and amount > 0 then pcall(function() haptic_buzz(2) end) end
+    if not instant then
+c 26
+l 17
+    -- PERF: Skip queued intermediate score counter updates when animations disabled
+    -- The mandatory final update_hand_text uses config.immediate=true and is always kept
+    if not config.immediate and not config.sound and
+       G.SETTINGS and G.SETTINGS.skip_score_animation then
+        -- Update game state directly so the final display renders correct values
+        if G.GAME and G.GAME.current_round and G.GAME.current_round.current_hand then
+            if vals.chips ~= nil then G.GAME.current_round.current_hand.chips = vals.chips end
+            if vals.mult  ~= nil then G.GAME.current_round.current_hand.mult  = vals.mult  end
+        end
+        return
+    end
+    -- PERF: Also skip when event queue is saturated (only if Auto-Skip Heavy Scoring is enabled)
+    if not config.immediate and not config.sound and
+       G.SETTINGS and G.SETTINGS.perf_heavy_scoring and
+       G.E_MANAGER and #G.E_MANAGER.queues.base > 200 then
+        return
+    end
+c 15
+s 1
+r 13 511 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 1
+                    scale = 0.8,
+c 18
+s 1
+r 13 511 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 1
+                    scale = 0.8,
+c 12
+s 1
+r 13 549 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+r 13 559 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 8
+s 1
+r 13 568 %20%20%20%20%20%20%20%20 -
+c 22
+s 1
+l 1
+
+c 2
+s 1
+l 1
+        if chips > 0 then
+c 4
+s 1
+l 1
+        if mult > 0 then
+c 4
+s 1
+l 1
+        if x_mult > 0 then
+c 4
+s 1
+r 13 609 %20%20%20%20%20%20%20%20 -
+c 4
+s 1
+l 1
+        if jokers then
+c 4
+s 1
+l 1
+        if edition then
+c 6
+s 1
+l 1
+        if h_mult > 0 then
+c 4
+s 1
+l 1
+        if h_x_mult > 0 then
+c 4
+s 1
+l 1
+        if jokers then
+c 13
+s 1
+l 1
+        if jokers then
+c 11
+l 1
+        local function mp_only(k) return type(k) == 'string' and k:find('^%a+_mp_') ~= nil end
+c 1
+s 1
+l 1
+            if v.discovered and not v.alerted and not mp_only(k) then
+c 10
+s 1
+l 1
+            if v.discovered and not v.alerted and k ~= 'bl_mp_nemesis' and not mp_only(k) then
+c 42
+s 1
+l 1
+            if type(G.OVERLAY_MENU) == 'table' and G.OVERLAY_MENU:get_UIE_by_ID(v.id) then
+c 1
+s 1
+r 13 719 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 13 726 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 3
+l 1
+        local mp_menu = rawget(_G, 'mpm_menu')
+r 13 736 %20%20%20%20%20%20%20%20 -
+l 1
+            if alert_any and not (mp_menu and mp_menu.active) then
+r 13 738 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 13 742 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 13 742 %20%20%20%20%20%20%20%20 -
+c 6
+l 18
+-- ============================================
+-- CROSS-PROFILE DATA SHARING
+-- ============================================
+
+-- Merges unlock/discover states from ALL profiles' meta.jkr into the current
+-- item prototypes. After this, any item unlocked on ANY profile is unlocked everywhere.
+function merge_all_profile_unlocks()
+    if not G or not G.FILES then return end
+    local current = G.SETTINGS and G.SETTINGS.profile or 1
+    for p = 1, 3 do
+        if p ~= current then
+            local meta = G.FILES[p..'/meta.jkr']
+            if meta and type(meta) == 'table' then
+                local mu = meta.unlocked or {}
+                local md = meta.discovered or {}
+                local ma = meta.alerted or {}
+                -- Merge into P_CENTERS
+                if G.P_CENTERS then
+r 3 229 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 7
+                        if mu[k] and not v.unlocked then v.unlocked = true end
+                        if md[k] and not v.discovered then v.discovered = true end
+                        if ma[k] and v.discovered then v.alerted = true end
+                    end
+                end
+                -- Merge into P_BLINDS
+                if G.P_BLINDS then
+r 2 703 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                        if md[k] and not v.discovered then v.discovered = true end
+                        if ma[k] and v.discovered then v.alerted = true end
+                    end
+                end
+                -- Merge into P_TAGS
+                if G.P_TAGS then
+r 15 3917 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                        if md[k] and not v.discovered then v.discovered = true end
+                        if ma[k] and v.discovered then v.alerted = true end
+                    end
+                end
+                -- Merge into P_SEALS
+                if G.P_SEALS then
+r 13 683 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 187
+                        if md[k] and not v.discovered then v.discovered = true end
+                        if ma[k] and v.discovered then v.alerted = true end
+                    end
+                end
+                -- Merge into P_STAKES
+                if G.P_STAKES then
+                    for k, v in pairs(G.P_STAKES) do
+                        if mu[k] and not v.unlocked then v.unlocked = true; v.discovered = true end
+                        if md[k] and not v.discovered then v.discovered = true end
+                    end
+                end
+                -- Merge deck_usage (stake wins) into current profile
+                if G.PROFILES and G.PROFILES[p] and G.PROFILES[p].deck_usage
+                   and G.PROFILES[current] then
+                    G.PROFILES[current].deck_usage = G.PROFILES[current].deck_usage or {}
+                    for dk, dv in pairs(G.PROFILES[p].deck_usage) do
+                        if not G.PROFILES[current].deck_usage[dk] then
+                            G.PROFILES[current].deck_usage[dk] = dv
+                        elseif dv.wins then
+                            G.PROFILES[current].deck_usage[dk].wins = G.PROFILES[current].deck_usage[dk].wins or {}
+                            for stake, val in pairs(dv.wins) do
+                                if val and not G.PROFILES[current].deck_usage[dk].wins[stake] then
+                                    G.PROFILES[current].deck_usage[dk].wins[stake] = val
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    -- Save the merged state so it persists
+    pcall(function() G:save_progress() end)
+end
+
+-- Copies mod progression data (XP, level, balacoin, quests, cosmetics) from
+-- profile 1 to a target profile if the target has no progression data yet.
+function copy_progression_from_main(target_profile)
+    if not G or not G.PROFILES then return end
+    if target_profile == 1 then return end  -- profile 1 is the source
+    local source = G.PROFILES[1]
+    local target = G.PROFILES[target_profile]
+    if not source or not target then return end
+    -- Only copy if target has no progression data (fresh profile)
+    if target.progression and target.progression.xp and target.progression.xp > 0 then return end
+    if source.progression then
+        target.progression = copy_table(source.progression)
+    end
+    if source.quests then
+        target.quests = copy_table(source.quests)
+    end
+end
+
+-- Saves the icon frame position offset (relative to ROOM_ATTACH top-left) to a per-profile file.
+function save_icon_frame_pos(ox, oy)
+    pcall(function()
+        local profile_num = (G.SETTINGS and G.SETTINGS.profile) or 1
+        love.filesystem.write(
+            "icon_frame_pos_" .. profile_num .. ".jkr",
+            "return {x=" .. ox .. ",y=" .. oy .. "}"
+        )
+    end)
+end
+
+-- Loads the saved icon frame position offset; returns {x, y} table or nil.
+function load_icon_frame_pos()
+    local result = nil
+    pcall(function()
+        local profile_num = (G.SETTINGS and G.SETTINGS.profile) or 1
+        local path = "icon_frame_pos_" .. profile_num .. ".jkr"
+        if love.filesystem.getInfo and love.filesystem.getInfo(path) then
+            local data = love.filesystem.read(path)
+            if data then
+                local fn = loadstring(data)
+                if fn then
+                    local ok, val = pcall(fn)
+                    if ok and type(val) == 'table' and
+                       type(val.x) == 'number' and type(val.y) == 'number' then
+                        result = val
+                    end
+                end
+            end
+        end
+    end)
+    return result
+end
+
+-- Creates/rebuilds the draggable icon frame UIBox. Called by set_main_menu_UI and cosmetics equip.
+function setup_profile_icon_frame()
+    pcall(function()
+        if G.PROFILE_ICON_FRAME then
+            G.PROFILE_ICON_FRAME:remove()
+            G.PROFILE_ICON_FRAME = nil
+        end
+        if not G.UIDEF or not G.UIDEF.profile_icon_frame or not G.ROOM_ATTACH then return end
+
+        -- Step 1: Create the UIBox with initial tli alignment to get a valid position
+        G.PROFILE_ICON_FRAME = UIBox{
+            definition = G.UIDEF.profile_icon_frame(),
+            config = {align="tli", offset = {x=0, y=0}, major = G.ROOM_ATTACH, bond = 'Weak'}
+        }
+        G.PROFILE_ICON_FRAME:align_to_major()
+
+        -- Step 2: Calculate initial position (saved or top-left corner)
+        local rx, ry = G.ROOM_ATTACH.T.x, G.ROOM_ATTACH.T.y
+        local rw, rh = G.ROOM_ATTACH.T.w, G.ROOM_ATTACH.T.h
+        local fw = G.PROFILE_ICON_FRAME.T.w
+        local fh = G.PROFILE_ICON_FRAME.T.h
+        local pos_x, pos_y = rx, ry  -- default: top-left
+
+        local saved = load_icon_frame_pos()
+        if saved then
+            pos_x = rx + saved.x
+            pos_y = ry + saved.y
+        else
+            local clear_y = CORNER_LABELS and CORNER_LABELS.mode_clear_y and CORNER_LABELS.mode_clear_y(pos_x)
+            if clear_y then pos_y = math.max(pos_y, clear_y) end
+        end
+
+        -- Step 3: Hard-set the position
+        G.PROFILE_ICON_FRAME.T.x = pos_x
+        G.PROFILE_ICON_FRAME.T.y = pos_y
+        G.PROFILE_ICON_FRAME.VT.x = pos_x
+        G.PROFILE_ICON_FRAME.VT.y = pos_y
+
+        -- Step 4: Switch to Major role so move_with_major() never runs.
+        -- This is the KEY fix: as Minor, move_with_major overwrites T.x/T.y every
+        -- frame, fighting with drag(). As Major, only move_xy() runs (smoothing VT
+        -- towards T), so drag() can freely set T.x/T.y.
+        G.PROFILE_ICON_FRAME.role.role_type = 'Major'
+        G.PROFILE_ICON_FRAME.role.major = nil
+
+        -- Step 5: Enable dragging on UIBox
+        G.PROFILE_ICON_FRAME.states.drag.can = true
+        G.PROFILE_ICON_FRAME.states.collide.can = true
+
+        -- Step 6: Enable collide + can_drag on ALL child UIElements and sprites
+        -- (controller collision hits UIElements, not the UIBox; can_drag() must
+        -- return the UIBox so the whole frame moves together)
+        local _frame_box = G.PROFILE_ICON_FRAME
+        local function _enable_drag_recursive(elem)
+            if not elem then return end
+            if elem.states then
+                elem.states.collide.can = true
+                elem.states.drag.can = true
+            end
+            elem.can_drag = function() return _frame_box end
+            if elem.children then
+                for _, child in pairs(elem.children) do
+                    if child then _enable_drag_recursive(child) end
+                end
+            end
+            if elem.config and elem.config.object then
+                local obj = elem.config.object
+                if obj.states then
+                    obj.states.collide.can = true
+                    obj.states.drag.can = true
+                end
+                obj.can_drag = function() return _frame_box end
+            end
+        end
+        _enable_drag_recursive(G.PROFILE_ICON_FRAME.UIRoot)
+
+        -- Step 7: Override drag (no boundary clamping)
+        G.PROFILE_ICON_FRAME.drag = function(self, offset)
+            Moveable.drag(self, offset)
+        end
+
+        -- Step 8: Override stop_drag to save final position
+        G.PROFILE_ICON_FRAME.stop_drag = function(self)
+            Node.stop_drag(self)
+            local _rx = G.ROOM_ATTACH and G.ROOM_ATTACH.T.x or 0
+            local _ry = G.ROOM_ATTACH and G.ROOM_ATTACH.T.y or 0
+            save_icon_frame_pos(self.T.x - _rx, self.T.y - _ry)
+        end
+    end)
+end
+
+function main_menu_bar_offset()
+    local below = 0.8
+    if G.ROOM and G.TILESIZE and G.TILESCALE and love.graphics then
+        below = love.graphics.getHeight()/(G.TILESIZE*G.TILESCALE) - (G.ROOM.T.y + G.ROOM.T.h)
+    end
+    if not _G._IS_DESKTOP then return math.min(0.4, below - 0.1) end
+    return math.max(0.65, below - 0.05)
+end
+
+c 2
+s 1
+r 13 755 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 1
+    G.MAIN_MENU_UI.alignment.offset.y = main_menu_bar_offset()
+c 1
+s 14
+c 1
+s 1
+l 4
+    -- Create profile icon frame (cosmetic overlay, separate from profile button)
+    setup_profile_icon_frame()
+    pcall(function() if CrashReports and CrashReports.send_pending then CrashReports.send_pending() end end)
+
+c 1
+l 7
+
+    -- FEATURE: First-launch language selector + showcase
+    pcall(function()
+        if G.FUNCS.check_first_launch then
+            G.FUNCS.check_first_launch()
+        end
+    end)
+c 3
+l 5
+    -- PERF: Skip ALL floating score text when animations disabled or event queue saturated
+    -- With 5+ jokers this function runs 100+ times per hand — skipping keeps the render thread clear
+    if (G.SETTINGS and G.SETTINGS.skip_score_animation) or
+       (G.SETTINGS and G.SETTINGS.perf_heavy_scoring and G.E_MANAGER and #G.E_MANAGER.queues.base > 150) then
+        -- Still process any playing cards created by this effect (e.g. Joker that creates cards)
+r 13 922 %20%20%20%20%20%20%20%20 -
+r 13 923 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+        end
+        return
+    end
+c 1
+s 1
+r 13 389 %20%20%20%20 -
+c 27
+s 1
+r 13 809 %20%20%20%20 -
+c 5
+s 1
+r 13 815 %20%20%20%20 -
+c 5
+s 1
+r 13 821 %20%20%20%20 -
+c 6
+s 1
+r 13 828 %20%20%20%20 -
+c 7
+s 1
+r 13 836 %20%20%20%20 -
+c 6
+s 1
+r 13 843 %20%20%20%20 -
+c 4
+s 1
+r 13 848 %20%20%20%20 -
+c 4
+s 1
+r 13 853 %20%20%20%20 -
+c 1
+s 1
+r 13 855 %20%20%20%20%20%20%20%20 -
+c 6
+l 1
+        if not text or text == '' then return end
+c 17
+l 7
+    -- FIX: Respect Score Speed setting for card eval popups
+    -- FEATURE: Skip Score Animation — force delay to 0 when skip is enabled
+    if G.SETTINGS and G.SETTINGS.skip_score_animation then
+        delay = 0
+    else
+        delay = delay * ((G.SETTINGS and G.SETTINGS.fast_score_resolve) or 1.0)
+    end
+c 6
+s 1
+r 13 885 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+l 2
+                -- PERF: Cap jiggle (instant path) to prevent screen shake spiral with many jokers
+                G.ROOM.jiggle = math.min(G.ROOM.jiggle + 0.7, 5)
+c 9
+s 1
+r 13 885 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+l 2
+                        -- PERF: Cap jiggle to prevent screen shake from spiralling with many jokers
+                        G.ROOM.jiggle = math.min(G.ROOM.jiggle + 0.7, 5)
+c 6
+s 1
+r 13 922 %20%20%20%20 -
+c 12
+s 1
+r 13 935 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 1
+                    func = function()
+c 24
+l 2
+                    blind_sprite.atlas = G.ANIMATION_ATLAS[G.GAME.blind.config and G.GAME.blind.config.blind and G.GAME.blind.config.blind.atlas or 'blind_chips'] or blind_sprite.atlas
+                    blind_sprite:set_sprite_pos(copy_table(G.GAME.blind.pos))
+c 5
+s 3
+l 1
+
+r 13 969 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    config.saved and
+c 13
+s 1
+l 1
+                    }})
+c 8
+s 1
+r 13 993 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 11
+l 2
+                elseif config.name == 'mp_compensation' then
+                    table.insert(left_text, {n=G.UIT.O, config={object = DynaText({string = {" "..(mod_loc and mod_loc("Comeback Money") or "Comeback Money")}, colours = {G.C.UI.TEXT_LIGHT}, shadow = true, pop_in = 0, scale = 0.4*scale, silent = true})}})
+c 5
+s 1
+l 1
+
+c 11
+s 1
+r 13 1022 %20%20%20%20%20%20%20%20 -
+c 20
+s 1
+l 1
+                        if i%30 == 1 then
+c 8
+s 2
+l 1
+
+r 13 960 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+l 1
+                        haptic_buzz(1)
+c 30
+s 1
+l 1
+
+c 2
+l 1
+                haptic_buzz(2)
+c 62
+s 1
+l 22
+
+    local pad = G.CONTROLLER.GAMEPAD and G.CONTROLLER.GAMEPAD.object
+    local rumble_on = G.F_RUMBLE and G.SETTINGS.rumble
+    if rumble_on and pad then
+        local strength = G.CURR_VIBRATION*0.4*G.F_RUMBLE
+        pad:setVibration(strength, strength)
+    elseif rumble_on and love.system.getOS() == 'Android' and G.SETTINGS.haptic_feedback and (G.HAPTIC_LEVEL or 0) > 0 then
+        local _intensity = (G.SETTINGS.haptic_intensity or 50) / 100
+        local _durations = {0.015, 0.03, 0.06, 0.1} -- light, medium, heavy, rigid
+        local _dur = (_durations[G.HAPTIC_LEVEL] or 0.03) * (0.3 + _intensity * 1.4)
+        pcall(function() love.system.vibrate(_dur) end)
+        G.HAPTIC_LEVEL = 0
+    end
+    G.VIBRATION = 0
+end
+
+-- Haptic feedback helper: trigger a vibration at a specific intensity level
+-- level: 1=light (tap), 2=medium (score), 3=heavy (win), 4=rigid (big moment)
+function haptic_buzz(level)
+    if not G or not G.SETTINGS then return end
+    if not G.SETTINGS.haptic_feedback then return end
+    G.HAPTIC_LEVEL = math.max(G.HAPTIC_LEVEL or 0, level or 1)
+c 5
+s 1
+e 13 1159 %20%20%20%20%20%20%20%20 - =92,+%2C%20%74%72%75%65,=70
+c 5
+s 2
+l 2
+    if G.GAME.seeded and not G.GAME.daily then return end
+    if G.GAME.modded_run then return end
+r 13 1166 %20%20%20%20 -
+c 7
+s 1
+l 1
+        if _c then
+c 29
+s 1
+r 13 1204 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 13 1208 %20%20%20%20 -
+c 1
+s 1
+r 13 1210 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 1213 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 1216 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 1219 %20%20%20%20%20%20%20%20 -
+c 24
+s 1
+r 13 1244 %20%20%20%20%20%20%20%20 -
+c 3
+s 2
+r 13 1248 %20%20%20%20 -
+r 13 1249 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 13 1253 %20%20%20%20 -
+c 37
+s 1
+r 13 1291 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 1294 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 1297 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 1300 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 1303 %20%20%20%20%20%20%20%20 -
+c 31
+s 1
+r 13 1335 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+r 13 1345 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 13 1345 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 74
+s 1
+r 13 1425 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 13 1431 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 13 1437 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 14
+s 1
+r 13 1208 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 14
+s 1
+l 1
+                    unlock_card(card)
+c 5
+s 1
+l 1
+                    if v.discovered then
+c 3
+s 1
+r 13 1477 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 19
+s 1
+l 1
+                    unlock_card(card)
+c 8
+s 1
+l 1
+                        unlock_card(card)
+c 5
+s 1
+l 1
+                        unlock_card(card)
+c 5
+s 1
+l 1
+                        unlock_card(card)
+c 7
+s 1
+l 1
+                        unlock_card(card)
+c 11
+s 1
+l 1
+                    if tally >= 4 then
+c 4
+s 2
+l 1
+
+r 13 1544 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+l 1
+                    if tally >= 5 then
+c 6
+s 1
+r 13 1558 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+l 1
+                    if tally >= 5 then
+c 4
+s 1
+r 13 1570 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+l 1
+                        if min == 10 then
+c 52
+s 1
+l 1
+        if G.GAME.seeded or G.GAME.challenge or G.GAME.modded_run then return end
+c 13
+s 30
+r 13 1644 %20%20%20%20%20%20%20%20 -
+r 13 1645 %20%20%20%20%20%20%20%20 -
+r 13 1646 %20%20%20%20%20%20%20%20 -
+r 13 1647 %20%20%20%20%20%20%20%20 -
+r 13 1648 %20%20%20%20%20%20%20%20 -
+r 13 1649 %20%20%20%20%20%20%20%20 -
+r 13 1650 %20%20%20%20%20%20%20%20 -
+r 13 1651 %20%20%20%20%20%20%20%20 -
+r 13 1652 %20%20%20%20%20%20%20%20 -
+r 13 1653 %20%20%20%20%20%20%20%20 -
+r 13 1654 %20%20%20%20%20%20%20%20 -
+r 13 1655 %20%20%20%20%20%20%20%20 -
+r 13 1656 %20%20%20%20%20%20%20%20 -
+r 13 1657 %20%20%20%20%20%20%20%20 -
+r 13 1658 %20%20%20%20%20%20%20%20 -
+r 13 1659 %20%20%20%20%20%20%20%20 -
+r 13 1660 %20%20%20%20%20%20%20%20 -
+r 13 1661 %20%20%20%20%20%20%20%20 -
+r 13 1662 %20%20%20%20%20%20%20%20 -
+r 13 1663 %20%20%20%20%20%20%20%20 -
+r 13 1664 %20%20%20%20%20%20%20%20 -
+r 13 1665 %20%20%20%20%20%20%20%20 -
+r 13 1666 %20%20%20%20%20%20%20%20 -
+r 13 1667 %20%20%20%20%20%20%20%20 -
+r 13 1668 %20%20%20%20%20%20%20%20 -
+r 13 1669 %20%20%20%20%20%20%20%20 -
+r 13 1670 %20%20%20%20%20%20%20%20 -
+r 13 1671 %20%20%20%20%20%20%20%20 -
+r 13 1672 %20%20%20%20%20%20%20%20 -
+r 13 1673 %20%20%20%20%20%20%20%20 -
+c 19
+s 1
+r 13 1693 %20%20%20%20 -
+c 3
+s 1
+l 1
+            if success then
+c 20
+s 1
+r 13 1718 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 10
+s 1
+r 13 1729 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 2
+l 1
+                if G.STEAM then
+r 13 1743 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+s 1
+e 13 1711 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - +%70%6C%61%74,=1,-5,=1,-2,+%72%6D%3A,=6,-2,+%41,=28
+c 11
+l 9
+    if _type ~= 'achievement' then
+        local prof = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+        if prof and _achievement then
+            prof.unlock_alerts_seen = prof.unlock_alerts_seen or {}
+            if prof.unlock_alerts_seen[_achievement] then return end
+            prof.unlock_alerts_seen[_achievement] = true
+        end
+    end
+    left_not = nil
+c 10
+s 2
+e 13 1784 %20%20%20%20%20%20%20%20%20%20%20%20 - =58,+%2C%20%6C%65%66%74%5F%6E%6F%74,=2
+e 13 1785 %20%20%20%20%20%20%20%20%20%20%20%20 - =16,+%6C%65%66%74%5F%6E%6F%74%20%61%6E%64%20%27%63%6C%27%20%6F%72%20,=18,+%6C%65%66%74%5F%6E%6F%74%20%61%6E%64%20%2D%32%30%20%6F%72%20,=45
+c 11
+s 1
+l 5
+            local n = G.achievement_notification
+            local inner = n and n.alignment and n.UIRoot and n.UIRoot.children and n.UIRoot.children[1] and n.UIRoot.children[1].children and n.UIRoot.children[1].children[1]
+            if inner and inner.T then
+                n.alignment.offset.x = left_not and (-G.ROOM.T.x + inner.T.w + 0.8) or (G.ROOM.T.x - inner.T.w - 0.8)
+            end
+c 22
+s 1
+l 1
+        if G.achievement_notification and G.achievement_notification.alignment then
+e 13 1820 %20%20%20%20%20%20%20%20%20%20%20%20 - =48,+%6C%65%66%74%5F%6E%6F%74%20%61%6E%64%20%2D,=2,+%20%6F%72%20%32%30
+l 1
+        end
+c 30
+s 1
+l 1
+    if _UN then
+c 3
+s 1
+e 13 1855 %20%20%20%20%20%20%20%20 - =5,+%6D%6F%64%5F,=63
+c 4
+s 1
+r 13 1860 %20%20%20%20 -
+c 4
+s 1
+r 3 349 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 14
+s 1
+l 1
+    if G.GAME.seeded or G.GAME.challenge or G.GAME.modded_run then return end
+c 74
+s 1
+r 13 1955 %20%20%20%20%20%20%20%20 -
+c 11
+s 4
+l 1
+
+r 13 1968 %20%20%20%20%20%20%20%20 -
+r 13 1969 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            rarity = (_legendary and 4) or (not _rarity and RunRules and RunRules.rarity_of and RunRules.rarity_of(rarity)) or (rarity > 0.95 and 3) or (rarity > 0.7 and 2) or 1
+c 3
+s 1
+l 1
+
+c 8
+s 1
+l 1
+                if (not v.requires or G.GAME.mp_open_pool or (G.P_CENTERS[v.requires] and G.P_CENTERS[v.requires].discovered)) and
+c 4
+s 1
+l 1
+                (v.unlocked ~= false or v.rarity == 4 or G.GAME.mp_open_pool) then
+c 1
+s 1
+r 13 1990 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+l 1
+                        if v.requires then
+c 1
+s 1
+r 13 1994 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 34
+s 2
+l 1
+
+r 13 2030 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 54
+s 1
+l 1
+
+c 10
+s 1
+r 13 2096 %20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 13 2103 %20%20%20%20 -
+c 5
+s 1
+r 13 2109 %20%20%20%20 -
+c 19
+s 1
+r 13 2129 %20%20%20%20%20 -
+c 7
+s 1
+r 13 2137 %20%20%20%20%20%20%20%20 -
+c 24
+s 1
+r 13 2162 %20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 13 2169 %20%20%20%20 -
+c 16
+l 7
+    local skip_s = args.mascot_scale or 1
+    local skip_box = {
+        ref_table = args, align = "tm", padding = 0.1*skip_s, r = 0.15, minw = 1.6*skip_s, minh = 1.2*skip_s,
+        colour = G.C.JOKER_GREY, hover = true, shadow = true,
+        button = "skip_tutorial_section", func = 'set_button_pip',
+        focus_args = {button = 'b', orientation = 'bmi', offset = {x = 0, y = -0.1}},
+    }
+c 2
+s 2
+l 6
+            {n=G.UIT.R, config={align = args.skip_align or "br", minh = G.ROOM.T.h, minw = G.ROOM.T.w}, nodes={
+
+                {n=G.UIT.R, config=skip_box, nodes={
+                    {n=G.UIT.T, config={text = localize('b_skip').." >", scale = 0.5*skip_s, colour = G.C.TEXT_DARK}}
+                }}
+
+c 4
+s 1
+l 1
+            offset = {x=args.skip_align == 'tr' and -0.9 or -0.5,y=args.skip_align == 'tr' and 0.6 or -1},
+c 6
+s 1
+l 1
+    local row_dollars_chips = G.HUD and G.HUD.get_UIE_by_ID and G.HUD:get_UIE_by_ID('row_dollars_chips') or nil
+c 2
+s 1
+l 1
+    local attach = args.attach or {major = row_dollars_chips or G.ROOM_ATTACH, type = 'tm', offset = {x=0, y=-0.5}}
+c 9
+l 2
+                local touch_key = args.text_key..'_touch'
+                if (G.F_MOBILE or (TouchInput and TouchInput.active())) and G.localization.misc.tutorial[touch_key] then args.text_key = touch_key end
+c 1
+s 1
+l 1
+                G.OVERLAY_TUTORIAL.Jimbo = G.OVERLAY_TUTORIAL.Jimbo or Card_Character(args.center and {x = pos.x, y = pos.y, center = args.center, scale = args.mascot_scale} or pos)
+c 19
+l 2
+                local locked_buttons = args.disabled_buttons
+                G.DISABLED_BUTTONS = locked_buttons
+c 8
+s 1
+r 13 2243 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 8
+s 1
+l 1
+                    }), 'tutorial')
+c 1
+s 1
+r 13 2254 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+l 1
+    }), 'tutorial')
+c 7
+s 1
+l 1
+    if not skip_increment then G.GAME.current_round.reroll_cost_increase = G.GAME.current_round.reroll_cost_increase + (G.GAME.modifiers and G.GAME.modifiers.reroll_step or 1) end
+c 12
+s 1
+r 13 2280 %20%20%20%20 -
+c 15
+s 1
+r 13 2296 %20%20%20%20 -
+c 23
+s 1
+r 13 2320 %20%20%20%20 -
+c 18
+l 1
+
+c 2
+s 2
+l 1
+
+r 13 2341 %20%20%20%20 -
+r 13 2342 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+l 1
+
+c 1
+l 2
+    -- Transcendent Stake (12+): Boss blinds are always finisher (showdown)
+    local force_showdown = G.GAME.modifiers and G.GAME.modifiers.boss_always_finisher
+c 1
+s 6
+l 4
+        if not v.boss or v.in_pool == false then
+        else
+            if force_showdown then
+                -- Only allow showdown bosses
+r 13 351 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2354 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                end
+r 13 2353 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2354 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2355 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2354 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            end
+c 10
+s 1
+r 13 2367 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 13 2374 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+l 1
+
+c 4
+s 2
+l 1
+    return
+r 13 2387 %20%20%20%20 -
+c 1
+s 4
+r 13 2389 %20%20%20%20 -
+r 13 2390 %20%20%20%20 -
+r 13 2391 %20%20%20%20 -
+r 13 2392 %20%20%20%20 -
+c 6
+s 1
+r 13 2399 %20%20%20%20 -
+c 24
+s 1
+r 13 2424 %20%20%20%20%20%20%20%20 -
+c 9
+s 1
+l 1
+
+c 4
+s 1
+l 1
+    end
+c 2
+s 2
+l 1
+    if main_start then
+r 13 2443 %20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 13 2450 %20%20%20%20%20%20%20%20 -
+c 60
+s 2
+l 1
+
+r 13 2512 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 4
+r 13 2525 %20%20%20%20%20%20%20%20 -
+r 13 2526 %20%20%20%20%20%20%20%20 -
+r 13 2527 %20%20%20%20%20%20%20%20 -
+r 13 2528 %20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 13 2484 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 13 2533 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+l 1
+            end
+c 8
+s 1
+r 13 2549 %20%20%20%20%20%20%20%20 -
+c 1
+s 6
+r 13 2551 %20%20%20%20%20%20%20%20 -
+r 13 2552 %20%20%20%20%20%20%20%20 -
+r 13 2553 %20%20%20%20%20%20%20%20 -
+r 13 2554 %20%20%20%20%20%20%20%20 -
+r 13 2555 %20%20%20%20%20%20%20%20 -
+r 13 2556 %20%20%20%20%20%20%20%20 -
+c 22
+s 2
+r 13 2579 %20%20%20%20 -
+r 13 2580 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 13 2586 %20%20%20%20 -
+c 15
+s 1
+r 13 2602 %20%20%20%20 -
+c 20
+s 1
+r 13 2623 %20%20%20%20 -
+c 10
+s 1
+r 13 2533 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 48
+s 1
+r 13 2683 %20%20%20%20%20%20%20 -
+c 24
+s 2
+l 1
+    if main_end then
+r 13 2709 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 13 2715 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 2
+r 13 2717 %20%20%20%20%20%20%20%20 -
+r 13 2718 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 27
+end

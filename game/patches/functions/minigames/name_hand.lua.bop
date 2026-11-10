@@ -1,0 +1,196 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 111
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+local P = require "functions/minigames/poker"
+
+local min, max, sin = math.min, math.max, math.sin
+
+local Game = {}
+Game.__index = Game
+
+local START_TIME, MIN_TIME, STEP, DEAL, SHOW = 7, 2.6, 0.35, 0.45, 1.1
+
+function Game:start()
+    self.score = 0
+    self.pops = K.pops(4)
+    self.fast = nil
+    self.end_sound = "whoosh1"
+    self.cards = {}
+    for i = 1, 5 do self.cards[i] = {rank = 2, suit = "S", key = "S_2"} end
+    self.names = {}
+    for i = 1, #P.NAMES do self.names[i] = P.NAMES[i] end
+    local touch = UIK.touch()
+    local bw, bh, gap = min(4.2, (self.W - 0.9) / 2), touch and 0.85 or 0.72, 0.18
+    local by = self.H - 2 * bh - gap - 0.15
+    self.btns = {}
+    for i = 1, 4 do
+        local col, row = (i - 1) % 2, i > 2 and 1 or 0
+        self.btns[i] = {x = self.W / 2 - bw - gap / 2 + col * (bw + gap), y = by + row * (bh + gap), w = bw, h = bh, label = "", colour = G.C.BLUE, scale = touch and 0.48 or 0.44}
+    end
+    self.bar = {x = 0.6, y = by - 0.42, w = self.W - 1.2, h = 0.18}
+    self.s = min(0.75, (self.bar.y - 0.35) / K.card_h(), (self.W - 1) / (5 * K.card_w() * 1.08))
+    self.card_y = (self.bar.y - 0.1) / 2
+    self.gx = K.card_w() * self.s * 1.08
+    self:deal()
+end
+
+function Game:deal()
+    local rng = self.rng
+    self.answer = P.NAMES[rng:random(1, #P.NAMES)]
+    P.make(self.answer, rng, self.cards)
+    local names = self.names
+    for i = #names, 2, -1 do
+        local j = rng:random(1, i)
+        names[i], names[j] = names[j], names[i]
+    end
+    local slot = rng:random(1, 4)
+    local k = 1
+    for i = 1, 4 do
+        local b = self.btns[i]
+        if i == slot then
+            b.name = self.answer
+        else
+            while names[k] == self.answer do k = k + 1 end
+            b.name = names[k]
+            k = k + 1
+        end
+        b.label = P.hand_name(b.name)
+        b.colour = G.C.BLUE
+        b.disabled = false
+    end
+    self.limit = max(MIN_TIME, START_TIME - self.score * STEP)
+    self.left = self.limit
+    self.state = "deal"
+    self.t = 0
+    self.tick = nil
+    K.sound("cardSlide1", 1, 0.5)
+end
+
+function Game:pick(i)
+    if self.state ~= "guess" then return end
+    local b = self.btns[i]
+    K.press(b)
+    for j = 1, 4 do
+        local o = self.btns[j]
+        if o.name == self.answer then o.colour = G.C.GREEN elseif j == i then o.colour = G.C.RED else o.disabled = true end
+    end
+    self.t = 0
+    local took = self.limit - self.left
+    if b.name == self.answer then
+        self.score = self.score + 1
+        self.state = "right"
+        if not self.fast or took < self.fast then self.fast = took end
+        for j = 1, 5 do K.juice(self.cards[j], 0.3) end
+        K.pop(self.pops, "+1", self.W / 2, self.card_y - 0.2, G.C.GOLD, 0.8)
+        K.sound("chips1", 1 + min(self.score, 15) * 0.03, 0.6)
+        if self.score % 5 == 0 then
+            K.sound("multhit1", 1 + min(self.score, 30) * 0.01, 0.55)
+            K.flash(G.C.GOLD, 0.15)
+            K.pop(self.pops, string.format(L("%d in a row!"), self.score), self.W / 2, self.card_y + 0.45, G.C.WHITE, 0.7)
+        end
+    else
+        self.state = "wrong"
+        self.result = "Wrong hand!"
+        K.pop(self.pops, localize and localize("k_nope_ex") or "Nope!", self.W / 2, self.card_y - 0.2, G.C.RED, 0.8)
+        K.sound("cancel", 0.8, 0.7)
+        K.shake(0.12)
+        K.flash(G.C.RED, 0.2)
+    end
+end
+
+function Game:press(x, y)
+    for i = 1, 4 do
+        if K.hit(self.btns[i], x, y, 0.06) then self:pick(i) return end
+    end
+end
+
+function Game:key(k)
+    local n = tonumber(k)
+    if n and n >= 1 and n <= 4 then self:pick(n) end
+end
+
+r 10 2449 - -
+l 77
+    self.t = self.t + dt
+    if self.state == "deal" and self.t >= DEAL then
+        self.state = "guess"
+        self.t = 0
+    elseif self.state == "guess" then
+        self.left = self.left - dt
+        local sec = math.ceil(self.left)
+        if self.left < 2 and sec ~= self.tick then
+            self.tick = sec
+            K.sound("button", 0.8, 0.35)
+            K.juice(self.bar, 0.25)
+        end
+        if self.left <= 0 then
+            self.left = 0
+            self.state = "wrong"
+            self.result = "Too slow!"
+            self.t = 0
+            for j = 1, 4 do
+                local o = self.btns[j]
+                if o.name == self.answer then o.colour = G.C.GREEN else o.disabled = true end
+            end
+            K.sound("cancel", 0.8, 0.7)
+            K.shake(0.1)
+            K.flash(G.C.RED, 0.2)
+        end
+    elseif self.state == "right" and self.t >= 0.55 then
+        self:deal()
+    elseif self.state == "wrong" and self.t >= SHOW then
+        if self.fast then
+            self.summary = string.format(L("Fastest answer: %.1fs"), self.fast)
+        end
+        self.over = true
+    end
+end
+
+function Game:draw(ox, oy)
+    local s, gx = self.s, self.gx
+    local x0 = self.W / 2 - 2 * gx
+    for i = 1, 5 do
+        local c = self.cards[i]
+        local flip = 0
+        if self.state == "deal" then flip = 1 - min(1, max(0, (self.t - (i - 1) * 0.05) / (DEAL - 0.2))) end
+        local lift = 0
+        if self.state == "wrong" and self.t < 0.5 then lift = sin(self.t * 40 + i) * 0.04 * (1 - self.t / 0.5) end
+        local cx, cy = ox + x0 + (i - 1) * gx, oy + self.card_y + lift
+        if self.state == "guess" then K.hover(c, cx - gx / 2, cy - K.card_h() * s / 2, gx, K.card_h() * s) end
+        K.card(c.key, cx, cy, s * K.jk(c), {flip = flip, r = K.jr(c)})
+    end
+    local b = self.bar
+    local u = self.state == "deal" and 1 or self.left / self.limit
+    local bj = K.jk(b)
+    K.bar(ox + b.x, oy + b.y - (bj - 1) * b.h, b.w, b.h * bj, u, u < 0.3 and G.C.RED or G.C.GREEN)
+    for i = 1, 4 do K.button(self.btns[i], 1, ox, oy) end
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "name_hand",
+    name = "Name the Hand",
+    desc = "Five cards flash, pick the poker hand fast",
+    how = "Pick the poker hand before the bar runs out. It gets faster.",
+    score = "Streak",
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Name the Hand"] = "Nommez la main", ["Five cards flash, pick the poker hand fast"] = "Cinq cartes apparaissent, choisissez vite la main de poker",
+            ["Pick the poker hand before the bar runs out. It gets faster."] = "Choisissez la main avant la fin de la barre. Ça accélère.",
+            ["Wrong hand!"] = "Mauvaise main !", ["Too slow!"] = "Trop lent !", ["Fastest answer: %.1fs"] = "Réponse la plus rapide : %.1f s"},
+        es = {["Name the Hand"] = "Nombra la mano", ["Five cards flash, pick the poker hand fast"] = "Aparecen cinco cartas, elige rápido la mano de póker",
+            ["Pick the poker hand before the bar runs out. It gets faster."] = "Elige la mano antes de que se acabe la barra. Cada vez más rápido.",
+            ["Wrong hand!"] = "¡Mano equivocada!", ["Too slow!"] = "¡Muy lento!", ["Fastest answer: %.1fs"] = "Respuesta más rápida: %.1f s"},
+    }
+end
+
+return Game
+end

@@ -1,0 +1,95 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 41
+local M = rawget(_G, "bom_lobby_leave") or {}
+bom_lobby_leave = M
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+
+local function back_to_match()
+    if G.GAME and G.GAME.bom_quick_match then return bom_ui.show_quick_match_lobby() end
+    return bom_ui.show_lobby()
+end
+
+local function back_to_party()
+    return bom_party.show_lobby()
+end
+
+M.KINDS = {
+    match = {leave = "mp_lobby_leave", back = back_to_match},
+    party = {leave = "party_leave", back = back_to_party},
+}
+
+local function in_lobby()
+    return bom_match and bom_match.get_phase and bom_match.PHASE and bom_match.get_phase() == bom_match.PHASE.LOBBY
+end
+
+local function win_w() return touch() and 8.2 or 7.2 end
+
+local function body()
+    local w = win_w() - 0.4
+    return UIK.stack({UIK.spacer(0.1), UIK.note({L("Are you sure you want to leave?")}, {w = w, colour = G.C.UI.TEXT_LIGHT, scale = touch() and 0.42 or 0.38}), UIK.spacer(0.1)}, {w = w})
+end
+
+function M.is_open()
+    return M.kind ~= nil and UIK and UIK._win and UIK._win.id == "bom_leave" and G.OVERLAY_MENU ~= nil
+end
+
+function M.ask(kind)
+    if not M.KINDS[kind] then return end
+    if not in_lobby() then return G.FUNCS[M.KINDS[kind].leave]() end
+    local H = rawget(_G, "Minigames") and Minigames.host
+    if H and H.win and H.close then pcall(H.close, "back") end
+    M.kind = kind
+r 4 1381 %20%20%20%20 -
+l 30
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "bom_leave", compact = true, w = win_w(),
+        title = L("LEAVE LOBBY"),
+        tabs = {{key = "main", label = "", build = body}},
+        footer = {UIK.button{label = L("Leave"), button = "bom_leave_go", colour = UIK.C.danger, id = "bom_leave_go"}},
+        back_func = "bom_leave_stay",
+        back_label = L("Stay"),
+        snap_back = true,
+    }}
+end
+
+local function strings()
+    if M.strings_done or not mod_loc_register then return end
+    M.strings_done = true
+    mod_loc_register{
+        fr = {["LEAVE LOBBY"] = "QUITTER LE SALON", ["Are you sure you want to leave?"] = "Voulez-vous vraiment partir ?", ["Leave"] = "Quitter", ["Stay"] = "Rester"},
+        es = {["LEAVE LOBBY"] = "SALIR DE LA SALA", ["Are you sure you want to leave?"] = "¿Seguro que quieres salir?", ["Leave"] = "Salir", ["Stay"] = "Quedarse"},
+    }
+end
+
+function M.register()
+    if not (G and G.FUNCS) then return end
+    strings()
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    for _, name in ipairs({"bom_lobby_back", "party_lobby_back", "bom_leave_stay"}) do G.ESC_BACK_FUNCS[name] = true end
+    G.FUNCS.bom_lobby_back = function() M.ask("match") end
+    G.FUNCS.party_lobby_back = function() M.ask("party") end
+    G.FUNCS.bom_leave_go = function()
+        local k = M.KINDS[M.kind or ""]
+        M.kind = nil
+r 4 1825 %20%20%20%20%20%20%20%20 -
+l 6
+        if k and G.FUNCS[k.leave] then G.FUNCS[k.leave]() end
+    end
+    G.FUNCS.bom_leave_stay = function()
+        local k = M.KINDS[M.kind or ""]
+        M.kind = nil
+        if k and in_lobby() then return k.back() end
+r 4 1825 %20%20%20%20%20%20%20%20 -
+l 6
+    end
+end
+
+M.register()
+
+return M
+end

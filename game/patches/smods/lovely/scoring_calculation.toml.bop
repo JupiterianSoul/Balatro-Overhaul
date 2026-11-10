@@ -1,0 +1,413 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 43
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -10
+
+# Use final_hand_chips value everywhere
+[[patches]]
+[patches.regex]
+target = "functions/state_events.lua"
+pattern = "^(.*)hand_chips\\s*\\*\\s*mult(.*)$"
+position = "at"
+payload = '''$1 SMODS.calculate_round_score() $2'''
+
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = "G.ARGS.score_intensity.earned_score = G.GAME.current_round.current_hand.chips*G.GAME.current_round.current_hand.mult"
+position = "at"
+payload = '''
+local all_numbers = true
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    if type(G.GAME.current_round.current_hand[name]) ~= 'number' then all_numbers = false end
+end
+G.ARGS.score_intensity.earned_score = all_numbers and SMODS.calculate_round_score(true) or 0
+'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/UI_definitions.lua"
+pattern = '''contents.hand ='''
+position = "before"
+payload = '''--[['''
+match_indent = false
+
+# Replace contexts.hand
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 15 1365 - -
+l 13
+'''
+payload = '''
+--]]
+contents.hand = SMODS.GUI.hand_score_display_ui(scale)
+'''
+
+# Add operator set up/loading
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 10 2044 - -
+l 19
+'''
+payload = '''
+
+if saveTable then
+    self.GAME.current_scoring_calculation = SMODS.Scoring_Calculations[saveTable.SCORING_CALC.key]:load({
+        config = saveTable.SCORING_CALC.config
+    })
+else
+    self.GAME.current_scoring_calculation = SMODS.Scoring_Calculations['multiply']:new()
+end
+'''
+
+# Operator saving
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 12 1476 - -
+l 12
+'''
+payload = '''
+SCORING_CALC = G.GAME.current_scoring_calculation:save(),
+'''
+
+# UIElement remove functions
+[[patches]]
+[patches.pattern]
+target = 'engine/ui.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 24 1014 - %20
+l 2
+'''
+payload = '''
+r 24 948 - -
+l 16
+    self.config.func = nil
+end
+
+'''
+
+# Add Scoring_Parameters to update_hand_text
+[[patches]]
+[patches.regex]
+target = 'functions/common_events.lua'
+position = 'at'
+line_prepend = '$indent'
+pattern = '''(?<indent>[\t ]*)if vals\.[A-z0-9\n\t .~=()'\-+,<;>:{}]+mult:juice_up\(\) end\n[\t ]+end'''
+payload = '''
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    if vals[name] and G.GAME.current_round.current_hand[name] ~= vals[name] then
+        local delta = (type(vals[name]) == 'number' and type(G.GAME.current_round.current_hand[name]) == 'number') and (vals[name] - G.GAME.current_round.current_hand[name]) or 0
+r 13 504 %20%20%20%20%20%20%20%20 -
+r 13 505 %20%20%20%20%20%20%20%20 -
+r 13 506 %20%20%20%20%20%20%20%20 -
+l 6
+        end
+        if type(vals[name]) == 'string' then delta = vals[name] end
+        G.GAME.current_round.current_hand[name] = vals[name]
+        G.hand_text_area[name] = G.hand_text_area[name] or G.HUD:get_UIE_by_ID('hand_'..name) or nil
+        if G.hand_text_area[name] then
+            G.hand_text_area[name]:update(0)
+r 13 511 %20%20%20%20%20%20%20%20%20%20%20%20 %20
+l 24
+                attention_text({
+                    text =delta,
+                    scale = 0.8, 
+                    hold = 1,
+                    cover = G.hand_text_area[name].parent,
+                    cover_colour = mix_colours(parameter.colour, col, 0.1),
+                    emboss = 0.05,
+                    align = 'cm',
+                    cover_align = G.hand_text_area[name].parent.config.align
+                })
+            end
+            if (vals[name.."_juice"] or parameter.juice_on_update) and not G.TAROT_INTERRUPT then G.hand_text_area[name]:juice_up() end
+        end
+    end
+end
+'''
+
+# Reset other values
+[[patches]]
+[patches.pattern]
+target = 'cardarea.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 3 1098 - -
+l 13
+'''
+payload = '''
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    update_hand_text({immediate = true, nopulse = true, delay = 0}, {[name] = parameter.default_value})
+end
+'''
+# Reset when discard
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 3 1098 - -
+l 15
+'''
+payload = '''
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    update_hand_text({immediate = true, nopulse = true, delay = 0}, {[name] = parameter.default_value})
+end
+'''
+
+
+# Reset display after hand played
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 16 1033 - -
+l 14
+'''
+payload = '''
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    update_hand_text({delay = 0}, {[name] = parameter.default_value})
+end
+'''
+
+# Set based on hand selected
+[[patches]]
+[patches.pattern]
+target = 'cardarea.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 7 182 - -
+l 15
+'''
+payload = '''
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    parameter.current = G.GAME.hands[text][name] or parameter.default_value
+    update_hand_text({immediate = true, nopulse = nil, delay = 0}, {[name] = parameter.current})
+end
+'''
+
+# Reset values after hand played
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = false
+position = 'after'
+pattern = '''
+r 16 1064 %20%20 -
+l 6
+}))
+score_delay(0.3)
+'''
+payload = '''
+    SMODS.last_hand_score = SMODS.calculate_round_score()
+    SMODS.last_hand_oneshot = SMODS.last_hand_score >= G.GAME.blind.chips
+r 1 112 %20%20%20%20 -
+r 2 398 %20%20%20%20%20%20 -
+l 17
+      func = (function() 
+        for name, parameter in pairs(SMODS.Scoring_Parameters) do
+            parameter.current = parameter.default_value
+        end
+        return true 
+      end)
+    }))
+    
+'''
+
+# Level Up Hand uses scoring parameters
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 13 466 - -
+r 13 467 - -
+r 13 468 - -
+l 20
+'''
+payload = '''
+SMODS.upgrade_poker_hands({
+    hands = hand,
+    func = function(base, hand, parameter, level_up)
+            return base + G.GAME.hands[hand]['l_' .. parameter] * level_up
+    end,
+    level_up = amount,
+    from = card,
+    instant = instant,
+    StatusText = statustext
+})
+--[[
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 1 112 - -
+r 2 398 %20%20%20%20 -
+r 13 491 %20%20%20%20 -
+l 13
+}))
+'''
+payload = '''
+]]
+'''
+
+# Remove update_hand_text duplicates
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 1265 - -
+r 3 1266 - -
+r 3 1176 - -
+l 2
+'''
+payload = '''
+r 3 1266 - -
+l 7
+'''
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2752 - -
+r 3 2753 - -
+r 3 1176 - -
+l 2
+'''
+payload = '''
+r 3 2753 - -
+l 9
+'''
+
+# Face down hands
+[[patches]]
+[patches.pattern]
+target = 'cardarea.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 7 180 - -
+l 14
+'''
+payload = '''
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    update_hand_text({immediate = true, nopulse = nil, delay = 0}, {[name] = '?'})
+end
+'''
+
+# Handle flame_handler
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 4 1964 - -
+r 4 1965 %20%20 -
+l 1
+  for i=1, 3 do
+r 4 1967 %20%20%20%20 -
+r 4 1968 %20%20%20%20 -
+l 2
+  end
+
+r 4 1971 %20%20 -
+l 2
+    chips = {
+      id = 'flame_chips', 
+r 4 1974 %20%20%20%20%20%20 -
+r 4 1975 %20%20%20%20%20%20 -
+r 4 1976 %20%20%20%20%20%20 -
+l 3
+    },
+    mult = {
+      id = 'flame_mult', 
+r 4 1980 %20%20%20%20%20%20 -
+r 4 1981 %20%20%20%20%20%20 -
+r 4 1982 %20%20%20%20%20%20 -
+l 20
+    }
+  }
+'''
+payload = '''
+G.ARGS.flame_handler = G.ARGS.flame_handler or {}
+
+for key, parameter in pairs(SMODS.Scoring_Parameters) do
+    for i=1, 3 do
+        parameter.lick[i] = math.min(math.max(((parameter.colour[i]*0.5+G.C.YELLOW[i]*0.5) + 0.1)^2, 0.1), 1)
+    end
+    G.ARGS.flame_handler[key] = G.ARGS.flame_handler[key] or parameter:flame_handler()
+end
+'''
+# pt2
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 4 1989 - -
+l 28
+'''
+payload = '''
+e.config.object = Sprite(0, 0, e.config._w, e.config._h, G.ASSET_ATLAS["ui_1"], {x = 2, y = 0})
+'''
+
+# Patch mod_chips/mod_mult
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+return _mult
+'''
+payload = '''
+if _mult ~= mult or _mult ~= SMODS.Scoring_Parameters.mult.current then SMODS.Scoring_Parameters.mult:modify(nil, _mult - (mult or 0)) end
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+return _chips
+'''
+payload = '''
+if _chips ~= hand_chips or _chips ~= SMODS.Scoring_Parameters.chips.current then SMODS.Scoring_Parameters.chips:modify(nil, _chips - (hand_chips or 0)) end
+'''
+end

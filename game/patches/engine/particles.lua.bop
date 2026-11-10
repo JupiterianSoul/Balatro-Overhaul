@@ -1,0 +1,23 @@
+BOP 1
+eol lf
+final 1
+base 29
+c 63
+l 2
+    local _mult = PERF_OPTS and PERF_OPTS.particle_mult() or 1
+    if _mult == 0 then return end
+c 2
+s 2
+l 3
+    local _timer = self.timer*_mult
+    while G.TIMERS[self.timer_type]  > self.last_real_time + _timer and (#self.particles < self.max/_mult or self.pulsed < self.pulse_max/_mult) and added_this_frame < 20 do
+        self.last_real_time = self.last_real_time + _timer
+c 24
+s 1
+l 1
+            colour = pseudorandom_element(self.colours) or {1, 1, 1, 1},
+c 52
+l 1
+    if G.SETTINGS.GRAPHICS and not G.SETTINGS.GRAPHICS.perf_particles then return end
+c 33
+end

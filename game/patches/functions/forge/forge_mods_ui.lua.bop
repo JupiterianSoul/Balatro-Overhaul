@@ -1,0 +1,600 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 415
+local Store = require("functions/forge/forge_store")
+local Mods = require("functions/forge/forge_mods")
+
+local MU = {}
+
+MU.state = MU.state or {page = 1}
+MU.export = nil
+
+local function touch() return UIK.touch() end
+local function port() return UIK.portrait and UIK.portrait() or false end
+local function workshop() return rawget(_G, "ModWorkshop") end
+local function obj(o) return {n = G.UIT.O, config = {object = o}} end
+
+local function boxed(node)
+  local box = UIBox{definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = {node}}, config = {offset = {x = 0, y = 0}}}
+  return {n = G.UIT.C, config = {align = "cm"}, nodes = {obj(box)}}
+end
+
+local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+
+local function fit_scale(label, w, scale)
+  local lw = UIK.text_w(label, scale)
+  if lw > w - 0.25 then return scale * (w - 0.25) / lw end
+  return scale
+end
+
+function MU.can_open_folder()
+  local L = rawget(_G, "love")
+  local os_name = L and L.system and L.system.getOS and L.system.getOS() or ""
+  return os_name ~= "Android" and os_name ~= "iOS"
+end
+
+function MU.err_text(err)
+  if err == "empty" then return mod_loc("There is nothing in it.") end
+  if err == "too_big" then return mod_loc("It is too big (2 MB at most).") end
+  if err == "not_forge" then return mod_loc("This is not a Forge mod file.") end
+  if err == "newer" then return mod_loc("It was made with a newer game. Update first.") end
+  if err == "read" then return mod_loc("Could not read the file.") end
+  return mod_loc("Could not save the file.")
+end
+
+local function preview(c, s)
+  local UI = rawget(_G, "JokerForge") and JokerForge.ui
+  local w, h = G.CARD_W * s, G.CARD_H * s
+  if not (c and UI and UI.item_node) then return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h}, nodes = {}} end
+  local ok, node = pcall(UI.item_node, c, {scale = s})
+  if ok and node then return node end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h}, nodes = {}}
+end
+
+local function reopen_mods()
+  G.MODS_MENU = G.MODS_MENU or {page = 1, icons = {}}
+  G.MODS_MENU.tab = "forge"
+  if create_UIBox_mods_menu then G.FUNCS.overlay_menu({definition = create_UIBox_mods_menu(), key = "mods_menu"}) end
+end
+MU.reopen_mods = reopen_mods
+
+local function later(fn)
+  G.E_MANAGER:add_event(Event({blockable = false, blocking = false, func = function() fn() return true end}))
+end
+
+local function say(text, colour)
+  MU.state.msg = {text = text, colour = colour}
+end
+
+local function tab_size()
+  local W = workshop()
+  if W and W.layout then pcall(W.layout) end
+  return (W and W.TAB_W) or 11.6, (W and W.TAB_H) or 7.5
+end
+
+local function btn_h() return touch() and 0.8 or 0.55 end
+local BTN_W = 1.5
+local BTN_SCALE = 0.38
+
+local function row_button(label, func, id, colour)
+  return UIK.button{label = label, button = func, ref_table = {id = id}, colour = colour, w = BTN_W, h = btn_h(), scale = fit_scale(label, BTN_W, BTN_SCALE), col = true}
+end
+
+local function gap(w) return {n = G.UIT.C, config = {align = "cm", minw = w or 0.15}, nodes = {}} end
+
+local function mod_row(mod, rw)
+  local first = Mods.all_of(mod)[1]
+  local ps = touch() and 0.42 or 0.4
+  local pw = G.CARD_W * ps
+  local ctl_w = 0.9 + 4 * BTN_W + 5 * 0.15
+  local iw = port() and rw - pw - 0.45 or rw - pw - 0.15 - ctl_w - 0.3
+  local head = {
+    {n = G.UIT.T, config = {text = mod.name, scale = 0.45, colour = G.C.WHITE, shadow = true}},
+    {n = G.UIT.T, config = {text = "  v" .. tostring(mod.version), scale = 0.32, colour = G.C.GOLD, shadow = true}},
+  }
+  if mod.mine then head[#head + 1] = {n = G.UIT.T, config = {text = "  " .. mod_loc("YOURS"), scale = 0.32, colour = G.C.GREEN, shadow = true}} end
+  local info = {{n = G.UIT.R, config = {align = "cl", padding = 0.01, maxw = iw}, nodes = head}}
+  local function add(text, colour)
+    info[#info + 1] = {n = G.UIT.R, config = {align = "cl", padding = 0.01}, nodes = {
+      {n = G.UIT.T, config = {text = text, scale = 0.3, colour = colour or G.C.UI.TEXT_LIGHT, maxw = iw}},
+    }}
+  end
+  if mod.author ~= "" then add(mod_loc("by") .. " " .. mod.author) end
+  add(Mods.summary(mod))
+  if mod.about[1] then add(mod.about[1], G.C.UI.TEXT_INACTIVE) end
+  local state = {on = mod.on}
+  local toggle = create_toggle({label = "", w = 0, col = true, ref_table = state, ref_value = "on", callback = function(v)
+    Mods.set_on(mod.id, v)
+    later(reopen_mods)
+  end})
+  local edit = mod.mine and row_button(mod_loc("Edit"), "forge_mods_edit", mod.id, G.C.BLUE) or {n = G.UIT.C, config = {align = "cm", minw = BTN_W}, nodes = {}}
+  local online = rawget(_G, "ForgeOnline")
+  local publish = (mod.mine and online) and row_button(mod_loc("Publish"), "forge_mods_publish", mod.id, G.C.GREEN) or {n = G.UIT.C, config = {align = "cm", minw = BTN_W}, nodes = {}}
+  if port() then
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+      {n = G.UIT.C, config = {align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = rw}, nodes = {
+        {n = G.UIT.R, config = {align = "cl"}, nodes = {
+          {n = G.UIT.C, config = {align = "cm", minw = pw}, nodes = {preview(first, ps)}},
+          gap(),
+          {n = G.UIT.C, config = {align = "cl", minw = iw, maxw = iw}, nodes = info},
+        }},
+        {n = G.UIT.R, config = {align = "cr", padding = 0.02}, nodes = {
+          toggle, gap(0.1), edit, gap(0.1), publish, gap(0.1),
+          row_button(mod_loc("Share"), "forge_mods_share", mod.id, G.C.ORANGE), gap(0.1),
+          row_button(mod_loc("Delete"), "forge_mods_delete", mod.id, G.C.RED),
+        }},
+      }},
+    }}
+  end
+  return {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = rw, minh = 1}, nodes = {
+      {n = G.UIT.C, config = {align = "cm", minw = pw}, nodes = {preview(first, ps)}},
+      gap(),
+      {n = G.UIT.C, config = {align = "cl", minw = iw, maxw = iw}, nodes = info},
+      toggle,
+      gap(),
+      edit,
+      gap(),
+      publish,
+      gap(),
+      row_button(mod_loc("Share"), "forge_mods_share", mod.id, G.C.ORANGE),
+      gap(),
+      row_button(mod_loc("Delete"), "forge_mods_delete", mod.id, G.C.RED),
+    }},
+  }}
+end
+
+local function bottom_buttons(w)
+  local list = {{label = mod_loc("IMPORT"), button = "forge_mods_import", colour = G.C.BLUE}}
+  if MU.can_open_folder() then list[#list + 1] = {label = mod_loc("OPEN FOLDER"), button = "forge_mods_folder", colour = G.C.ORANGE} end
+  if rawget(_G, "ForgeOnline") then list[#list + 1] = {label = mod_loc("BROWSE ONLINE"), button = "forge_online_open", colour = G.C.GREEN} end
+  list[#list + 1] = {label = mod_loc("THE FORGE"), button = "forge_from_mods", colour = G.C.RED, ref = {tab = "my"}}
+  local bw = port() and (w - 0.5) / 2 or touch() and 3.1 or 2.9
+  local nodes = {}
+  for _, b in ipairs(list) do
+    if #nodes > 0 then nodes[#nodes + 1] = gap(0.2) end
+    nodes[#nodes + 1] = UIK.button{label = b.label, button = b.button, ref_table = b.ref, colour = b.colour, w = bw, h = touch() and 0.9 or 0.7, scale = fit_scale(b.label, bw, 0.5), col = true, id = "forge_mods_" .. b.button}
+  end
+  if port() and #list > 2 then
+    local rows = {}
+    for i = 1, #nodes, 4 do
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {nodes[i], nodes[i + 1], nodes[i + 2]}}
+    end
+    return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.04}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = rows}}}
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.08}, nodes = nodes}
+end
+
+local function msg_line(w)
+  local m = MU.state.msg
+  MU.state.msg = nil
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.4, padding = 0}, nodes = {
+    m and {n = G.UIT.T, config = {text = m.text, scale = 0.34, colour = m.colour or G.C.UI.TEXT_LIGHT, shadow = true, maxw = w - 0.4}} or nil,
+  }}
+end
+
+function MU.per_page(h)
+  local row_h = port() and 2.3 or touch() and 1.45 or 1.25
+  local fixed = (touch() and 3.4 or 3.0)
+  return math.max(2, math.floor((h - fixed) / row_h))
+end
+
+function MU.tab()
+  local w, h = tab_size()
+  local rw = port() and w - 0.2 or math.min(w - 0.6, 14)
+  local list = Mods.list
+  local per = MU.per_page(h)
+  local pages = math.max(1, math.ceil(#list / per))
+  MU.state.page = math.min(math.max(1, MU.state.page or 1), pages)
+  local rows = {}
+  if #list == 0 then
+    rows[1] = {n = G.UIT.R, config = {align = "cm", padding = 0.2}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {UIK.text(mod_loc("No Forge mods yet"), {scale = 0.5, colour = G.C.UI.TEXT_LIGHT})}},
+        UIK.note({mod_loc("Make creations in The Forge, then press EXPORT A MOD,"), mod_loc("or import a .forgemod file someone shared with you.")}, {w = rw}),
+      }},
+    }}
+  else
+    local first = (MU.state.page - 1) * per
+    for i = first + 1, math.min(first + per, #list) do rows[#rows + 1] = mod_row(list[i], rw) end
+  end
+  local page_options = {}
+  for i = 1, pages do page_options[i] = localize("k_page") .. " " .. i .. "/" .. pages end
+  local hint = MU.can_open_folder() and mod_loc("Put .forgemod files in the import folder or drop one on the game, then press IMPORT.")
+    or mod_loc("Put .forgemod files in the forge/import folder of the game, then press IMPORT.")
+  return {n = G.UIT.ROOT, config = {align = "tm", colour = G.C.CLEAR, minw = w, minh = h}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.06}, nodes = {UIK.text(mod_loc("FORGED"), {scale = 0.6, colour = UIK.C.title})}},
+    UIK.note({mod_loc("Mods made with The Forge: yours first, then the ones you imported.")}, {w = w}),
+    msg_line(w),
+    {n = G.UIT.R, config = {align = "tm", minw = w, minh = per * (port() and 2.3 or touch() and 1.45 or 1.25)}, nodes = {
+      {n = G.UIT.C, config = {align = "tm"}, nodes = rows},
+    }},
+    pages > 1 and {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+      create_option_cycle({options = page_options, w = 3.5, h = 0.35, scale = 0.8, cycle_shoulders = true, opt_callback = "forge_mods_page", current_option = MU.state.page, colour = G.C.RED, no_pips = true, focus_args = {snap_to = true}}),
+    }} or nil,
+    UIK.note({hint}, {w = w}),
+    bottom_buttons(w),
+  }}
+end
+
+G.FUNCS.forge_mods_page = function(args)
+  if not (args and args.cycle_config) then return end
+  MU.state.page = args.cycle_config.current_option
+  later(reopen_mods)
+end
+
+G.FUNCS.forge_mods_import = function(e)
+  local done, bad = Mods.import_folder()
+  local good = #done == 1 and string.format(mod_loc("Imported %s."), done[1].name) or #done > 1 and string.format(mod_loc("Imported %d mods."), #done) or nil
+  local wrong = bad[1] and (bad[1].name .. ": " .. MU.err_text(bad[1].err)) or nil
+  if not good and not wrong then
+    say(mod_loc("No .forgemod file in the import folder."), G.C.UI.TEXT_LIGHT)
+  elseif good and wrong then
+    say(good .. "  " .. wrong, G.C.ORANGE)
+  else
+    say(good or wrong, good and G.C.GREEN or G.C.RED)
+  end
+  if #done > 0 then play_sound("card1", 1.1, 0.6) end
+  MU.state.page = 1
+  reopen_mods()
+end
+
+G.FUNCS.forge_mods_folder = function(e)
+  local url = Mods.folder_url(Mods.IMPORT_DIR)
+  Mods.ensure(Mods.EXPORT_DIR)
+  if url and love.system and love.system.openURL then pcall(love.system.openURL, url) end
+end
+
+G.FUNCS.forge_mods_share = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  local path = id and Mods.share(id)
+  if path then
+    say(string.format(mod_loc("Saved to share as %s"), path), G.C.GREEN)
+    play_sound("card1", 1.1, 0.6)
+    local url = MU.can_open_folder() and Mods.folder_url(Mods.EXPORT_DIR)
+    if url and love.system and love.system.openURL then pcall(love.system.openURL, url) end
+  else
+    say(MU.err_text("write"), G.C.RED)
+  end
+  reopen_mods()
+end
+
+G.FUNCS.forge_mods_edit = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if id then MU.open_export(id, "mods") end
+end
+
+G.FUNCS.forge_mods_delete = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  local mod = id and Mods.get(id)
+  if not mod then return end
+  MU.state.pending_delete = id
+  local cards = {}
+  for i, c in ipairs(Mods.all_of(mod)) do
+    if i > 4 then break end
+    if i > 1 then cards[#cards + 1] = gap(0.1) end
+    cards[#cards + 1] = {n = G.UIT.C, config = {align = "cm"}, nodes = {preview(c, 0.6)}}
+  end
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_mods_delete", compact = true, w = 8,
+    title = mod_loc("DELETE THIS MOD?"),
+    tabs = {{key = "a", label = "", build = function()
+      return UIK.stack({
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = cards},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {UIK.text(mod.name, {scale = 0.45})}},
+        UIK.note({mod.mine and mod_loc("Your own creations stay in The Forge.") or mod_loc("Its cards leave the collection and the shop.")}, {w = 7.6}),
+      }, {w = 7.6})
+    end}},
+    back_func = "forge_mods_delete_cancel", back_inline = true,
+    footer = {UIK.button{label = mod_loc("DELETE"), button = "forge_mods_delete_confirm", colour = UIK.C.danger}},
+  }}
+end
+
+G.FUNCS.forge_mods_delete_confirm = function(e)
+  local id = MU.state.pending_delete
+  MU.state.pending_delete = nil
+  local mod = id and Mods.get(id)
+  if mod and Mods.delete(id) then
+    say(string.format(mod_loc("Deleted %s."), mod.name), G.C.UI.TEXT_LIGHT)
+    play_sound("crumple1", 1, 0.6)
+  end
+  reopen_mods()
+end
+
+G.FUNCS.forge_mods_delete_cancel = function(e)
+  MU.state.pending_delete = nil
+  reopen_mods()
+end
+
+local function own_list()
+  local out = {}
+  for _, c in ipairs(Store.all()) do out[#out + 1] = c end
+  for _, c in ipairs(Store.items()) do out[#out + 1] = c end
+  return out
+end
+
+local function default_author()
+  local P = rawget(_G, "PlayerName")
+  local name = P and P.shared and P.shared()
+  if not name and G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile] then name = G.PROFILES[G.SETTINGS.profile].name end
+  return trim(name):sub(1, Mods.MAX_NAME)
+end
+
+local function all_picked(st)
+  local any = false
+  for _, c in ipairs(own_list()) do
+    any = true
+    if not st.pick[c.id] then return false end
+  end
+  return any
+end
+
+function MU.pick_body()
+  local st = MU.export
+  local Cat = require("functions/forge/forge_catalog")
+  local list = own_list()
+  if #list == 0 then
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - 0.4}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {UIK.text(mod_loc("Nothing made yet"), {scale = 0.55, colour = UIK.C.title})}},
+        UIK.note({mod_loc("Make something in the Builder first.")}, {w = 9}),
+      }},
+    }}
+  end
+  st.all = all_picked(st)
+  local items = {
+    UIK.header(mod_loc("Select")),
+    UIK.toggle{label = mod_loc("Everything"), ref_table = st, ref_value = "all", callback = function(v)
+      for _, c in ipairs(own_list()) do st.pick[c.id] = v and true or nil end
+      UIK.refresh()
+    end},
+  }
+  for _, k in ipairs(Cat.KINDS) do
+    local any = false
+    for _, c in ipairs(list) do
+      if (c.kind or "joker") == k.id then
+        if not any then items[#items + 1] = UIK.header(mod_loc(k.plural)); any = true end
+        items[#items + 1] = UIK.toggle{label = c.name, ref_table = st.pick, ref_value = c.id, callback = function(v)
+          if not v then st.pick[c.id] = nil end
+          st.all = all_picked(st)
+        end}
+      end
+    end
+  end
+  return UIK.flow{id = "forge_export_pick", cols = 3, items = items}
+end
+
+function MU.about_body()
+  local st = MU.export
+  local w = touch() and 11 or 10
+  local function input(label, key, max, iw)
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+      boxed(UIK.input{label = label, ref_table = st.info, ref_value = key, max_length = max, w = w, iw = iw, extended_corpus = true}),
+    }}
+  end
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = {
+    input(mod_loc("Name"), "name", Mods.MAX_NAME, 6),
+    input(mod_loc("Author"), "author", Mods.MAX_NAME, 6),
+    input(mod_loc("About it (two short lines)"), "a1", 40, 9),
+    input("", "a2", 40, 9),
+    UIK.note({mod_loc("Players see these in Mods, Forged.")}, {w = w}),
+  }}}}
+end
+
+local function export_body(build)
+  return function()
+    local st = MU.export
+    if st and st.err_kind == "name" and trim(st.info.name) ~= "" then st.err, st.err_kind = nil, nil end
+    if st and st.err_kind == "pick" and next(st.pick) ~= nil then st.err, st.err_kind = nil, nil end
+    local err = st and st.err
+    local node = build()
+    if not err then return node end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", minw = UIK.W, padding = 0.02}, nodes = {UIK.text(err, {scale = 0.38, colour = G.C.RED})}},
+      node,
+    }}}}
+  end
+end
+
+function MU.open_export(mod_id, from)
+  local mod = mod_id and Mods.get(mod_id)
+  local st = {mod_id = mod and mod.id or nil, version = mod and mod.version or 0, from = from or "forge", pick = {}, info = {}}
+  if mod then
+    for _, c in ipairs(Mods.all_of(mod)) do
+      if Mods.own_joker(c.src) or Mods.own_item(c.src) then st.pick[c.src] = true end
+    end
+    st.info = {name = mod.name, author = mod.author, a1 = mod.about[1] or "", a2 = mod.about[2] or ""}
+  else
+    for _, c in ipairs(own_list()) do st.pick[c.id] = true end
+    st.info = {name = "", author = default_author(), a1 = "", a2 = ""}
+  end
+  MU.export = st
+  UIK._pages.forge_export_pick = 1
+  MU.show_export(mod and "about" or "what")
+end
+
+function MU.show_export(tab)
+  local st = MU.export
+  if not st then return end
+r 4 1381 %20%20 -
+l 177
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_export",
+    title = st.mod_id and mod_loc("EDIT THIS MOD") or mod_loc("EXPORT A MOD"),
+    tabs = {
+      {key = "what", label = mod_loc("Creations"), build = export_body(MU.pick_body)},
+      {key = "about", label = mod_loc("Details"), build = export_body(MU.about_body)},
+    },
+    tab = tab,
+    back_func = "forge_export_back", back_inline = true,
+    footer = {UIK.button{label = mod_loc("EXPORT"), button = "forge_export_go", colour = UIK.C.ok, id = "forge_export_go"}},
+  }}
+end
+
+local function back_to(from)
+  if from == "mods" then return reopen_mods() end
+  local UI = rawget(_G, "JokerForge") and JokerForge.ui
+  if UI and UI.reopen then UI.reopen("my") else G.FUNCS.exit_overlay_menu() end
+end
+
+G.FUNCS.forge_export_open = function(e)
+  MU.open_export(nil, "forge")
+end
+
+G.FUNCS.forge_export_back = function(e)
+  local st = MU.export
+  MU.export = nil
+  back_to(st and st.from)
+end
+
+G.FUNCS.forge_export_go = function(e)
+  local st = MU.export
+  if not st then return end
+  local ids = {}
+  for _, c in ipairs(own_list()) do if st.pick[c.id] then ids[#ids + 1] = c.id end end
+  if #ids == 0 then
+    st.err, st.err_kind = mod_loc("Pick at least one creation."), "pick"
+    UIK.open_tab("what")
+    return
+  end
+  if trim(st.info.name) == "" then
+    st.err, st.err_kind = mod_loc("Give it a name."), "name"
+    if UIK._win and UIK._win._cur == "about" then UIK.refresh() else UIK.open_tab("about") end
+    return
+  end
+  local mod, path = Mods.export({id = st.mod_id, name = st.info.name, author = st.info.author, about = {st.info.a1, st.info.a2}, version = (st.version or 0) + 1}, ids)
+  if not mod then
+    st.err = MU.err_text(path)
+    return UIK.refresh()
+  end
+  st.err = nil
+  play_sound("card1", 1.1, 0.6)
+  MU.show_done(mod, path, st.from)
+end
+
+function MU.show_done(mod, path, from)
+  MU.done = {id = mod.id, from = from}
+  local cards = {}
+  for i, c in ipairs(Mods.all_of(mod)) do
+    if i > 4 then break end
+    if i > 1 then cards[#cards + 1] = gap(0.1) end
+    cards[#cards + 1] = {n = G.UIT.C, config = {align = "cm"}, nodes = {preview(c, 0.6)}}
+  end
+  local w = touch() and 9.4 or 9
+  local footer = {UIK.button{label = mod_loc("SEE IT IN FORGED"), button = "forge_done_forged", colour = UIK.C.ok, w = touch() and 4 or 3.6, scale = fit_scale(mod_loc("SEE IT IN FORGED"), touch() and 4 or 3.6, touch() and 0.5 or 0.45)}}
+  if MU.can_open_folder() then footer[2] = UIK.button{label = mod_loc("OPEN FOLDER"), button = "forge_done_folder", colour = UIK.C.warn} end
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_export_done", compact = true, w = w + 0.4,
+    title = mod_loc("MOD EXPORTED"),
+    tabs = {{key = "a", label = "", build = function()
+      return UIK.stack({
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = cards},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {UIK.text(mod.name .. "  v" .. tostring(mod.version), {scale = 0.48})}},
+        UIK.note({Mods.summary(mod)}, {w = w}),
+        {n = G.UIT.R, config = {align = "cm", minh = 0.12}, nodes = {}},
+        UIK.note({mod_loc("It is in Mods, Forged. To share it, send this file:"), path or ""}, {w = w}),
+      }, {w = w})
+    end}},
+    back_func = "forge_done_back", back_inline = true,
+    footer = footer,
+  }}
+end
+
+G.FUNCS.forge_done_forged = function(e)
+  MU.done = nil
+  MU.export = nil
+  MU.state.page = 1
+  reopen_mods()
+end
+
+G.FUNCS.forge_done_folder = function(e)
+  local url = Mods.folder_url(Mods.EXPORT_DIR)
+  if url and love.system and love.system.openURL then pcall(love.system.openURL, url) end
+end
+
+G.FUNCS.forge_done_back = function(e)
+  local d = MU.done
+  MU.done = nil
+  MU.export = nil
+  back_to(d and d.from)
+end
+
+Mods.on_dropped = function(mod, err)
+  if mod then
+    say(string.format(mod_loc("Imported %s."), mod.name), G.C.GREEN)
+    play_sound("card1", 1.1, 0.6)
+  else
+    say(MU.err_text(err), G.C.RED)
+  end
+  if G.OVERLAY_MENU and G.MODS_MENU and G.MODS_MENU.tab == "forge" and G.OVERLAY_MENU:get_UIE_by_ID("forge_mods_forge_mods_import") then
+    later(reopen_mods)
+  elseif attention_text and G.ROOM_ATTACH then
+    local m = MU.state.msg
+    MU.state.msg = nil
+    attention_text({text = m and m.text or "", scale = 0.5, hold = 3, align = "cm", offset = {x = 0, y = -2.8}, major = G.ROOM_ATTACH, colour = m and m.colour or G.C.WHITE})
+  end
+end
+
+local function register_strings()
+  if not mod_loc_register then return end
+  mod_loc_register{
+    fr = {
+      ["Forged"] = "Forgés", ["FORGED"] = "FORGÉS", ["The Forge"] = "La Forge", ["Select"] = "Sélection",
+      ["Mods made with The Forge: yours first, then the ones you imported."] = "Les mods faits avec La Forge : les vôtres d'abord, puis ceux importés.",
+      ["No Forge mods yet"] = "Aucun mod de La Forge pour l'instant",
+      ["Make creations in The Forge, then press EXPORT A MOD,"] = "Créez dans La Forge, puis appuyez sur EXPORTER UN MOD,",
+      ["or import a .forgemod file someone shared with you."] = "ou importez un fichier .forgemod qu'on vous a envoyé.",
+      ["Put .forgemod files in the import folder or drop one on the game, then press IMPORT."] = "Mettez les fichiers .forgemod dans le dossier d'import ou déposez-en un sur le jeu, puis IMPORTER.",
+      ["Put .forgemod files in the forge/import folder of the game, then press IMPORT."] = "Mettez les fichiers .forgemod dans le dossier forge/import du jeu, puis IMPORTER.",
+      ["IMPORT"] = "IMPORTER", ["OPEN FOLDER"] = "OUVRIR LE DOSSIER", ["YOURS"] = "À VOUS", ["by"] = "par", ["Share"] = "Partager",
+      ["No .forgemod file in the import folder."] = "Aucun fichier .forgemod dans le dossier d'import.",
+      ["Imported %s."] = "%s importé.", ["Imported %d mods."] = "%d mods importés.", ["Deleted %s."] = "%s supprimé.",
+      ["Saved to share as %s"] = "Prêt à partager : %s",
+      ["DELETE THIS MOD?"] = "SUPPRIMER CE MOD ?", ["Your own creations stay in The Forge."] = "Vos propres créations restent dans La Forge.",
+      ["Its cards leave the collection and the shop."] = "Ses cartes quittent la collection et la boutique.",
+      ["There is nothing in it."] = "Il est vide.", ["It is too big (2 MB at most)."] = "Il est trop gros (2 Mo au plus).",
+      ["This is not a Forge mod file."] = "Ce n'est pas un fichier de mod de La Forge.", ["It was made with a newer game. Update first."] = "Il vient d'une version plus récente du jeu. Mettez à jour d'abord.",
+      ["Could not read the file."] = "Impossible de lire le fichier.", ["Could not save the file."] = "Impossible d'enregistrer le fichier.",
+      ["EXPORT A MOD"] = "EXPORTER UN MOD", ["EDIT THIS MOD"] = "MODIFIER CE MOD", ["EXPORT"] = "EXPORTER", ["Details"] = "Détails",
+      ["Make something in the Builder first."] = "Créez d'abord quelque chose dans le Créateur.",
+      ["Name"] = "Nom", ["Author"] = "Auteur", ["About it (two short lines)"] = "Description (deux lignes courtes)",
+      ["Players see these in Mods, Forged."] = "Les joueurs les voient dans Mods, Forgés.",
+      ["Pick at least one creation."] = "Choisissez au moins une création.", ["Give it a name."] = "Donnez-lui un nom.",
+      ["MOD EXPORTED"] = "MOD EXPORTÉ", ["SEE IT IN FORGED"] = "LE VOIR DANS FORGÉS",
+      ["It is in Mods, Forged. To share it, send this file:"] = "Il est dans Mods, Forgés. Pour le partager, envoyez ce fichier :",
+    },
+    es = {
+      ["Forged"] = "Forjados", ["FORGED"] = "FORJADOS", ["The Forge"] = "La Forja", ["Select"] = "Selección",
+      ["Mods made with The Forge: yours first, then the ones you imported."] = "Mods hechos con La Forja: primero los tuyos, luego los importados.",
+      ["No Forge mods yet"] = "Aún no hay mods de La Forja",
+      ["Make creations in The Forge, then press EXPORT A MOD,"] = "Crea en La Forja y pulsa EXPORTAR UN MOD,",
+      ["or import a .forgemod file someone shared with you."] = "o importa un archivo .forgemod que te hayan enviado.",
+      ["Put .forgemod files in the import folder or drop one on the game, then press IMPORT."] = "Pon archivos .forgemod en la carpeta de importar o suéltalos en el juego, y pulsa IMPORTAR.",
+      ["Put .forgemod files in the forge/import folder of the game, then press IMPORT."] = "Pon archivos .forgemod en la carpeta forge/import del juego y pulsa IMPORTAR.",
+      ["IMPORT"] = "IMPORTAR", ["OPEN FOLDER"] = "ABRIR CARPETA", ["YOURS"] = "TUYO", ["by"] = "por", ["Share"] = "Compartir",
+      ["No .forgemod file in the import folder."] = "No hay archivos .forgemod en la carpeta de importar.",
+      ["Imported %s."] = "%s importado.", ["Imported %d mods."] = "%d mods importados.", ["Deleted %s."] = "%s borrado.",
+      ["Saved to share as %s"] = "Listo para compartir: %s",
+      ["DELETE THIS MOD?"] = "¿BORRAR ESTE MOD?", ["Your own creations stay in The Forge."] = "Tus propias creaciones se quedan en La Forja.",
+      ["Its cards leave the collection and the shop."] = "Sus cartas salen de la colección y de la tienda.",
+      ["There is nothing in it."] = "Está vacío.", ["It is too big (2 MB at most)."] = "Es demasiado grande (2 MB como máximo).",
+      ["This is not a Forge mod file."] = "No es un archivo de mod de La Forja.", ["It was made with a newer game. Update first."] = "Viene de una versión más nueva del juego. Actualiza primero.",
+      ["Could not read the file."] = "No se pudo leer el archivo.", ["Could not save the file."] = "No se pudo guardar el archivo.",
+      ["EXPORT A MOD"] = "EXPORTAR UN MOD", ["EDIT THIS MOD"] = "EDITAR ESTE MOD", ["EXPORT"] = "EXPORTAR", ["Details"] = "Detalles",
+      ["Make something in the Builder first."] = "Crea algo primero en el Creador.",
+      ["Name"] = "Nombre", ["Author"] = "Autor", ["About it (two short lines)"] = "Descripción (dos líneas cortas)",
+      ["Players see these in Mods, Forged."] = "Los jugadores los ven en Mods, Forjados.",
+      ["Pick at least one creation."] = "Elige al menos una creación.", ["Give it a name."] = "Ponle un nombre.",
+      ["MOD EXPORTED"] = "MOD EXPORTADO", ["SEE IT IN FORGED"] = "VERLO EN FORJADOS",
+      ["It is in Mods, Forged. To share it, send this file:"] = "Está en Mods, Forjados. Para compartirlo, envía este archivo:",
+    },
+  }
+end
+
+register_strings()
+ForgeModsUI = MU
+
+return MU
+end

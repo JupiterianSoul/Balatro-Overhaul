@@ -1,0 +1,882 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 596
+local T = require("multiplayer.mps_state")
+local F = {}
+
+local L = T.L
+local S = T.S
+
+local function touch() return UIK.touch() end
+local function bh() return touch() and 0.62 or 0.5 end
+local function rh() return touch() and 0.72 or 0.6 end
+local function port() return rawget(_G, "UIK") ~= nil and UIK.portrait() or false end
+local function per_page() return port() and 7 or touch() and 5 or 6 end
+
+F.page = {friends = 1, inbox = 1, conv = 1}
+
+function F.is_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "social" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") and true or false
+end
+
+local function tab_now()
+    return F.is_open() and UIK._win._cur or nil
+end
+
+local function from()
+    local B = T.social()
+    return B and B.S and B.S.from or "mp"
+end
+
+local function in_lobby()
+    if from() == "lobby" or from() == "party" then return true end
+    return T.lobby_key() ~= nil and bom_match and bom_match.get_phase and bom_match.PHASE and bom_match.get_phase() ~= bom_match.PHASE.NONE
+        and not (bom_match.is_in_match and bom_match.is_in_match())
+end
+
+local function watch_fn()
+    local sp = rawget(_G, "bom_spectate")
+    return sp and type(sp.watch) == "function" and sp.watch or nil
+end
+
+local function note_text()
+    local B = T.social()
+    if S.note then return S.note, S.note_bad end
+    if B and B.S and B.S.note then return B.S.note, B.S.note_bad end
+    return nil
+end
+
+local function clear_note()
+    local B = T.social()
+    S.note = nil
+    if B and B.S then B.S.note = nil end
+end
+
+local function note_row(w)
+    local text, bad = note_text()
+    return {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.45, padding = 0.02}, nodes = {
+        text and bom_kit.text(bom_kit.fit(text, w - 0.2, bom_kit.dims().small), {scale = bom_kit.dims().small, colour = bad and G.C.RED or G.C.GREEN}) or nil,
+    }}
+end
+
+local function centre(str, w, o)
+    o = o or {}
+    local d = bom_kit.dims()
+    local s, sc = bom_kit.fit(str, w - 0.2, o.scale or d.scale)
+    return {n = G.UIT.R, config = {align = "cm", minw = w, minh = o.h or 0.5, padding = 0.04}, nodes = {
+        bom_kit.text(s, {scale = sc, colour = o.colour or G.C.UI.TEXT_LIGHT}),
+    }}
+end
+
+local function block(rows, w, h)
+    return {n = G.UIT.R, config = {align = "tm", minw = w, minh = h, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0}, nodes = rows},
+    }}
+end
+
+local function pager(key, total, w)
+    local n = math.max(1, math.ceil(total / per_page()))
+    F.page[key] = math.max(1, math.min(F.page[key] or 1, n))
+    if n <= 1 then return {n = G.UIT.R, config = {minw = w, minh = touch() and 0.94 or 0.78}, nodes = {}} end
+    return UIK.pager{w = w, prev = "mps_page", next = "mps_page", prev_ref = {key = key, d = -1}, next_ref = {key = key, d = 1},
+        text = tostring(F.page[key]) .. " / " .. tostring(n), prev_disabled = F.page[key] <= 1, next_disabled = F.page[key] >= n}
+end
+
+local function slice(list, key)
+    local out, off = {}, ((F.page[key] or 1) - 1) * per_page()
+    for i = 1, per_page() do
+        if list[off + i] then out[#out + 1] = list[off + i] end
+    end
+    return out
+end
+
+local function empty_btn(w) return bom_kit.cell({}, {w = w, h = bh()}) end
+
+local W = 14.6
+local BTN_W = 1.45
+local CONV_W, THREAD_W, NAME_W, FIND_W, RES_W, CELL_W
+
+local function sync_w()
+    if port() then
+        W = UIK.PORT_W - 0.4
+        CONV_W, THREAD_W, NAME_W, FIND_W = W, W, W, W
+        CELL_W = (W - 0.24 - 0.12) / 2 - 0.06
+    else
+        W = 14.6
+        CONV_W, NAME_W = 4.2, 4.6
+        THREAD_W, FIND_W = W - CONV_W - 0.3, W - NAME_W - 0.3
+        CELL_W = CONV_W - 0.34
+    end
+    RES_W = FIND_W - 0.24
+    if F.kit then F.kit.W = W end
+end
+sync_w()
+
+local function label2(str, w, o)
+    local sc = o.scale or bom_kit.dims().small
+    local lines = T.wrap(str, w - 0.1, sc)
+    if #lines ~= 2 then return T.label(str, w, o) end
+    local nodes = {}
+    for _, l in ipairs(lines) do
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = o.align or "cm", padding = 0}, nodes = {bom_kit.text(l, {scale = sc, colour = o.colour})}}
+    end
+    return bom_kit.cell({{n = G.UIT.C, config = {align = o.align or "cm", padding = 0}, nodes = nodes}}, {w = w, h = o.h, align = o.align})
+end
+
+local function two_line(top, bottom, w, o)
+    o = o or {}
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = w, r = 0.1, padding = 0.04, colour = bom_kit.colour("row")}, nodes = {
+            bom_kit.row(top, {w = w - 0.08, h = rh(), plain = true, padding = 0.02, align = "cl"}),
+            bottom and #bottom > 0 and bom_kit.row(bottom, {w = w - 0.08, h = o.bottom_h or bh(), plain = true, padding = 0.02, align = o.bottom_align or "cr"}) or nil,
+        }},
+    }}
+end
+
+local function friend_row(f)
+    local d = bom_kit.dims()
+    local online = T.is_online(f)
+    local where = T.where_of(f)
+    local st = type(f.status) == "table" and f.status or {}
+    local sc = rawget(_G, "social_card")
+    local name = bom_kit.name_bar(f.name ~= "" and f.name or "?", {w = 2.8, h = rh(), colour = bom_kit.colour("name_light"), text_colour = bom_kit.colour("dark_text"), shadow = false})
+    if sc and sc.hook_name then sc.hook_name(name, f) end
+    local cells = {
+        T.dot(online and G.C.GREEN or G.C.UI.TEXT_INACTIVE, {h = rh()}),
+        name,
+        bom_badges.slot({name = f.name, rank = f.rank}, {h = rh()}),
+        T.label(T.status_text(f), 4.0, {h = rh(), colour = T.status_colour(f), scale = d.small}),
+    }
+    local so = rawget(_G, "social_toasts")
+    local can_invite = online and where ~= "match" and (in_lobby() or (so and so.joinable and so.joinable()))
+    cells[#cells + 1] = can_invite and T.btn{label = L("Invite"), button = in_lobby() and "mps_f_invite" or "social_play_with", ref_table = {code = f.code, name = f.name}, colour = G.C.GREEN, w = BTN_W, h = bh()} or empty_btn(BTN_W)
+    local can_join = online and where == "lobby" and type(st.room) == "string" and not in_lobby()
+    local can_ask = online and where == "lobby" and type(st.room) ~= "string" and not in_lobby() and rawget(_G, "social_more") ~= nil
+    cells[#cells + 1] = can_join and T.btn{label = L("Join"), button = "mps_f_join", ref_table = {room = st.room}, colour = G.C.BLUE, w = BTN_W, h = bh()}
+        or can_ask and T.btn{label = L("Ask"), button = "social_ask_join", ref_table = {code = f.code}, colour = G.C.BLUE, w = BTN_W, h = bh()} or empty_btn(BTN_W)
+    local can_watch = online and where == "match" and type(st.room) == "string" and watch_fn() ~= nil
+    cells[#cells + 1] = can_watch and T.btn{label = L("Watch"), button = "mps_f_watch", ref_table = {room = st.room, code = f.code}, colour = G.C.PURPLE, w = BTN_W, h = bh()} or empty_btn(BTN_W)
+    local sure = F.confirm == f.code
+    cells[#cells + 1] = T.btn{label = sure and L("Sure?") or L("Remove"), button = "mps_f_remove", ref_table = {code = f.code}, colour = sure and G.C.ORANGE or G.C.RED, w = BTN_W, h = bh()}
+    if port() then
+        local inner = W - 0.08
+        local nw = 2.8
+        cells[4] = label2(T.status_text(f), inner - 0.3 - nw - d.badge_w - 3 * d.gap - 0.1, {h = rh(), colour = T.status_colour(f), scale = d.small, align = "cl"})
+        local btns = {}
+        for i = 5, #cells do
+            local c = cells[i]
+            if c.config and c.config.button then
+                c.config.minw, c.config.maxw = 1.8, 1.8
+                btns[#btns + 1] = c
+            end
+        end
+        return two_line({cells[1], cells[2], cells[3], cells[4]}, btns, W)
+    end
+    return bom_kit.row(cells, {w = W, h = rh()})
+end
+
+local function body_h() return UIK.H - UIK.TOP - 0.1 end
+
+local function tab_friends()
+    sync_w()
+    local list = T.friends()
+    local rows = {}
+    if #list == 0 then
+        rows[#rows + 1] = centre(L("No friends yet. Find players in Add friend."), W, {h = 0.8})
+    end
+    for _, f in ipairs(slice(list, "friends")) do rows[#rows + 1] = friend_row(f) end
+    return block({
+        block(rows, W, body_h() - 1.4),
+        pager("friends", #list, W),
+        note_row(W),
+    }, W, body_h())
+end
+
+F.kit = {block = block, pager = pager, slice = slice, centre = centre, note_row = note_row, body_h = body_h, empty_btn = empty_btn, W = W, BTN_W = BTN_W, in_lobby = in_lobby, watch_fn = watch_fn, two_line = two_line}
+
+
+local function conv_list()
+    local list = {}
+    for _, f in ipairs(T.friends()) do list[#list + 1] = f end
+    table.sort(list, function(a, b)
+        local ua, ub = (tonumber(a.unread) or 0) > 0, (tonumber(b.unread) or 0) > 0
+        if ua ~= ub then return ua end
+        local la = S.dms[a.code] and S.dms[a.code].last or 0
+        local lb = S.dms[b.code] and S.dms[b.code].last or 0
+        if la ~= lb then return la > lb end
+        local oa, ob = T.is_online(a), T.is_online(b)
+        if oa ~= ob then return oa end
+        return tostring(a.name or ""):lower() < tostring(b.name or ""):lower()
+    end)
+    return list
+end
+
+local function conv_row(f)
+    local sel = S.dm_sel == f.code
+    local unread = (tonumber(f.unread) or 0) > 0
+    local d = bom_kit.dims()
+    local s, sc = bom_kit.fit(f.name ~= "" and f.name or "?", CELL_W - 0.65, d.scale)
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = CELL_W, maxw = CELL_W, minh = rh(), r = 0.1, button = "mps_dm_pick", ref_table = {code = f.code},
+            hover = true, shadow = true, colour = sel and G.C.GOLD or bom_kit.colour("status"), emboss = 0.04}, nodes = {
+            T.dot(unread and G.C.RED or G.C.CLEAR, {h = rh()}),
+            bom_kit.cell({bom_kit.text(s, {scale = sc, colour = sel and bom_kit.colour("dark_text") or G.C.UI.TEXT_LIGHT, shadow = not sel})}, {w = CELL_W - 0.65, h = rh()}),
+            T.dot(T.is_online(f) and G.C.GREEN or G.C.CLEAR, {h = rh(), size = 0.12}),
+        }},
+    }}
+end
+
+local function conv_h() return 3 * (rh() + 0.06) + (touch() and 0.94 or 0.78) + 0.36 end
+local function msg_h() return body_h() - 0.5 - (port() and conv_h() + 0.2 or 0) end
+local function head_h() return 0.5 end
+local function thread_h() return msg_h() - head_h() - 0.1 - (touch() and 0.86 or 0.74) end
+
+local function thread_def()
+    local code = S.dm_sel
+    local conv = code and S.dms[code]
+    local f = code and T.friend(code)
+    local C = require("multiplayer.mps_chat")
+    if not code then return C.log({}, THREAD_W, thread_h(), {empty = L("Pick a friend on the left.")}) end
+    if not conv or (#conv.items == 0 and not conv.loaded) then return C.log({}, THREAD_W, thread_h(), {empty = L("Loading...")}) end
+    local me = T.my_code()
+    local items = {}
+    for _, it in ipairs(conv.items) do
+        local mine = it.from == me
+        items[#items + 1] = {who = mine and L("You") or (f and f.name ~= "" and f.name or "?"), text = it.text, mine = mine}
+    end
+    local sx = rawget(_G, "social_more")
+    return C.log(items, THREAD_W, thread_h(), {typing = sx and sx.typing_line and sx.typing_line(code) or nil})
+end
+F.thread_def = thread_def
+
+function F.input_row(ref_table, ref_value, w, send_button, max_len, prompt, callback, emote_button)
+    local sw = touch() and 1.7 or 1.5
+    local iw = w - sw - 0.25 - (emote_button and sw + 0.15 or 0)
+    return {n = G.UIT.R, config = {align = "cm", minw = w, minh = touch() and 0.86 or 0.74, padding = 0.04}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = iw, maxw = iw}, nodes = {
+            create_text_input({w = iw - 0.1, h = touch() and 0.7 or 0.58, max_length = max_len or 60, text_scale = touch() and 0.34 or 0.3,
+                prompt_text = prompt, ref_table = ref_table, ref_value = ref_value, extended_corpus = true, keyboard_offset = 1, callback = callback}),
+        }},
+        {n = G.UIT.C, config = {minw = 0.15}, nodes = {}},
+        emote_button and T.btn{label = L("Emote"), button = emote_button, colour = G.C.BLUE, w = sw, h = touch() and 0.7 or 0.58} or nil,
+        emote_button and {n = G.UIT.C, config = {minw = 0.15}, nodes = {}} or nil,
+        T.btn{label = L("Send"), button = send_button, colour = G.C.GREEN, w = sw, h = touch() and 0.7 or 0.58},
+    }}
+end
+
+local function chat_gate(w)
+    local c = S.chat
+    local rows = {}
+    if c.allowed == false then
+        rows[#rows + 1] = centre(L("Chat is not available for your account."), w, {colour = bom_kit.colour("muted")})
+    else
+        rows[#rows + 1] = centre(L("Chat is off."), w)
+        rows[#rows + 1] = centre(L("Turn it on to send and read messages."), w, {colour = bom_kit.colour("muted"), scale = bom_kit.dims().small})
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {
+            UIK.button{label = L("Turn on chat"), button = "mps_chat_optin_friends", colour = G.C.GREEN, w = 3.2, h = touch() and 0.8 or 0.66, scale = touch() and 0.42 or 0.38},
+        }}
+    end
+    return {n = G.UIT.R, config = {align = "cm", minw = w, minh = msg_h(), r = 0.12, colour = {0, 0, 0, 0.2}, padding = 0.12}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = rows},
+    }}
+end
+
+local function conv_per()
+    if port() then return 6 end
+    return math.max(1, math.floor((msg_h() - (touch() and 0.94 or 0.78) - 0.3) / (rh() + 0.06)))
+end
+
+local function tab_messages()
+    sync_w()
+    local list = conv_list()
+    if #list == 0 then
+        return block({centre(L("No friends yet. Find players in Add friend."), W, {h = 0.8}), note_row(W)}, W, body_h())
+    end
+    local per = conv_per()
+    local npages = math.max(1, math.ceil(#list / per))
+    F.page.conv = math.max(1, math.min(F.page.conv or 1, npages))
+    local left = {}
+    for i = (F.page.conv - 1) * per + 1, math.min(#list, F.page.conv * per) do left[#left + 1] = conv_row(list[i]) end
+    if port() then
+        local pairs_ = {}
+        for i = 1, #left, 2 do
+            pairs_[#pairs_ + 1] = {n = G.UIT.R, config = {align = "cl", padding = 0}, nodes = {
+                {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {left[i]}},
+                left[i + 1] and {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {left[i + 1]}} or nil,
+            }}
+        end
+        left = pairs_
+    end
+    local pg_h = touch() and 0.94 or 0.78
+    local inner = CONV_W - 0.24
+    local list_h = port() and conv_h() or msg_h()
+    local left_nodes = {block(left, inner, list_h - pg_h - 0.24)}
+    local aw = touch() and 0.9 or 0.8
+    left_nodes[#left_nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = inner, minh = pg_h, padding = 0}, nodes = npages > 1 and {
+        UIK.button{label = "<", button = "mps_page", ref_table = {key = "conv", d = -1, per = per}, colour = G.C.RED, w = aw, h = bh(), disabled = F.page.conv <= 1, col = true, scale = 0.4},
+        bom_kit.cell({bom_kit.text(F.page.conv .. " / " .. npages, {scale = bom_kit.dims().small})}, {w = inner - 2 * aw - 0.1, h = bh()}),
+        UIK.button{label = ">", button = "mps_page", ref_table = {key = "conv", d = 1, per = per}, colour = G.C.RED, w = aw, h = bh(), disabled = F.page.conv >= npages, col = true, scale = 0.4},
+    } or {}}
+    local left_card = {n = G.UIT.R, config = {align = "tm", minw = CONV_W, minh = list_h, r = 0.12, colour = UIK.C.section, padding = 0.12}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = inner, padding = 0}, nodes = left_nodes},
+    }}
+    local right
+    if not S.chat.enabled then
+        right = chat_gate(THREAD_W)
+    else
+        local f = S.dm_sel and T.friend(S.dm_sel)
+        local d = bom_kit.dims()
+        local name = f and bom_kit.fit(f.name ~= "" and f.name or "?", port() and 3.2 or 4.5, d.scale) or " "
+        right = {n = G.UIT.R, config = {align = "tm", minw = THREAD_W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", minw = THREAD_W, padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", minw = THREAD_W, minh = head_h(), padding = 0}, nodes = {
+                bom_kit.text(name, {scale = d.scale, colour = G.C.GOLD}),
+                f and {n = G.UIT.C, config = {minw = 0.25, padding = 0}, nodes = {}} or nil,
+                f and T.dot(T.status_colour(f), {w = 0.22, h = head_h(), size = 0.12}) or nil,
+                f and bom_kit.text(bom_kit.fit(T.status_text(f), THREAD_W - (port() and 4.2 or 6), d.small), {scale = d.small, colour = T.status_colour(f)}) or nil,
+            }},
+            {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {T.slot("mps_thread", thread_def)}},
+            {n = G.UIT.R, config = {minh = 0.1, padding = 0}, nodes = {}},
+            S.dm_sel and F.input_row(S.dm_input, "text", THREAD_W, "mps_dm_send", 60, L("Write a message"), function() F.send_dm() end, "social_chat_emote_dm")
+                or {n = G.UIT.R, config = {minh = touch() and 0.86 or 0.74}, nodes = {}},
+        }}}}
+    end
+    if port() then
+        return block({
+            left_card,
+            {n = G.UIT.R, config = {minh = 0.2, padding = 0}, nodes = {}},
+            right,
+            note_row(W),
+        }, W, body_h())
+    end
+    return block({
+        {n = G.UIT.R, config = {align = "tm", minw = W, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "tm", minw = CONV_W, padding = 0}, nodes = {left_card}},
+            {n = G.UIT.C, config = {minw = 0.3, padding = 0}, nodes = {}},
+            {n = G.UIT.C, config = {align = "tm", minw = THREAD_W, padding = 0}, nodes = {right}},
+        }},
+        note_row(W),
+    }, W, body_h())
+end
+
+
+local function result_row(r)
+    local d = bom_kit.dims()
+    local label, colour, btn
+    local bw = touch() and 1.7 or 1.55
+    if r.friend then
+        label, colour = L("Already a friend"), G.C.GREEN
+    elseif r.incoming then
+        label, colour = L("Wants to be your friend"), G.C.GOLD
+        btn = T.btn{label = L("Accept"), button = "mps_s_accept", ref_table = {code = r.code}, colour = G.C.GREEN, w = bw, h = bh()}
+    elseif r.pending then
+        label, colour = L("Request sent"), bom_kit.colour("muted")
+    else
+        label, colour = r.online and L("Online") or L("Offline"), r.online and G.C.GREEN or bom_kit.colour("muted")
+        btn = T.btn{label = L("Add"), button = "mps_s_add", ref_table = {code = r.code}, colour = G.C.GREEN, w = bw, h = bh()}
+    end
+    local nw = 3.0
+    local rw = RES_W - 0.16
+    if port() then
+        local fill = rw - 0.08 - 0.3 - nw - d.badge_w - bw - 4 * d.gap - 0.04
+        return two_line({
+            T.dot(r.online and G.C.GREEN or G.C.UI.TEXT_INACTIVE, {h = rh()}),
+            bom_kit.name_bar(r.name or "?", {w = nw, h = rh(), colour = bom_kit.colour("name_light"), text_colour = bom_kit.colour("dark_text"), shadow = false}),
+            bom_badges.slot({name = r.name, rank = r.rank}, {h = rh()}),
+            empty_btn(fill),
+            btn or empty_btn(bw),
+        }, {T.label(label, rw - 0.2, {h = bh(), colour = colour, scale = d.small, align = "cl"})}, rw, {bottom_align = "cl"})
+    end
+    local lw = rw - 0.3 - nw - d.badge_w - bw - 4 * d.gap - 0.2
+    return bom_kit.row({
+        T.dot(r.online and G.C.GREEN or G.C.UI.TEXT_INACTIVE, {h = rh()}),
+        bom_kit.name_bar(r.name or "?", {w = nw, h = rh(), colour = bom_kit.colour("name_light"), text_colour = bom_kit.colour("dark_text"), shadow = false}),
+        bom_badges.slot({name = r.name, rank = r.rank}, {h = rh()}),
+        T.label(label, lw, {h = rh(), colour = colour, scale = d.small}),
+        btn or empty_btn(bw),
+    }, {w = rw, h = rh()})
+end
+
+local function name_h() return 2.7 end
+local function find_h() return body_h() - 0.5 - (port() and name_h() + 0.2 or 0) end
+local function search_h() return touch() and 0.86 or 0.74 end
+local function hint_h() return 0.4 end
+local function results_h() return find_h() - (touch() and 0.66 or 0.58) - search_h() - hint_h() - 0.5 end
+
+local function results_def()
+    local sr = S.search
+    local rows = {}
+    local q = tostring(sr.input.q or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local msg
+    if q == "" then
+        msg = L("Type a name to find players.")
+    elseif #q < 2 then
+        msg = L("Type at least 2 letters.")
+    elseif sr.results == nil or sr.sent ~= q then
+        msg = L("Searching...")
+    elseif #sr.results == 0 then
+        msg = L("No players found.")
+    else
+        local max = math.max(1, math.floor(results_h() / (port() and rh() + bh() + 0.3 or rh() + 0.12)))
+        for i = 1, math.min(#sr.results, max) do rows[#rows + 1] = result_row(sr.results[i]) end
+    end
+    if msg then rows[1] = centre(msg, RES_W, {colour = bom_kit.colour("muted"), scale = bom_kit.dims().small}) end
+    return {n = G.UIT.R, config = {align = msg and "cm" or "tm", minw = RES_W, minh = results_h(), r = 0.1, colour = {0, 0, 0, 0.15}, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = msg and "cm" or "tm", minw = RES_W, padding = 0.04}, nodes = rows},
+    }}
+end
+
+local function card(w, h, nodes)
+    return {n = G.UIT.R, config = {align = "tm", minw = w, minh = h, r = 0.12, colour = UIK.C.section, padding = 0.12}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = w - 0.24, padding = 0}, nodes = nodes},
+    }}
+end
+
+local function tab_add()
+    sync_w()
+    local d = bom_kit.dims()
+    local inner = FIND_W - 0.24
+    local sw = touch() and 1.9 or 1.7
+    local ih = touch() and 0.7 or 0.58
+    local iw = inner - sw - 0.25
+    local find = card(FIND_W, find_h(), {
+        UIK.header(L("Find players"), {w = inner}),
+        {n = G.UIT.R, config = {align = "cm", minw = inner, minh = search_h(), padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minw = iw, maxw = iw, padding = 0}, nodes = {
+                create_text_input({w = iw - 0.1, h = ih, max_length = 16, text_scale = touch() and 0.36 or 0.32,
+                    prompt_text = L("Player name"), ref_table = S.search.input, ref_value = "q", extended_corpus = true, keyboard_offset = 1,
+                    callback = function() F.search_now() end}),
+            }},
+            {n = G.UIT.C, config = {minw = 0.15, padding = 0}, nodes = {}},
+            T.btn{label = L("Search"), button = "mps_s_search", colour = G.C.BLUE, w = sw, h = ih},
+        }},
+        {n = G.UIT.R, config = {align = "cm", minw = inner, minh = hint_h(), padding = 0}, nodes = {
+            bom_kit.text(bom_kit.fit(L("Search by the name shown in their profile."), inner - 0.2, d.small), {scale = d.small, colour = bom_kit.colour("muted")}),
+        }},
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {T.slot("mps_results", results_def)}},
+    })
+    local ninner = NAME_W - 0.24
+    local name = T.my_name() or "?"
+    local hint = T.wrap(L("Friends can find you by this name. Change it in your Profile."), ninner - 0.3, d.small)
+    if port() then
+        local cw = touch() and 1.9 or 1.7
+        local mine_p = card(NAME_W, name_h(), {
+            UIK.header(L("Your name"), {w = ninner}),
+            {n = G.UIT.R, config = {align = "cm", minw = ninner, padding = 0.05}, nodes = {
+                bom_kit.name_bar(name, {w = ninner - cw - 0.35, h = touch() and 0.8 or 0.66, colour = G.C.GOLD, text_colour = bom_kit.colour("dark_text"), shadow = false}),
+                {n = G.UIT.C, config = {minw = 0.15, padding = 0}, nodes = {}},
+                UIK.button{label = L("Copy"), button = "mps_copy_name", colour = G.C.BLUE, w = cw, h = touch() and 0.8 or 0.66, scale = touch() and 0.42 or 0.38, col = true},
+            }},
+            UIK.note(T.wrap(L("Friends can find you by this name. Change it in your Profile."), ninner - 0.3, d.small), {w = ninner, scale = d.small}),
+        })
+        return block({
+            mine_p,
+            {n = G.UIT.R, config = {minh = 0.2, padding = 0}, nodes = {}},
+            find,
+            note_row(W),
+        }, W, body_h())
+    end
+    local mine = card(NAME_W, find_h(), {
+        UIK.header(L("Your name"), {w = ninner}),
+        {n = G.UIT.R, config = {align = "cm", minw = ninner, padding = 0.05}, nodes = {
+            bom_kit.name_bar(name, {w = ninner - 0.2, h = touch() and 0.8 or 0.66, colour = G.C.GOLD, text_colour = bom_kit.colour("dark_text"), shadow = false}),
+        }},
+        {n = G.UIT.R, config = {align = "cm", minw = ninner, padding = 0.05}, nodes = {
+            UIK.button{label = L("Copy"), button = "mps_copy_name", colour = G.C.BLUE, w = ninner - 0.2, h = touch() and 0.8 or 0.66, scale = touch() and 0.42 or 0.38, col = true},
+        }},
+        UIK.note(hint, {w = ninner, scale = d.small}),
+    })
+    return block({
+        {n = G.UIT.R, config = {align = "tm", minw = W, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "tm", minw = FIND_W, padding = 0}, nodes = {find}},
+            {n = G.UIT.C, config = {minw = 0.3, padding = 0}, nodes = {}},
+            {n = G.UIT.C, config = {align = "tm", minw = NAME_W, padding = 0}, nodes = {mine}},
+        }},
+        note_row(W),
+    }, W, body_h())
+end
+
+local function invites()
+    local out = {}
+    for _, it in ipairs(S.notify.items or {}) do
+        if it.kind == "invite" and type(it.data) == "table" and type(it.data.room) == "string" then out[#out + 1] = it end
+    end
+    return out
+end
+
+local function inbox_list()
+    local list = {}
+    for _, r in ipairs(T.requests()) do list[#list + 1] = {kind = "req", code = r.code, name = r.name, rank = r.rank} end
+    for _, it in ipairs(invites()) do
+        list[#list + 1] = {kind = "inv", id = it.id, name = it.data.name, room = it.data.room, party = it.data.party, at = it.at, read = it.read}
+    end
+    for _, r in ipairs(T.sent()) do list[#list + 1] = {kind = "sent", code = r.code, name = r.name, rank = r.rank} end
+    return list
+end
+
+local function inbox_row(e)
+    local d = bom_kit.dims()
+    local label, colour, b1, b2
+    if e.kind == "req" then
+        label, colour = L("Wants to be your friend"), G.C.GOLD
+        b1 = T.btn{label = L("Accept"), button = "mps_in_accept", ref_table = {code = e.code}, colour = G.C.GREEN, w = 1.8, h = bh()}
+        b2 = T.btn{label = L("Decline"), button = "mps_in_decline", ref_table = {code = e.code}, colour = G.C.RED, w = 1.8, h = bh()}
+    elseif e.kind == "inv" then
+        label = e.party and L("Invites you to their party") or L("Invites you to their lobby")
+        local ago = T.ago(e.at)
+        if ago ~= "" then label = label .. ", " .. ago end
+        colour = G.C.BLUE
+        b1 = T.btn{label = L("Join"), button = "mps_inv_join", ref_table = {id = e.id, room = e.room}, colour = G.C.GREEN, w = 1.8, h = bh()}
+        b2 = T.btn{label = L("Decline"), button = "mps_inv_decline", ref_table = {id = e.id}, colour = G.C.RED, w = 1.8, h = bh()}
+    else
+        label, colour = L("Request sent, waiting"), bom_kit.colour("muted")
+        b2 = T.btn{label = L("Cancel"), button = "mps_in_decline", ref_table = {code = e.code}, colour = G.C.RED, w = 1.8, h = bh()}
+    end
+    if port() then
+        local nw = 2.8
+        local btns = {}
+        if b1 then btns[#btns + 1] = b1 end
+        if b2 then btns[#btns + 1] = b2 end
+        return two_line({
+            T.dot((e.kind ~= "sent" and not e.read) and G.C.RED or G.C.CLEAR, {h = rh()}),
+            bom_kit.name_bar(e.name ~= "" and e.name or "?", {w = nw, h = rh(), colour = bom_kit.colour("name_light"), text_colour = bom_kit.colour("dark_text"), shadow = false}),
+            bom_badges.slot({name = e.name, rank = e.rank}, {h = rh()}),
+            label2(label, W - 0.08 - 0.3 - nw - d.badge_w - 3 * d.gap - 0.1, {h = rh(), colour = colour, scale = d.small, align = "cl"}),
+        }, btns, W)
+    end
+    return bom_kit.row({
+        T.dot((e.kind ~= "sent" and not e.read) and G.C.RED or G.C.CLEAR, {h = rh()}),
+        bom_kit.name_bar(e.name ~= "" and e.name or "?", {w = 3.2, h = rh(), colour = bom_kit.colour("name_light"), text_colour = bom_kit.colour("dark_text"), shadow = false}),
+        bom_badges.slot({name = e.name, rank = e.rank}, {h = rh()}),
+        T.label(label, 4.6, {h = rh(), colour = colour, scale = d.small}),
+        b1 or empty_btn(1.8),
+        b2 or empty_btn(1.8),
+    }, {w = 13.2, h = rh()})
+end
+
+local function tab_inbox()
+    sync_w()
+    local list = inbox_list()
+    local rows = {}
+    if #list == 0 then rows[#rows + 1] = centre(L("Nothing here. Friend requests and invites show up here."), W, {h = 0.8}) end
+    for _, e in ipairs(slice(list, "inbox")) do rows[#rows + 1] = inbox_row(e) end
+    return block({
+        block(rows, W, body_h() - 1.4),
+        pager("inbox", #list, W),
+        note_row(W),
+    }, W, body_h())
+end
+
+local function count_label(label, n)
+    if n and n > 0 then return label .. " (" .. (n > 9 and "9+" or tostring(n)) .. ")" end
+    return label
+end
+
+local function window_def(tab)
+    local tabs = {
+        {key = "friends", label = L("Friends"), build = tab_friends},
+        {key = "messages", label = count_label(L("Messages"), T.dm_unread_total()), build = tab_messages},
+        {key = "add", label = L("Add friend"), build = tab_add},
+    }
+    local sr = rawget(_G, "social_recent")
+    if sr and sr.tab then tabs[#tabs + 1] = {key = "recent", label = L("Recent"), build = function() sync_w() return sr.tab() end} end
+    tabs[#tabs + 1] = {key = "inbox", label = count_label(L("Inbox"), #T.requests() + #invites()), build = tab_inbox}
+    local so = rawget(_G, "social_online")
+    if so and so.tab then tabs[#tabs + 1] = {key = "options", label = L("Options"), build = function() sync_w() return so.tab() end} end
+    return UIK.window{
+        id = "social",
+        title = L("FRIENDS"),
+        tab = tab,
+        tabs = tabs,
+        footer = rawget(_G, "social_party") and {UIK.button{label = L("Party invite"), button = "social_party_open", colour = G.C.GREEN, id = "social_party_open"}} or nil,
+        back_inline = true,
+        back_func = "social_back",
+    }
+end
+
+function F.open(tab)
+    clear_note()
+    F.confirm = nil
+    S.dm_open = false
+r 4 1381 %20%20%20%20 -
+l 107
+    G.FUNCS.overlay_menu{definition = window_def(tab)}
+    if tab_now() == "messages" then F.on_messages() end
+end
+
+function F.refresh()
+    if not F.is_open() then return end
+    if T.typing() then
+        T.later("friends")
+        return
+    end
+    UIK.refresh()
+    if tab_now() == "messages" then F.on_messages() end
+end
+
+function F.on_messages()
+    S.dm_open = true
+    local code = S.dm_sel
+    if not code then
+        local list = conv_list()
+        if list[1] then
+            S.dm_sel = list[1].code
+            code = S.dm_sel
+            UIK.refresh()
+        end
+    end
+    if code and S.chat.enabled then
+        if not (S.dms[code] and S.dms[code].loaded) then T.send({type = "chat_dm_history", with = code}) end
+        local f = T.friend(code)
+        if f and (tonumber(f.unread) or 0) > 0 then
+            f.unread = 0
+            T.send({type = "chat_dm_read", with = code})
+        end
+    end
+end
+
+function F.send_dm()
+    local code = S.dm_sel
+    local text = tostring(S.dm_input.text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if not code or text == "" then return end
+    clear_note()
+    if T.send({type = "chat_dm_send", to = code, text = text}) then
+        S.dm_input.text = ""
+    end
+    T.later("friends")
+end
+
+function F.search_now()
+    local sr = S.search
+    local q = tostring(sr.input.q or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    sr.last = sr.input.q
+    if #q >= 2 and q ~= sr.sent then
+        sr.sent = q
+        sr.results = nil
+        T.send({type = "social_search", q = q})
+    elseif #q < 2 then
+        sr.sent, sr.results = "", nil
+    end
+    T.swap("mps_results", results_def)
+end
+
+function F.tick()
+    if not F.is_open() then
+        S.dm_open = false
+        return
+    end
+    local cur = tab_now()
+    S.dm_open = cur == "messages"
+    if cur == "add" then
+        local sr = S.search
+        local now = love.timer.getTime()
+        if sr.input.q ~= sr.last then
+            sr.last = sr.input.q
+            sr.changed_at = now
+            T.swap("mps_results", results_def)
+        elseif sr.changed_at > 0 and now - sr.changed_at > 0.45 then
+            sr.changed_at = 0
+            F.search_now()
+        end
+    end
+    if cur ~= F.last_tab then
+        F.last_tab = cur
+        if cur == "messages" then F.on_messages() end
+    end
+end
+
+local function on_change(what)
+    if not F.is_open() then return end
+    local cur = tab_now()
+    if what == "search" then
+        if cur == "add" then T.swap("mps_results", results_def) end
+        return
+    end
+    if what == "dm" and cur == "messages" then
+        T.swap("mps_thread", thread_def)
+        if T.typing() then T.later("friends") else UIK.refresh() end
+        return
+    end
+    if what == "lobby" or what == "mutes" then return end
+    if what == "friends" and T.typing() then
+        T.later("friends")
+        return
+    end
+    F.refresh()
+end
+
+local function join_room(room)
+    if type(room) ~= "string" or room == "" then return end
+r 4 1375 %20%20%20%20 -
+l 30
+    if bom_ui and bom_ui.show_connecting_screen then pcall(bom_ui.show_connecting_screen) end
+    bom_room.join(room, {})
+end
+F.join_room = join_room
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+local function register_funcs()
+    G.FUNCS.mps_s_search = function()
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        F.search_now()
+    end
+    G.FUNCS.mps_page = function(e)
+        local r = ref(e)
+        if not r.key then return end
+        F.page[r.key] = (F.page[r.key] or 1) + (r.d or 0)
+        F.refresh()
+    end
+    G.FUNCS.mps_f_invite = function(e)
+        local code = ref(e).code
+        if not code then return end
+        clear_note()
+        T.send({type = "social_invite", code = code})
+        F.refresh()
+    end
+    G.FUNCS.mps_f_join = function(e) join_room(ref(e).room) end
+    G.FUNCS.mps_f_watch = function(e)
+        local r = ref(e)
+        local fn = watch_fn()
+        if not (fn and r.room) then return end
+r 4 1375 %20%20%20%20%20%20%20%20 -
+l 137
+        pcall(fn, r.room, {friend = r.code})
+    end
+    G.FUNCS.mps_f_remove = function(e)
+        local code = ref(e).code
+        if not code then return end
+        if F.confirm ~= code then
+            F.confirm = code
+            F.refresh()
+            return
+        end
+        F.confirm = nil
+        clear_note()
+        T.send({type = "social_remove", code = code})
+        F.refresh()
+    end
+    G.FUNCS.mps_dm_pick = function(e)
+        local code = ref(e).code
+        if not code then return end
+        S.dm_sel = code
+        S.dm_input.text = ""
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        UIK.refresh()
+        F.on_messages()
+    end
+    G.FUNCS.mps_dm_send = function()
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        F.send_dm()
+    end
+    G.FUNCS.mps_copy_name = function()
+        local name = T.my_name()
+        if name and love.system and love.system.setClipboardText then
+            love.system.setClipboardText(name)
+            T.note(L("Name copied."), false)
+            F.refresh()
+        end
+    end
+    G.FUNCS.mps_s_add = function(e)
+        local code = ref(e).code
+        if not code then return end
+        clear_note()
+        T.send({type = "social_add", code = code})
+        for _, r in ipairs(S.search.results or {}) do
+            if r.code == code then r.pending = true end
+        end
+        T.swap("mps_results", results_def)
+    end
+    G.FUNCS.mps_s_accept = function(e)
+        local code = ref(e).code
+        if not code then return end
+        clear_note()
+        T.send({type = "social_accept", code = code})
+        for _, r in ipairs(S.search.results or {}) do
+            if r.code == code then r.friend, r.incoming = true, false end
+        end
+        T.swap("mps_results", results_def)
+    end
+    G.FUNCS.mps_in_accept = function(e)
+        local code = ref(e).code
+        if not code then return end
+        clear_note()
+        T.send({type = "social_accept", code = code})
+        F.refresh()
+    end
+    G.FUNCS.mps_in_decline = function(e)
+        local code = ref(e).code
+        if not code then return end
+        clear_note()
+        T.send({type = "social_remove", code = code})
+        F.refresh()
+    end
+    G.FUNCS.mps_inv_join = function(e)
+        local r = ref(e)
+        if r.id then T.send({type = "notify_clear", id = r.id}) end
+        join_room(r.room)
+    end
+    G.FUNCS.mps_inv_decline = function(e)
+        local id = ref(e).id
+        if not id then return end
+        T.send({type = "notify_clear", id = id})
+        local list = S.notify.items
+        for i = #list, 1, -1 do
+            if list[i].id == id then table.remove(list, i) end
+        end
+        F.refresh()
+    end
+end
+
+local STRINGS = {
+    fr = {
+        ["Find players"] = "Trouver des joueurs", ["Search"] = "Chercher", ["Search by the name shown in their profile."] = "Cherchez le nom affiché dans leur profil.",
+        ["Friends can find you by this name. Change it in your Profile."] = "Vos amis vous trouvent avec ce nom. Changez-le dans votre Profil.",
+        ["FRIENDS"] = "AMIS", ["Friends"] = "Amis", ["Messages"] = "Messages", ["Add friend"] = "Ajouter", ["Inbox"] = "Boîte",
+        ["Invite"] = "Inviter", ["Join"] = "Rejoindre", ["Watch"] = "Regarder", ["Remove"] = "Retirer", ["Sure?"] = "Sûr ?",
+        ["No friends yet. Find players in Add friend."] = "Pas encore d'amis. Trouvez des joueurs dans Ajouter.",
+        ["Pick a friend on the left."] = "Choisissez un ami à gauche.", ["Loading..."] = "Chargement...",
+        ["No messages yet. Say hi!"] = "Pas encore de message. Dites bonjour !", ["You"] = "Vous", ["Send"] = "Envoyer",
+        ["Write a message"] = "Écrire un message", ["Chat is not available for your account."] = "Le chat n'est pas disponible pour votre compte.",
+        ["Chat is off."] = "Le chat est désactivé.", ["Turn it on to send and read messages."] = "Activez-le pour envoyer et lire des messages.",
+        ["Turn on chat"] = "Activer le chat", ["Already a friend"] = "Déjà ami", ["Wants to be your friend"] = "Veut devenir votre ami",
+        ["Accept"] = "Accepter", ["Request sent"] = "Demande envoyée", ["Add"] = "Ajouter",
+        ["Type a name to find players."] = "Tapez un nom pour trouver des joueurs.", ["Searching..."] = "Recherche...",
+        ["No players found."] = "Aucun joueur trouvé.", ["Your name"] = "Votre nom", ["Copy"] = "Copier",
+        ["Find players by name"] = "Trouver des joueurs par nom", ["Player name"] = "Nom du joueur", ["Decline"] = "Refuser",
+        ["Invites you to their party"] = "Vous invite dans son groupe", ["Invites you to their lobby"] = "Vous invite dans son salon",
+        ["Request sent, waiting"] = "Demande envoyée, en attente", ["Cancel"] = "Annuler",
+        ["Nothing here. Friend requests and invites show up here."] = "Rien ici. Les demandes d'ami et les invitations arrivent ici.",
+        ["Name copied."] = "Nom copié.",
+    },
+    es = {
+        ["Find players"] = "Buscar jugadores", ["Search"] = "Buscar", ["Search by the name shown in their profile."] = "Busca el nombre que aparece en su perfil.",
+        ["Friends can find you by this name. Change it in your Profile."] = "Tus amigos te encuentran con este nombre. Cámbialo en tu Perfil.",
+        ["FRIENDS"] = "AMIGOS", ["Friends"] = "Amigos", ["Messages"] = "Mensajes", ["Add friend"] = "Añadir", ["Inbox"] = "Bandeja",
+        ["Invite"] = "Invitar", ["Join"] = "Unirse", ["Watch"] = "Mirar", ["Remove"] = "Quitar", ["Sure?"] = "¿Seguro?",
+        ["No friends yet. Find players in Add friend."] = "Aún no tienes amigos. Busca jugadores en Añadir.",
+        ["Pick a friend on the left."] = "Elige un amigo a la izquierda.", ["Loading..."] = "Cargando...",
+        ["No messages yet. Say hi!"] = "Aún no hay mensajes. ¡Saluda!", ["You"] = "Tú", ["Send"] = "Enviar",
+        ["Write a message"] = "Escribe un mensaje", ["Chat is not available for your account."] = "El chat no está disponible para tu cuenta.",
+        ["Chat is off."] = "El chat está desactivado.", ["Turn it on to send and read messages."] = "Actívalo para enviar y leer mensajes.",
+        ["Turn on chat"] = "Activar chat", ["Already a friend"] = "Ya es tu amigo", ["Wants to be your friend"] = "Quiere ser tu amigo",
+        ["Accept"] = "Aceptar", ["Request sent"] = "Solicitud enviada", ["Add"] = "Añadir",
+        ["Type a name to find players."] = "Escribe un nombre para buscar jugadores.", ["Searching..."] = "Buscando...",
+        ["No players found."] = "No se encontraron jugadores.", ["Your name"] = "Tu nombre", ["Copy"] = "Copiar",
+        ["Find players by name"] = "Buscar jugadores por nombre", ["Player name"] = "Nombre del jugador", ["Decline"] = "Rechazar",
+        ["Invites you to their party"] = "Te invita a su grupo", ["Invites you to their lobby"] = "Te invita a su sala",
+        ["Request sent, waiting"] = "Solicitud enviada, pendiente", ["Cancel"] = "Cancelar",
+        ["Nothing here. Friend requests and invites show up here."] = "No hay nada. Aquí llegan las solicitudes de amistad y las invitaciones.",
+        ["Name copied."] = "Nombre copiado.",
+    },
+}
+
+function F.init()
+    register_funcs()
+    T.listen(on_change)
+    if mod_loc_register then mod_loc_register(STRINGS) end
+end
+
+return F
+end

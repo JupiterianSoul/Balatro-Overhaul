@@ -1,0 +1,46 @@
+BOP 1
+eol lf
+final 1
+base 0
+r 26 1 - -
+l 4
+
+if jit.arch:find('^arm') then jit.off() end
+
+require "love.timer"
+r 14 6 - -
+l 1
+require "love.data"
+r 14 7 - -
+r 14 8 - -
+r 14 9 - -
+l 28
+
+local requests = love.thread.getChannel("load_request")
+local replies = love.thread.getChannel("load_return")
+
+local function read_file(name)
+    local raw = get_compressed(name)
+    if raw == nil then
+        replies:push({_status = 'NOT FOUND', _filename = name})
+        return
+    end
+    local content = get_table_from_string(raw)
+    if content == nil then keep_bad_copy(name, raw) end
+    replies:push({_status = 'OK', _filename = name, _content = content})
+end
+
+local running, problem = pcall(function()
+    while true do
+        local request = requests:demand()
+        if type(request) == 'table' then
+            if request.type == 'kill' then return end
+            if request.type == 'load_request' then read_file(request.file) end
+        end
+    end
+end)
+
+if not running then
+    print("[SAVE] load thread stopped: " .. tostring(problem))
+end
+end

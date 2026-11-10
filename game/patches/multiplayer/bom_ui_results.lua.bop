@@ -1,0 +1,918 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 87
+﻿-- ============================================
+-- BOM_UI_RESULTS â€” PvP results, match debrief, cumulative results, game over/win screens
+-- FEATURE: Split from bom_ui.lua for maintainability
+-- ============================================
+
+local M = {}
+
+function M.init(bom_ui)
+    local function _show_mp_overlay(ref_name, definition)
+        if not G or not G.FUNCS or not G.FUNCS.overlay_menu then return end
+        -- FIX: Don't set G.SETTINGS.paused â€” it suppresses main menu rendering,
+        -- causing a black screen when the debrief overlay appears after returning
+        -- to the main menu. overlay_menu handles its own display.
+        bom_ui.overlay({definition = definition})
+        G[ref_name] = G.OVERLAY_MENU
+    end
+
+    local function _hide_mp_overlay(ref_name)
+        if not G then return end
+        local overlay = G[ref_name]
+        if overlay then
+            if G.OVERLAY_MENU == overlay and G.FUNCS and G.FUNCS.exit_overlay_menu then
+                pcall(function() G.FUNCS.exit_overlay_menu() end)
+            else
+                pcall(function() overlay:remove() end)
+            end
+            G[ref_name] = nil
+        end
+    end
+
+    -- Module-level state (stored on bom_ui table)
+    bom_ui._pending_debrief = nil
+    bom_ui._game_history = {}
+    -- FEATURE: Phase 4 â€” end-game joker & deck state
+    bom_ui._end_joker_data = nil
+    bom_ui._end_joker_area = nil
+    bom_ui._my_joker_keys = {}
+    bom_ui._showing_enemy_jokers = true
+    bom_ui._end_joker_label = "Enemy Jokers"
+    bom_ui._nemesis_deck_data = nil
+
+    -- ============================================
+    -- PVP RESULT BANNER
+    -- FEATURE: Redesigned â€” colored panel (green=win, red=lose, yellow=draw),
+    --          cleaner score comparison, auto-dismiss
+    -- ============================================
+
+    function bom_ui.show_pvp_result(result, my_score, opp_score)
+        local st = {}
+        pcall(function() st = bom_match.get_state() or {} end)
+        local list = {}
+        pcall(function() list = bom_ui.roster() end)
+        local me, opp = list[1] or {}, list[2] or {}
+        local before = bom_ui._lives_before
+        local after = (st.pvp_loss_pending and st.pvp_pending_lives) or (G and G.GAME and G.GAME.mp_lives)
+        if before == nil then before = after end
+        bom_ui._lives_before = nil
+        return bom_ui.pvp_result_popup({
+            result = result, my_score = my_score, opp_score = opp_score,
+            my_name = me.name, opp_name = opp.name,
+            lives_before = tonumber(before), lives_after = tonumber(after),
+        })
+    end
+
+    -- ============================================
+    -- REMATCH OFFER
+    -- ============================================
+
+    function bom_ui.show_rematch_offer()
+        ---@diagnostic disable-next-line: duplicate-set-field
+        G.FUNCS.mp_accept_rematch = function()
+            _hide_mp_overlay("BOM_REMATCH_OVERLAY")
+            pcall(function()
+                if bom_match and bom_match.vote_rematch then
+                    bom_match.vote_rematch()
+                end
+            end)
+        end
+        ---@diagnostic disable-next-line: duplicate-set-field
+        G.FUNCS.mp_decline_rematch = function()
+            _hide_mp_overlay("BOM_REMATCH_OVERLAY")
+            pcall(function()
+                if bom_core and bom_core.disconnect then bom_core.disconnect() end
+                if bom_match then bom_match.reset() end
+            end)
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 45
+            blocking = false,
+            blockable = false,
+            func = function()
+                local definition = create_UIBox_generic_options({ back_func = "mp_decline_rematch", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("REMATCH?"), scale = 0.4,
+                            colour = G.C.GOLD, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Opponent wants a rematch!"),
+                            scale = 0.28, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", minh = 0.05 }, nodes = {} },
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.C, config = { align = "cm", padding = 0.05 }, nodes = {
+                            UIBox_button({ label = { mod_loc("Accept") }, button = "mp_accept_rematch",
+                                minw = 2.5, minh = 0.5, colour = G.C.GREEN, scale = 0.35 }),
+                        }},
+                        { n = G.UIT.C, config = { align = "cm", padding = 0.05 }, nodes = {
+                            UIBox_button({ label = { mod_loc("Decline") }, button = "mp_decline_rematch",
+                                minw = 2.5, minh = 0.5, colour = G.C.RED, scale = 0.35 }),
+                        }},
+                    }},
+                }})
+                _show_mp_overlay("BOM_REMATCH_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+    -- ============================================
+    -- BOSS BLIND RESULT
+    -- ============================================
+
+    function bom_ui.show_boss_result(result)
+        local text = mod_loc("Draw!")
+        local colour = G.C.UI.TEXT_LIGHT
+        if result == "win" then
+            text = mod_loc("Boss Blind Won!")
+            colour = G.C.GOLD
+        elseif result == "lose" then
+            text = mod_loc("Boss Blind Lost!")
+            colour = G.C.RED
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 20
+            blocking = false,
+            blockable = false,
+            func = function()
+                if G.BOM_BOSS_TOAST and not G.BOM_BOSS_TOAST.REMOVED then pcall(function() G.BOM_BOSS_TOAST:remove() end) end
+                local overlay = UIBox({
+                    definition = {
+                        n = G.UIT.ROOT,
+                        config = { align = "cm", colour = G.C.CLEAR, padding = 0.2 },
+                        nodes = {
+                            { n = G.UIT.C, config = { align = "cm", colour = G.C.DYN_UI.MAIN, r = 0.1, padding = 0.2, minw = 3.5, minh = 1.2 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                                    { n = G.UIT.T, config = { text = text, scale = 0.4, colour = colour, shadow = true } },
+                                }},
+                            }},
+                        },
+                    },
+                    config = { align = "cm", offset = { x = 0, y = 0 }, major = G.ROOM_ATTACH, type = 'cm' },
+                })
+                G.BOM_BOSS_TOAST = overlay
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 59
+                    trigger = 'after',
+                    delay = 2,
+                    func = function()
+                        pcall(function() if not overlay.REMOVED then overlay:remove() end end) if G.BOM_BOSS_TOAST == overlay then G.BOM_BOSS_TOAST = nil end
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+    -- ============================================
+    -- MATCH DEBRIEF â€” REMOVED (will be rebuilt from scratch)
+    -- Stubs kept so existing call sites don't crash.
+    -- ============================================
+
+    function bom_ui.store_match_debrief(result, rewards) end
+    function bom_ui.show_debrief_popup() end
+    function bom_ui.show_match_results(result, rewards) end
+    function bom_ui.hide_match_results()
+        -- Still clean up overlays if any exist
+        _hide_mp_overlay("MP_RESULTS_OVERLAY")
+        _hide_mp_overlay("MP_DEBRIEF_OVERLAY")
+        if G and G.MP_RESULTS_OVERLAY then
+            pcall(function() G.MP_RESULTS_OVERLAY:remove() end)
+            G.MP_RESULTS_OVERLAY = nil
+        end
+        if G and G.MP_RESULTS_MINI then
+            pcall(function() G.MP_RESULTS_MINI:remove() end)
+            G.MP_RESULTS_MINI = nil
+        end
+        pcall(function() bom_ui.cleanup_end_game_state() end)
+    end
+    function bom_ui.update_game_history(history) end
+    function bom_ui.show_cumulative_results() end
+    function bom_ui.record_game_history(data) end
+
+    -- ============================================
+    -- MP RETURN TO MENU
+    -- ============================================
+
+    function bom_ui.mp_return_to_menu()
+        pcall(function()
+            if bom_core and bom_core.send then
+                bom_core.send({ type = "return_to_menu" })
+            end
+        end)
+        bom_ui.destroy_match_hud()
+        pcall(function()
+            if G and G.GAME then G.GAME.multiplayer = nil end
+        end)
+    end
+
+    function bom_ui.on_opponent_returned_to_menu()
+        pcall(function()
+            bom_ui.destroy_match_hud()
+            if G and G.GAME then G.GAME.multiplayer = nil end
+
+r 23 214 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                pcall(function() G.FUNCS.exit_overlay_menu() end)
+            end
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 19
+                blocking = false,
+                blockable = false,
+                func = function()
+                    pcall(function()
+                        G:delete_run()
+                        G:main_menu()
+                        if bom_match and bom_match.reset then bom_match.reset() end
+                    end)
+                    return true
+                end,
+            }))
+        end)
+    end
+
+    function bom_ui.on_opponent_returned_to_lobby()
+        pcall(function()
+            bom_ui.destroy_match_hud()
+            if G and G.GAME then G.GAME.multiplayer = nil end
+
+r 23 214 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                pcall(function() G.FUNCS.exit_overlay_menu() end)
+            end
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 135
+                blocking = false,
+                blockable = false,
+                func = function()
+                    pcall(function()
+                        G:delete_run()
+                        G:main_menu()
+                        if bom_match and bom_match.reset then bom_match.reset() end
+                    end)
+                    return true
+                end,
+            }))
+        end)
+    end
+
+    -- ============================================
+    -- PHASE 4: END-GAME JOKER & DECK VIEWING
+    -- FEATURE: Phase 4 port â€” enemy joker display, nemesis deck overlay, cleanup
+    -- ============================================
+
+    function bom_ui.request_end_game_jokers()
+        pcall(function()
+            if bom_core and bom_core.send then
+                bom_core.send({ type = "get_end_game_jokers" })
+            end
+        end)
+    end
+
+    local END_KEY_PATTERN = "^[%w_%.:%-]+$"
+
+    local function end_key(v)
+        if type(v) == "string" and #v > 0 and #v <= 64 and v:match(END_KEY_PATTERN) then return v end
+        return nil
+    end
+
+    function bom_ui.collect_end_game_data()
+        local data = { jokers = {}, deck = { cards = {} } }
+        pcall(function()
+            for _, c in ipairs((G.jokers and G.jokers.cards) or {}) do
+                if #data.jokers >= 100 then break end
+                local k = end_key(c.config and c.config.center and c.config.center.key)
+                if k then
+                    local j = { k = k }
+                    j.ed = end_key(c.edition and c.edition.type)
+                    local st = {}
+                    if c.ability and c.ability.eternal then st[#st + 1] = "eternal" end
+                    if c.ability and c.ability.perishable then st[#st + 1] = "perishable" end
+                    if c.ability and c.ability.rental then st[#st + 1] = "rental" end
+                    if #st > 0 then j.st = st end
+                    data.jokers[#data.jokers + 1] = j
+                end
+            end
+        end)
+        pcall(function()
+            data.deck.back = end_key(G.GAME.selected_back.effect.center.key)
+        end)
+        pcall(function()
+            for _, c in ipairs(G.playing_cards or {}) do
+                if #data.deck.cards >= 1000 then break end
+                local f = end_key(c.config and c.config.card_key)
+                if f then
+                    local card = { f = f }
+                    local e = c.config.center and c.config.center.key
+                    if e and e ~= "c_base" then card.e = end_key(e) end
+                    card.ed = end_key(c.edition and c.edition.type)
+                    card.s = end_key(c.seal)
+                    data.deck.cards[#data.deck.cards + 1] = card
+                end
+            end
+        end)
+        return data
+    end
+
+    function bom_ui.send_end_game_data()
+        local data = bom_ui.collect_end_game_data()
+        bom_ui._my_end_data = data
+        bom_ui._my_joker_keys = data.jokers
+        pcall(function()
+            if bom_core and bom_core.send then
+                bom_core.send({ type = "end_game_data", jokers = data.jokers, deck = data.deck })
+            end
+        end)
+        pcall(function() mp_log.info("BOM_UI", "end game data sent: %d jokers, %d cards", #data.jokers, #data.deck.cards) end)
+    end
+
+    local function make_end_joker(j, x, y)
+        local center = G.P_CENTERS[j.k]
+        if not center then return nil end
+        local card = Card(x, y, G.CARD_W, G.CARD_H, G.P_CARDS.empty, center, { bypass_discovery_center = true, bypass_discovery_ui = true })
+        if j.ed and G.P_CENTERS["e_" .. j.ed] then card:set_edition({ [j.ed] = true }, true, true) end
+        for _, s in ipairs(j.st or {}) do
+            if s == "eternal" then card.ability.eternal = true end
+            if s == "perishable" then
+                card.ability.perishable = true
+                card.ability.perish_tally = card.ability.perish_tally or (G.GAME and G.GAME.perishable_rounds) or 5
+            end
+            if s == "rental" then card.ability.rental = true end
+        end
+        return card
+    end
+
+    function bom_ui.populate_joker_area(area, jokers)
+        if not area or not G or not G.P_CENTERS then return end
+        for i = #area.cards, 1, -1 do
+            pcall(function() area.cards[i]:remove() end)
+        end
+        area.cards = {}
+        for _, j in ipairs(jokers or {}) do
+            pcall(function()
+                if type(j) == "string" then j = { k = j } end
+                local card = make_end_joker(j, area.T.x + area.T.w / 2, area.T.y)
+                if card then
+                    card:start_materialize(nil, true)
+                    area:emplace(card)
+                end
+            end)
+        end
+    end
+
+    function bom_ui.load_end_game_jokers(data)
+        if not data then return end
+        if data.available == false and bom_ui._end_joker_data then return end
+        bom_ui._end_joker_data = data.available ~= false and data or nil
+        if data.available ~= false and G and G.OVERLAY_MENU and G.OVERLAY_MENU.config
+            and G.OVERLAY_MENU:get_UIE_by_ID("mp_end_jokers_UI") and bom_ui._showing_enemy_jokers then
+            bom_ui.show_end_jokers_overlay(true)
+        end
+    end
+
+    local ASC_BLINDS = { S = "Small Blind", B = "Big Blind", L = "Boss Blind" }
+
+    function bom_ui.show_ascension_wait()
+        if not G or not G.FUNCS then return end
+        local st = bom_match and bom_match.get_state and bom_match.get_state() or {}
+        local opp = st.opp_name and st.opp_name ~= "" and st.opp_name or mod_loc("Your opponent")
+        local where = mod_loc("Ante %s, %s"):format(tostring(st.current_ante or 1), mod_loc(ASC_BLINDS[st.current_blind] or "Small Blind"))
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 1
+        bom_ui.overlay({ definition = create_UIBox_generic_options({ no_back = true, contents = {
+r 15 118 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                {n=G.UIT.T, config={text = mod_loc("OUT OF LIVES"), scale = 0.8, colour = G.C.RED, shadow = true}},
+            }},
+r 15 71 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                {n=G.UIT.T, config={text = mod_loc("Waiting for %s to finish"):format(opp), scale = 0.45, colour = G.C.WHITE, shadow = true}},
+            }},
+r 15 71 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 49
+                {n=G.UIT.T, config={text = mod_loc("They win if they get past %s"):format(where), scale = 0.4, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+            }},
+        } }), config = { no_esc = true } })
+    end
+
+    function bom_ui.reopen_results()
+        pcall(function()
+            local st = bom_match.get_state()
+            local def
+            if st.match_result == "win" then
+                def = bom_ui.create_mp_win()
+            elseif G.STATE == G.STATES.GAME_OVER then
+                def = bom_ui.create_mp_game_over()
+            else
+                def = bom_ui.create_mp_lose()
+            end
+            bom_ui._end_joker_area = nil
+            bom_ui.overlay({ definition = def, config = { no_esc = true } })
+        end)
+    end
+
+    function bom_ui.show_end_jokers_overlay(enemy)
+        if not G or not G.FUNCS then return end
+        bom_ui.register_funcs()
+        bom_ui._showing_enemy_jokers = enemy and true or false
+        local jokers, waiting
+        if bom_ui._showing_enemy_jokers then
+            jokers = bom_ui._end_joker_data and bom_ui._end_joker_data.jokers or {}
+            waiting = bom_ui._end_joker_data == nil
+            if waiting then bom_ui.request_end_game_jokers() end
+        else
+            if not bom_ui._my_end_data then bom_ui._my_end_data = bom_ui.collect_end_game_data() end
+            jokers = bom_ui._my_end_data.jokers or {}
+        end
+        local title = bom_ui._showing_enemy_jokers and mod_loc("Opponent's Jokers") or mod_loc("Your Jokers")
+        local area = CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, 5.25 * G.CARD_W, 1.05 * G.CARD_H,
+            { card_limit = math.max(5, #jokers), type = "title", highlight_limit = 0 })
+        bom_ui._end_joker_area = area
+        local body
+        if waiting or #jokers == 0 then
+            body = {n=G.UIT.R, config={align = "cm", minw = 5.25 * G.CARD_W, minh = 1.05 * G.CARD_H, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes={
+                {n=G.UIT.T, config={text = waiting and mod_loc("Waiting for your opponent's cards...") or mod_loc("No jokers"), scale = 0.4, colour = G.C.UI.TEXT_INACTIVE, shadow = true}},
+            }}
+        else
+            body = {n=G.UIT.R, config={align = "cm", padding = 0.1, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes={
+                {n=G.UIT.O, config={object = area}},
+            }}
+        end
+        local contents = {
+r 15 723 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                {n=G.UIT.T, config={text = title .. " (" .. tostring(#jokers) .. ")", scale = 0.5, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+            }},
+            body,
+r 15 723 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 5
+                UIBox_button({id = "mp_end_jokers_toggle", button = "toggle_players_jokers", label = {bom_ui._showing_enemy_jokers and mod_loc("Show Yours") or mod_loc("Show Theirs")}, colour = G.C.ORANGE, minw = 3.4, maxw = 3.4, minh = 0.7, scale = 0.45, focus_args = {snap_to = true}}),
+            }},
+        }
+        local t = create_UIBox_generic_options({ back_func = "mp_end_view_back", no_esc = true, contents = contents })
+        t.config.id = "mp_end_jokers_UI"
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 54
+        bom_ui.overlay({ definition = t, config = { no_esc = true } })
+        if not waiting and #jokers > 0 then bom_ui.populate_joker_area(area, jokers) end
+    end
+
+    function bom_ui.opp_deck_tab()
+        local d = bom_ui._nemesis_deck_data
+        local saved_cards, saved_back = G.playing_cards, G.GAME.selected_back
+        local temp = {}
+        local ok, def = pcall(function()
+            for _, c in ipairs(d.cards or {}) do
+                local front = c.f and G.P_CARDS[c.f]
+                if front then
+                    local center = (c.e and G.P_CENTERS[c.e]) or G.P_CENTERS.c_base
+                    local card = Card(0, 0, G.CARD_W, G.CARD_H, front, center)
+                    if c.ed and G.P_CENTERS["e_" .. c.ed] then card:set_edition({ [c.ed] = true }, true, true) end
+                    if c.s and G.P_SEALS and G.P_SEALS[c.s] then card:set_seal(c.s, true, true) end
+                    temp[#temp + 1] = card
+                end
+            end
+            G.playing_cards = temp
+            if d.back and G.P_CENTERS[d.back] then G.GAME.selected_back = Back(G.P_CENTERS[d.back]) end
+            return G.UIDEF.view_deck(false)
+        end)
+        G.playing_cards = saved_cards
+        G.GAME.selected_back = saved_back
+        for _, card in ipairs(temp) do pcall(function() card:remove() end) end
+        if ok then return def end
+        pcall(function() mp_log.error("BOM_UI", "opponent deck view failed: %s", tostring(def)) end)
+        return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.CLEAR, minw = 6, minh = 3}, nodes={
+            {n=G.UIT.T, config={text = mod_loc("Deck data not available"), scale = 0.4, colour = G.C.UI.TEXT_INACTIVE, shadow = true}},
+        }}
+    end
+
+    function bom_ui.show_nemesis_deck_overlay()
+        if not G or not G.FUNCS then return end
+        bom_ui.register_funcs()
+        local d = bom_ui._nemesis_deck_data
+        local contents
+        if d and type(d.cards) == "table" and #d.cards > 0 then
+            contents = { create_tabs({
+                tabs = {{ label = mod_loc("Opponent's Deck"), chosen = true, tab_definition_function = bom_ui.opp_deck_tab }},
+                tab_h = 8,
+                snap_to_nav = true,
+            }) }
+        else
+            if not d then bom_ui.request_end_game_jokers() end
+            contents = {
+                {n=G.UIT.R, config={align = "cm", padding = 0.3, minw = 6, minh = 3}, nodes={
+                    {n=G.UIT.T, config={text = d and mod_loc("Deck data not available") or mod_loc("Waiting for your opponent's cards..."), scale = 0.4, colour = G.C.UI.TEXT_INACTIVE, shadow = true}},
+                }},
+            }
+        end
+        local t = create_UIBox_generic_options({ back_func = "mp_end_view_back", no_esc = true, contents = contents })
+        t.config.id = "mp_end_deck_UI"
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 166
+        bom_ui.overlay({ definition = t, config = { no_esc = true } })
+    end
+
+    function bom_ui.on_nemesis_deck_data(d)
+        if type(d) ~= "table" then return end
+        bom_ui._nemesis_deck_data = d
+        if G and G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("mp_end_deck_UI")
+            and not G.OVERLAY_MENU:get_UIE_by_ID("tab_contents") then
+            bom_ui.show_nemesis_deck_overlay()
+        end
+    end
+
+    function bom_ui.cleanup_end_game_state()
+        if bom_ui._end_joker_area then
+            pcall(function()
+                for i = #bom_ui._end_joker_area.cards, 1, -1 do
+                    pcall(function() bom_ui._end_joker_area.cards[i]:remove() end)
+                end
+                bom_ui._end_joker_area.cards = {}
+            end)
+            bom_ui._end_joker_area = nil
+        end
+        bom_ui._end_joker_data = nil
+        bom_ui._my_end_data = nil
+        bom_ui._my_joker_keys = {}
+        bom_ui._nemesis_deck_data = nil
+        bom_ui._showing_enemy_jokers = true
+        bom_ui._end_joker_label = "Enemy Jokers"
+    end
+
+    -- record_game_history â€” REMOVED (stubbed above)
+
+    -- FEATURE: Extend register_funcs to register Phase 4 end-game G.FUNCS
+    do
+        local _orig_register = bom_ui.register_funcs
+        bom_ui.register_funcs = function()
+            _orig_register()
+            if not G or not G.FUNCS then return end
+            G.FUNCS.mp_vote_rematch_from_screen = function(e)
+                pcall(function()
+                    local st = bom_match.get_state()
+                    if st.rematch_voted or st.room_closed_text then return end
+                    st.rematch_votes = st.rematch_votes or { false, false }
+                    st.rematch_votes[bom_match.my_seat() + 1] = true
+                    bom_match.vote_rematch()
+                end)
+                bom_ui.refresh_rematch_status()
+            end
+            G.FUNCS.mp_return_to_lobby = function(e)
+                pcall(function()
+                    if not (bom_match and bom_match.my_seat and bom_match.my_seat() == 0) then return end
+                    if bom_ui._lobby_return_sent or bom_match.get_state().room_closed_text then return end
+                    bom_ui._lobby_return_sent = true
+                    bom_core.send({ type = "return_to_lobby" })
+                    local box = G.OVERLAY_MENU
+                    local btn = box and box:get_UIE_by_ID('mp_return_lobby_btn')
+                    if btn then
+                        btn.config.button = nil
+                        btn.config.colour = G.C.UI.BACKGROUND_INACTIVE
+                    end
+                end)
+            end
+            G.FUNCS.toggle_players_jokers = function(e)
+                pcall(function() bom_ui.show_end_jokers_overlay(not bom_ui._showing_enemy_jokers) end)
+            end
+            G.FUNCS.mp_view_opp_jokers = function(e)
+                pcall(function() bom_ui.show_end_jokers_overlay(true) end)
+            end
+            G.FUNCS.view_nemesis_deck = function(e)
+                pcall(function() bom_ui.show_nemesis_deck_overlay() end)
+            end
+            G.FUNCS.mp_end_view_back = function(e)
+                bom_ui.reopen_results()
+            end
+            G.FUNCS.mp_request_end_game_jokers = function(e)
+                pcall(function() bom_ui.request_end_game_jokers() end)
+            end
+        end
+    end
+
+    -- ============================================
+    -- MP GAME OVER / WIN SCREENS
+    -- ============================================
+
+    bom_ui._rematch_ui = bom_ui._rematch_ui or { text = "" }
+
+    function bom_ui.rematch_status_text()
+        local st = bom_match and bom_match.get_state and bom_match.get_state() or {}
+        local votes = st.rematch_votes or { false, false }
+        local me = (bom_match and bom_match.my_seat and bom_match.my_seat()) or 0
+        local mine = votes[me + 1] == true or st.rematch_voted == true
+        local theirs = votes[2 - me] == true
+        local opp = tostring(st.opp_name or "P2")
+        if st.room_closed_text then return mod_loc(st.room_closed_text) end
+        if mine and theirs then return mod_loc("Starting rematch...") end
+        if mine then return string.format(mod_loc("Waiting for %s..."), opp) end
+        if theirs then return string.format(mod_loc("%s wants a rematch"), opp) end
+        return ""
+    end
+
+    function bom_ui.refresh_rematch_status()
+        pcall(function()
+            local text = bom_ui.rematch_status_text()
+            bom_ui._rematch_ui.text = text
+            local box = G.OVERLAY_MENU
+            local el = box and box.get_UIE_by_ID and box:get_UIE_by_ID('mp_rematch_status')
+            if el and el.config then
+                el.config.text = text
+                el.config.prev_value = text
+                if el.config.text_drawable then el.config.text_drawable:set(text) end
+                box:recalculate()
+            end
+            local st = bom_match and bom_match.get_state and bom_match.get_state() or {}
+            local me = (bom_match and bom_match.my_seat and bom_match.my_seat()) or 0
+            local voted = (st.rematch_votes and st.rematch_votes[me + 1]) or st.rematch_voted
+            local btn = box and box.get_UIE_by_ID and box:get_UIE_by_ID('mp_rematch_btn')
+            if btn and (voted or st.room_closed_text) then
+                btn.config.button = nil
+                btn.config.colour = G.C.UI.BACKGROUND_INACTIVE
+            end
+            local lobby = st.room_closed_text and box and box.get_UIE_by_ID and box:get_UIE_by_ID('mp_return_lobby_btn')
+            if lobby then
+                lobby.config.button = nil
+                lobby.config.colour = G.C.UI.BACKGROUND_INACTIVE
+            end
+        end)
+    end
+
+    function bom_ui.results_room_closed(reason)
+        local st = bom_match.get_state()
+        st.room_closed_text = reason == "room_expired" and "Room closed" or "Opponent left"
+        bom_ui.refresh_rematch_status()
+    end
+
+    function bom_ui.mp_results_buttons()
+        if bom_party and bom_party.active() then
+            local list = bom_party.results_buttons()
+            local contest = bom_ui.contest_button_node and bom_ui.contest_button_node(3.4) or nil
+            if contest and type(list) == "table" then
+                list[#list + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.2, minw = 0.1}, nodes={}}
+                list[#list + 1] = contest
+            end
+            local rp = rawget(_G, "bom_replay")
+            local watch = rp and rp.results_button_node and rp.results_button_node(3.4) or nil
+            if watch and type(list) == "table" then
+                list[#list + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.2, minw = 0.1}, nodes={}}
+                list[#list + 1] = watch
+            end
+            return list
+        end
+        local is_host = false
+        pcall(function() is_host = bom_match.my_seat() == 0 end)
+        bom_ui._lobby_return_sent = nil
+        bom_ui._rematch_ui.text = bom_ui.rematch_status_text()
+        local nodes = {}
+        nodes[#nodes + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.4, minw = 3.4}, nodes={
+            {n=G.UIT.T, config={id = 'mp_rematch_status', ref_table = bom_ui._rematch_ui, ref_value = 'text', scale = 0.3, colour = G.C.GOLD, shadow = true, maxw = 3.4}},
+        }}
+        nodes[#nodes + 1] = UIBox_button({id = 'mp_rematch_btn', button = 'mp_vote_rematch_from_screen', label = {mod_loc('Rematch')}, colour = G.C.GREEN, minw = 3.4, maxw = 3.4, minh = 1, focus_args = {nav = 'wide', snap_to = true}})
+        if is_host then
+            nodes[#nodes + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.2, minw = 0.1}, nodes={}}
+            nodes[#nodes + 1] = UIBox_button({id = 'mp_return_lobby_btn', button = 'mp_return_to_lobby', label = {mod_loc('Return to Lobby')}, colour = G.C.BLUE, minw = 3.4, maxw = 3.4, minh = 1, focus_args = {nav = 'wide'}})
+        end
+        nodes[#nodes + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.2, minw = 0.1}, nodes={}}
+        nodes[#nodes + 1] = {n=G.UIT.R, config={align = "cm"}, nodes={
+            UIBox_button({id = 'mp_opp_jokers_btn', button = 'mp_view_opp_jokers', label = {mod_loc('Their Jokers')}, colour = G.C.ORANGE, minw = 1.65, maxw = 1.45, minh = _G._IS_DESKTOP and 0.7 or 0.85, scale = 0.4, col = true, focus_args = {nav = 'wide'}}),
+r 4 1864 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 130
+            UIBox_button({id = 'mp_opp_deck_btn', button = 'view_nemesis_deck', label = {mod_loc('Their Deck')}, colour = G.C.ORANGE, minw = 1.65, maxw = 1.45, minh = _G._IS_DESKTOP and 0.7 or 0.85, scale = 0.4, col = true, focus_args = {nav = 'wide'}}),
+        }}
+        nodes[#nodes + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.2, minw = 0.1}, nodes={}}
+        local contest = bom_ui.contest_button_node and bom_ui.contest_button_node(3.4) or nil
+        if contest then
+            nodes[#nodes + 1] = contest
+            nodes[#nodes + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.2, minw = 0.1}, nodes={}}
+        end
+        local rp = rawget(_G, "bom_replay")
+        local watch = rp and rp.results_button_node and rp.results_button_node(3.4) or nil
+        if watch then
+            nodes[#nodes + 1] = watch
+            nodes[#nodes + 1] = {n=G.UIT.R, config={align = "cm", minh = 0.2, minw = 0.1}, nodes={}}
+        end
+        nodes[#nodes + 1] = UIBox_button({id = 'mp_leave_lobby_btn', button = 'mp_leave_lobby', label = {mod_loc('Quit')}, colour = G.C.RED, minw = 3.4, maxw = 3.4, minh = 1, focus_args = {nav = 'wide'}})
+        local voted, gone = false, false
+        pcall(function()
+            local st = bom_match.get_state()
+            voted = st.rematch_voted or (st.rematch_votes and st.rematch_votes[bom_match.my_seat() + 1])
+            gone = st.room_closed_text ~= nil
+        end)
+        if voted or gone then
+            nodes[2].nodes[1].config.button = nil
+            nodes[2].nodes[1].config.colour = G.C.UI.BACKGROUND_INACTIVE
+        end
+        if gone and is_host then
+            nodes[4].nodes[1].config.button = nil
+            nodes[4].nodes[1].config.colour = G.C.UI.BACKGROUND_INACTIVE
+        end
+        return nodes
+    end
+
+    local RESULT_GROUPS = {
+        mp_rematch_btn = 1, party_standings_btn = 1, mp_return_lobby_btn = 1,
+        mp_opp_jokers_btn = 2, mp_opp_deck_btn = 2,
+        mp_watch_replay_btn = 3, match_recap_btn = 3,
+        mp_contest_btn = 4,
+        mp_leave_lobby_btn = 6,
+    }
+
+    local function result_button(node)
+        local inner = type(node) == "table" and type(node.nodes) == "table" and #node.nodes == 1 and node.nodes[1] or nil
+        if inner and inner.n == G.UIT.C and inner.config and inner.config.hover then return inner end
+    end
+
+    local function result_size(node, w, h, scale)
+        local inner = result_button(node)
+        node.n = G.UIT.C
+        inner.config.minw, inner.config.minh = w, h
+        for _, row in ipairs(inner.nodes or {}) do
+            if row.config then row.config.minw, row.config.maxw = w, w - 0.2 end
+            for _, t in ipairs(row.nodes or {}) do
+                if t.n == G.UIT.T and t.config then t.config.scale = scale end
+            end
+        end
+        return node
+    end
+
+    function bom_ui.results_panel(list)
+        local touch = UIK and UIK.touch and UIK.touch()
+        local w, h, gap, pad = 2.8, touch and 0.9 or 0.78, 0.12, 0.05
+        local full = 2 * w + gap + 2 * pad
+        local scale = touch and 0.45 or 0.42
+        local status, groups = nil, {}
+        local function add(node)
+            local inner = result_button(node)
+            if not inner then return false end
+            local g = RESULT_GROUPS[inner.config.id] or 5
+            groups[g] = groups[g] or {}
+            groups[g][#groups[g] + 1] = node
+            return true
+        end
+        for _, node in ipairs(list or {}) do
+            if not add(node) then
+                local kids = type(node) == "table" and node.nodes or {}
+                if not status and kids[1] and kids[1].n == G.UIT.T then
+                    status = node
+                else
+                    for _, k in ipairs(kids) do add(k) end
+                end
+            end
+        end
+        local rows = {}
+        for g = 1, 6 do
+            local items = groups[g] or {}
+            local i = 1
+            while i <= #items do
+                local a, b = items[i], g ~= 6 and items[i + 1] or nil
+                local cells
+                if b then
+                    cells = {result_size(a, w, h, scale), {n = G.UIT.C, config = {minw = gap}, nodes = {}}, result_size(b, w, h, scale)}
+                    i = i + 2
+                else
+                    cells = {result_size(a, full, h, scale)}
+                    i = i + 1
+                end
+                rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = pad}, nodes = cells}
+            end
+        end
+        if status then
+            status.config.minw = full
+            if status.nodes[1].config then status.nodes[1].config.maxw = full end
+            rows[#rows + 1] = status
+        end
+        return rows
+    end
+
+    local function results_def(kind, opts)
+        bom_ui.register_funcs()
+
+        local opp_name = "Opponent"
+        pcall(function()
+            if bom_match and bom_match.get_state then
+                local s = bom_match.get_state()
+                opp_name = s.opp_name or "Opponent"
+            end
+        end)
+        local end_reason_text = ""
+        pcall(function()
+            end_reason_text = bom_rejoin.reason_text(bom_match.get_state().end_reason)
+        end)
+
+        local win = kind == "win"
+        local eased = copy_table(win and G.C.GREEN or G.C.RED)
+        eased[4] = 0
+        ease_value(eased, 4, kind == "over" and 0.8 or 0.5, nil, nil, true)
+
+        local top_score_nodes = {}
+        pcall(function()
+            top_score_nodes = {
+r 15 2761 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2762 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+            }
+        end)
+
+        local detail_nodes = {}
+        pcall(function()
+            detail_nodes = {
+r 15 2766 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2767 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2768 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2769 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2770 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2771 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 7
+                UIBox_button({button = 'copy_seed', label = {localize('b_copy')}, colour = G.C.BLUE, scale = (rawget(_G, 'UIK') and rawget(_G, 'UIK').touch()) and 0.38 or 0.3, minw = 2.3, minh = (rawget(_G, 'UIK') and rawget(_G, 'UIK').touch()) and 0.55 or 0.4}),
+            }
+        end)
+
+        local right_score_nodes = {}
+        pcall(function()
+            right_score_nodes = {
+r 15 2775 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2776 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 8
+            }
+        end)
+
+        local panel = bom_ui.results_panel(bom_ui.mp_results_buttons())
+        local showcase = rawget(_G, "BO_SHOWCASE")
+        local opp_title_cell = (not (bom_party and bom_party.active()) and showcase and showcase.title_cell and showcase.title_cell(showcase.opp_title(), 3, 0.3)) or {n = G.UIT.C, config = {}, nodes = {}}
+
+        local all_contents = {
+r 7 297 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 8
+                {n=G.UIT.O, config={object = DynaText({string = {win and localize('ph_you_win') or mod_loc("YOU LOSE")}, colours = {win and G.C.EDITION or G.C.RED}, shadow = true, float = true, spacing = 10, rotate = true, scale = (UIK and UIK.touch and UIK.touch()) and 1.2 or 1.5, pop_in = 0.4, maxw = 8})}},
+            }},
+            {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+                {n=G.UIT.T, config={text = ((bom_party and bom_party.active()) and bom_party.end_line() or (mod_loc("vs ") .. opp_name)), scale = 0.35, colour = G.C.UI.TEXT_INACTIVE, shadow = true, maxw = 6}},
+                opp_title_cell,
+                {n=G.UIT.C, config={align = "cm", minw = end_reason_text ~= "" and 0.4 or 0}, nodes={}},
+                {n=G.UIT.T, config={text = end_reason_text, scale = 0.35, colour = G.C.UI.TEXT_LIGHT, shadow = true, maxw = 7}},
+            }},
+r 15 723 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 246 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    {n=G.UIT.R, config={align = "cm", padding = 0.08}, nodes = top_score_nodes},
+r 7 297 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+                        {n=G.UIT.C, config={align = "tm", padding = 0.08}, nodes = detail_nodes},
+                        {n=G.UIT.C, config={align = "tr", padding = 0.08}, nodes = right_score_nodes},
+                    }},
+                }},
+                {n=G.UIT.C, config={align = "cm", minw = 0.2}, nodes={}},
+                {n=G.UIT.C, config={align = "tm", padding = 0.08}, nodes = panel},
+            }},
+        }
+
+        local t = create_UIBox_generic_options({ padding = 0, bg_colour = eased, colour = G.C.BLACK, outline_colour = win and G.C.EDITION or G.C.RED, no_back = true, no_esc = true, contents = all_contents })
+
+        if opts and opts.jimbo then
+r 15 2790 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {n=G.UIT.C, config={align = "cm", padding = 0.6}, nodes={
+r 7 297 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 2792 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+                    }},
+                }},
+                {n=G.UIT.C, config={align = "cm", padding = 0.1}, nodes={t.nodes[1]}},
+            }}
+        end
+        t.config.id = win and 'you_win_UI' or (kind == "over" and 'mp_game_over_UI' or 'you_lose_UI')
+        return t
+    end
+
+    -- FIX: Mirror You Win layout â€” red background, YOU LOSE text
+    function bom_ui.create_mp_game_over(opts)
+        return results_def("over", opts)
+    end
+
+    function bom_ui.create_mp_win(opts)
+        return results_def("win", opts)
+    end
+
+    -- FIX: Explicit YOU LOSE screen for when player reaches 0 lives
+    function bom_ui.create_mp_lose(opts)
+        return results_def("lose", opts)
+    end
+end
+
+return M
+end

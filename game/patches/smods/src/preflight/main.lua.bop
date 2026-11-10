@@ -1,0 +1,87 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 12
+-- This file is used for testing preflight without balatro/lovely
+-- Usage: cd into the steamodded directory, then run `love src/preflight`
+-- love.event.quit()
+PREFLIGHT_DEV = true
+
+print("hi")
+
+local function makePreload(name)
+    local mod = require(name)
+    return function() return mod end
+end
+
+r 12 322 - -
+r 12 323 %20%20%20%20 -
+r 12 324 %20%20%20%20 -
+l 1
+    indent = indent + 2 
+r 12 326 %20%20%20%20 -
+r 12 327 %20%20%20%20%20%20 -
+r 12 328 %20%20%20%20%20%20 -
+r 12 329 %20%20%20%20%20%20%20%20 -
+r 12 330 %20%20%20%20%20%20 -
+r 12 331 %20%20%20%20%20%20%20%20 -
+l 1
+      end
+r 12 333 %20%20%20%20%20%20 -
+r 12 334 %20%20%20%20%20%20%20%20 -
+r 12 335 %20%20%20%20%20%20 -
+r 12 336 %20%20%20%20%20%20%20%20 -
+r 12 337 %20%20%20%20%20%20 -
+l 1
+        if indent>=10 then
+r 12 339 %20%20%20%20%20%20%20%20 -
+l 1
+        else
+r 12 341 %20%20%20%20%20%20%20%20 -
+l 2
+        end
+      else
+r 12 344 %20%20%20%20%20%20%20%20 -
+l 2
+      end
+    end
+r 12 347 %20%20%20%20 -
+l 36
+    return toprint
+end
+
+-- modules
+package.preload["SMODS.version"] = makePreload("version")
+package.preload["SMODS.release"] = makePreload("release")
+package.preload["nativefs"] = makePreload("libs.nativefs.nativefs")
+package.preload["json"] = makePreload("libs.json.json")
+package.preload["SMODS.preflight.sharedUtil"] = makePreload("src.preflight.sharedUtil")
+package.preload["SMODS.preflight.logging"] = function() return require"logging" end
+package.preload["SMODS.preflight.loader"] = function() return require"loader" end
+package.preload["SMODS.preflight.sharedUI"] = function() return require"sharedUI" end
+
+if not package.preload.lovely then -- This could be run with a real lovely
+    local vars = {}
+    love.filesystem.createDirectory("preflightStubMods/lovely/logs")
+    love.filesystem.write("preflightStubMods/lovely/logs/example.log", "Hello world")
+    package.preload["lovely"] = function()
+        return {
+            version = "0.9.0-preflight-stub",
+            get_var = function(name) return vars[name] end,
+            set_var = function(name, val) vars[name] = tostring(val) end,
+            remove_var = function(name) local key = vars[name] vars[name] = nil return key end,
+            reload_patches = function()end,
+            mod_dir = love.filesystem.getSaveDirectory() .. "/preflightStubMods",
+            log_file = love.filesystem.getSaveDirectory() .. "/preflightStubMods/lovely/logs/example.log",
+        }
+    end
+end
+
+function boot_print_stage(str)
+    print("[stage]", str)
+end
+
+require"core"
+love.event.quit()
+end

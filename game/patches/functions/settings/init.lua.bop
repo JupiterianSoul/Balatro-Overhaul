@@ -1,0 +1,663 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 555
+SettingsUI = SettingsUI or {}
+local S = SettingsUI
+local L = function(s) return mod_loc(s) end
+
+S.state = S.state or {query = ""}
+S.cur = S.cur or 'gameplay'
+
+S.LOCKS = {
+  set_gamespeed = 'game_speed', set_score_speed = 'score_speed', set_skip_score = 'skip_score_animation',
+  set_score_preview = 'score_preview', set_joker_info = 'joker_info',
+  set_optimizer = 'hand_optimizer',
+  set_qol_speed_key = 'speed_key', set_qol_quick_restart = 'quick_restart', set_qol_fast_packs = 'fast_packs',
+  set_debug_content = 'debug_menu', set_debug_coin = 'debug_menu', set_debug_xp = 'debug_menu',
+}
+
+local function touch() return UIK.thumb() end
+
+function S.dims()
+  local t = touch()
+  local d = {}
+  d.BODY_H = UIK.H + 0.9
+  d.SW = 3.1
+  d.GAP = UIK.GAP
+  d.CW = UIK.W - d.SW - d.GAP
+  d.PAD = 0.06
+  d.INNER = d.CW - 2 * d.PAD
+  d.INSET = 0.2
+  d.CTRL_W = t and 4.4 or 4.0
+  d.TW = d.INNER - d.INSET - d.CTRL_W - 0.15
+  d.RH = t and 0.88 or 0.76
+  d.LS, d.IS = t and 0.44 or 0.4, t and 0.31 or 0.28
+  d.LH, d.IH = t and 0.5 or 0.42, t and 0.36 or 0.3
+  d.HH = t and 0.66 or 0.58
+  d.CARD_GAP = 0.1
+  d.PAGER_H = (t and 0.82 or 0.66) + 0.12
+  d.BTN_W, d.BTN_H = t and 3.2 or 3.0, t and 0.78 or 0.62
+  d.TH = t and 0.86 or 0.72
+  if UIK.portrait() then
+    d.PORT = true
+    d.SW, d.GAP = 0, 0
+    d.CW = UIK.W
+    d.INNER = d.CW - 2 * d.PAD
+    d.CTRL_W = 4.0
+    d.TW = d.INNER - d.INSET - d.CTRL_W - 0.15
+    d.GRID_PER = 3
+    d.GRID_BH = t and 0.74 or 0.62
+    d.GRID_GAP = 0.1
+    local rows = math.ceil(math.max(1, #S.visible_cats()) / d.GRID_PER)
+    d.GRID_H = rows * (d.GRID_BH + d.GRID_GAP) + d.GRID_GAP
+    d.BODY_H = UIK.H + 0.9 - d.GRID_H - d.TH - 0.12
+  end
+  return d
+end
+
+function S.discard(node, depth)
+  depth = depth or 0
+  if type(node) ~= 'table' or depth > 60 then return end
+  local c = node.config
+  if c and type(c.object) == 'table' and c.object.remove then
+    pcall(c.object.remove, c.object)
+    c.object = nil
+  end
+  if type(node.nodes) == 'table' then
+    for i = 1, table.maxn(node.nodes) do S.discard(node.nodes[i], depth + 1) end
+  end
+end
+
+function S.lock_reason(o)
+  local key = o.lock or S.LOCKS[o.id]
+  if not key then return nil end
+  local FL = rawget(_G, "FairLock")
+  if not (FL and FL.blocks) then return nil end
+  local ok, r = pcall(FL.blocks, key)
+  if ok and type(r) == 'string' and r ~= '' then return r end
+  return nil
+end
+
+local function copy(o)
+  local c = {}
+  for k, v in pairs(o) do c[k] = v end
+  return c
+end
+
+local function txt(str, scale, colour, shadow)
+  return {n = G.UIT.T, config = {text = tostring(str or ''), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = shadow}}
+end
+
+local function tight(node)
+  if type(node) == 'table' and node.config then node.config.minh = nil end
+  return node
+end
+
+function S.control(kind, o, d)
+  local c = copy(o)
+  c.label, c.info, c.id = nil, nil, nil
+  c.w = d.CTRL_W
+  if kind == 'toggle' then
+    return {n = G.UIT.R, config = {align = 'cm', minw = d.CTRL_W, minh = d.RH, padding = 0, focus_args = {funnel_from = true}}, nodes = {UIK.checkbox(c, c.disabled)}}
+  elseif kind == 'cycle' or kind == 'stepper' then
+    local s = touch() and 0.85 or 0.75
+    local aw = (touch() and 1.2 or 0.6) * s
+    c.no_pips = true
+    c.cw = math.max(1.2, (d.CTRL_W - 0.2 - 0.28 - 2 * aw) / s)
+    return tight(kind == 'cycle' and UIK.cycle(c) or UIK.stepper(c))
+  elseif kind == 'slider' then
+    c.sw = d.CTRL_W - 1.5
+    local node = tight(UIK.slider(c))
+    local bar = not c.disabled and node.nodes and node.nodes[1]
+    if bar and bar.nodes and #bar.nodes == 2 then
+      table.remove(bar.nodes, 1)
+      bar.config.minw = d.CTRL_W
+    end
+    return node
+  elseif kind == 'action' then
+    local text = o.button_label or o.label
+    return UIK.button{label = text, button = o.button, ref_table = o.ref_table, colour = o.colour, w = math.max(d.BTN_W, math.min(d.CTRL_W - 0.2, UIK.text_w(text, 0.45) + 0.5)), h = d.BTN_H,
+      scale = 0.45, disabled = o.disabled, id = o.button_id, col = true}
+  elseif kind == 'value' then
+    c.vw = d.BTN_W
+    return tight(UIK.value(c))
+  elseif kind == 'input' then
+    c.iw = d.CTRL_W - 0.2
+    return tight(UIK.input(c))
+  end
+end
+
+function S.row(node, d, cat)
+  local kind, o = node.uik_kind, node.uik_o
+  S.discard(node)
+  o = copy(o)
+  local reason = S.lock_reason(o)
+  if reason then
+    if o.id == 'set_gamespeed' and o.speeds then
+      local keep, opts = {}, {}
+      for _, v in ipairs(o.speeds) do if v <= 4 then keep[#keep + 1] = v opts[#opts + 1] = tostring(v) end end
+      local cur = 1
+      for i, v in ipairs(keep) do if v == G.SETTINGS.GAMESPEED then cur = i end end
+      o.options, o.current = opts, cur
+      local cb = o.callback
+      o.callback = function(i) if cb then cb(i, keep[i]) end end
+    else
+      o.disabled = true
+    end
+  end
+  local ctrl = S.control(kind, o, d)
+  if not ctrl then return nil end
+  local dis = o.disabled
+  local info = reason or o.info
+  local text = {
+    {n = G.UIT.R, config = {align = 'cl', minh = d.LH, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = 'cl', maxw = d.TW, padding = 0}, nodes = {txt(o.label, d.LS, dis and G.C.UI.TEXT_INACTIVE or G.C.UI.TEXT_LIGHT, true)}},
+    }},
+  }
+  if info and info ~= '' then
+    text[2] = {n = G.UIT.R, config = {align = 'cl', minh = d.IH, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = 'cl', maxw = d.TW, padding = 0}, nodes = {txt(info, d.IS, reason and G.C.ORANGE or UIK.C.muted, false)}},
+    }}
+  end
+  local flash = S.flash_id == o.id
+  local r = {n = G.UIT.R, config = {align = 'cm', minw = d.INNER, minh = d.RH, padding = 0, r = 0.1, id = o.id,
+    colour = flash and {1, 1, 1, 0.08} or G.C.CLEAR, outline = flash and 1.2 or nil, outline_colour = flash and G.C.GOLD or nil}, nodes = {
+    {n = G.UIT.C, config = {minw = d.INSET, minh = d.RH, padding = 0}, nodes = {}},
+    {n = G.UIT.C, config = {align = 'cl', minw = d.TW, maxw = d.TW, minh = d.RH, padding = 0}, nodes = text},
+    {n = G.UIT.C, config = {minw = 0.15, minh = d.RH, padding = 0}, nodes = {}},
+    {n = G.UIT.C, config = {align = 'cm', minw = d.CTRL_W, minh = d.RH, padding = 0}, nodes = {ctrl}},
+  }}
+  r.set_h = d.RH
+  r.set_entry = {id = o.id, label = tostring(o.label or ''), info = tostring(o.info or ''), cat = cat}
+  return r
+end
+
+function S.grid_rows(list, d)
+  local per = touch() and 4 or 5
+  local gp = 0.06
+  local bw = (d.INNER - (per + 1) * gp * 2) / per
+  local bh = touch() and 0.76 or 0.62
+  local out, cur = {}, {}
+  local function flush()
+    if #cur == 0 then return end
+    local r = {n = G.UIT.R, config = {align = 'cm', minw = d.INNER, padding = gp}, nodes = cur}
+    r.set_h = bh + 2 * gp
+    out[#out + 1] = r
+    cur = {}
+  end
+  for _, g in ipairs(list) do
+    cur[#cur + 1] = UIK.button{id = g.id, label = L(g.label), button = g.button, colour = g.colour, w = bw, h = bh, scale = touch() and 0.42 or 0.38, col = true}
+    if #cur >= per then flush() end
+  end
+  flush()
+  return out
+end
+
+function S.visible_cats()
+  local out = {}
+  for _, c in ipairs(S.CATS) do
+    if not c.show or c.show() then out[#out + 1] = c end
+  end
+  return out
+end
+
+function S.find_cat(key)
+  for _, c in ipairs(S.CATS) do if c.key == key then return c end end
+end
+
+function S.sections(cat, d, pool)
+  pool = pool or S.qol_pool()
+  local ok, list = pcall(cat.build, pool)
+  if not ok then
+    print("[Settings] " .. cat.key .. ": " .. tostring(list))
+    list = {}
+  end
+  for _, id in ipairs(pool.order) do
+    local e = pool.map[id]
+    if not e.used then
+      local place = S.QOL_PLACE[e.section] or {'gameplay', e.section}
+      if place[1] == cat.key then
+        e.used = true
+        local sec
+        for _, s in ipairs(list) do if s.title == place[2] then sec = s end end
+        if not sec then
+          sec = {title = place[2], items = {}}
+          list[#list + 1] = sec
+        end
+        sec.items[table.maxn(sec.items) + 1] = e.node
+      end
+    end
+  end
+  for _, id in ipairs(pool.order) do
+    local e = pool.map[id]
+    if not e.used then S.discard(e.node) end
+  end
+  local out = {}
+  for _, s in ipairs(list) do
+    local rows = {}
+    if s.grid then
+      rows = S.grid_rows(s.grid, d)
+    else
+      for i = 1, table.maxn(s.items or {}) do
+        local n = s.items[i]
+        if type(n) == 'table' and n.uik_o and n.uik_kind then
+          local r = S.row(n, d, cat.key)
+          if r then
+            r.set_entry.section = s.title
+            rows[#rows + 1] = r
+          end
+        elseif type(n) == 'table' then
+          S.discard(n)
+        end
+      end
+    end
+    if #rows > 0 then out[#out + 1] = {title = s.title, raw_title = s.raw_title, colour = s.colour, rows = rows} end
+  end
+  return out
+end
+
+local function card_h(n_rows_h, d)
+  return d.PAD + (d.HH + d.PAD) + n_rows_h
+end
+
+function S.paginate(sections, d, cap)
+  local pages, cur, used = {}, {}, 0
+  local function push()
+    if #cur > 0 then pages[#pages + 1] = cur end
+    cur, used = {}, 0
+  end
+  local function add(s, i, j, h)
+    local gap = #cur > 0 and d.CARD_GAP or 0
+    cur[#cur + 1] = {s = s, from = i, to = j}
+    used = used + gap + card_h(h, d)
+  end
+  for _, s in ipairs(sections) do
+    local n, hs = #s.rows, {}
+    for k, r in ipairs(s.rows) do hs[k] = r.set_h + d.PAD end
+    local function sum(a, b)
+      local t = 0
+      for k = a, b do t = t + hs[k] end
+      return t
+    end
+    local i = 1
+    while i <= n do
+      local gap = #cur > 0 and d.CARD_GAP or 0
+      local rest = sum(i, n)
+      if used + gap + card_h(rest, d) <= cap + 0.001 then
+        add(s, i, n, rest)
+        break
+      end
+      do
+        local room = cap - used - gap - card_h(0, d)
+        local j, acc = i - 1, 0
+        while j < n and acc + hs[j + 1] <= room + 0.001 do
+          j = j + 1
+          acc = acc + hs[j]
+        end
+        if n - j == 1 and j - i + 1 >= 3 then
+          acc = acc - hs[j]
+          j = j - 1
+        end
+        if j - i + 1 >= 2 and n - j ~= 1 then
+          add(s, i, j, acc)
+          i = j + 1
+          push()
+        elseif #cur > 0 then
+          push()
+        else
+          j = math.max(j, i)
+          add(s, i, j, sum(i, j))
+          i = j + 1
+          push()
+        end
+      end
+    end
+  end
+  push()
+  return pages
+end
+
+function S.card(part, d)
+  local s = part.s
+  local title = s.raw_title and s.title or L(s.title)
+  local nodes = {UIK.header(title, {w = d.INNER, colour = s.colour})}
+  for i = part.from, part.to do nodes[#nodes + 1] = s.rows[i] end
+  return {n = G.UIT.R, config = {align = 'tm', minw = d.CW, r = 0.12, padding = d.PAD, colour = UIK.C.section}, nodes = nodes}
+end
+
+function S.page_def(parts, d, area_h)
+  local col = {}
+  for i, p in ipairs(parts) do
+    if i > 1 then col[#col + 1] = {n = G.UIT.R, config = {minh = d.CARD_GAP, minw = 0.1, padding = 0}, nodes = {}} end
+    col[#col + 1] = S.card(p, d)
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = d.CW, minh = area_h, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = col},
+  }}
+end
+
+function S.empty(msg, d, h)
+  return {n = G.UIT.R, config = {align = 'cm', minw = d.CW, minh = h, padding = 0}, nodes = {UIK.text(msg, {colour = G.C.UI.TEXT_INACTIVE})}}
+end
+
+function S.cat_content(cat, d)
+  S.pages_n = 1
+  local full = d.BODY_H - UIK.TOP
+  if cat.page then
+    local W, H = UIK.W, UIK.H
+    UIK.W, UIK.H = d.CW, full
+    local ok, node = pcall(cat.page)
+    UIK.W, UIK.H = W, H
+    if ok and type(node) == 'table' and node.n then
+      return {n = G.UIT.R, config = {align = 'tm', minw = d.CW, minh = full, padding = 0}, nodes = {node}}
+    end
+  end
+  local sections = S.sections(cat, d)
+  if #sections == 0 then return S.empty(L("Nothing to set here"), d, full) end
+  local pages = S.paginate(sections, d, full)
+  if #pages > 1 then pages = S.paginate(sections, d, full - d.PAGER_H) end
+  local pid = 'set_p_' .. cat.key
+  local n = #pages
+  local idx = math.max(1, math.min(UIK._pages[pid] or 1, n))
+  UIK._pages[pid] = idx
+  S.pages_n = n
+  for p, pg in ipairs(pages) do
+    if p ~= idx then
+      for _, part in ipairs(pg) do
+        for i = part.from, part.to do S.discard(part.s.rows[i]) end
+      end
+    end
+  end
+  local rows = {S.page_def(pages[idx], d, n > 1 and (full - d.PAGER_H) or full)}
+  if n > 1 then
+    rows[2] = UIK.pager{prev = 'uik_page', next = 'uik_page', prev_ref = {id = pid, d = -1, n = n}, next_ref = {id = pid, d = 1, n = n},
+      text = string.format(L("Page %d of %d"), idx, n), w = d.CW}
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = d.CW, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = rows},
+  }}
+end
+
+function S.content()
+  local d = S.dims()
+  local q = S.state.query or ''
+  if S.search_active and S.search_active(q) then return S.results(q, d) end
+  local cat = S.find_cat(S.cur)
+  if not cat or (cat.show and not cat.show()) then
+    cat = S.visible_cats()[1]
+    S.cur = cat.key
+  end
+  return S.cat_content(cat, d)
+end
+
+function S.page_of(cat, id)
+  local d = S.dims()
+  local full = d.BODY_H - UIK.TOP
+  local sections = S.sections(cat, d)
+  local pages = S.paginate(sections, d, full)
+  if #pages > 1 then pages = S.paginate(sections, d, full - d.PAGER_H) end
+  local found
+  for p, pg in ipairs(pages) do
+    for _, part in ipairs(pg) do
+      for i = part.from, part.to do
+        local r = part.s.rows[i]
+        if r.set_entry and r.set_entry.id == id then found = found or p end
+      end
+    end
+  end
+  for _, s in ipairs(sections) do for _, r in ipairs(s.rows) do S.discard(r) end end
+  return found or 1
+end
+
+function S.sidebar(d)
+  local cats = S.visible_cats()
+  local n = #cats
+  local pad = 0.08
+  local bh = math.min(touch() and 0.74 or 0.6, (d.BODY_H - pad - 0.02) / n - pad)
+  local bw = d.SW - 0.4
+  local sc = touch() and 0.44 or 0.42
+  for _, c in ipairs(cats) do
+    local lw = UIK.text_w(L(c.label), sc)
+    if lw > bw - 0.3 then sc = sc * (bw - 0.3) / lw end
+  end
+  local rows = {}
+  for _, c in ipairs(cats) do
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+      UIBox_button({id = 'set_cat_' .. c.key, ref_table = {key = c.key}, button = 'set_cat', func = 'set_cat_mark', label = {L(c.label)}, minw = bw, minh = bh, col = true,
+        choice = true, chosen = c.key == S.cur and 'vert' or nil, scale = sc, colour = UIK.C.tab, focus_args = c.key == S.cur and {snap_to = true} or nil}),
+    }}
+  end
+  return {n = G.UIT.C, config = {align = 'cm', minw = d.SW, minh = d.BODY_H, r = 0.12, padding = pad, colour = UIK.C.section, group = 'set_cat'}, nodes = rows}
+end
+
+function S.cat_grid(d)
+  local cats = S.visible_cats()
+  local per, gap = d.GRID_PER, d.GRID_GAP
+  local bw = (d.CW - 2 * gap - (per - 1) * gap) / per
+  local sc = touch() and 0.44 or 0.42
+  for _, c in ipairs(cats) do
+    local lw = UIK.text_w(L(c.label), sc)
+    if lw > bw - 0.3 then sc = sc * (bw - 0.3) / lw end
+  end
+  local rows, row = {}, nil
+  for i, c in ipairs(cats) do
+    if (i - 1) % per == 0 then
+      row = {}
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = row}
+      if #rows > 1 then table.insert(rows, #rows, {n = G.UIT.R, config = {minw = 0.1, minh = gap, padding = 0}, nodes = {}}) end
+    end
+    if #row > 0 then row[#row + 1] = {n = G.UIT.C, config = {minw = gap, minh = d.GRID_BH, padding = 0}, nodes = {}} end
+    row[#row + 1] = UIBox_button({id = 'set_cat_' .. c.key, ref_table = {key = c.key}, button = 'set_cat', func = 'set_cat_mark', label = {L(c.label)}, minw = bw, minh = d.GRID_BH, col = true,
+      choice = true, chosen = c.key == S.cur and true or nil, scale = sc, colour = UIK.C.tab, focus_args = c.key == S.cur and {snap_to = true} or nil})
+  end
+  return {n = G.UIT.R, config = {align = 'cm', minw = d.CW, minh = d.GRID_H, r = 0.12, padding = gap, colour = UIK.C.section, group = 'set_cat'}, nodes = rows}
+end
+
+function S.title_row(d)
+  local field = S.search_field and S.search_field(d) or nil
+  if d.PORT then
+    return {n = G.UIT.R, config = {align = 'cm', padding = 0, func = 'set_search_watch'}, nodes = {
+      {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = {
+        {n = G.UIT.R, config = {id = 'set_title', align = 'cm', minw = d.CW, minh = d.TH, padding = 0}, nodes = {
+          {n = G.UIT.T, config = {text = localize('b_settings'), scale = touch() and 0.5 or 0.45, colour = UIK.C.title, shadow = true}},
+          {n = G.UIT.C, config = {id = 'tab_shoulders', func = 'set_tab_proxy', focus_args = {type = 'tab'}, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {padding = 0}, nodes = {{n = G.UIT.B, config = {w = 0.01, h = 0.01, group = 'set_cat'}}}},
+          }},
+        }},
+        {n = G.UIT.R, config = {align = 'cm', minw = d.CW, minh = d.TH, padding = 0}, nodes = {field}},
+      }},
+    }}
+  end
+  return {n = G.UIT.R, config = {align = 'cm', padding = 0, func = 'set_search_watch'}, nodes = {
+    {n = G.UIT.C, config = {id = 'set_title', align = 'cm', minw = d.SW, minh = d.TH, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = 'cm', maxw = d.SW - 0.2, padding = 0}, nodes = {
+        {n = G.UIT.T, config = {text = localize('b_settings'), scale = touch() and 0.5 or 0.45, colour = UIK.C.title, shadow = true}},
+      }},
+    }},
+    {n = G.UIT.C, config = {minw = d.GAP, minh = d.TH, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {id = 'tab_shoulders', func = 'set_tab_proxy', focus_args = {type = 'tab'}, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {padding = 0}, nodes = {{n = G.UIT.B, config = {w = 0.01, h = 0.01, group = 'set_cat'}}}},
+      }},
+    }},
+    {n = G.UIT.C, config = {align = 'cm', minw = d.CW, minh = d.TH, padding = 0}, nodes = {field}},
+  }}
+end
+
+function S.args(d)
+  local tabs = {{key = 'main', label = '', build = S.content}}
+  local function alias(key, cat)
+    tabs[#tabs + 1] = {key = key, label = '', build = function()
+      if S.find_cat(cat) then S.cur = cat end
+      if UIK._win then UIK._win._cur = 'main' end
+      S.flash_id = nil
+      return S.content()
+    end}
+  end
+  for k, v in pairs(S.LEGACY) do alias(k, v) end
+  for _, c in ipairs(S.CATS) do alias(c.key, c.key) end
+  return {id = 'settings', compact = true, w = d.CW, tabs = tabs, _cur = 'main', back_func = 'set_back'}
+end
+
+function S.window(tab)
+  S.defaults()
+  if tab then
+    if tab == 'Search' then
+      S.focus_search = true
+    else
+      local key = S.LEGACY[tab] or tab
+      if S.find_cat(key) then S.cur = key end
+    end
+  end
+  local d = S.dims()
+  local args = S.args(d)
+  UIK._win = args
+  UIK._last_tab.settings = 'main'
+  local body = {n = G.UIT.ROOT, config = {align = 'tm', colour = G.C.CLEAR, minw = d.CW, padding = 0}, nodes = {
+    {n = G.UIT.R, config = {minw = 0.1, minh = UIK.TOP, padding = 0}, nodes = {}},
+    S.content(),
+  }}
+  local contents
+  if d.PORT then
+    contents = {
+      S.title_row(d),
+      {n = G.UIT.R, config = {minw = 0.1, minh = 0.12, padding = 0}, nodes = {}},
+      S.cat_grid(d),
+      {n = G.UIT.R, config = {minw = 0.1, minh = 0.12, padding = 0}, nodes = {}},
+      {n = G.UIT.R, config = {align = 'tm', minw = d.CW, minh = d.BODY_H, padding = 0}, nodes = {
+        {n = G.UIT.O, config = {id = 'uik_body', object = UIBox{definition = body, config = {offset = {x = 0, y = 0}}}}},
+      }},
+    }
+  else
+    contents = {
+      S.title_row(d),
+      {n = G.UIT.R, config = {minw = 0.1, minh = 0.12, padding = 0}, nodes = {}},
+      {n = G.UIT.R, config = {align = 'tm', padding = 0}, nodes = {
+        S.sidebar(d),
+        {n = G.UIT.C, config = {minw = d.GAP, padding = 0}, nodes = {}},
+        {n = G.UIT.C, config = {align = 'tm', minw = d.CW, minh = d.BODY_H, padding = 0}, nodes = {
+          {n = G.UIT.O, config = {id = 'uik_body', object = UIBox{definition = body, config = {offset = {x = 0, y = 0}}}}},
+        }},
+      }},
+    }
+  end
+  local def = create_UIBox_generic_options({back_func = 'set_back', contents = contents})
+  if def.config then def.config.uik_zoom = true end
+  local stamp = {}
+  S.stamp = stamp
+  G.E_MANAGER:add_event(Event({blocking = false, blockable = false, func = function()
+    if S.stamp == stamp and G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID('set_title') then G.OVERLAY_MENU:recalculate() end
+    if S.stamp == stamp and S.focus_search then
+      S.focus_search = nil
+      pcall(S.focus_input)
+    end
+    return true
+  end}))
+  return def
+end
+
+function S.open(instant)
+r 4 1381 %20%20 -
+l 100
+  G.FUNCS.overlay_menu{definition = S.window(), config = {offset = {x = 0, y = instant and 0 or 10}}}
+end
+
+function S.set_cat(key)
+  if not S.find_cat(key) then return end
+  local changed = key ~= S.cur
+  S.cur = key
+  if UIK._win and UIK._win.id == 'settings' then UIK._win._cur = 'main' end
+  S.flash_id = nil
+  if S.state.query ~= '' then
+    S.state.query = ''
+    S.open(true)
+    S.snap('set_cat_' .. key)
+    return
+  end
+  if changed then UIK.refresh() end
+end
+
+function S.snap(id)
+  G.E_MANAGER:add_event(Event({blocking = false, blockable = false, func = function()
+    local c = G.CONTROLLER
+    if not (c and G.OVERLAY_MENU and (c.HID.controller or (Controls and Controls.keys_on and Controls.keys_on()))) then return true end
+    local node = G.OVERLAY_MENU:get_UIE_by_ID(id)
+    if not node then
+      local body = G.OVERLAY_MENU:get_UIE_by_ID('uik_body')
+      local box = body and body.config.object
+      node = box and box.get_UIE_by_ID and box:get_UIE_by_ID(id)
+    end
+    if node then c:snap_to{node = node} end
+    return true
+  end}))
+end
+
+function S.init()
+  G.FUNCS.set_cat = function(e)
+    local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+    if key then S.set_cat(key) end
+  end
+  G.FUNCS.set_cat_mark = function(e)
+    local key = e.config.ref_table and e.config.ref_table.key
+    local want = (key == S.cur and not (S.search_active and S.search_active(S.state.query))) and (UIK.portrait() or 'vert') or false
+    if e.config.chosen ~= want then e.config.chosen = want end
+  end
+  G.FUNCS.set_tab_proxy = function(e)
+    if e.states.visible then e.states.visible = false end
+  end
+  G.FUNCS.set_back = function(e)
+    if S.state.query and S.state.query ~= '' then
+      S.state.query = ''
+      if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+      S.open(true)
+      return
+    end
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+    S.flash_id = nil
+    G.FUNCS.options(e)
+  end
+  G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+  G.ESC_BACK_FUNCS.set_back = true
+  if Controller and not S._nav_wrapped then
+    S._nav_wrapped = true
+    local nav = Controller.navigate_focus
+    function Controller:navigate_focus(dir, ...)
+      local t = self.focused and self.focused.target
+      if dir == 'D' and t and t.config and t.config.id == 'text_input' and G.OVERLAY_MENU and t.UIBox == G.OVERLAY_MENU and UIK._win and UIK._win.id == 'settings' then
+        local first = S.first_control(t)
+        if first then
+          self:snap_to{node = first}
+          return
+        end
+      end
+      return nav(self, dir, ...)
+    end
+  end
+end
+
+function S.first_control(search)
+  local body = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID('uik_body')
+  local box = body and body.config.object
+  if not (box and box.UIRoot) then return nil end
+  local c, best = G.CONTROLLER, nil
+  local function walk(n, depth)
+    if type(n) ~= 'table' or depth > 60 then return end
+    if n.T and n.T.y > search.T.y + search.T.h and c:is_node_focusable(n) then
+      if not best or n.T.y < best.T.y - 0.05 or (math.abs(n.T.y - best.T.y) <= 0.05 and n.T.x < best.T.x) then best = n end
+    end
+    for _, ch in pairs(n.children or {}) do walk(ch, depth + 1) end
+  end
+  walk(box.UIRoot, 0)
+  return best
+end
+
+require "functions/settings/catalog"
+require "functions/settings/search"
+require "functions/settings/strings"
+
+S.init()
+if S.search_init then S.search_init() end
+
+return S
+end

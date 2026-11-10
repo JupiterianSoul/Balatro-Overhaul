@@ -1,0 +1,124 @@
+BOP 1
+eol lf
+final 1
+base 27
+c 34
+s 1
+r 27 35 %20%20%20%20 -
+c 42
+s 1
+r 27 78 %20%20%20%20 -
+c 17
+s 1
+l 1
+    if args.major then
+c 18
+s 1
+r 27 115 %20%20%20%20 -
+c 11
+s 1
+l 1
+
+c 1
+s 1
+r 27 129 %20%20%20%20 -
+c 4
+s 1
+r 27 115 %20%20%20%20 -
+c 4
+s 1
+l 1
+
+c 39
+s 1
+l 1
+
+c 53
+s 2
+l 2
+
+        if not offset then
+c 26
+s 1
+r 3 1986 %20%20%20%20%20%20%20%20 -
+c 17
+l 2
+    -- FIX: Guard nil FRAME — defensive against partially-initialized Moveables
+    if not self.FRAME then return end
+c 10
+s 1
+l 1
+
+c 6
+s 1
+l 1
+        if self.role.major.FRAME and self.role.major.FRAME.MOVE < G.FRAMES.MOVE then self.role.major:move(dt) end
+c 4
+s 2
+r 27 301 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 27 302 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 27 304 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 27 306 %20%20%20%20 -
+c 49
+s 1
+r 27 356 %20%20%20%20 -
+c 2
+s 1
+r 27 359 %20%20%20%20%20%20%20%20 -
+c 24
+s 1
+r 27 384 %20%20%20%20 -
+c 5
+s 1
+r 27 390 %20%20%20%20 -
+c 15
+s 1
+r 27 406 %20%20%20%20 -
+c 3
+s 1
+r 27 410 %20%20%20%20%20%20%20%20 -
+c 24
+s 3
+r 27 435 %20%20%20%20 -
+r 27 436 %20%20%20%20%20%20%20%20 -
+r 27 437 %20%20%20%20%20%20%20%20 -
+c 10
+s 1
+r 27 448 %20%20%20%20 -
+c 5
+s 1
+r 27 454 %20%20%20%20%20%20%20%20 -
+c 37
+s 1
+l 1
+        end
+c 10
+s 5
+l 6
+local function remove_last_match(t, obj)
+    if not t then return end
+    for i = #t, 1, -1 do
+        if t[i] == obj then
+            table.remove(t, i)
+            return
+c 2
+s 4
+r 12 131 %20%20%20%20 -
+l 3
+        if v == obj then
+            table.remove(t, k)
+            return
+c 2
+l 2
+end
+
+r 27 503 - -
+l 2
+    remove_last_match(G.MOVEABLES, self)
+    remove_last_match(G.I.MOVEABLE, self)
+c 2
+end

@@ -1,0 +1,362 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 213
+local D = {}
+
+local function L(s)
+    if mod_loc then
+        local ok, r = pcall(mod_loc, s)
+        if ok and r then return r end
+    end
+    return s
+end
+
+local S = {state = nil, result = nil, open = false, at = 0, view = {timer = "", status = ""}, starting = false}
+D.S = S
+
+local FR = {
+    ["DECK DRAFT"] = "DRAFT DES JEUX",
+    ["Deck draft"] = "Draft des jeux",
+    ["Ban a deck"] = "Bannissez un jeu",
+    ["%s is banning"] = "%s bannit",
+    ["Pick your deck"] = "Choisissez votre jeu",
+    ["Waiting for %s"] = "En attente de %s",
+    ["Banned"] = "Banni",
+    ["Your pick"] = "Votre choix",
+    ["Picked"] = "Choisi",
+    ["Draft done"] = "Draft terminé",
+    ["Your deck: %s"] = "Votre jeu : %s",
+    ["Bans in turn, then both pick. 30 s per turn, then a random choice."] = "Bans chacun son tour, puis chacun choisit. 30 s par tour, puis un choix au hasard.",
+    ["Ban in turn. Both players play the last deck left. 30 s per turn, then a random ban."] = "Bannissez chacun votre tour. Les deux joueurs jouent le dernier jeu restant. 30 s par tour, puis un ban au hasard.",
+    ["Match deck: %s"] = "Jeu du match : %s",
+    ["Match deck"] = "Jeu du match",
+    ["RANKED MATCH"] = "MATCH CLASSÉ",
+    ["Deck draft before the match"] = "Draft des jeux avant le match",
+    ["Ban and pick decks in turn"] = "Bannir puis choisir les jeux à tour de rôle",
+    ["Your opponent"] = "Votre adversaire",
+}
+local ES = {
+    ["DECK DRAFT"] = "DRAFT DE BARAJAS",
+    ["Deck draft"] = "Draft de barajas",
+    ["Ban a deck"] = "Veta una baraja",
+    ["%s is banning"] = "%s está vetando",
+    ["Pick your deck"] = "Elige tu baraja",
+    ["Waiting for %s"] = "Esperando a %s",
+    ["Banned"] = "Vetada",
+    ["Your pick"] = "Tu elección",
+    ["Picked"] = "Elegida",
+    ["Draft done"] = "Draft terminado",
+    ["Your deck: %s"] = "Tu baraja: %s",
+    ["Bans in turn, then both pick. 30 s per turn, then a random choice."] = "Vetos por turnos, luego eligen ambos. 30 s por turno, luego una elección al azar.",
+    ["Ban in turn. Both players play the last deck left. 30 s per turn, then a random ban."] = "Vetad por turnos. Los dos jugadores juegan la última baraja que queda. 30 s por turno, luego un veto al azar.",
+    ["Match deck: %s"] = "Baraja de la partida: %s",
+    ["Match deck"] = "Baraja de la partida",
+    ["RANKED MATCH"] = "PARTIDA CLASIFICATORIA",
+    ["Deck draft before the match"] = "Draft de barajas antes de la partida",
+    ["Ban and pick decks in turn"] = "Vetar y elegir barajas por turnos",
+    ["Your opponent"] = "Tu rival",
+}
+
+local function st() return bom_match and bom_match.get_state and bom_match.get_state() or {} end
+
+local function in_lobby()
+    if not (G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU) then return false end
+    local ok, r = pcall(function() return bom_match.get_phase() == bom_match.PHASE.LOBBY end)
+    return ok and r == true
+end
+
+local function in_party()
+    local ok, r = pcall(function() return bom_party and bom_party.active and bom_party.active() end)
+    return ok and r or false
+end
+
+function D.needed()
+    if in_party() then return false end
+    local s = st()
+    if s.opp_bot then return false end
+    local set = (bom_match and bom_match.get_settings and bom_match.get_settings()) or {}
+    return s.ranked == true or set.deck_draft == true
+end
+
+local function opp_name()
+    local n = st().opp_name
+    if type(n) == "string" and n ~= "" and n ~= "Opponent" then return n end
+    return L("Your opponent")
+end
+
+local function deck_center(name)
+    if not (G and G.P_CENTERS) then return nil end
+    for _, c in pairs(G.P_CENTERS) do
+        if c.set == "Back" and c.name == name then return c end
+    end
+    return nil
+end
+
+local function deck_label(name)
+    local c = deck_center(name)
+    if c and localize then
+        local ok, r = pcall(localize, {type = "name_text", set = "Back", key = c.key})
+        if ok and type(r) == "string" and r ~= "" and r ~= "ERROR" then return r end
+    end
+    return name
+end
+D.deck_label = deck_label
+
+local function my_pid() return S.state and S.state.you or (st().is_host and 0 or 1) end
+
+local function banned_by(deck)
+    for _, b in ipairs((S.state and S.state.bans) or {}) do
+        if b.deck == deck then return b.pid end
+    end
+    return nil
+end
+
+local function status_text()
+    local d = S.state
+    if not d then return "" end
+    if d.phase == "done" then return type(d.deck) == "string" and string.format(L("Match deck: %s"), deck_label(d.deck)) or L("Draft done") end
+    if d.phase == "ban" then
+        if d.turn == my_pid() then return L("Ban a deck") end
+        return string.format(L("%s is banning"), opp_name())
+    end
+    local mine = d.picks and d.picks[tostring(my_pid())]
+    if mine then return string.format(L("Waiting for %s"), opp_name()) end
+    return L("Pick your deck")
+end
+
+local function my_action()
+    local d = S.state
+    if not d or d.phase == "done" then return nil end
+    if d.phase == "ban" then return d.turn == my_pid() and "ban" or nil end
+    if d.picks and d.picks[tostring(my_pid())] then return nil end
+    return "pick"
+end
+
+local function card_dims()
+    local touch = UIK and UIK.touch and UIK.touch()
+    if touch then return 2.05, 2.75 end
+    return 1.75, 2.35
+end
+
+local function deck_card(name)
+    local w, h = card_dims()
+    local ban = banned_by(name)
+    local action = my_action()
+    local mine = S.state and S.state.picks and S.state.picks[tostring(my_pid())] == name
+    local pickable = action ~= nil and ban == nil
+    local center = deck_center(name)
+    local art
+    if center and Sprite and G.ASSET_ATLAS then
+        local atlas = G.ASSET_ATLAS[center.atlas or "centers"] or G.ASSET_ATLAS.centers
+        local ok, spr = pcall(Sprite, 0, 0, w - 0.3, (w - 0.3) * 95 / 71, atlas, center.pos or {x = 0, y = 0})
+        if ok and spr then
+            if ban ~= nil then spr.greyed = true end
+            art = {n = G.UIT.O, config = {object = spr}}
+        end
+    end
+    local tag
+    local final = S.state and S.state.phase == "done" and S.state.deck == name
+    if ban ~= nil then tag = {L("Banned"), G.C.RED}
+    elseif final then tag = {L("Match deck"), G.C.GREEN}
+    elseif mine then tag = {L("Your pick"), G.C.GREEN}
+    end
+    local label, scale = deck_label(name), 0.3
+    if bom_kit and bom_kit.fit then label, scale = bom_kit.fit(label, w - 0.15, 0.3, 0.22) end
+    local nodes = {
+        {n = G.UIT.R, config = {align = "cm", minh = h - 0.75}, nodes = {art or {n = G.UIT.T, config = {text = "?", scale = 0.8, colour = G.C.UI.TEXT_LIGHT}}}},
+        {n = G.UIT.R, config = {align = "cm", minh = 0.35, maxw = w - 0.1}, nodes = {{n = G.UIT.T, config = {text = label, scale = scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+        {n = G.UIT.R, config = {align = "cm", minh = 0.3}, nodes = {{n = G.UIT.T, config = {text = tag and tag[1] or " ", scale = 0.28, colour = tag and tag[2] or G.C.CLEAR, shadow = tag ~= nil}}}},
+    }
+    D._choices = D._choices or {}
+    D._choices[name] = {deck = name}
+    return {n = G.UIT.C, config = {
+        align = "cm", minw = w, maxw = w, minh = h, padding = 0.05, r = 0.12, hover = pickable, shadow = pickable,
+        colour = (mine or final) and darken(G.C.GREEN, 0.4) or (ban ~= nil and G.C.UI.BACKGROUND_INACTIVE) or G.C.BLACK,
+        outline = pickable and 1.2 or nil, outline_colour = pickable and G.C.GOLD or nil,
+        button = pickable and "mp_draft_choose" or nil, ref_table = D._choices[name],
+    }, nodes = nodes}
+end
+
+local function build()
+    local d = S.state
+    local rows = {}
+    S.view.status = status_text()
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.55}, nodes = {
+        {n = G.UIT.T, config = {ref_table = S.view, ref_value = "status", scale = 0.48, colour = G.C.GOLD, shadow = true}},
+        {n = G.UIT.C, config = {minw = 0.4}},
+        {n = G.UIT.T, config = {ref_table = S.view, ref_value = "timer", scale = 0.48, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+    }}
+    local pool = (d and d.pool) or {}
+    local per = #pool > 5 and math.ceil(#pool / 2) or #pool
+    local line = {}
+    for i, name in ipairs(pool) do
+        line[#line + 1] = deck_card(name)
+        if i < #pool and (i % per) ~= 0 then line[#line + 1] = {n = G.UIT.C, config = {minw = 0.15}} end
+        if i % per == 0 or i == #pool then
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = line}
+            line = {}
+        end
+    end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.4}, nodes = {
+        {n = G.UIT.T, config = {text = L("Ban in turn. Both players play the last deck left. 30 s per turn, then a random ban."), scale = 0.28, colour = G.C.UI.TEXT_INACTIVE}},
+    }}
+    return {n = G.UIT.C, config = {align = "cm"}, nodes = rows}
+end
+
+local function draft_overlay()
+    return G and G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "mp_draft" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") ~= nil
+end
+
+local function show()
+    if not (G and G.FUNCS and UIK and UIK.window) then return end
+    if S.open and draft_overlay() and UIK.refresh then
+        local ok = pcall(UIK.refresh)
+        if ok then return end
+    end
+    S.open = true
+r 4 1381 %20%20%20%20 -
+l 141
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "mp_draft", title = L("DECK DRAFT"), compact = true, w = UIK.W,
+        tabs = {{key = "draft", label = L("Deck draft"), build = build}},
+        no_back = true,
+    }, config = {no_esc = true}}
+end
+
+local function close()
+    if S.open and draft_overlay() and G.FUNCS.exit_overlay_menu then pcall(G.FUNCS.exit_overlay_menu) end
+    S.open = false
+end
+
+local function apply_result(r)
+    local s = bom_match and bom_match.get_settings and bom_match.get_settings()
+    local me = st()
+    if type(s) == "table" then
+        if type(r.deck) == "string" then s.deck = r.deck end
+        s.different_decks = false
+    end
+    if type(r.deck) == "string" then me.my_deck = r.deck end
+end
+
+function D.final_deck()
+    local r = S.result
+    if type(r) == "table" and type(r.deck) == "string" and r.deck ~= "" and D.needed() then return r.deck end
+    return nil
+end
+
+local function stale(d)
+    if not in_lobby() then return true end
+    return S.result ~= nil and S.result.draft_id ~= nil and d.draft_id == S.result.draft_id
+end
+
+local function on_state(d)
+    if type(d) ~= "table" then return end
+    if stale(d) then return true end
+    S.state = d
+    S.at = love and love.timer and love.timer.getTime() or os.time()
+    if d.phase ~= "done" then show() end
+    return true
+end
+
+local function on_done(d)
+    if type(d) ~= "table" then return end
+    if stale(d) or type(d.deck) ~= "string" then return true end
+    S.result = d
+    S.state = S.state or {pool = {d.deck}, left = {d.deck}, bans = {}, you = my_pid()}
+    S.state.phase, S.state.deck, S.state.turn = "done", d.deck, nil
+    S.view.timer = ""
+    apply_result(d)
+    show()
+    if st().is_host and S.starting and D.orig_start then
+        S.starting = false
+        S.start_at = (love and love.timer and love.timer.getTime() or 0) + 1.2
+    end
+    return true
+end
+
+local function on_error(d)
+    if type(d) ~= "table" then return end
+    if d.reason == "off" and S.starting and D.orig_start then
+        S.starting = false
+        S.result = {skipped = true}
+        S.start_at = love and love.timer and love.timer.getTime() or 0
+    end
+    return true
+end
+
+local function reset()
+    S.state, S.result, S.starting, S.start_at = nil, nil, false, nil
+    if S.open then close() end
+end
+D.reset = reset
+
+local function cancelled()
+    S.state, S.starting, S.start_at = nil, false, nil
+    if S.open then close() end
+    return true
+end
+
+function D.update()
+    local now = love and love.timer and love.timer.getTime() or os.time()
+    if S.start_at and now >= S.start_at then
+        S.start_at = nil
+        if in_lobby() and D.orig_start then pcall(D.orig_start) end
+    end
+    local d = S.state
+    if not d or d.phase == "done" then return end
+    local left = math.max(0, math.ceil((tonumber(d.seconds) or 0) - (now - S.at)))
+    S.view.timer = tostring(left) .. "s"
+end
+
+local function install()
+    if D.installed or not bom_room or not bom_room.start_match then return end
+    D.installed = true
+    D.orig_start = bom_room.start_match
+    bom_room.start_match = function(...)
+        if D.needed() and not S.result then
+            S.starting = true
+            if bom_core and bom_core.send then bom_core.send({type = "draft_start"}) end
+            return
+        end
+        return D.orig_start(...)
+    end
+    G.FUNCS.mp_draft_choose = function(e)
+        local ref = e and e.config and e.config.ref_table
+        local action = my_action()
+        if not (ref and ref.deck and action) then return end
+        bom_core.send({type = "draft_action", action = action, deck = ref.deck})
+    end
+    if bom_match and bom_match.get_my_deck and not D.deck_wrapped then
+        D.deck_wrapped = true
+        local orig_deck = bom_match.get_my_deck
+        bom_match.get_my_deck = function(...)
+            return D.final_deck() or orig_deck(...)
+        end
+    end
+    local ev = bom_events
+    if ev and ev.register then
+        ev.register("draft_state", on_state)
+        ev.register("draft_done", on_done)
+        ev.register("draft_error", on_error)
+        ev.register("room_ready", function() reset() end)
+        ev.register("lobby_returned", function() reset() end)
+        ev.register("draft_cancelled", function() return cancelled() end)
+        ev.register("room_closed", function() reset() end)
+        ev.register("match_start", function(m)
+            if type(m) == "table" and type(m.myDeck) == "string" and m.myDeck ~= "" then
+                local me = st()
+                if not me.is_host then me.my_deck = m.myDeck end
+            end
+        end)
+    end
+end
+
+function D.init()
+    if mod_loc_register then pcall(mod_loc_register, {fr = FR, es = ES}) end
+    pcall(install)
+end
+
+return D
+end

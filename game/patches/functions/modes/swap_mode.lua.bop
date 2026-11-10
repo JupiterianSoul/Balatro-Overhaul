@@ -1,0 +1,1392 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 513
+local W = {}
+
+W.KEY = "swap"
+W.NAME = "Switcheroo"
+
+W.COUNT = 3
+W.AUTO_READY = 30
+
+local function g(name) return rawget(_G, name) end
+
+local FR = {
+    ["Switcheroo"] = "Chassé-croisé",
+    ["Runs swap after every boss blind"] = "Les parties s'échangent après chaque boss",
+    ["Rivals rules, but after every boss blind you and your opponent trade runs: deck, jokers, money, everything. Lose a PvP blind with the run you hold and you lose a life."] =
+        "Règles de Rivaux, mais après chaque boss vous échangez vos parties avec l'adversaire : deck, jokers, argent, tout. Perdez une blinde PvP avec la partie que vous tenez et vous perdez une vie.",
+    ["Runs swap after every boss, PvP bosses from ante 2"] = "Échange après chaque boss, boss PvP dès l'ante 2",
+    ["SWITCHEROO"] = "CHASSÉ-CROISÉ",
+    ["Boss beaten: time to trade runs"] = "Boss battu : on échange les parties",
+    ["Waiting for %s to beat their boss"] = "En attente du boss de %s",
+    ["%s is ready, trading runs"] = "%s est prêt, échange en cours",
+    ["Trading runs"] = "Échange des parties",
+    ["You took over %s's run!"] = "Vous reprenez la partie de %s !",
+    ["Swap %d"] = "Échange %d",
+    ["your opponent"] = "votre adversaire",
+    ["Runs pass to the next player after each boss"] = "Les parties passent au joueur suivant après chaque boss",
+    ["Waiting for %d players to beat their boss"] = "En attente du boss de %d joueurs",
+    ["Waiting for the other players"] = "En attente des autres joueurs",
+    ["%d of %d ready"] = "%d sur %d prêts",
+    ["Everything changes hands except lives"] = "Tout change de main, sauf les vies",
+    ["Getting your run ready"] = "Préparation de votre partie",
+    ["Auto ready in %d s"] = "Prêt automatique dans %d s",
+    ["Swapping runs in"] = "Échange des parties dans",
+    ["%s is away, waiting for them to come back"] = "%s est absent, on attend son retour",
+    ["You now hold %s's run"] = "Vous tenez maintenant la partie de %s",
+    ["Your own run is back"] = "Vous récupérez votre partie",
+    ["%s now holds your run"] = "%s tient maintenant votre partie",
+    ["Held by %s"] = "Tenue par %s",
+    ["Held by you"] = "Tenue par vous",
+    ["Swaps done: %d"] = "Échanges faits : %d",
+    ["Next swap after the next boss blind"] = "Prochain échange après la prochaine blinde boss",
+    ["Swapping now"] = "Échange en cours",
+    ["Live"] = "En direct",
+    ["As of swap %d"] = "Au moment de l'échange %d",
+    ["Not known yet"] = "Pas encore connue",
+    ["Who holds which run"] = "Qui tient quelle partie",
+    ["No swap this time, you keep your run"] = "Pas d'échange cette fois, vous gardez votre partie",
+    ["Swapping runs"] = "Échange des parties",
+}
+local ES = {
+    ["Switcheroo"] = "Intercambio",
+    ["Runs swap after every boss blind"] = "Las partidas se intercambian tras cada jefe",
+    ["Rivals rules, but after every boss blind you and your opponent trade runs: deck, jokers, money, everything. Lose a PvP blind with the run you hold and you lose a life."] =
+        "Reglas de Rivales, pero tras cada jefe tú y tu rival intercambiáis partidas: mazo, comodines, dinero, todo. Pierde una ciega PvP con la partida que tienes y pierdes una vida.",
+    ["Runs swap after every boss, PvP bosses from ante 2"] = "Intercambio tras cada jefe, jefes PvP desde la ante 2",
+    ["SWITCHEROO"] = "INTERCAMBIO",
+    ["Boss beaten: time to trade runs"] = "Jefe superado: toca intercambiar partidas",
+    ["Waiting for %s to beat their boss"] = "Esperando el jefe de %s",
+    ["%s is ready, trading runs"] = "%s está listo, intercambiando",
+    ["Trading runs"] = "Intercambiando partidas",
+    ["You took over %s's run!"] = "¡Tomas la partida de %s!",
+    ["Swap %d"] = "Intercambio %d",
+    ["your opponent"] = "tu rival",
+    ["Runs pass to the next player after each boss"] = "Las partidas pasan al siguiente jugador tras cada jefe",
+    ["Waiting for %d players to beat their boss"] = "Esperando el jefe de %d jugadores",
+    ["Waiting for the other players"] = "Esperando a los demás jugadores",
+    ["%d of %d ready"] = "%d de %d listos",
+    ["Everything changes hands except lives"] = "Todo cambia de manos salvo las vidas",
+    ["Getting your run ready"] = "Preparando tu partida",
+    ["Auto ready in %d s"] = "Listo automático en %d s",
+    ["Swapping runs in"] = "Intercambio de partidas en",
+    ["%s is away, waiting for them to come back"] = "%s está ausente, esperamos a que vuelva",
+    ["You now hold %s's run"] = "Ahora tienes la partida de %s",
+    ["Your own run is back"] = "Recuperas tu partida",
+    ["%s now holds your run"] = "%s tiene ahora tu partida",
+    ["Held by %s"] = "En manos de %s",
+    ["Held by you"] = "En tus manos",
+    ["Swaps done: %d"] = "Intercambios hechos: %d",
+    ["Next swap after the next boss blind"] = "Próximo intercambio tras la próxima ciega jefe",
+    ["Swapping now"] = "Intercambio en curso",
+    ["Live"] = "En directo",
+    ["As of swap %d"] = "En el intercambio %d",
+    ["Not known yet"] = "Aún no se sabe",
+    ["Who holds which run"] = "Quién tiene cada partida",
+    ["No swap this time, you keep your run"] = "Esta vez no hay intercambio, conservas tu partida",
+    ["Swapping runs"] = "Intercambiando partidas",
+}
+
+local FR_UI = {
+    ["You give"] = "Vous donnez", ["You get"] = "Vous recevez", ["Your run"] = "Votre partie", ["%s's run"] = "Partie de %s",
+    ["Ante"] = "Mise", ["Money"] = "Argent", ["Deck"] = "Jeu", ["Jokers"] = "Jokers", ["Consumables"] = "Consommables",
+    ["Vouchers"] = "Bons", ["Hand levels"] = "Niveaux de main", ["Tags"] = "Étiquettes", ["%d cards"] = "%d cartes",
+    ["READY"] = "PRÊT", ["NOT READY"] = "PAS PRÊT", ["PLAYING"] = "EN JEU", ["AWAY"] = "ABSENT", ["WAITING"] = "EN ATTENTE",
+    ["Runs"] = "Parties", ["Status"] = "État", ["Run"] = "Partie", ["You"] = "Vous", ["Players"] = "Joueurs", ["%s: %s"] = "%s : %s",
+}
+local ES_UI = {
+    ["You give"] = "Das", ["You get"] = "Recibes", ["Your run"] = "Tu partida", ["%s's run"] = "Partida de %s",
+    ["Ante"] = "Apuesta", ["Money"] = "Dinero", ["Deck"] = "Baraja", ["Jokers"] = "Comodines", ["Consumables"] = "Consumibles",
+    ["Vouchers"] = "Vales", ["Hand levels"] = "Niveles de mano", ["Tags"] = "Etiquetas", ["%d cards"] = "%d cartas",
+    ["READY"] = "LISTO", ["NOT READY"] = "NO LISTO", ["PLAYING"] = "JUGANDO", ["AWAY"] = "AUSENTE", ["WAITING"] = "ESPERANDO",
+    ["Runs"] = "Partidas", ["Status"] = "Estado", ["Run"] = "Partida", ["You"] = "Tú", ["Players"] = "Jugadores",
+}
+
+local function L(s)
+    local lang = G and G.SETTINGS and G.SETTINGS.language
+    local t = (lang == "fr" and FR_UI) or ((lang == "es_ES" or lang == "es_419") and ES_UI) or nil
+    if t and t[s] then return t[s] end
+    if mod_loc then
+        local ok, r = pcall(mod_loc, s)
+        if ok and r then return r end
+    end
+    return s
+end
+W.L = L
+W.LOC = {fr = FR, es = ES, fr_ui = FR_UI, es_ui = ES_UI}
+
+W.PLAYER_KEYS = {
+    "mp_lives", "mp_opponent_panel", "mp_opponent_lives", "mp_opponent", "mp_opponent_blind_ready",
+    "mp_custom_stats", "mp_opp_stats", "mp_match_wins", "mp_boss_wins", "mp_won_from_one_life",
+    "mp_won_without_life_loss", "mp_untouchable_flag", "mp_pvp_results_seen", "mp_run_claimed",
+    "mp_last_daily", "mp_settings", "mp_mode", "mp_seed", "bom_room_code",
+    "mp_grudge_lives", "mp_blind_ready", "mp_blind_ready_text", "mp_blind_loss_pending", "mp_boss_result_pending",
+    "mp_round_lost", "mp_in_boss_blind", "mp_pvp_skipped", "bom_sabotages_used", "bom_quick_match", "mp_searching",
+    "ostats_t", "ostats_done", "ostats_won", "ach_traps_sent", "mpm_lives_seen",
+}
+
+local S = {done = 0, ante = 0, out = nil, waiting = false, opp_ready = false, opp_sent = false, loading = false, history = {}, need_applied = nil,
+    ready = false, v2 = false, opp_facts = nil, both_at = nil, go = nil, go_at = nil, held = nil, mine_out = nil}
+W.S = S
+W.on_log = nil
+
+local function match() return g("bom_match") end
+local function core() return g("bom_core") end
+local function playing_back()
+    local PB = g("bom_playback")
+    return PB and PB.active and PB.active() or false
+end
+
+function W.party_swap_settings(s)
+    return type(s) == "table" and s.party_swap == true and (s.party_kind or "br") == "br"
+end
+
+function W.party_on()
+    local P = g("bom_party")
+    if not (P and P.active and P.active()) then return false end
+    local M = match()
+    return W.party_swap_settings(M and M.get_settings and M.get_settings() or nil)
+end
+
+function W.active()
+    local M = match()
+    if not (G and G.GAME and G.GAME.multiplayer and M and M.get_mode) then return false end
+    local P = g("bom_party")
+    if P and P.active and P.active() then return W.party_on() end
+    return M.get_mode() == W.KEY
+end
+
+local function in_live_match()
+    local M = match()
+    if not M then return false end
+    local ok, r = pcall(function() return M.is_in_match() and not M.is_match_over() end)
+    return ok and r or false
+end
+
+local function opp_name()
+    local M = match()
+    local st = M and M.get_state and M.get_state() or {}
+    return st.opp_name or L("your opponent")
+end
+
+local function hash(str)
+    local h = 2166136261
+    for i = 1, #str do h = (h * 31 + str:byte(i)) % 4294967296 end
+    return string.format("%08x%06x", h, #str % 16777216)
+end
+W.hash = hash
+
+local function log(o)
+    S.history[#S.history + 1] = o
+    if mp_log and mp_log.info then pcall(mp_log.info, "BOM_SWAP", "%s round=%s hash=%s facts=%s", tostring(o.dir), tostring(o.round), tostring(o.hash), tostring(o.sig)) end
+    if W.on_log then pcall(W.on_log, o) end
+end
+
+local function sorted_keys(t)
+    local out = {}
+    for k, v in pairs(t or {}) do if v then out[#out + 1] = tostring(k) end end
+    table.sort(out)
+    return table.concat(out, ",")
+end
+
+local function area_keys(area)
+    local out = {}
+    for _, c in ipairs(area and area.cards or {}) do
+        local k = c.config and c.config.center and c.config.center.key or "?"
+        if c.edition and c.edition.type then k = k .. ":" .. c.edition.type end
+        out[#out + 1] = k
+    end
+    return table.concat(out, ",")
+end
+
+function W.facts()
+    local gm = G and G.GAME
+    if not gm then return {} end
+    local levels = {}
+    for name, h in pairs(gm.hands or {}) do levels[#levels + 1] = name .. "=" .. tostring(h.level) end
+    table.sort(levels)
+    local cards = {}
+    for _, c in ipairs(G.playing_cards or {}) do
+        local b = c.base or {}
+        cards[#cards + 1] = tostring(b.suit) .. tostring(b.id) .. tostring(c.config and c.config.center and c.config.center.key or "")
+    end
+    table.sort(cards)
+    local f = {
+        ante = gm.round_resets and gm.round_resets.ante,
+        round = gm.round,
+        dollars = gm.dollars,
+        back = gm.selected_back and gm.selected_back.name,
+        deck = #cards,
+        cards = hash(table.concat(cards, ",")),
+        jokers = area_keys(G.jokers),
+        consumables = area_keys(G.consumeables),
+        vouchers = sorted_keys(gm.used_vouchers),
+        hands = hash(table.concat(levels, ",")),
+        shop = area_keys(G.shop_jokers),
+    }
+    f.sig = hash(table.concat({tostring(f.ante), tostring(f.round), tostring(f.dollars), tostring(f.back), tostring(f.deck), f.cards, f.jokers, f.consumables, f.vouchers, f.hands}, "|"))
+    return f
+end
+
+local function plain(v, depth)
+    local t = type(v)
+    if t == "number" then return (v == v and v ~= math.huge and v ~= -math.huge) and v or nil end
+    if t == "string" or t == "boolean" then return v end
+    if t ~= "table" or depth > 3 or getmetatable(v) then return nil end
+    local o = {}
+    for k, x in pairs(v) do
+        if type(k) == "string" or type(k) == "number" then
+            local y = plain(x, depth + 1)
+            if y ~= nil then o[k] = y end
+        end
+    end
+    return o
+end
+
+local RANKS = {[10] = "T", [11] = "J", [12] = "Q", [13] = "K", [14] = "A"}
+
+local function ed_key(c)
+    local e = c.edition
+    if type(e) ~= "table" then return nil end
+    return e.key or (e.type and ("e_" .. e.type)) or nil
+end
+
+local function extra_num(key, ab)
+    local ex = ab.extra
+    if type(ex) == "number" then return ex end
+    if type(ex) ~= "table" then return nil end
+    if key == "j_rocket" then return tonumber(ex.dollars) end
+    if key == "j_turtle_bean" then return tonumber(ex.h_size) end
+    return tonumber(ex.chips)
+end
+
+local NUMS = {
+    {"hand_size", function() return G.hand and G.hand.config.card_limit end, function(v) if G.hand then G.hand.config.card_limit = v end end},
+    {"joker_slots", function() return G.jokers and G.jokers.config.card_limit end, function(v) if G.jokers then G.jokers.config.card_limit = v end end},
+    {"cons_slots", function() return G.consumeables and G.consumeables.config.card_limit end, function(v) if G.consumeables then G.consumeables.config.card_limit = v end end},
+    {"hands", function() return G.GAME.round_resets.hands end, function(v) G.GAME.round_resets.hands = v end},
+    {"discards", function() return G.GAME.round_resets.discards end, function(v) G.GAME.round_resets.discards = v end},
+    {"interest_cap", function() return G.GAME.interest_cap end, function(v) G.GAME.interest_cap = v end},
+    {"discount", function() return G.GAME.discount_percent end, function(v) G.GAME.discount_percent = v end},
+    {"joker_max", function() return G.GAME.shop and G.GAME.shop.joker_max end, function(v) if G.GAME.shop then G.GAME.shop.joker_max = v end end},
+    {"tarot_rate", function() return G.GAME.tarot_rate end, function(v) G.GAME.tarot_rate = v end},
+    {"planet_rate", function() return G.GAME.planet_rate end, function(v) G.GAME.planet_rate = v end},
+    {"edition_rate", function() return G.GAME.edition_rate end, function(v) G.GAME.edition_rate = v end},
+    {"playing_card_rate", function() return G.GAME.playing_card_rate end, function(v) G.GAME.playing_card_rate = v end},
+    {"base_reroll_cost", function() return G.GAME.base_reroll_cost end, function(v) G.GAME.base_reroll_cost = v end},
+}
+
+function W.describe()
+    local gm = G and G.GAME
+    if not gm then return nil end
+    local rr = gm.round_resets or {}
+    local r = {v = 1, owner = tostring(W.owner()):sub(1, 40), dollars = tonumber(gm.dollars) or 0, ante = tonumber(rr.ante) or 0,
+        jokers = {}, cons = {}, cards = {}, vouchers = {}, levels = {}, tags = {}}
+    for _, p in ipairs(NUMS) do
+        local ok, v = pcall(p[2])
+        if ok then r[p[1]] = tonumber(v) end
+    end
+    for _, c in ipairs(G.jokers and G.jokers.cards or {}) do
+        local ab = c.ability or {}
+        local key = c.config and c.config.center and c.config.center.key
+        if key then
+            r.jokers[#r.jokers + 1] = {k = key, ed = ed_key(c), et = ab.eternal or nil, pe = ab.perishable and tonumber(ab.perish_tally) or nil,
+                re = ab.rental or nil, m = tonumber(ab.mult), x = tonumber(ab.x_mult), ex = extra_num(key, ab), ev = tonumber(ab.extra_value), ab = plain(ab, 0)}
+        end
+    end
+    for _, c in ipairs(G.consumeables and G.consumeables.cards or {}) do
+        local key = c.config and c.config.center and c.config.center.key
+        if key then r.cons[#r.cons + 1] = {k = key, ed = ed_key(c)} end
+    end
+    for _, c in ipairs(G.playing_cards or {}) do
+        local b = c.base or {}
+        local id = tonumber(b.id)
+        if b.suit and id then
+            local center = c.config and c.config.center and c.config.center.key
+            r.cards[#r.cards + 1] = {f = tostring(b.suit):sub(1, 1) .. "_" .. (RANKS[id] or tostring(id)), e = center ~= "c_base" and center or nil,
+                ed = ed_key(c), s = c.seal or nil, b = c.ability and tonumber(c.ability.perma_bonus) ~= 0 and tonumber(c.ability.perma_bonus) or nil}
+        end
+    end
+    for k, v in pairs(gm.used_vouchers or {}) do if v then r.vouchers[#r.vouchers + 1] = tostring(k) end end
+    table.sort(r.vouchers)
+    for name, h in pairs(gm.hands or {}) do r.levels[name] = {l = tonumber(h.level) or 1, p = tonumber(h.played) or 0} end
+    for _, t in ipairs(gm.tags or {}) do if t.key then r.tags[#r.tags + 1] = t.key end end
+    return r
+end
+
+local function edition_of(key)
+    if type(key) ~= "string" or key:sub(1, 2) ~= "e_" then return nil end
+    return {[key:sub(3)] = true}
+end
+
+function W.apply_run(r)
+    if type(r) ~= "table" or not (G and G.GAME) then return false end
+    local P = G.P_CENTERS or {}
+    for i = #(G.jokers and G.jokers.cards or {}), 1, -1 do G.jokers.cards[i]:remove() end
+    for _, j in ipairs(type(r.jokers) == "table" and r.jokers or {}) do
+        if type(j) == "table" and P[j.k] then
+            local c = Card(G.jokers.T.x, G.jokers.T.y, G.CARD_W, G.CARD_H, nil, P[j.k], {bypass_discovery_center = true, discover = true, bypass_back = G.GAME.selected_back and G.GAME.selected_back.pos})
+            if type(j.ab) == "table" then
+                for k, v in pairs(j.ab) do if c.ability[k] == nil or type(c.ability[k]) == type(v) then c.ability[k] = v end end
+            end
+            if tonumber(j.m) then c.ability.mult = tonumber(j.m) end
+            if tonumber(j.x) then c.ability.x_mult = tonumber(j.x) end
+            if tonumber(j.ev) then c.ability.extra_value = tonumber(j.ev) end
+            if tonumber(j.ex) then
+                local ex = c.ability.extra
+                if type(ex) == "number" then c.ability.extra = tonumber(j.ex)
+                elseif type(ex) == "table" then
+                    if j.k == "j_rocket" then ex.dollars = tonumber(j.ex)
+                    elseif j.k == "j_turtle_bean" then ex.h_size = tonumber(j.ex)
+                    elseif ex.chips ~= nil then ex.chips = tonumber(j.ex) end
+                end
+            end
+            if j.ed then c:set_edition(edition_of(j.ed), true, true) end
+            if j.et then c:set_eternal(true) end
+            if tonumber(j.pe) then c:set_perishable(true) c.ability.perish_tally = tonumber(j.pe) end
+            if j.re then c:set_rental(true) end
+            c:add_to_deck()
+            G.jokers:emplace(c)
+            if c.set_cost then c:set_cost() end
+        end
+    end
+    for i = #(G.consumeables and G.consumeables.cards or {}), 1, -1 do G.consumeables.cards[i]:remove() end
+    for _, it in ipairs(type(r.cons) == "table" and r.cons or {}) do
+        local ctr = type(it) == "table" and P[it.k]
+        if ctr and ctr.set then
+            local c = Card(G.consumeables.T.x, G.consumeables.T.y, G.CARD_W, G.CARD_H, nil, ctr, {bypass_discovery_center = true, discover = true, bypass_back = G.GAME.selected_back and G.GAME.selected_back.pos})
+            if it.ed then c:set_edition(edition_of(it.ed), true, true) end
+            c:add_to_deck()
+            G.consumeables:emplace(c)
+        end
+    end
+    if type(r.cards) == "table" and #r.cards > 0 then
+        local old = {}
+        for i, c in ipairs(G.playing_cards or {}) do old[i] = c end
+        for _, c in ipairs(old) do c:remove() end
+        for _, e in ipairs(r.cards) do
+            local front = type(e) == "table" and G.P_CARDS[e.f]
+            if front then
+                local c = create_playing_card({front = front, center = (e.e and P[e.e]) or G.P_CENTERS.c_base}, G.deck, true, true)
+                if e.ed then c:set_edition(edition_of(e.ed), true, true) end
+                if e.s then c:set_seal(e.s, true, true) end
+                if tonumber(e.b) then c.ability.perma_bonus = tonumber(e.b) end
+            end
+        end
+    end
+    if type(r.vouchers) == "table" then
+        G.GAME.used_vouchers = {}
+        for _, k in ipairs(r.vouchers) do if type(k) == "string" then G.GAME.used_vouchers[k] = true end end
+    end
+    if type(r.levels) == "table" then
+        for name, h in pairs(r.levels) do
+            local hand = G.GAME.hands[name]
+            if hand and type(h) == "table" and tonumber(h.l) then
+                hand.level = math.max(0, tonumber(h.l))
+                hand.chips = math.max(hand.s_chips + hand.l_chips * (hand.level - 1), 0)
+                hand.mult = math.max(hand.s_mult + hand.l_mult * (hand.level - 1), 1)
+                hand.played = tonumber(h.p) or hand.played
+            end
+        end
+    end
+    if type(r.tags) == "table" then
+        for i = #(G.GAME.tags or {}), 1, -1 do pcall(function() G.GAME.tags[i]:remove() end) end
+        for _, k in ipairs(r.tags) do
+            if G.P_TAGS and G.P_TAGS[k] then pcall(add_tag, Tag(k)) end
+        end
+    end
+    for _, p in ipairs(NUMS) do
+        local v = tonumber(r[p[1]])
+        if v then pcall(p[3], v) end
+    end
+    if tonumber(r.dollars) then G.GAME.dollars = tonumber(r.dollars) end
+    if type(r.owner) == "string" then G.GAME.bom_sw_owner = r.owner end
+    return true
+end
+
+function W.run_diff(a, b)
+    local out = {}
+    local function cmp(name, x, y)
+        if tostring(x) ~= tostring(y) then out[#out + 1] = name .. " " .. tostring(x) .. " / " .. tostring(y) end
+    end
+    local function keys(list, f)
+        local t = {}
+        for _, e in ipairs(type(list) == "table" and list or {}) do t[#t + 1] = f(e) end
+        table.sort(t)
+        return table.concat(t, ",")
+    end
+    cmp("dollars", a.dollars, b.dollars)
+    for _, p in ipairs(NUMS) do if a[p[1]] ~= nil then cmp(p[1], a[p[1]], b[p[1]]) end end
+    local function jk(e) return type(e) == "table" and table.concat({tostring(e.k), tostring(e.ed), tostring(e.et and true), tostring(e.pe), tostring(e.re and true)}, "|") or "?" end
+    cmp("jokers", keys(a.jokers, jk), keys(b.jokers, jk))
+    local function ck(e) return type(e) == "table" and (tostring(e.k) .. "|" .. tostring(e.ed)) or "?" end
+    cmp("cons", keys(a.cons, ck), keys(b.cons, ck))
+    local function pk(e) return type(e) == "table" and table.concat({tostring(e.f), tostring(e.e), tostring(e.ed), tostring(e.s), tostring(e.b or 0)}, "|") or "?" end
+    cmp("cards", keys(a.cards, pk), keys(b.cards, pk))
+    cmp("vouchers", keys(a.vouchers, tostring), keys(b.vouchers, tostring))
+    cmp("tags", keys(a.tags, tostring), keys(b.tags, tostring))
+    for name, h in pairs(type(a.levels) == "table" and a.levels or {}) do
+        local o = type(b.levels) == "table" and b.levels[name]
+        cmp("level " .. name, type(h) == "table" and h.l, type(o) == "table" and o.l)
+    end
+    cmp("owner", a.owner, b.owner)
+    return out
+end
+
+local function opp_is_bot()
+    local M = match()
+    local st = M and M.get_state and M.get_state() or {}
+    return st.opp_bot == true or (type(st.opp_profile) == "table" and st.opp_profile.is_bot == true)
+end
+W.opp_is_bot = opp_is_bot
+
+local function post_boss_shop()
+    if not (G and G.STATE == G.STATES.SHOP and G.GAME and G.GAME.round_resets) then return false end
+    local rr = G.GAME.round_resets
+    local bs = rr.blind_states or {}
+    if (tonumber(rr.ante) or 0) < 2 then return false end
+    if bs.Small == "Defeated" or bs.Small == "Skipped" or bs.Big == "Defeated" or bs.Big == "Skipped" then return false end
+    return (tonumber(rr.ante) or 0) > (S.ante or 0)
+end
+
+local function pack(t)
+    return pcall(function()
+        local packed = STR_PACK(t)
+        local comp = love.data.compress("string", "deflate", packed, 1)
+        return love.data.encode("string", "base64", comp)
+    end)
+end
+
+local function unpack_run(data)
+    local ok, tbl = pcall(function()
+        local raw = love.data.decode("string", "base64", data)
+        local str = raw
+        if raw:sub(1, 6) ~= "return" then str = love.data.decompress("string", "deflate", raw) end
+        return STR_UNPACK(str)
+    end)
+    if ok and type(tbl) == "table" and type(tbl.GAME) == "table" and tbl.BLIND and tbl.BACK then return tbl end
+    return nil
+end
+
+W.pack = pack
+W.unpack_run = unpack_run
+
+local function send(msg)
+    local C = core()
+    if not (C and C.send) then return false end
+    local ok, r = pcall(C.send, msg, {raw = true})
+    return ok and r
+end
+
+local function now() return love and love.timer and love.timer.getTime() or os.clock() end
+
+local function my_name()
+    local M = match()
+    local st = M and M.get_state and M.get_state() or {}
+    return st.my_name or "?"
+end
+W.my_name = my_name
+
+function W.owner()
+    return G and G.GAME and G.GAME.bom_sw_owner or my_name()
+end
+
+local function count_keys(t)
+    local n = 0
+    for _, v in pairs(t or {}) do if v then n = n + 1 end end
+    return n
+end
+
+function W.summary()
+    local gm = G and G.GAME
+    if not gm then return {} end
+    local lv = 0
+    for _, h in pairs(gm.hands or {}) do lv = lv + math.max(0, (tonumber(h.level) or 1) - 1) end
+    local rr = gm.round_resets or {}
+    return {
+        owner = tostring(W.owner()):sub(1, 40), ante = tonumber(rr.ante) or 0, dollars = tonumber(gm.dollars) or 0,
+        deck = #(G.playing_cards or {}), jokers = #(G.jokers and G.jokers.cards or {}),
+        cons = #(G.consumeables and G.consumeables.cards or {}), vouchers = count_keys(gm.used_vouchers),
+        levels = lv, tags = #(gm.tags or {}),
+    }
+end
+
+function W.snapshot_table()
+    local areas = {}
+r 12 1455 %20%20%20%20 -
+l 22
+        if type(v) == "table" and v.is and v:is(CardArea) then
+            local ser = v:save()
+            if ser then areas[k] = ser end
+        end
+    end
+    local tags = {}
+    for k, v in ipairs(G.GAME.tags or {}) do
+        if type(v) == "table" and v.is and v:is(Tag) then
+            local ser = v:save()
+            if ser then tags[k] = ser end
+        end
+    end
+    for k, v in pairs({shop_jokers = G.load_shop_jokers, shop_booster = G.load_shop_booster, shop_vouchers = G.load_shop_vouchers}) do
+        if type(v) == "table" then areas[k] = v end
+    end
+    return recursive_table_cull{
+        cardAreas = areas, tags = tags, GAME = G.GAME, STATE = G.STATE,
+        BLIND = G.GAME.blind:save(), BACK = G.GAME.selected_back:save(), VERSION = G.VERSION,
+    }
+end
+
+local function flatten(t, prefix, out, depth)
+r 12 131 %20%20%20%20 -
+l 487
+        local path = prefix .. "." .. tostring(k)
+        if type(v) == "table" then
+            if depth < 16 then flatten(v, path, out, depth + 1) end
+        else
+            out[path] = tostring(v)
+        end
+    end
+    return out
+end
+W.flatten = flatten
+
+W.SKIP = {"STATE", "VERSION", "ACTION"}
+for _, k in ipairs(W.PLAYER_KEYS) do W.SKIP[#W.SKIP + 1] = "GAME." .. k end
+W.SKIP[#W.SKIP + 1] = "GAME.bom_sw_owner"
+for _, k in ipairs({"GAME.run_timer.t", "GAME.tag_tally", "GAME.bo_sprp", "GAME.bo_sprp_n", "GAME.advisor_memory", "GAME.STOP_USE", "GAME.chips_text", "GAME.used_jokers.c_base"}) do W.SKIP[#W.SKIP + 1] = k end
+
+local function skipped(path)
+    if path:sub(1, 11) == ".cardAreas." and path:sub(-13) == ".playing_card" then return true end
+    for _, p in ipairs(W.SKIP) do
+        local q = "." .. p
+        if path:sub(1, #q) == q and (#path == #q or path:sub(#q + 1, #q + 1) == ".") then return true end
+    end
+    return false
+end
+
+function W.diff(a, b, limit)
+    local list, n = {}, 0
+    local function add(path, x, y)
+        n = n + 1
+        if #list < (limit or 12) then list[#list + 1] = path .. " " .. tostring(x) .. " / " .. tostring(y) end
+    end
+    for path, x in pairs(a) do
+        if not skipped(path) and b[path] ~= x then add(path, x, b[path]) end
+    end
+    for path, y in pairs(b) do
+        if not skipped(path) and a[path] == nil then add(path, nil, y) end
+    end
+    table.sort(list)
+    return n, list
+end
+
+local function body_cell(text, w, h, o)
+    o = o or {}
+    return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", maxw = w - 0.12, padding = 0}, nodes = {
+            {n = G.UIT.T, config = {text = tostring(text), scale = (o.scale or 0.36) * (W._k or 1), colour = o.colour or G.C.UI.TEXT_LIGHT, shadow = o.shadow}},
+        }},
+    }}
+end
+
+local function pill(text, colour, w, h)
+    return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = w - 0.3, minh = h - 0.1, r = 0.1, colour = colour, padding = 0.02}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", maxw = w - 0.45, padding = 0}, nodes = {
+                {n = G.UIT.T, config = {text = text, scale = 0.32 * (W._k or 1), colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+            }},
+        }},
+    }}
+end
+
+local function run_name(owner)
+    if owner == nil then return "?" end
+    if owner == my_name() then return L("Your run") end
+    return string.format(L("%s's run"), tostring(owner))
+end
+W.run_name = run_name
+
+local STATS = {
+    {key = "ante", label = "Ante"},
+    {key = "dollars", label = "Money", fmt = function(v) return "$" .. tostring(math.floor(v)) end, colour = "money"},
+    {key = "deck", label = "Deck", fmt = function(v) return string.format(L("%d cards"), v) end},
+    {key = "jokers", label = "Jokers"},
+    {key = "cons", label = "Consumables"},
+    {key = "vouchers", label = "Vouchers"},
+    {key = "levels", label = "Hand levels", fmt = function(v) return "+" .. tostring(v) end},
+    {key = "tags", label = "Tags"},
+}
+
+local function stat_text(st, f)
+    if type(f) ~= "table" or f[st.key] == nil then return "?" end
+    local v = tonumber(f[st.key]) or 0
+    return st.fmt and st.fmt(v) or tostring(v)
+end
+
+local function opp_away()
+    local Rj = g("bom_rejoin")
+    return Rj and Rj.opp_away ~= nil or false
+end
+
+function W.opp_sent()
+    return S.opp_sent == true
+end
+
+function W.opp_ready()
+    if S.go then return true end
+    if not S.opp_sent then return false end
+    return (not S.v2) or S.opp_ready == true
+end
+
+function W.phase()
+    if S.loading then return "load" end
+    if S.go then return "count" end
+    if S.waiting then return "wait" end
+    if W.box_open then return "prep" end
+    return "idle"
+end
+
+function W.auto_left()
+    if not (S.waiting and not S.ready and S.both_at) then return nil end
+    return math.max(0, math.ceil(W.AUTO_READY - (now() - S.both_at)))
+end
+
+function W.count_left()
+    if not S.go_at then return nil end
+    return math.max(1, math.ceil(W.COUNT - (now() - S.go_at)))
+end
+
+local function party_lines()
+    local pw = S.party_wait
+    local lines = {}
+    if not pw then lines[#lines + 1] = L("Waiting for the other players")
+    elseif #pw.waiting == 1 then lines[#lines + 1] = string.format(L("Waiting for %s to beat their boss"), pw.waiting[1])
+    elseif #pw.waiting > 1 then lines[#lines + 1] = string.format(L("Waiting for %d players to beat their boss"), #pw.waiting)
+    else lines[#lines + 1] = L("Trading runs") end
+    if pw and pw.total > 0 then lines[#lines + 1] = string.format(L("%d of %d ready"), pw.ready, pw.total) end
+    return lines
+end
+
+local function swap_body()
+    local UIK = g("UIK")
+    local port = UIK.portrait and UIK.portrait()
+    local touch = UIK.touch and UIK.touch()
+    local party = W.party_on()
+    local side = port and 2.7 or 4.4
+    local mid = port and 2.3 or 3.0
+    local gap = 0.12
+    W._k = port and 1.35 or (touch and 1.1 or 1)
+    local bh = port and 1.1 or (touch and 0.95 or 0.78)
+    local wide = touch and not port
+    local rh = port and 0.8 or (wide and 0.39 or 0.38)
+    local mine = S.mine_out or W.summary()
+    local theirs = S.opp_facts or (S.go and S.go.facts) or nil
+    local function column(cells, w, bg)
+        return {n = G.UIT.C, config = {align = "tm", minw = w, r = 0.12, colour = bg or G.C.CLEAR, padding = 0.02}, nodes = cells}
+    end
+    local function crow(node) return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {node}} end
+    local give, labels, get = {}, {}, {}
+    give[#give + 1] = crow(body_cell(L("You give"), side, rh + 0.08, {scale = 0.42, colour = G.C.GOLD, shadow = true}))
+    labels[#labels + 1] = crow(body_cell("", mid, rh + 0.08))
+    get[#get + 1] = crow(body_cell(L("You get"), side, rh + 0.08, {scale = 0.42, colour = G.C.GOLD, shadow = true}))
+    give[#give + 1] = crow(body_cell(run_name(mine.owner), side, rh, {scale = 0.34}))
+    labels[#labels + 1] = crow(body_cell(L("Run"), mid, rh, {scale = 0.32, colour = UIK.C.muted}))
+    local their_owner = theirs and theirs.owner or nil
+    if not their_owner and S.held and S.held.away then their_owner = S.held.away.owner end
+    get[#get + 1] = crow(body_cell(party and L("Not known yet") or (their_owner and run_name(their_owner) or string.format(L("%s's run"), opp_name())), side, rh, {scale = 0.34}))
+    for _, st in ipairs(STATS) do
+        local col = st.colour == "money" and G.C.MONEY or nil
+        give[#give + 1] = crow(body_cell(stat_text(st, mine), side, rh, {colour = col}))
+        labels[#labels + 1] = crow(body_cell(L(st.label), mid, rh, {scale = 0.32, colour = UIK.C.muted}))
+        get[#get + 1] = crow(body_cell(stat_text(st, theirs), side, rh, {colour = theirs and col or UIK.C.muted}))
+    end
+    local my_ok = S.ready or S.go ~= nil
+    local my_text = (W.phase() == "prep") and L("WAITING") or (my_ok and L("READY") or L("NOT READY"))
+    local my_col = (W.phase() == "prep") and G.C.UI.BACKGROUND_INACTIVE or (my_ok and G.C.GREEN or G.C.RED)
+    local op_text, op_col
+    local pw = S.party_wait
+    if party and S.go then op_text, op_col = L("READY"), G.C.GREEN
+    elseif party and pw and #pw.waiting > 0 then op_text, op_col = L("PLAYING"), G.C.ORANGE
+    elseif party and pw and S.v2 and pw.total > 0 then
+        op_text = string.format("%d/%d ", pw.pressed or 0, pw.total) .. L("READY")
+        op_col = (pw.pressed or 0) >= pw.total and G.C.GREEN or G.C.RED
+    elseif party then op_text, op_col = L("WAITING"), G.C.UI.BACKGROUND_INACTIVE
+    elseif opp_away() and not S.go then op_text, op_col = L("AWAY"), G.C.ORANGE
+    elseif not W.opp_sent() and not S.go then op_text, op_col = L("PLAYING"), G.C.ORANGE
+    elseif W.opp_ready() then op_text, op_col = L("READY"), G.C.GREEN
+    else op_text, op_col = L("NOT READY"), G.C.RED end
+    give[#give + 1] = crow(pill(string.format(L("%s: %s"), L("You"), my_text), my_col, side, rh + 0.14))
+    labels[#labels + 1] = crow(body_cell(L("Status"), mid, rh + 0.14, {scale = 0.32, colour = UIK.C.muted}))
+    get[#get + 1] = crow(pill(string.format(L("%s: %s"), party and L("Runs") or opp_name(), op_text), op_col, side, rh + 0.14))
+    local tbl = {n = G.UIT.R, config = {align = "cm", padding = 0, id = "bom_swap_tbl"}, nodes = {
+        column(give, side, UIK.C.section), {n = G.UIT.C, config = {minw = gap}}, column(labels, mid), {n = G.UIT.C, config = {minw = gap}}, column(get, side, UIK.C.section),
+    }}
+    local bw = side
+    local block_h = wide and (bh + 0.1) or (bh + 0.44)
+    local act = {}
+    local note
+    local ph = W.phase()
+    if ph == "count" or ph == "load" then
+        local lab = L("Swapping runs in")
+        local lw = math.min(bw * 1.6, (UIK.text_w and UIK.text_w(lab, 0.42 * W._k) or #lab * 0.13) + 0.3)
+        act[#act + 1] = {n = G.UIT.R, config = {align = "cm", minh = block_h, padding = 0}, nodes = {
+            body_cell(lab, lw, block_h, {scale = 0.42, colour = UIK.C.text}),
+            body_cell(tostring(W.count_left() or 1), 1.0, block_h, {scale = 0.95, colour = G.C.GOLD, shadow = true}),
+        }}
+    elseif ph == "prep" then
+        note = L("Getting your run ready")
+    elseif party and not S.v2 then
+        note = table.concat(party_lines(), "  ")
+    else
+        act[#act + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            UIK.button{label = S.ready and L("WAITING") or L("READY"), button = "bom_swap_ready", colour = UIK.C.ok, disabled = S.ready, w = bw, h = bh, scale = port and 0.6 or nil, id = "bom_swap_ready_btn"},
+        }}
+        if party then
+            if pw and #pw.waiting > 0 then note = party_lines()[1]
+            elseif W.auto_left() then note = string.format(L("Auto ready in %d s"), W.auto_left()) end
+        elseif opp_away() then note = string.format(L("%s is away, waiting for them to come back"), opp_name())
+        elseif not W.opp_sent() then note = string.format(L("Waiting for %s to beat their boss"), opp_name())
+        elseif W.auto_left() then note = string.format(L("Auto ready in %d s"), W.auto_left())
+        elseif S.ready then note = string.format(L("%s is ready, trading runs"), opp_name()) end
+        if S.ready and not W.opp_ready() and W.opp_sent() then note = nil end
+    end
+    local side_w = (2 * side + mid + 2 * gap - bw) / 2
+    if wide and #act == 1 and ph ~= "count" and ph ~= "load" then
+        local row = act[1]
+        local nc = {n = G.UIT.C, config = {minw = side_w, minh = bh}}
+        if note then
+            local sc = 0.32 * W._k
+            local parts = {note}
+            if UIK.text_w and UIK.text_w(note, sc) > side_w - 0.2 then
+                local mid_i, best = nil, nil
+                for i in note:gmatch("() ") do
+                    local d = math.abs(i - #note / 2)
+                    if not best or d < best then mid_i, best = i, d end
+                end
+                if mid_i then parts = {note:sub(1, mid_i - 1), note:sub(mid_i + 1)} end
+            end
+            local lines = {}
+            for _, l in ipairs(parts) do lines[#lines + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {body_cell(l, side_w, 0.36, {scale = 0.32, colour = UIK.C.muted})}} end
+            nc = {n = G.UIT.C, config = {align = "cm", minw = side_w, minh = bh, padding = 0}, nodes = lines}
+        end
+        row.nodes = {{n = G.UIT.C, config = {minw = side_w, minh = bh}}, {n = G.UIT.C, config = {align = "cm", minh = bh, padding = 0}, nodes = {row.nodes[1]}}, nc}
+        note = nil
+    end
+    if note then act[#act + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {body_cell(note, bw * 2.4, #act > 0 and 0.42 or block_h, {scale = 0.32, colour = UIK.C.muted})}} end
+    local act_h = 0
+    for _, r in ipairs(act) do act_h = act_h + ((r.nodes[1] and r.nodes[1].config and r.nodes[1].config.minh) or bh) end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {body_cell(L("Everything changes hands except lives"), UIK.W - 0.4, 0.42, {scale = 0.34, colour = UIK.C.muted})}},
+            {n = G.UIT.R, config = {minh = 0.1}},
+            tbl,
+            {n = G.UIT.R, config = {minh = 0.08}},
+            {n = G.UIT.R, config = {align = "cm", minh = math.max(block_h, act_h), padding = 0, id = "bom_swap_act"}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = act}}},
+        }},
+    }}
+end
+W.swap_body = swap_body
+
+local function run_card(title, holder, f, sub, w, rh)
+    local UIK = g("UIK")
+    local rows = {}
+    local function r(node) rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {node}} end
+    r(body_cell(title, w, rh + 0.08, {scale = 0.42, colour = G.C.GOLD, shadow = true}))
+    r(body_cell(holder, w, rh, {scale = 0.34}))
+    r(body_cell(sub, w, rh, {scale = 0.3, colour = UIK.C.muted}))
+    for _, st in ipairs(STATS) do
+        r({n = G.UIT.C, config = {align = "cm", minw = w, minh = rh, padding = 0}, nodes = {
+            body_cell(L(st.label), w * 0.55, rh, {scale = 0.32, colour = UIK.C.muted}),
+            body_cell(stat_text(st, f), w * 0.45, rh, {colour = st.colour == "money" and f and G.C.MONEY or nil}),
+        }})
+    end
+    return {n = G.UIT.C, config = {align = "tm", minw = w, r = 0.12, colour = UIK.C.section, padding = 0.04}, nodes = rows}
+end
+
+function W.runs_tab()
+    local UIK = g("UIK")
+    local port = UIK.portrait and UIK.portrait()
+    local touch = UIK.touch and UIK.touch()
+    W._k = port and 1.15 or 1
+    local rh = port and 0.5 or (touch and 0.42 or 0.36)
+    local w = port and (UIK.W - 0.2) or 5.6
+    local held = W.summary()
+    local cards = {}
+    cards[#cards + 1] = run_card(run_name(held.owner), L("Held by you"), held, L("Live"), w, rh)
+    local live = S.opp_facts or (S.go and S.go.facts) or nil
+    local away_f, away_title, away_sub
+    if S.mine_out then
+        away_f = live
+        away_title = live and live.owner and run_name(live.owner) or string.format(L("%s's run"), opp_name())
+        away_sub = live and L("Live") or L("Not known yet")
+    elseif S.held and S.held.away then
+        away_f = S.held.away
+        away_title = run_name(S.held.away.owner)
+        away_sub = string.format(L("As of swap %d"), S.held.round or S.done or 0)
+    else
+        away_title = string.format(L("%s's run"), opp_name())
+        away_sub = L("Not known yet")
+    end
+    cards[#cards + 1] = run_card(away_title, string.format(L("Held by %s"), opp_name()), away_f, away_sub, w, rh)
+    local lay
+    if port then
+        lay = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {cards[1]}},
+            {n = G.UIT.R, config = {minh = 0.15}},
+            {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {cards[2]}},
+        }}}}
+    else
+        lay = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {cards[1], {n = G.UIT.C, config = {minw = 0.3}}, cards[2]}}
+    end
+    local ph = W.phase()
+    local foot = ph == "count" or ph == "load" or ph == "wait" or ph == "prep"
+    local line1 = string.format(L("Swaps done: %d"), S.done or 0)
+    local line2 = foot and L("Swapping now") or L("Next swap after the next boss blind")
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {body_cell(L("Who holds which run"), UIK.W - 0.4, 0.42, {scale = 0.36, colour = UIK.C.text})}},
+        {n = G.UIT.R, config = {minh = 0.1}},
+        lay,
+        {n = G.UIT.R, config = {minh = 0.12}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {body_cell(line1 .. "   " .. line2, UIK.W - 0.4, 0.4, {scale = 0.32, colour = UIK.C.muted})}},
+    }}}}
+end
+
+function W.window_def()
+    local UIK = g("UIK")
+    local tabs = {{key = "swap", label = string.format(L("Swap %d"), (S.go and tonumber(S.go.round)) or ((S.done or 0) + 1)), build = swap_body}}
+    if not W.party_on() then tabs[#tabs + 1] = {key = "runs", label = L("Runs"), build = W.runs_tab} end
+    local UI = g("bom_ui")
+    if UI and UI.lobby_players_tab then tabs[#tabs + 1] = {key = "players", label = L("Players"), build = UI.lobby_players_tab} end
+    return UIK.window{id = "mp_swap", title = L("SWITCHEROO"), no_back = true, tabs = tabs}
+end
+
+local function sig()
+    return table.concat({W.phase(), tostring(S.ready), tostring(W.opp_sent()), tostring(W.opp_ready()), tostring(opp_away()),
+        tostring(W.auto_left()), tostring(W.count_left()), tostring(S.opp_facts ~= nil), tostring(S.party_wait and (S.party_wait.ready .. "/" .. #S.party_wait.waiting .. "/" .. tostring(S.party_wait.pressed)) or ""), tostring(S.v2)}, "|")
+end
+
+function W.cover(on)
+    if not on then
+        if W._cover then pcall(function() W._cover:remove() end) end
+        W._cover = nil
+        return
+    end
+    if W._cover and not W._cover.REMOVED then return end
+    local bg = G.C.BACKGROUND and G.C.BACKGROUND.D or G.C.BLACK
+    local w = math.max(G.ROOM.T.w, G.ROOM.T.h, G.TILE_W or 0) * 3
+    W._cover = UIBox{
+        definition = {n = G.UIT.ROOT, config = {align = "cm", padding = 0, colour = {bg[1] * 0.75, bg[2] * 0.75, bg[3] * 0.75, 1}, minw = w, minh = w}, nodes = {}},
+        config = {align = "cm", offset = {x = 0, y = 0}, major = G.ROOM_ATTACH, bond = "Strong"},
+    }
+    W._cover.attention_text = true
+    W._cover.states.collide.can = false
+end
+
+function W.show_wait()
+    local UIK = g("UIK")
+    if not (UIK and UIK.window and G.FUNCS and G.FUNCS.overlay_menu) then return end
+    G.FUNCS.bom_swap_ready = G.FUNCS.bom_swap_ready or function() W.press_ready() end
+    W.box_open = true
+    W.sig = sig()
+    G.FUNCS.overlay_menu{definition = W.window_def()}
+    pcall(W.cover, true)
+    local M = match()
+    if M and M.send_location and in_live_match() then pcall(M.send_location, "loc_swap") end
+end
+
+local function own_window()
+    local UIK = g("UIK")
+    return W.box_open and G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "mp_swap"
+end
+
+function W.refresh_wait(force)
+    local UIK = g("UIK")
+    if not own_window() then return end
+    local s = sig()
+    if not force and s == W.sig then return end
+    W.sig = s
+    pcall(UIK.refresh)
+end
+
+function W.hide_wait()
+    if own_window() and G.FUNCS.exit_overlay_menu then pcall(G.FUNCS.exit_overlay_menu) end
+    W.box_open = false    W.cover(false)
+end
+
+function W.pending()
+    if not W.active() or playing_back() or not in_live_match() then return false end
+    return S.waiting or S.loading or S.go ~= nil or W.box_open or post_boss_shop()
+end
+
+function W.busy()
+    return W.active() and (S.waiting or S.loading or S.go ~= nil) or false
+end
+
+function W.can_ready()
+    return W.active() and S.waiting and not S.ready and S.go == nil and (S.v2 or not W.party_on())
+end
+
+local function send_ready()
+    if S.v2 and S.out then send({type = "swap_ready", round = S.out.round}) end
+end
+
+function W.press_ready()
+    if not W.can_ready() then return false end
+    S.ready = true
+    log({dir = "ready", round = S.out and S.out.round, auto = W.auto_left() == 0 or nil})
+    send_ready()
+    pcall(play_sound, "button")
+    W.refresh_wait(true)
+    return true
+end
+
+local function submit()
+    if not G.culled_table then return false end
+    G.GAME.bom_sw_owner = G.GAME.bom_sw_owner or my_name()
+    if type(G.culled_table.GAME) == "table" then G.culled_table.GAME.bom_sw_owner = G.GAME.bom_sw_owner end
+    local ok, data = pack(G.culled_table)
+    if not ok or type(data) ~= "string" then
+        if mp_log then mp_log.error("BOM_SWAP", "pack failed: %s", tostring(data)) end
+        return false
+    end
+    local round = (S.done or 0) + 1
+    local f = W.facts()
+    S.mine_out = W.summary()
+    S.out = {round = round, data = data, hash = hash(data), ante = f.ante, facts = S.mine_out}
+    S.waiting, S.opp_ready, S.opp_sent, S.party_wait, S.ready, S.opp_facts, S.both_at = true, false, false, nil, false, nil, nil
+    S.ante = f.ante
+    if opp_is_bot() then
+        local okr, run = pcall(W.describe)
+        S.out.run = okr and run or nil
+    end
+    log({dir = "out", round = round, hash = S.out.hash, bytes = #data, sig = f.sig, facts = f, run = S.out.run and true or nil})
+    send({type = "swap_state", round = round, data = data, hash = S.out.hash, ante = f.ante, v = 2, facts = S.mine_out, run = S.out.run})
+    if not own_window() then W.show_wait() else W.refresh_wait(true) end
+    return true
+end
+
+local function resend()
+    if not S.out then return end
+    send({type = "swap_state", round = S.out.round, data = S.out.data, hash = S.out.hash, ante = S.out.ante, v = 2, facts = S.out.facts, run = S.out.run})
+    if S.ready then send_ready() end
+end
+
+local function keep_player_fields()
+    local kept = {}
+    for _, k in ipairs(W.PLAYER_KEYS) do kept[k] = G.GAME[k] end
+    if kept.mp_lives ~= nil then kept.mp_grudge_lives = kept.mp_lives end
+    return kept
+end
+
+local function finish_load(kept, d, from_pb)
+    if not (G and G.GAME) then return end
+    for k, v in pairs(kept or {}) do G.GAME[k] = v end
+    if type(d.bot_run) == "table" then
+        local okb, err = pcall(W.apply_run, d.bot_run)
+        if not okb and mp_log then mp_log.error("BOM_SWAP", "bot run did not apply: %s", tostring(err)) end
+    end
+    local M = match()
+    if M and M.apply_restored_game then
+        pcall(M.apply_restored_game, {code = kept and kept.bom_room_code or (M.get_state and M.get_state().room_code)})
+    end
+    if G.GAME.mp_lives ~= nil then G.GAME.mp_grudge_lives = G.GAME.mp_lives end
+    local H = g("bom_pvp_hud")
+    if H and H.patch_run_hud_for_mp then pcall(H.patch_run_hud_for_mp) end
+    local f = W.facts()
+    local rdiff
+    if type(d.bot_run) == "table" then
+        local okd, r = pcall(function() return W.run_diff(d.bot_run, W.describe()) end)
+        rdiff = okd and r or {"diff failed: " .. tostring(r)}
+    end
+    S.ante = f.ante or S.ante
+    S.loading = false
+    S.held = {round = d.round, away = S.mine_out, owner = G.GAME.bom_sw_owner}
+    S.mine_out, S.opp_facts, S.ready, S.both_at = nil, nil, false, nil
+    log({dir = "loaded", round = d.round, hash = d.hash, sig = f.sig, facts = f, playback = from_pb or nil, bot = d.bot_run and true or nil, owner = G.GAME.bom_sw_owner, sum = W.summary(), expect = d.facts, rdiff = rdiff and #rdiff or nil, rdiff_list = rdiff and table.concat(rdiff, "; "):sub(1, 600) or nil})
+    if W.verify_on and not d.bot_run then W.check(d.round, d.data) end
+    if not from_pb then send({type = "swap_applied", round = d.round}) end
+    if d.mine and d.mine == d.hash and not d.bot_run then return end
+    do
+        local owner = G.GAME.bom_sw_owner
+        local from = type(d.from) == "string" and d.from:sub(1, 40) or nil
+        local own = owner ~= nil and (owner == my_name() or (from ~= nil and owner ~= from and not W.party_on()))
+        local text = own and L("Your own run is back") or string.format(L("You now hold %s's run"), tostring(owner or d.from or opp_name()))
+        log({dir = "banner", round = d.round, own = own, owner = owner, from = from, me = my_name(), text = text, playback = from_pb or nil})
+        W.banner(text)
+    end
+end
+
+function W.drop_banner()
+    if W._banner then
+        pcall(function() W._banner:remove() end)
+        W._banner = nil
+    end
+end
+
+function W.banner(text)
+    W.drop_banner()
+    local born = now()
+r 1 112 %20%20%20%20 -
+r 6 123 %20%20%20%20%20%20%20%20 -
+l 23
+        func = function()
+            if G.STAGE ~= G.STAGES.RUN then return true end
+            if (G.screenwipe or (G.STATE == G.STATES.SHOP and not G.shop)) and now() - born < 6 then return false end
+            local ok = pcall(function()
+                W.drop_banner()
+                local UIK = g("UIK")
+                local port = UIK and UIK.portrait and UIK.portrait()
+                local maxw = math.max(4, math.min(11, (G.ROOM and G.ROOM.T.w or 20) - (port and 5.2 or 1.6)))
+                local dt = DynaText({string = {text}, colours = {G.C.GOLD}, shadow = true, float = true, pop_in = 0, pop_in_rate = 20, scale = 0.75, maxw = maxw, silent = true})
+                W._banner = UIBox{
+                    definition = {n = G.UIT.ROOT, config = {align = "cm", padding = 0.25, r = 0.15, colour = {0, 0, 0, 0.72}, emboss = 0.06}, nodes = {
+                        {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+                            {n = G.UIT.T, config = {text = L("SWITCHEROO"), scale = 0.36, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+                        }},
+                        {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {{n = G.UIT.O, config = {object = dt}}}},
+                    }},
+                    config = {align = "cm", offset = {x = 0, y = W.banner_dy and W.banner_dy() or -0.6}, major = G.ROOM_ATTACH, instance_type = "POPUP"},
+                }
+                dt:pulse(0.5)
+                play_sound("holo1", 1.2, 0.7)
+            end)
+            if not ok then return true end
+            local box, at = W._banner, now()
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 6 123 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 40
+                func = function()
+                    if W._banner ~= box then return true end
+                    local t = now() - at
+                    if t > 3.5 and not box.popped then
+                        box.popped = true
+                        pcall(function() box.UIRoot.children[2].children[1].config.object:pop_out(4) end)
+                    end
+                    if t < 4.1 then return false end
+                    W.drop_banner()
+                    return true
+                end,
+            }))
+            return true
+        end,
+    }))
+end
+
+function W.load_run(d, from_pb)
+    local save = unpack_run(d.data)
+    if not save then
+        if mp_log then mp_log.error("BOM_SWAP", "swap_run %s: payload did not decode", tostring(d.round)) end
+        return false
+    end
+    local kept = keep_player_fields()
+    S.loading = true
+    S.waiting = false
+    S.go, S.go_at = nil, nil
+    W.hide_wait()
+    local Rj = g("bom_rejoin")
+    if Rj and not from_pb then
+        Rj.pending_table = nil
+        if Rj.pack and Rj.pack.job then Rj.pack.job.cancelled = true end
+    end
+    local M = match()
+    if M and M.set_starting_mp_run then M.set_starting_mp_run() end
+    if G.FUNCS.wipe_on then
+        pcall(G.FUNCS.wipe_on, {L("SWITCHEROO")}, true, 1.3, G.C.PURPLE)
+        pcall(play_sound, "whoosh_long", 1, 0.6)
+    end
+    G.FUNCS.start_run(nil, {savetext = save, mp_start = true})
+r 1 112 %20%20%20%20 -
+l 289
+        trigger = "immediate", no_delete = true,
+        func = function()
+            local ok, err = pcall(finish_load, kept, d, from_pb)
+            if not ok then
+                S.loading = false
+                if mp_log then mp_log.error("BOM_SWAP", "finish_load failed: %s", tostring(err)) end
+            end
+            return true
+        end,
+    }))
+    return true
+end
+
+local function start_load(d)
+    local RP = g("bom_replay")
+    if RP and RP.push then pcall(RP.push, {k = "sw", r = d.round, d = d.data, h = d.hash, from = d.from, br = d.bot_run, owner = d.bot_run and d.bot_run.owner or (d.facts and d.facts.owner) or d.from}) end
+    W.load_run(d)
+end
+
+local function on_swap_run(d)
+    if type(d) ~= "table" or not W.active() or playing_back() then return end
+    local round = tonumber(d.round) or 0
+    if round <= (S.done or 0) then
+        if S.need_applied and round == S.done then send({type = "swap_applied", round = round}) end
+        return
+    end
+    if type(d.data) ~= "string" then return end
+    local h = hash(d.data)
+    if d.hash and d.hash ~= h then
+        if mp_log then mp_log.error("BOM_SWAP", "swap_run %d hash %s does not match %s", round, tostring(h), tostring(d.hash)) end
+    end
+    S.done = round
+    S.out = nil
+    log({dir = "in", round = round, hash = h, bytes = #d.data, from = d.from, mine = d.mine})
+    local bot_run = type(d.bot_run) == "table" and d.bot_run or nil
+    if bot_run and bot_run.skip then
+        S.go, S.go_at, S.waiting, S.ready, S.mine_out, S.opp_facts = nil, nil, false, false, nil, nil
+        W.hide_wait()
+        log({dir = "skipped", round = round, from = d.from})
+        send({type = "swap_applied", round = round})
+        W.banner(L("No swap this time, you keep your run"))
+        return
+    end
+    local go = {round = round, data = d.data, hash = h, from = d.from, mine = d.party and d.mine or nil, bot_run = bot_run}
+    local save = unpack_run(d.data)
+    if bot_run then
+        local lv = 0
+        for _, hd in pairs(type(bot_run.levels) == "table" and bot_run.levels or {}) do lv = lv + math.max(0, (tonumber(type(hd) == "table" and hd.l) or 1) - 1) end
+        local function n(t) return type(t) == "table" and #t or 0 end
+        go.facts = S.opp_facts or {owner = bot_run.owner or d.from, ante = tonumber(bot_run.ante) or 0, dollars = tonumber(bot_run.dollars) or 0, deck = n(bot_run.cards),
+            jokers = n(bot_run.jokers), cons = n(bot_run.cons), vouchers = n(bot_run.vouchers), levels = lv, tags = n(bot_run.tags)}
+    elseif save and not S.opp_facts then
+        pcall(function()
+            local gm = save.GAME or {}
+            local areas = save.cardAreas or {}
+            local function n(a) return a and a.cards and #a.cards or 0 end
+            local lv = 0
+            for _, hd in pairs(gm.hands or {}) do lv = lv + math.max(0, (tonumber(hd.level) or 1) - 1) end
+            go.facts = {owner = gm.bom_sw_owner or d.from, ante = gm.round_resets and gm.round_resets.ante or 0, dollars = tonumber(gm.dollars) or 0,
+                deck = n(areas.deck) + n(areas.hand) + n(areas.discard) + n(areas.play), jokers = n(areas.jokers), cons = n(areas.consumeables),
+                vouchers = count_keys(gm.used_vouchers), levels = lv, tags = #(save.tags or {})}
+        end)
+    end
+    local secs = tonumber(d.countdown) or W.COUNT
+    if secs <= 0 or not G.STAGE or G.STAGE ~= G.STAGES.RUN then
+        start_load(go)
+        return
+    end
+    S.go, S.go_at, S.count_n = go, now() - (W.COUNT - math.min(W.COUNT, secs)), nil
+    S.waiting = false
+    local UIK = g("UIK")
+    if own_window() and UIK and UIK._win and UIK._win._cur ~= "swap" and UIK.open_tab then pcall(UIK.open_tab, "swap") end
+    if not own_window() then W.show_wait() else W.refresh_wait(true) end
+end
+
+local function on_swap_waiting(d)
+    if type(d) ~= "table" or not W.active() then return end
+    if d.party then
+        local names = {}
+        for _, n in ipairs(type(d.waiting) == "table" and d.waiting or {}) do names[#names + 1] = tostring(n) end
+        S.party_wait = {waiting = names, ready = tonumber(d.ready) or 0, total = tonumber(d.total) or 0, pressed = tonumber(d.pressed) or 0}
+        if type(d.notReady) == "table" then S.v2 = true end
+        if S.v2 and #names == 0 and not S.both_at then S.both_at = now() end
+    else
+        S.opp_sent = true
+        S.opp_ready = true
+    end
+    W.refresh_wait()
+end
+
+local function on_swap_status(d)
+    if type(d) ~= "table" or not W.active() or playing_back() then return end
+    if not (S.out and tonumber(d.round) == S.out.round) then return end
+    S.v2 = true
+    S.opp_sent = d.oppSent == true
+    S.opp_ready = d.oppReady == true
+    if type(d.oppFacts) == "table" then S.opp_facts = d.oppFacts end
+    if S.opp_sent and not S.both_at then S.both_at = now() end
+    if S.ready and d.ready ~= true then send_ready() end
+    W.refresh_wait()
+end
+
+local function on_rejoin(d)
+    if type(d) ~= "table" or playing_back() then return end
+    if not (d.mode == W.KEY or (d.party and type(d.swap) == "table")) then return end
+    local sw = type(d.swap) == "table" and d.swap or {}
+    local done = tonumber(sw.done) or 0
+    if S.waiting and S.out then
+        if done >= S.out.round then S.done = S.out.round - 1 end
+        log({dir = "rejoin", round = S.out.round, done = done, live = true})
+        resend()
+        return
+    end
+    if S.go then return end
+    S.done = done
+    S.ante = tonumber(sw.ante) or 0
+    S.waiting, S.loading, S.out = false, false, nil
+    if (tonumber(sw.applied) or 0) < done then S.need_applied = done end
+end
+
+function W.reset()
+    S.done, S.ante, S.out, S.waiting, S.opp_ready, S.opp_sent, S.loading, S.need_applied, S.party_wait = 0, 0, nil, false, false, false, false, nil, nil
+    S.ready, S.v2, S.opp_facts, S.both_at, S.go, S.go_at, S.held, S.mine_out = false, false, nil, nil, nil, nil, nil, nil
+    W.box_open = false
+end
+
+function W.check(round, data)
+    local ok, n, list, fields = pcall(function()
+        local sent = flatten(unpack_run(data), "", {}, 0)
+        local _, live = pack(W.snapshot_table())
+        local here = flatten(unpack_run(live), "", {}, 0)
+        local c = 0
+        for _ in pairs(sent) do c = c + 1 end
+        local n2, l2 = W.diff(sent, here, 12)
+        return n2, l2, c
+    end)
+    if not ok then
+        log({dir = "check", round = round, error = tostring(n)})
+        return nil
+    end
+    log({dir = "check", round = round, diffs = n, fields = fields, list = list})
+    if mp_log and mp_log.info then pcall(mp_log.info, "BOM_SWAP", "check round=%s fields=%s diffs=%s %s", tostring(round), tostring(fields), tostring(n), table.concat(list, "; ")) end
+    return n, list, fields
+end
+
+function W.update()
+    if W._cover and not own_window() then W.cover(false) end
+    if not W.active() or playing_back() then return end
+    if not in_live_match() then return end
+    local Rj = g("bom_rejoin")
+    if S.need_applied and G.STAGE == G.STAGES.RUN and G.GAME and not (Rj and Rj.restoring) and not G.screenwipe then
+        local f = W.facts()
+        log({dir = "loaded", round = S.need_applied, restored = true, sig = f.sig, facts = f})
+        send({type = "swap_applied", round = S.need_applied})
+        S.need_applied = nil
+    end
+    if S.loading then return end
+    if S.go then
+        if now() - S.go_at >= W.COUNT then
+            local d = S.go
+            S.go, S.go_at, S.count_n = nil, nil, nil
+            start_load(d)
+            return
+        end
+        local n = W.count_left()
+        if n ~= S.count_n then
+            S.count_n = n
+            pcall(play_sound, "highlight2", 0.85 + (W.COUNT - n) * 0.12, 0.8)
+        end
+        if not G.OVERLAY_MENU then W.show_wait() else W.refresh_wait() end
+        return
+    end
+    if S.waiting then
+        if not G.OVERLAY_MENU then W.show_wait() end
+        if W.auto_left() == 0 and W.can_ready() then W.press_ready() end
+        W.refresh_wait()
+        return
+    end
+    if W.hold or not (post_boss_shop() and not G.screenwipe) then
+        S.seen = nil
+        if W.box_open and not S.waiting then W.hide_wait() end
+        return
+    end
+    if not W.box_open or not G.OVERLAY_MENU then W.show_wait() end
+    if not G.shop then return end
+    local t = now()
+    S.seen = S.seen or t
+    if S.shop_saved or (t - S.seen > 1.5 and not (G.CONTROLLER and G.CONTROLLER.locked)) then
+        S.seen = nil
+        pcall(save_run)
+        S.shop_saved = nil
+        submit()
+    end
+end
+
+function W.on_save()
+    if not W.active() or playing_back() then return end
+    if G.STATE == G.STATES.SHOP and post_boss_shop() and not S.waiting and not S.loading then S.shop_saved = true end
+end
+
+function W.playback_entry(e)
+    local PB = g("bom_playback")
+    local st = PB and PB.state and PB.state()
+    if type(e.d) ~= "string" then return "swap" end
+    S.done = tonumber(e.r) or S.done
+    if st then st.restore_wait = true end
+    if not W.load_run({round = e.r, data = e.d, hash = e.h, from = e.from, bot_run = type(e.br) == "table" and e.br or nil}, true) then return "swap" end
+end
+
+local function register_mode()
+    local GM = g("bom_gamemodes")
+    if GM and GM.register and not (GM.registry and GM.registry[W.KEY]) then
+        local nem = GM.get and GM.get("nemesis") or {}
+        GM.register({
+            key = W.KEY, display_name = W.NAME,
+            description = "Rivals rules, but after every boss blind you and your opponent trade runs: deck, jokers, money, everything. Lose a PvP blind with the run you hold and you lose a life.",
+            rule = "Runs swap after every boss blind", order = 5, default_lives = 4,
+            is_blind_pvp = nem.is_blind_pvp, get_blinds_by_ante = nem.get_blinds_by_ante,
+            banned_jokers = nem.banned_jokers or {}, banned_consumables = nem.banned_consumables or {},
+            banned_vouchers = nem.banned_vouchers or {}, banned_enhancements = nem.banned_enhancements or {},
+            banned_tags = nem.banned_tags or {}, banned_blinds = nem.banned_blinds or {},
+        })
+    end
+    local RS = g("bom_rulesets")
+    if RS and RS.add_mode and RS.register and not (RS.MODE_BY_KEY and RS.MODE_BY_KEY[W.KEY]) then
+        RS.add_mode({key = W.KEY, name = W.NAME})
+        RS.register{id = "swap_classic", mode = W.KEY, family = "classic", name = "Classic", desc = "Runs swap after every boss, PvP bosses from ante 2",
+            settings = {starting_lives = 4, pvp_start_round = 2}}
+    end
+end
+
+local function hook_lobby()
+    local LS = g("bom_lobby_settings")
+    if not (LS and LS.DEFS) or W.lobby_done then return end
+    W.lobby_done = true
+    for _, d in ipairs(LS.DEFS) do
+        if d.key == "pvp_start_round" then
+            local show = d.show
+            d.show = function(s) return (s.mode or "nemesis") == W.KEY or (show == nil or show(s)) end
+        elseif d.key == "mode" then
+            local info = d.info_fn
+            d.info_fn = function(s)
+                if (s.mode or "nemesis") == W.KEY then return L("Runs swap after every boss blind") end
+                return info and info(s) or nil
+            end
+        end
+    end
+end
+
+local function hook_playback()
+    local PB = g("bom_playback")
+    if not (PB and PB.DO) or PB.DO.sw then return end
+    PB.DO.sw = W.playback_entry
+    if PB.LIFE_SKIP then PB.LIFE_SKIP.sw = true end
+end
+
+local function hook_save()
+    if W.save_hooked or type(save_run) ~= "function" then return end
+    W.save_hooked = true
+    local ref = save_run
+    save_run = function(...)
+        local r = ref(...)
+        pcall(W.on_save)
+        return r
+    end
+end
+
+function W.init()
+    W.verify_on = W.verify_on or (os.getenv and os.getenv("MP_TEST_ROLE") ~= nil) or false
+    if G and G.FUNCS then G.FUNCS.bom_swap_ready = function() W.press_ready() end end
+    if mod_loc_register then pcall(mod_loc_register, {fr = FR, es = ES}) end
+    pcall(register_mode)
+    pcall(hook_lobby)
+    pcall(hook_playback)
+    pcall(hook_save)
+    local E = g("bom_events")
+    if E and E.register then
+        E.register("swap_run", on_swap_run)
+        E.register("swap_waiting", on_swap_waiting)
+        E.register("swap_status", on_swap_status)
+        E.register("rejoin_ok", on_rejoin)
+        E.register("match_start", function() W.reset() end)
+        E.register("lobby_returned", function() W.reset() W.hide_wait() end)
+        E.register("match_ended", function() S.waiting, S.go, S.go_at = false, nil, nil W.hide_wait() end)
+        E.register("match_end", function() S.waiting, S.go, S.go_at = false, nil, nil W.hide_wait() end)
+    end
+end
+
+return W
+end

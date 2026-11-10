@@ -1,0 +1,509 @@
+BOP 1
+eol lf
+final 1
+base 8
+c 1
+s 60
+c 676
+l 11
+    -- =========================================
+    -- NEW MODDED CHALLENGES (21-30)
+    -- FEATURE: Reworked all challenges for balance and proper restrictions (Session 151)
+    -- =========================================
+    {
+        -- Bankruptcy: Zero economy run — no income, no interest, start broke
+        -- Strategy: rely entirely on free tags and voucher-less play
+        name = 'Bankruptcy',
+        id = 'c_bankruptcy_1',
+        rules = {
+            custom = {
+r 8 665 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 8 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 9 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 10 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 14
+            },
+            modifiers = {
+                {id = 'dollars', value = 0},
+                {id = 'discards', value = 3},
+            }
+        },
+        jokers = {
+            {id = 'j_delayed_grat', eternal = true},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+        },
+        restrictions = {
+            banned_cards = {
+r 8 92 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {id = 'j_golden'},
+r 8 95 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 5
+                {id = 'j_rocket'},
+                {id = 'j_business'},
+                {id = 'j_faceless'},
+                {id = 'j_ticket'},
+                {id = 'j_rough_gem'},
+r 8 90 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 91 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 19
+                {id = 'c_temperance'},
+            },
+            banned_tags = {
+                {id = 'tag_investment'},
+                {id = 'tag_economy'},
+            },
+            banned_other = {
+            }
+        }
+    },
+    {
+        -- The Gauntlet: Extreme precision — 2 hands, 1 discard, but strong joker support
+        -- FIX: Was 1 hand + 0 discards = impossible. Now 2 hands + 1 discard with Blueprint
+        name = 'The Gauntlet',
+        id = 'c_gauntlet_1',
+        rules = {
+            custom = {
+            },
+            modifiers = {
+r 8 560 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 561 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+                {id = 'joker_slots', value = 6},
+            }
+        },
+        jokers = {
+            {id = 'j_blueprint', eternal = true},
+            {id = 'j_joker'},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+        },
+        restrictions = {
+            banned_cards = {
+                {id = 'v_grabber'},
+r 8 581 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                {id = 'j_burglar'},
+                {id = 'j_merry_andy'},
+                {id = 'j_drunkard'},
+r 8 616 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 18
+            },
+            banned_tags = {
+            },
+            banned_other = {
+                {id = 'bl_needle', type = 'blind'},
+                {id = 'bl_water', type = 'blind'},
+            }
+        }
+    },
+    {
+        -- Tiny Hands: Small hand size but high mult joker to compensate
+        -- FIX: Was 3 hand size + no jokers = impossible first blind. Now starts with Fibonacci
+        name = 'Tiny Hands',
+        id = 'c_tiny_hands_1',
+        rules = {
+            custom = {
+            },
+            modifiers = {
+r 8 21 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+                {id = 'joker_slots', value = 6},
+                {id = 'discards', value = 4},
+            }
+        },
+        jokers = {
+            {id = 'j_fibonacci', eternal = true},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+        },
+        restrictions = {
+            banned_cards = {
+                {id = 'j_juggler'},
+r 8 306 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 616 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 30
+                {id = 'j_stuntman'},
+            },
+            banned_tags = {
+            },
+            banned_other = {
+                {id = 'bl_manacle', type = 'blind'},
+            }
+        }
+    },
+    {
+        -- Heavy Hitter: Face cards only, 3 hands, 0 discards — Baron provides consistent mult
+        name = 'Heavy Hitter',
+        id = 'c_heavy_hitter_1',
+        rules = {
+            custom = {
+            },
+            modifiers = {
+                {id = 'hands', value = 3},
+                {id = 'discards', value = 0},
+            }
+        },
+        jokers = {
+            {id = 'j_baron', eternal = true},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+            cards = {{s='D',r='J',},{s='D',r='Q',},{s='D',r='K',},{s='D',r='A',},{s='D',r='J',},{s='D',r='Q',},{s='D',r='K',},{s='D',r='A',},{s='C',r='J',},{s='C',r='Q',},{s='C',r='K',},{s='C',r='A',},{s='C',r='J',},{s='C',r='Q',},{s='C',r='K',},{s='C',r='A',},{s='H',r='J',},{s='H',r='Q',},{s='H',r='K',},{s='H',r='A',},{s='H',r='J',},{s='H',r='Q',},{s='H',r='K',},{s='H',r='A',},{s='S',r='J',},{s='S',r='Q',},{s='S',r='K',},{s='S',r='A',},{s='S',r='J',},{s='S',r='Q',},{s='S',r='K',},{s='S',r='A',}},
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 5
+        },
+        restrictions = {
+            banned_cards = {
+                {id = 'j_merry_andy'},
+                {id = 'j_drunkard'},
+r 8 507 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 508 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                }},
+                {id = 'c_familiar'},
+r 8 504 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                {id = 'c_grim'},
+            },
+            banned_tags = {
+r 8 518 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+            },
+            banned_other = {
+r 8 249 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+            }
+        }
+    },
+    {
+        -- Glass Cannon: All glass cards + Glass Joker, high risk high reward
+        -- Properly bans all enhancement-changing consumables that would remove glass
+        name = 'Glass Cannon',
+        id = 'c_glass_cannon_1',
+        rules = {
+            custom = {
+            },
+            modifiers = {
+r 8 560 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 11
+                {id = 'discards', value = 0},
+            }
+        },
+        jokers = {
+            {id = 'j_glass', eternal = true},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+r 8 45 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+        },
+        restrictions = {
+            banned_cards = {
+                {id = 'c_magician'},
+                {id = 'c_empress'},
+                {id = 'c_chariot'},
+r 8 499 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+                {id = 'c_devil'},
+                {id = 'c_tower'},
+                {id = 'c_lovers'},
+                {id = 'j_marble'},
+r 8 513 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {id = 'j_vampire'},
+r 8 512 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 459 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 15
+                {id = 'v_illusion'},
+            },
+            banned_tags = {
+            },
+            banned_other = {
+            }
+        }
+    },
+    {
+        -- The Collector: Fill 10 joker slots — all eternal, 0 discards, learn to adapt
+        -- Bans discard-related jokers since 0 discards
+        name = 'The Collector',
+        id = 'c_collector_1',
+        rules = {
+            custom = {
+r 8 287 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 14
+            },
+            modifiers = {
+                {id = 'joker_slots', value = 10},
+                {id = 'discards', value = 0},
+            }
+        },
+        jokers = {
+            {id = 'j_joker'},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 38
+        },
+        restrictions = {
+            banned_cards = {
+                {id = 'j_merry_andy'},
+                {id = 'j_drunkard'},
+                {id = 'j_castle'},
+                {id = 'j_mail'},
+                {id = 'j_trading'},
+                {id = 'j_faceless'},
+            },
+            banned_tags = {
+            },
+            banned_other = {
+                {id = 'bl_water', type = 'blind'},
+            }
+        }
+    },
+    {
+        -- Wildcard: All wild cards, Smeared Joker — flushes are trivial, but scoring is the challenge
+        -- Bans Vampire (would strip wild), bans enhancement tarots that overwrite wild
+        name = 'Wildcard',
+        id = 'c_wildcard_1',
+        rules = {
+            custom = {
+            },
+            modifiers = {
+                {id = 'hands', value = 4},
+            }
+        },
+        jokers = {
+            {id = 'j_smeared', eternal = true},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+            cards = {{s='D',r='2',e='m_wild',},{s='D',r='3',e='m_wild',},{s='D',r='4',e='m_wild',},{s='D',r='5',e='m_wild',},{s='D',r='6',e='m_wild',},{s='D',r='7',e='m_wild',},{s='D',r='8',e='m_wild',},{s='D',r='9',e='m_wild',},{s='D',r='T',e='m_wild',},{s='D',r='J',e='m_wild',},{s='D',r='Q',e='m_wild',},{s='D',r='K',e='m_wild',},{s='D',r='A',e='m_wild',},{s='C',r='2',e='m_wild',},{s='C',r='3',e='m_wild',},{s='C',r='4',e='m_wild',},{s='C',r='5',e='m_wild',},{s='C',r='6',e='m_wild',},{s='C',r='7',e='m_wild',},{s='C',r='8',e='m_wild',},{s='C',r='9',e='m_wild',},{s='C',r='T',e='m_wild',},{s='C',r='J',e='m_wild',},{s='C',r='Q',e='m_wild',},{s='C',r='K',e='m_wild',},{s='C',r='A',e='m_wild',},{s='H',r='2',e='m_wild',},{s='H',r='3',e='m_wild',},{s='H',r='4',e='m_wild',},{s='H',r='5',e='m_wild',},{s='H',r='6',e='m_wild',},{s='H',r='7',e='m_wild',},{s='H',r='8',e='m_wild',},{s='H',r='9',e='m_wild',},{s='H',r='T',e='m_wild',},{s='H',r='J',e='m_wild',},{s='H',r='Q',e='m_wild',},{s='H',r='K',e='m_wild',},{s='H',r='A',e='m_wild',},{s='S',r='2',e='m_wild',},{s='S',r='3',e='m_wild',},{s='S',r='4',e='m_wild',},{s='S',r='5',e='m_wild',},{s='S',r='6',e='m_wild',},{s='S',r='7',e='m_wild',},{s='S',r='8',e='m_wild',},{s='S',r='9',e='m_wild',},{s='S',r='T',e='m_wild',},{s='S',r='J',e='m_wild',},{s='S',r='Q',e='m_wild',},{s='S',r='K',e='m_wild',},{s='S',r='A',e='m_wild',},},
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+        },
+        restrictions = {
+            banned_cards = {
+                {id = 'j_vampire'},
+                {id = 'c_magician'},
+                {id = 'c_chariot'},
+r 8 499 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 19
+                {id = 'c_empress'},
+                {id = 'c_devil'},
+                {id = 'c_tower'},
+                {id = 'c_lovers'},
+            },
+            banned_tags = {
+            },
+            banned_other = {
+            }
+        }
+    },
+    {
+        -- Speed Run: Race to Ante 8 — lots of hands but tiny economy and forced fast play
+        -- FIX: Reworked from old nonsensical version. Now: 5 hands, 1 discard, no money generation,
+        -- forced to play efficiently with Splash joker (all cards count in scoring)
+        name = 'Speed Run',
+        id = 'c_speed_run_1',
+        rules = {
+            custom = {
+r 8 9 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 10 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 665 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+            },
+            modifiers = {
+                {id = 'hands', value = 5},
+r 8 16 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {id = 'dollars', value = 5},
+r 8 562 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 10
+            }
+        },
+        jokers = {
+            {id = 'j_splash', eternal = true},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+        },
+        restrictions = {
+            banned_cards = {
+                {id = 'v_grabber'},
+r 8 581 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                {id = 'j_burglar'},
+                {id = 'j_merry_andy'},
+r 8 616 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {id = 'j_drunkard'},
+r 8 90 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 91 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 92 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {id = 'j_golden'},
+r 8 95 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 17
+                {id = 'j_rocket'},
+            },
+            banned_tags = {
+                {id = 'tag_investment'},
+                {id = 'tag_economy'},
+            },
+            banned_other = {
+            }
+        }
+    },
+    {
+        -- The Alchemist: Consumables-only strategy, no shop jokers, rely on tarots/planets/spectrals
+        -- Properly bans all joker acquisition methods
+        name = 'The Alchemist',
+        id = 'c_alchemist_1',
+        rules = {
+            custom = {
+r 8 446 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 13
+            },
+            modifiers = {
+                {id = 'joker_slots', value = 2},
+                {id = 'consumable_slots', value = 5},
+            }
+        },
+        jokers = {
+        },
+        consumeables = {
+            {id = 'c_aura'},
+            {id = 'c_talisman'},
+        },
+        vouchers = {
+r 8 459 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+            {id = 'v_illusion'},
+            {id = 'v_omen_globe'},
+        },
+        deck = {
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+        },
+        restrictions = {
+            banned_cards = {
+r 8 716 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 717 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                }},
+r 8 712 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                {id = 'c_wraith'},
+                {id = 'c_soul'},
+r 8 715 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+            },
+            banned_tags = {
+r 8 727 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {id = 'tag_rare'},
+r 8 722 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                {id = 'tag_holo'},
+r 8 724 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 725 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+                {id = 'tag_foil'},
+                {id = 'tag_top_up'},
+            },
+            banned_other = {
+r 8 732 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+            }
+        }
+    },
+    {
+        -- Duality: Two suits only (Hearts + Spades), hand size 4 — must build flushes/pairs from limited pool
+        -- Bans standard packs that would add other suits, bans cards that add non-H/S cards
+        name = 'Duality',
+        id = 'c_duality_1',
+        rules = {
+            custom = {
+            },
+            modifiers = {
+                {id = 'hand_size', value = 6},
+                {id = 'discards', value = 5},
+            }
+        },
+        jokers = {
+            {id = 'j_hack', eternal = true},
+        },
+        consumeables = {
+        },
+        vouchers = {
+        },
+        deck = {
+            cards = {{s='H',r='2',},{s='H',r='3',},{s='H',r='4',},{s='H',r='5',},{s='H',r='6',},{s='H',r='7',},{s='H',r='8',},{s='H',r='9',},{s='H',r='T',},{s='H',r='J',},{s='H',r='Q',},{s='H',r='K',},{s='H',r='A',},{s='H',r='2',},{s='H',r='3',},{s='H',r='4',},{s='H',r='5',},{s='H',r='6',},{s='H',r='7',},{s='H',r='8',},{s='H',r='9',},{s='H',r='T',},{s='H',r='J',},{s='H',r='Q',},{s='H',r='K',},{s='H',r='A',},{s='S',r='2',},{s='S',r='3',},{s='S',r='4',},{s='S',r='5',},{s='S',r='6',},{s='S',r='7',},{s='S',r='8',},{s='S',r='9',},{s='S',r='T',},{s='S',r='J',},{s='S',r='Q',},{s='S',r='K',},{s='S',r='A',},{s='S',r='2',},{s='S',r='3',},{s='S',r='4',},{s='S',r='5',},{s='S',r='6',},{s='S',r='7',},{s='S',r='8',},{s='S',r='9',},{s='S',r='T',},{s='S',r='J',},{s='S',r='Q',},{s='S',r='K',},{s='S',r='A',},},
+r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+        },
+        restrictions = {
+            banned_cards = {
+r 8 507 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 8 508 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                }},
+                {id = 'j_marble'},
+                {id = 'c_familiar'},
+r 8 504 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                {id = 'c_grim'},
+            },
+            banned_tags = {
+r 8 518 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+            },
+            banned_other = {
+                {id = 'bl_goad', type = 'blind'},
+                {id = 'bl_club', type = 'blind'},
+                {id = 'bl_window', type = 'blind'},
+                {id = 'bl_head', type = 'blind'},
+            }
+        }
+    },
+c 1
+end

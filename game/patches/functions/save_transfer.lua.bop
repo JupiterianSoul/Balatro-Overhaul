@@ -1,0 +1,331 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 184
+SaveTransfer = SaveTransfer or {}
+local T = SaveTransfer
+local SIO = require("functions/save_io")
+
+T.EXPORTS, T.IMPORTS, T.BACKUPS = "exports", "imports", "backups"
+T.PENDING = "imports/pending.zip"
+T.KEEP = 10
+
+local fs = love.filesystem
+
+local function L(s)
+  return mod_loc and mod_loc(s) or s
+end
+
+local function phone()
+  local osn = love.system.getOS()
+  return osn == "Android" or osn == "iOS"
+end
+
+local function keep_settings(name)
+  return SIO.skip(name) and not SIO.SKIP_FILES[name]
+end
+
+function T.backup(tag)
+  local files = SIO.collect(fs, "", keep_settings)
+  if not next(files) then return true end
+  fs.createDirectory(T.BACKUPS)
+  local name = T.BACKUPS .. "/" .. tag .. "-" .. SIO.stamp() .. ".zip"
+  local ok = fs.write(name, SIO.zip(SIO.entries(files)))
+  SIO.prune(fs, T.BACKUPS, T.KEEP)
+  return ok and name or nil
+end
+
+function T.read(data)
+  local raw, err = SIO.unzip(data)
+  if not raw then return nil, err end
+  local files, nerr = SIO.normalize(raw)
+  if not files then return nil, nerr end
+  local ok, cerr = SIO.check(files)
+  if not ok then return nil, cerr end
+  return files
+end
+
+function T.apply_pending()
+  if not fs.getInfo(T.PENDING) then return end
+  local data = fs.read(T.PENDING)
+  local files, err = T.read(data or "")
+  if not files then
+    print("[SAVES] pending import refused: " .. tostring(err))
+    fs.remove(T.PENDING)
+    return nil, err
+  end
+  if not T.backup("before-import") then
+    print("[SAVES] pending import kept: backup failed")
+    return nil, "backup"
+  end
+  local n, werr = SIO.apply(fs, files)
+  fs.remove(T.PENDING)
+  print("[SAVES] imported " .. tostring(n) .. " files" .. (werr and (", failed at " .. tostring(werr)) or ""))
+  T.just_imported = n
+  return n, werr
+end
+
+function T.export()
+  local files = SIO.collect(fs, "")
+  if not SIO.check(files) then return nil, "empty" end
+  fs.createDirectory(T.EXPORTS)
+  local rel = T.EXPORTS .. "/Overhaul-save-" .. SIO.stamp() .. ".zip"
+  if not fs.write(rel, SIO.zip(SIO.entries(files))) then return nil, "write" end
+  return rel
+end
+
+function T.list()
+  local out = {}
+  for _, dir in ipairs({T.IMPORTS, T.EXPORTS, T.BACKUPS}) do
+    for _, name in ipairs(fs.getDirectoryItems(dir)) do
+      local rel = dir .. "/" .. name
+      local info = fs.getInfo(rel)
+      if rel ~= T.PENDING and name:lower():match("%.zip$") and info and info.type == "file" then
+        out[#out + 1] = {rel = rel, dir = dir, name = name, time = info.modtime or 0}
+      end
+    end
+  end
+  table.sort(out, function(a, b)
+    if a.time ~= b.time then return a.time > b.time end
+    return a.rel > b.rel
+  end)
+  return out
+end
+
+function T.summary(entry)
+  if entry.info == nil then
+    local files = T.read(fs.read(entry.rel) or "")
+    entry.info = files and SIO.describe(files) or false
+  end
+  if not entry.info then return L("Not a save file") end
+  local parts = {}
+  for _, p in ipairs(entry.info) do
+    parts[#parts + 1] = string.format(L("%s: %d wins"), (p.name and p.name ~= "") and p.name or ("P" .. p.slot), p.wins)
+  end
+  return #parts > 0 and table.concat(parts, "   ") or L("Empty save")
+end
+
+function T.dropped(file)
+  local name = file and file.getFilename and file:getFilename() or ""
+  if not name:lower():match("%.zip$") then return false end
+  local ok = pcall(function() file:open("r") end)
+  local data = ok and file:read() or nil
+  pcall(function() file:close() end)
+  if not data or not T.read(data) then return false end
+  fs.createDirectory(T.IMPORTS)
+  local base = name:gsub("\\", "/"):match("([^/]+)$") or "save.zip"
+  fs.write(T.IMPORTS .. "/" .. base, data)
+  T.open("import")
+  return true
+end
+
+function T.open_folder(dir)
+  fs.createDirectory(dir)
+  love.system.openURL("file://" .. fs.getSaveDirectory() .. "/" .. dir)
+end
+
+local DIR_LABEL = {imports = "Imported", exports = "Exported", backups = "Backup"}
+
+local function row_w()
+  return UIK.portrait() and UIK.row_w(1) or UIK.row_w(2)
+end
+
+local function file_label(e)
+  local kind = L(DIR_LABEL[e.dir] or "Save")
+  if (e.time or 0) > 0 then return kind .. ", " .. os.date("%Y-%m-%d %H:%M", e.time) end
+  return kind .. ": " .. e.name:gsub("%.zip$", "")
+end
+
+local function import_tab()
+  local rows = {}
+  local list = T.list()
+  T._list = list
+  local w = row_w()
+  for i, e in ipairs(list) do
+    rows[#rows + 1] = UIK.action{id = 'st_file_' .. i, label = file_label(e),
+      info = T.summary(e), button_label = L("Load"), button = 'save_transfer_pick', ref_table = e,
+      colour = UIK.C.ok, disabled = not e.info, w = w, bw = 2.85}
+  end
+  if #rows == 0 then
+    local lines = phone() and {L("No save file yet."), L("Exports and backups show up here.")}
+      or {L("No save file yet."), L("Drop a save .zip on this window,"), L("or put it in the imports folder.")}
+    rows[1] = UIK.note(lines, {w = w, scale = UIK.touch() and 0.38 or 0.34})
+  end
+  if not phone() then
+    rows[#rows + 1] = UIK.action{id = 'st_open_imports', label = L("Imports folder"), info = L("Put a save .zip here, then Load it above"), button_label = L("Open"), button = 'save_transfer_open_imports', colour = UIK.C.accent, w = w}
+  end
+  return UIK.flow{id = 'st_import', items = rows, cols = 1}
+end
+
+local function export_tab()
+  local w = row_w()
+  local rows = {
+    UIK.action{id = 'st_export', label = L("Export my save"), info = L("All profiles, as one .zip file"), button_label = L("Export"), button = 'save_transfer_export', colour = UIK.C.ok, w = w},
+  }
+  if T.last_export then
+    local name = T.last_export:match("([^/]+)$") or T.last_export
+    rows[#rows + 1] = UIK.value{id = 'st_last', label = L("Saved as"), value = name, w = w, vw = w - 0.4}
+  end
+  if not phone() then
+    rows[#rows + 1] = UIK.action{id = 'st_open', label = L("Exports folder"), info = L("Copy the file to another computer"), button_label = L("Open"), button = 'save_transfer_open_exports', colour = UIK.C.accent, w = w}
+  end
+  rows[#rows + 1] = UIK.note({L("Settings and your online key are never in an export.")}, {w = w})
+  return UIK.flow{id = 'st_export', items = rows, cols = 1}
+end
+
+function T.window(tab)
+  return UIK.window{
+    id = 'save_transfer', title = L("SAVE FILES"), tab = tab,
+    back_func = T.back or 'settings',
+    tabs = {
+      {key = 'import', label = L("Import"), build = import_tab},
+      {key = 'export', label = L("Export"), build = export_tab},
+    },
+  }
+end
+
+function T.open(tab, back)
+  if back ~= nil then T.back = back end
+r 4 1381 %20%20 -
+l 139
+  G.FUNCS.overlay_menu{definition = T.window(tab)}
+end
+
+function T.confirm_window(e)
+  return UIK.window{
+    id = 'save_transfer_confirm', title = L("LOAD THIS SAVE?"), compact = true, w = 9,
+    back_func = 'save_transfer_import',
+    build = function()
+      return UIK.stack({
+        UIK.value{label = L("File"), value = e.name, w = 8.4, vw = 7.6},
+        UIK.value{label = L("Profiles"), value = T.summary(e), w = 8.4, vw = 7.6},
+        UIK.note({L("It replaces your progress in the same profiles."), L("Your current save is backed up first."), L("The game restarts to load it.")}, {w = 8.4}),
+      }, {w = 8.4})
+    end,
+    footer = {UIK.button{label = L("LOAD AND RESTART"), button = 'save_transfer_load', ref_table = e, colour = UIK.C.ok}},
+  }
+end
+
+function T.restart()
+  if MODLOADER and MODLOADER.restart then
+    return MODLOADER.restart()
+  end
+  love.event.quit("restart")
+end
+
+function T.load(e)
+  local data = e and fs.read(e.rel)
+  if not data or not T.read(data) then return false end
+  fs.createDirectory(T.IMPORTS)
+  if not fs.write(T.PENDING, data) then return false end
+  T.restart()
+  return true
+end
+
+G.FUNCS.save_transfer_import = function() T.open('import') end
+G.FUNCS.save_transfer_export_tab = function() T.open('export') end
+G.FUNCS.save_transfer_from_profile = function() T.open('import', 'profile_select') end
+G.FUNCS.save_transfer_from_settings = function() T.open('import', 'settings') end
+G.FUNCS.save_transfer_export_from_profile = function() T.open('export', 'profile_select') end
+G.FUNCS.save_transfer_export_from_settings = function() T.open('export', 'settings') end
+
+G.FUNCS.save_transfer_pick = function(e)
+  local entry = e and e.config and e.config.ref_table
+  if not entry then return end
+  G.FUNCS.overlay_menu{definition = T.confirm_window(entry)}
+end
+
+G.FUNCS.save_transfer_load = function(e)
+  local entry = e and e.config and e.config.ref_table
+  if not T.load(entry) then T.open('import') end
+end
+
+G.FUNCS.save_transfer_export = function()
+  local rel, err = T.export()
+  T.last_export = rel and rel:match("([^/]+)$") or (err == "empty" and L("Nothing to export yet") or L("Could not write the file"))
+  if UIK and UIK.refresh then UIK.refresh() end
+end
+
+G.FUNCS.save_transfer_open_exports = function() T.open_folder(T.EXPORTS) end
+G.FUNCS.save_transfer_open_imports = function() T.open_folder(T.IMPORTS) end
+
+local function fix_name_row(t)
+  G.E_MANAGER:add_event(Event({blockable = false, blocking = false, func = function()
+    local m = G.OVERLAY_MENU
+    local tc = m and m.get_UIE_by_ID and m:get_UIE_by_ID('tab_contents')
+    local box = tc and tc.config and tc.config.object
+    if box and box.recalculate then box:recalculate() end
+    return true
+  end}))
+  return t
+end
+
+local profile_option = G.UIDEF.profile_option
+function G.UIDEF.profile_option(key)
+  local t = profile_option(key)
+  if t and t.nodes then
+    table.insert(t.nodes, #t.nodes, {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+      UIK.button{label = L("Import save"), button = 'save_transfer_from_profile', colour = G.C.GREEN, w = 2.6, h = 0.6, scale = 0.35, col = true},
+      UIK.button{label = L("Export save"), button = 'save_transfer_export_from_profile', colour = G.C.BLUE, w = 2.6, h = 0.6, scale = 0.35, col = true},
+    }})
+  end
+  return fix_name_row(t)
+end
+
+function T.settings_rows()
+  return {
+    UIK.action{id = 'set_save_import', label = L("Import a save"), info = L("Load a save .zip, a backup is made first"), button_label = L("Open"), button = 'save_transfer_from_settings', colour = UIK.C.accent},
+    UIK.action{id = 'set_save_export', label = L("Export my save"), info = L("Copy your progress to a .zip file"), button_label = L("Open"), button = 'save_transfer_export_from_settings', colour = UIK.C.accent},
+  }
+end
+
+if not T.dropped_hooked then
+  T.dropped_hooked = true
+  local orig = love.filedropped
+  love.filedropped = function(file, ...)
+    local ok, used = pcall(T.dropped, file)
+    if ok and used then return end
+    if orig then return orig(file, ...) end
+  end
+end
+
+T.apply_pending()
+
+if mod_loc_register then
+  mod_loc_register{
+    fr = {
+      ["Not a save file"] = "Pas une sauvegarde", ["%s: %d wins"] = "%s : %d victoires", ["Empty save"] = "Sauvegarde vide",
+      ["Imported"] = "Importée", ["Exported"] = "Exportée", ["Backup"] = "Copie", ["Save"] = "Sauvegarde", ["Load"] = "Charger",
+      ["No save file yet."] = "Aucune sauvegarde pour l'instant.", ["Exports and backups show up here."] = "Les exports et les copies apparaissent ici.",
+      ["Drop a save .zip on this window,"] = "Déposez un .zip de sauvegarde sur la fenêtre,", ["or put it in the imports folder."] = "ou mettez-le dans le dossier des imports.",
+      ["Export my save"] = "Exporter ma sauvegarde", ["All profiles, as one .zip file"] = "Tous les profils, dans un seul fichier .zip", ["Export"] = "Exporter",
+      ["Saved as"] = "Enregistrée sous", ["Exports folder"] = "Dossier des exports", ["Copy the file to another computer"] = "Copiez le fichier sur un autre ordinateur",
+      ["Open"] = "Ouvrir", ["Settings and your online key are never in an export."] = "Les réglages et votre clé en ligne ne sont jamais exportés.",
+      ["Imports folder"] = "Dossier des imports", ["Put a save .zip here, then Load it above"] = "Mettez un .zip de sauvegarde ici, puis chargez-le au-dessus", ["SAVE FILES"] = "SAUVEGARDES", ["Import"] = "Importer", ["LOAD THIS SAVE?"] = "CHARGER CETTE SAUVEGARDE ?",
+      ["File"] = "Fichier", ["Profiles"] = "Profils", ["It replaces your progress in the same profiles."] = "Elle remplace votre progression dans les mêmes profils.",
+      ["Your current save is backed up first."] = "Votre sauvegarde actuelle est copiée avant.", ["The game restarts to load it."] = "Le jeu redémarre pour la charger.",
+      ["LOAD AND RESTART"] = "CHARGER ET REDÉMARRER", ["Nothing to export yet"] = "Rien à exporter pour l'instant", ["Could not write the file"] = "Impossible d'écrire le fichier",
+      ["Import save"] = "Importer", ["Export save"] = "Exporter", ["Import a save"] = "Importer une sauvegarde",
+      ["Load a save .zip, a backup is made first"] = "Chargez un .zip, une copie est faite avant", ["Copy your progress to a .zip file"] = "Copiez votre progression dans un .zip",
+    },
+    es = {
+      ["Not a save file"] = "No es una partida", ["%s: %d wins"] = "%s: %d victorias", ["Empty save"] = "Partida vacía",
+      ["Imported"] = "Importada", ["Exported"] = "Exportada", ["Backup"] = "Copia", ["Save"] = "Partida", ["Load"] = "Cargar",
+      ["No save file yet."] = "Todavía no hay ninguna partida.", ["Exports and backups show up here."] = "Aquí aparecen las exportaciones y las copias.",
+      ["Drop a save .zip on this window,"] = "Suelta un .zip de partida en la ventana", ["or put it in the imports folder."] = "o ponlo en la carpeta de importaciones.",
+      ["Export my save"] = "Exportar mi partida", ["All profiles, as one .zip file"] = "Todos los perfiles, en un solo archivo .zip", ["Export"] = "Exportar",
+      ["Saved as"] = "Guardada como", ["Exports folder"] = "Carpeta de exportaciones", ["Copy the file to another computer"] = "Copia el archivo a otro ordenador",
+      ["Open"] = "Abrir", ["Settings and your online key are never in an export."] = "Los ajustes y tu clave en línea nunca se exportan.",
+      ["Imports folder"] = "Carpeta de importaciones", ["Put a save .zip here, then Load it above"] = "Pon aquí un .zip de partida y cárgalo arriba", ["SAVE FILES"] = "PARTIDAS", ["Import"] = "Importar", ["LOAD THIS SAVE?"] = "¿CARGAR ESTA PARTIDA?",
+      ["File"] = "Archivo", ["Profiles"] = "Perfiles", ["It replaces your progress in the same profiles."] = "Sustituye tu progreso en los mismos perfiles.",
+      ["Your current save is backed up first."] = "Antes se hace una copia de tu partida actual.", ["The game restarts to load it."] = "El juego se reinicia para cargarla.",
+      ["LOAD AND RESTART"] = "CARGAR Y REINICIAR", ["Nothing to export yet"] = "Todavía no hay nada que exportar", ["Could not write the file"] = "No se pudo escribir el archivo",
+      ["Import save"] = "Importar", ["Export save"] = "Exportar", ["Import a save"] = "Importar una partida",
+      ["Load a save .zip, a backup is made first"] = "Carga un .zip, antes se hace una copia", ["Copy your progress to a .zip file"] = "Copia tu progreso en un .zip",
+    },
+  }
+end
+
+return T
+end

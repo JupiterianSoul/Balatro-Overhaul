@@ -1,0 +1,3056 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 96
+-- FEATURE: Hand Optimizer
+-- A full decision engine and UI assistant that analyzes the player's hand,
+-- jokers, hand levels, deck composition, blind targets, and provides
+-- actionable play/discard/outs recommendations.
+--
+-- Integrates with the existing PREVIEW score simulation engine.
+-- All analysis is read-only — no game state mutation.
+
+-- ============================================================
+-- GLOBAL STATE
+-- ============================================================
+BOT_ENGINE = {
+    -- Current analysis results (populated by .analyze())
+    results       = nil,
+    -- Compact HUD ref tables for live UIBox text
+    hud_play       = { text = '' },
+    hud_play_cards = { text = '' },  -- card labels for best play, e.g. 'A♠ K♠ Q♦'
+    hud_score      = { text = '' },
+    hud_action     = { text = '' },
+    hud_discard    = { text = '', cards = {} },  -- .text = 'K♥ 3♣'; .cards = {{text,color},...}
+    -- UI state
+    panel_open    = false,
+    active_tab    = 'plays',       -- plays | discards | outs | jokers | settings
+    -- Timing
+    _last_hash    = '',
+    _last_time    = 0,
+    _debounce     = 1.0,          -- seconds between re-analyses (was 0.25)
+    -- Performance
+    MAX_JOKER_PERMS     = 120,     -- max joker order permutations
+    -- Timestamp tracking for auto-refresh
+    _compact_ts         = 0,       -- timestamp of results when compact was last built
+    _panel_results_ts   = 0,       -- timestamp of results when panel was last built
+    _hide_start         = nil,     -- love.timer time when 'hide' was first requested
+    _compact_saved_pos  = nil,     -- {x, y} persisted drag position for compact HUD
+    _pending_settings_save = false,
+    _panel_refresh_queued = false,
+    -- Version
+    VERSION = '2.0',
+}
+
+-- ============================================================
+-- SETTINGS DEFAULTS
+-- ============================================================
+
+-- ============================================================
+-- LOCAL UTILITY HELPERS
+-- ============================================================
+
+local HAND_TYPES_ORDERED = {
+    "Flush Five", "Flush House", "Five of a Kind",
+    "Straight Flush", "Four of a Kind", "Full House",
+    "Flush", "Straight", "Three of a Kind",
+    "Two Pair", "Pair", "High Card",
+}
+
+--- Deep-copy a flat or nested table (safe for card data).
+local function shallow_copy(t)
+    if type(t) ~= 'table' then return t end
+    local r = {}
+    for k, v in pairs(t) do r[k] = v end
+    return r
+end
+
+--- Format a number for display (1234 → "1.2K", 1234567 → "1.2M").
+local function fmt_score(n)
+    if not n or n == 0 then return "0" end
+    if type(n) ~= "number" then
+        local v = to_number and to_number(n)
+        if type(v) ~= "number" or v >= 1e15 then return number_format and number_format(n) or tostring(n) end
+        n = v
+    end
+    if n >= 1e12 then return string.format("%.1fT", n / 1e12) end
+    if n >= 1e9  then return string.format("%.1fB", n / 1e9)  end
+    if n >= 1e6  then return string.format("%.1fM", n / 1e6)  end
+    if n >= 1e3  then return string.format("%.1fK", n / 1e3)  end
+    return tostring(math.floor(n))
+end
+
+--- Format a percentage.
+local function fmt_pct(n)
+    if not n then return "?%" end
+    if n >= 99.95 then return "99.9%" end
+    if n < 0.05   then return "<0.1%" end
+    return string.format("%.1f%%", n)
+end
+
+--- Create a hash of the current game state for change detection.
+local function state_hash()
+    if not G or not G.hand or not G.hand.cards then return '' end
+    local parts = {}
+    -- Hand card IDs + positions
+    for i, c in ipairs(G.hand.cards) do
+        parts[#parts+1] = tostring(c.sort_id or i)
+        parts[#parts+1] = c.highlighted and 'H' or '_'
+    end
+    -- Joker IDs
+r 13 2531 %20%20%20%20 -
+l 92
+        for _, j in ipairs(G.jokers.cards) do
+            parts[#parts+1] = j.config.center.key
+        end
+    end
+    -- Hands/discards left
+    if G.GAME and G.GAME.current_round then
+        parts[#parts+1] = tostring(G.GAME.current_round.hands_left or 0)
+        parts[#parts+1] = tostring(G.GAME.current_round.discards_left or 0)
+    end
+    return table.concat(parts, '|')
+end
+
+--- Get rank name for a card ID.
+local function rank_name(id)
+    if id == 14 or id == 1 then return 'A' end
+    if id == 13 then return 'K' end
+    if id == 12 then return 'Q' end
+    if id == 11 then return 'J' end
+    if id == 10 then return '10' end
+    return tostring(id)
+end
+
+--- Get short suit symbol.
+local function suit_sym(suit)
+    if suit == 'Hearts'   then return "\xe2\x99\xa5" end
+    if suit == 'Diamonds' then return "\xe2\x99\xa6" end
+    if suit == 'Clubs'    then return "\xe2\x99\xa3" end
+    if suit == 'Spades'   then return "\xe2\x99\xa0" end
+    return suit and suit:sub(1, 1) or '?'
+end
+
+--- Short enhancement abbreviation for a playing card, e.g. "[Gl]" for Glass Card.
+local EHLABELS = {
+    ['Bonus Card']  = 'Bo', ['Mult Card']  = 'Mu', ['Glass Card'] = 'Gl',
+    ['Steel Card']  = 'St', ['Stone Card'] = 'Sn', ['Gold Card']  = 'Au',
+    ['Lucky Card']  = 'Lu', ['Wild Card']  = 'Wi',
+}
+local function enhancement_abbr(card)
+    if card and card.ability and card.ability.set == 'Enhanced' then
+        return EHLABELS[card.ability.name]
+    end
+end
+
+--- Describe a card briefly, including enhancement tag when present.
+--- Examples: "K♥", "3♦[Gl]", "A♣[Lu]"
+local function card_label(card)
+    if not card then return '?' end
+    local id   = card.base and card.base.id or card:get_id()
+    local suit = card.base and card.base.suit or ''
+    local lbl  = rank_name(id) .. suit_sym(suit)
+    local abbr = enhancement_abbr(card)
+    if abbr then lbl = lbl .. '[' .. abbr .. ']' end
+    return lbl
+end
+
+--- Suit display color: respects high-contrast setting (colourblind_option).
+local function suit_color(suit)
+    if G.SETTINGS and G.SETTINGS.colourblind_option then
+        -- High-contrast card mode: red ♥, yellow ♦, blue ♣, dark-gray ♠
+        if suit == 'Hearts'   then return {1,    0.20, 0.15, 1} end
+        if suit == 'Diamonds' then return {0.95, 0.82, 0.10, 1} end
+        if suit == 'Clubs'    then return {0.15, 0.62, 0.95, 1} end
+        if suit == 'Spades'   then return {0.55, 0.55, 0.60, 1} end
+    end
+    -- Normal mode: red for Hearts/Diamonds, white for Clubs/Spades
+    if suit == 'Hearts' or suit == 'Diamonds' then
+        return G.C.RED or {1, 0.2, 0.2, 1}
+    end
+    return G.C.UI.TEXT_LIGHT or {1, 1, 1, 1}
+end
+
+local function white_text_colour()
+    return (G and G.C and G.C.WHITE) or (G and G.C and G.C.UI and G.C.UI.TEXT_LIGHT) or {1, 1, 1, 1}
+end
+
+local function ui_scale(value, mult)
+    return value * mult
+end
+
+local function compact_scale_mult()
+    local pct = G and G.SETTINGS and G.SETTINGS.ho_compact_scale or 100
+    return math.max(60, math.min(170, pct)) / 100
+end
+
+local function panel_scale_mult()
+    local pct = G and G.SETTINGS and G.SETTINGS.ho_panel_scale or 100
+    return math.max(60, math.min(170, pct)) / 100
+end
+
+local function enable_box_drag_targets(node, allow_drag)
+    if not node then return end
+
+r 25 176 %20%20%20%20 -
+l 639
+    if node.config then
+        blocked = node.config.button or node.config.func == 'slider' or node.config.object ~= nil
+    end
+    local child_allow = allow_drag and not blocked
+
+    if child_allow and node.states and node.states.drag then
+        node.states.drag.can = true
+        node.drag = function(self, offset)
+            if self.UIBox then
+                self.UIBox:drag(offset)
+            end
+        end
+        node.stop_drag = function(self)
+            if self.UIBox then
+                self.UIBox:stop_drag()
+            end
+        end
+    end
+
+    if node.children then
+        for _, child in pairs(node.children) do
+            enable_box_drag_targets(child, child_allow)
+        end
+    end
+end
+
+local function prepare_overlay_box(box, allow_drag_targets)
+    if not box then return end
+    box.attention_text = true
+    box.states.drag.can = true
+    if allow_drag_targets and box.UIRoot then
+        enable_box_drag_targets(box.UIRoot, true)
+    end
+end
+
+-- ============================================================
+-- SAFE SCORE SIMULATION
+-- ============================================================
+-- Wraps the existing PREVIEW engine to score an arbitrary subset
+-- of cards without mutating game state.
+
+--- Score a specific set of card objects as if they were the highlighted hand.
+--- Returns { score=N, chips=N, mult=N, hand_name="...", scoring_cards={...} }
+--- SAFE: saves and restores all mutated state.
+local function sim_score(cards)
+    if not cards or #cards < 1 then return nil end
+    if not G or not G.GAME or not G.hand then return nil end
+    if not PREVIEW or not PREVIEW.run then return nil end
+
+    -- Save original highlighted state
+    local orig_highlighted = G.hand.highlighted
+    local orig_highlights = {}
+    for _, c in ipairs(G.hand.cards) do
+        orig_highlights[c] = c.highlighted
+        c.highlighted = false
+    end
+    -- Set our candidate cards as highlighted
+    local temp_highlighted = {}
+    for _, c in ipairs(cards) do
+        c.highlighted = true
+        temp_highlighted[#temp_highlighted + 1] = c
+    end
+    G.hand.highlighted = temp_highlighted
+
+    -- Run the existing PREVIEW simulation
+    local ok, _ = pcall(PREVIEW.run)
+
+    local result = nil
+    if ok then
+        local hand_name, loc_text, poker_hands, scoring_hand = PREVIEW.hand_info(temp_highlighted)
+        result = {
+            score        = PREVIEW.data or 0,
+            chips        = PREVIEW._run and PREVIEW._run.chips or 0,
+            mult         = PREVIEW._run and PREVIEW._run.mult or 0,
+            hand_name    = hand_name or 'NULL',
+            loc_text     = loc_text or '',
+            scoring_hand = scoring_hand,
+            cards        = cards,
+        }
+    end
+
+    -- Restore original highlighted state
+    for _, c in ipairs(G.hand.cards) do
+        c.highlighted = orig_highlights[c] or false
+    end
+    G.hand.highlighted = orig_highlighted
+
+    -- Re-run preview for the actual current selection
+    pcall(PREVIEW.run)
+
+    return result
+end
+
+-- ============================================================
+-- A. SMART PLAY ENUMERATION (heuristic, NOT brute-force)
+-- ============================================================
+
+--- Group hand cards by rank and suit for fast pattern detection.
+local function analyze_hand_patterns(hand_cards)
+    local by_rank = {}  -- rank_id → {cards}
+    local by_suit = {}  -- suit_name → {cards}
+    local all_ids = {}  -- sorted list of unique rank IDs
+
+    for _, c in ipairs(hand_cards) do
+        local id = c.base and c.base.id or (c.get_id and c:get_id() or 0)
+        local suit = c.base and c.base.suit or ''
+
+        if not by_rank[id] then by_rank[id] = {} end
+        by_rank[id][#by_rank[id] + 1] = c
+
+        if suit ~= '' then
+            if not by_suit[suit] then by_suit[suit] = {} end
+            by_suit[suit][#by_suit[suit] + 1] = c
+        end
+    end
+
+    -- Sorted unique rank IDs
+    local id_set = {}
+    for id, _ in pairs(by_rank) do
+        id_set[#id_set + 1] = id
+    end
+    table.sort(id_set)
+
+    return by_rank, by_suit, id_set
+end
+
+--- Find runs of consecutive rank IDs (for straight detection).
+local function find_runs(id_set, by_rank, min_length)
+    min_length = min_length or 4
+    local runs = {}
+    if #id_set < min_length then return runs end
+
+    -- Normalize: treat Ace (14) as also 1 for low straights
+    local ids_with_low_ace = {}
+    local has_ace = false
+    for _, id in ipairs(id_set) do
+        ids_with_low_ace[#ids_with_low_ace + 1] = id
+        if id == 14 then has_ace = true end
+    end
+    if has_ace then
+        table.insert(ids_with_low_ace, 1, 1) -- Ace as low
+    end
+
+    local i = 1
+    while i <= #ids_with_low_ace do
+        local run = {ids_with_low_ace[i]}
+        local j = i + 1
+        while j <= #ids_with_low_ace and ids_with_low_ace[j] == ids_with_low_ace[j-1] + 1 do
+            run[#run + 1] = ids_with_low_ace[j]
+            j = j + 1
+        end
+        if #run >= min_length then
+            runs[#runs + 1] = run
+        end
+        i = j
+    end
+    return runs
+end
+
+--- Build smart play candidates from hand patterns, generating MULTIPLE kicker-count
+--- variants per pattern so sim_score (with active jokers) picks the true optimum.
+--- E.g. a Pair is tried at 2, 3, 4, and 5 cards — "Photograph" joker wants 1 card,
+--- "Greedy Joker" wants Diamond kickers, etc. sim_score handles all that automatically.
+local function build_smart_candidates(hand_cards, by_rank, by_suit, id_set)
+    local candidates = {}
+    local seen = {}
+    local n = #hand_cards
+
+    local function add_candidate(cards, label)
+        if #cards < 1 or #cards > 5 then return end
+        local keys = {}
+        for _, c in ipairs(cards) do keys[#keys + 1] = tostring(c) end
+        table.sort(keys)
+        local key = table.concat(keys, '|')
+        if seen[key] then return end
+        seen[key] = true
+        candidates[#candidates + 1] = {cards = cards, label = label}
+    end
+
+    -- Returns up to `count` remaining cards sorted by rank desc (best kickers first)
+    local function avail_kickers(exclude_set)
+        local sorted = {}
+        for _, c in ipairs(hand_cards) do
+            if not exclude_set[c] then sorted[#sorted + 1] = c end
+        end
+        table.sort(sorted, function(a, b)
+            return (a.base and a.base.id or 0) > (b.base and b.base.id or 0)
+        end)
+        return sorted
+    end
+
+    -- Add base play + 0..max_extra kickers, generating one candidate per size
+    local function add_with_size_variants(base, label, max_extra)
+        local excl = {}
+        for _, c in ipairs(base) do excl[c] = true end
+        local kpool = avail_kickers(excl)
+        -- Bare play (no kickers)
+        add_candidate(base, label)
+        -- +1 kicker, +2, … up to max_extra (or hand limit)
+        for k = 1, math.min(max_extra, #kpool) do
+            local play = {}
+            for _, c in ipairs(base) do play[#play + 1] = c end
+            for j = 1, k do play[#play + 1] = kpool[j] end
+            add_candidate(play, label)
+        end
+    end
+
+    -- 1. Straight Flush (highest priority — try all 5-card windows)
+    for suit, suited_cards in pairs(by_suit) do
+        if #suited_cards >= 5 then
+            local suited_ids, suited_by_id = {}, {}
+            for _, c in ipairs(suited_cards) do
+                local id = c.base and c.base.id or 0
+                if not suited_by_id[id] then
+                    suited_by_id[id] = c
+                    suited_ids[#suited_ids + 1] = id
+                end
+            end
+            table.sort(suited_ids)
+            local sf_runs = find_runs(suited_ids, nil, 5)
+            for _, run in ipairs(sf_runs) do
+                -- Try every 5-card window in the run (e.g. A-2-3-4-5-6 → two windows)
+                for w = 1, math.max(1, #run - 4) do
+                    local play = {}
+                    for i = w, w + 4 do
+                        local rid = run[i]
+                        local lid = rid == 1 and 14 or rid
+                        if suited_by_id[lid] then play[#play + 1] = suited_by_id[lid] end
+                    end
+                    if #play == 5 then add_candidate(play, "Straight Flush") end
+                end
+            end
+        end
+    end
+
+    -- 2. Four of a Kind — try without kicker AND with kicker
+    for id, cards in pairs(by_rank) do
+        if #cards >= 4 then
+            local quad = {cards[1], cards[2], cards[3], cards[4]}
+            add_with_size_variants(quad, "Four of a Kind", 1)
+        end
+    end
+
+    -- 3. Full House
+    for id, cards in pairs(by_rank) do
+        if #cards >= 3 then
+            local trip = {cards[1], cards[2], cards[3]}
+            for id2, cards2 in pairs(by_rank) do
+                if id2 ~= id and #cards2 >= 2 then
+                    add_candidate({trip[1], trip[2], trip[3], cards2[1], cards2[2]}, "Full House")
+                end
+            end
+        end
+    end
+
+    -- 4. Three of a Kind — try 3, 4, and 5 card plays
+    for id, cards in pairs(by_rank) do
+        if #cards >= 3 then
+            add_with_size_variants({cards[1], cards[2], cards[3]}, "Three of a Kind", 2)
+        end
+    end
+
+    -- 5. Flush — if 6+ suited, try multiple 5-card subsets (top-5, and drop-1 variants)
+    for suit, cards in pairs(by_suit) do
+        if #cards >= 5 then
+            local sorted = {}
+            for _, c in ipairs(cards) do sorted[#sorted + 1] = c end
+            table.sort(sorted, function(a, b)
+                return (a.base and a.base.id or 0) > (b.base and b.base.id or 0)
+            end)
+            -- Top 5 by rank
+            local top5 = {}
+            for i = 1, math.min(5, #sorted) do top5[#top5 + 1] = sorted[i] end
+            add_candidate(top5, "Flush")
+            -- If 6+, also try dropping the highest card (sometimes a Steel card or rank-specific joker changes priority)
+            if #sorted >= 6 then
+                local alt = {}
+                for i = 2, 6 do alt[#alt + 1] = sorted[i] end
+                add_candidate(alt, "Flush")
+            end
+        end
+    end
+
+    -- 6. Straight — try every 5-card window in the run
+    local runs = find_runs(id_set, by_rank, 5)
+    for _, run in ipairs(runs) do
+        for w = 1, math.max(1, #run - 4) do
+            local play = {}
+            for i = w, w + 4 do
+                local rid = run[i]
+                local lid = rid == 1 and 14 or rid
+                if by_rank[lid] and by_rank[lid][1] then
+                    play[#play + 1] = by_rank[lid][1]
+                end
+            end
+            if #play == 5 then add_candidate(play, "Straight") end
+        end
+    end
+
+    -- 7. Two Pair — try 4-card (no kicker) AND 5-card (+1 kicker)
+    local pairs_found = {}
+    for id, cards in pairs(by_rank) do
+        if #cards >= 2 then
+            pairs_found[#pairs_found + 1] = {id = id, cards = {cards[1], cards[2]}}
+        end
+    end
+    table.sort(pairs_found, function(a, b) return a.id > b.id end)
+    if #pairs_found >= 2 then
+        for i = 1, math.min(#pairs_found, 3) do
+            for j = i + 1, math.min(#pairs_found, 4) do
+                local base = {
+                    pairs_found[i].cards[1], pairs_found[i].cards[2],
+                    pairs_found[j].cards[1], pairs_found[j].cards[2],
+                }
+                add_with_size_variants(base, "Two Pair", 1)
+            end
+        end
+    end
+
+    -- 8. Single Pair — try 2, 3, 4, 5 card plays (most important for joker coverage)
+    for _, p in ipairs(pairs_found) do
+        add_with_size_variants({p.cards[1], p.cards[2]}, "Pair", 3)
+    end
+
+    -- 9. High Card — try 1, 2, 3, 4, 5 card plays
+    if n >= 1 then
+        local sorted = {}
+        for _, c in ipairs(hand_cards) do sorted[#sorted + 1] = c end
+        table.sort(sorted, function(a, b)
+            return (a.base and a.base.id or 0) > (b.base and b.base.id or 0)
+        end)
+        -- All sizes from 1 to min(5, n)
+        for sz = 1, math.min(5, #sorted) do
+            local play = {}
+            for i = 1, sz do play[#play + 1] = sorted[i] end
+            add_candidate(play, "High Card")
+        end
+    end
+
+    return candidates
+end
+
+-- ============================================================
+-- BOSS BLIND CONSTRAINT ENGINE
+-- ============================================================
+
+--- Read live blind state and return a constraints table that the optimizer
+--- respects when filtering and scoring plays.
+--- Returns:
+---   .name          string  — blind name (or nil if not a boss)
+---   .blocked_hands table   — set of hand type strings that score nothing / are illegal
+---   .only_hand     string  — only this hand type scores (The Mouth), or nil
+---   .single_card   bool    — must play exactly 1 card (The Needle)
+---   .no_discard    bool    — no discards available (The Water already gives 0, but The Serpent locks it)
+---   .face_debuffed bool    — face cards are debuffed (The Plant)
+---   .note          string  — short human-readable constraint summary for the panel
+local function get_blind_constraints()
+    local c = {
+        name = nil, blocked_hands = {}, only_hand = nil,
+        single_card = false, no_discard = false,
+        face_debuffed = false, note = nil,
+    }
+    if not G or not G.GAME or not G.GAME.blind then return c end
+    local blind = G.GAME.blind
+    -- Only apply constraints for active, un-disabled boss blinds
+    if not blind.boss or blind.disabled then return c end
+    c.name = blind.name
+
+    -- The Eye: each hand type can only be played once per round
+    -- FEATURE: Persistent Eye tracking — cache used hand types and show remaining count
+    if blind.name == 'The Eye' and blind.hands then
+        -- Merge live state with cached state (in case analysis runs between plays)
+        BOT_ENGINE._eye_used = BOT_ENGINE._eye_used or {}
+        for hand_name, used in pairs(blind.hands) do
+            if used then
+                c.blocked_hands[hand_name] = true
+                BOT_ENGINE._eye_used[hand_name] = true
+            end
+        end
+        -- Also include any previously cached (handles transition timing)
+        for hand_name, used in pairs(BOT_ENGINE._eye_used) do
+            if used then c.blocked_hands[hand_name] = true end
+        end
+        local blocked_count = 0
+        for _ in pairs(c.blocked_hands) do blocked_count = blocked_count + 1 end
+        -- Total scoreable hand types in Balatro = ~10 (Pair, Two Pair, Three of a Kind, etc.)
+        local total_types = 0
+        if G.GAME and G.GAME.hands then
+            for _ in pairs(G.GAME.hands) do total_types = total_types + 1 end
+        end
+        if total_types <= 0 then total_types = 10 end
+        local remaining = total_types - blocked_count
+        if blocked_count > 0 then
+            local names = {}
+            for h in pairs(c.blocked_hands) do names[#names + 1] = h end
+            table.sort(names)
+            c.note = 'Eye: ' .. blocked_count .. ' used, ' .. remaining .. ' remaining (' .. table.concat(names, ', ') .. ')'
+        else
+            c.note = 'Eye: each hand type once only (' .. total_types .. ' available)'
+        end
+    else
+        -- Reset cache when not fighting The Eye
+        BOT_ENGINE._eye_used = nil
+    end
+
+    -- The Mouth: only the first hand type played this round scores
+    if blind.name == 'The Mouth' then
+        if blind.only_hand and blind.only_hand ~= false then
+            c.only_hand = blind.only_hand
+            c.note = 'Mouth: only ' .. blind.only_hand .. ' scores'
+        else
+            c.note = 'Mouth: first hand type locks all others'
+        end
+    end
+
+    -- The Needle: must play exactly 1 card
+    if blind.name == 'The Needle' then
+        c.single_card = true
+        c.note = 'Needle: play exactly 1 card'
+    end
+
+    -- The Plant: face cards (J/Q/K) are debuffed
+    if blind.name == 'The Plant' then
+        c.face_debuffed = true
+        c.note = 'Plant: face cards debuffed'
+    end
+
+    -- The Arm: playing a levelled hand delevels it
+    if blind.name == 'The Arm' then
+        c.note = 'Arm: playing levelled hands reduces level'
+    end
+
+    -- The Ox: playing most common hand type sets money to $0
+    if blind.name == 'The Ox' then
+        c.note = 'Ox: most-played hand type costs all money'
+    end
+
+    -- The Hook: discards remove 2 random cards from hand
+    if blind.name == 'The Hook' then
+        c.note = 'Hook: discards remove 2 cards from hand'
+    end
+
+    -- The Serpent: after each hand, forced to draw 3 new cards (effectively no plan survives)
+    if blind.name == 'The Serpent' then
+        c.note = 'Serpent: hand replaced after each play'
+    end
+
+    return c
+end
+
+--- Enumerate plays using smart heuristics (NOT brute force).
+--- Returns a sorted list of scored candidates (best first).
+local function enumerate_plays(hand_cards, max_to_score, blind_constraints)
+    if not hand_cards or #hand_cards < 1 then return {} end
+    max_to_score = max_to_score or 8
+
+    local by_rank, by_suit, id_set = analyze_hand_patterns(hand_cards)
+    local candidates = build_smart_candidates(hand_cards, by_rank, by_suit, id_set)
+
+    -- Validate each candidate with get_poker_hand_info (cheap)
+    local valid = {}
+    for _, c in ipairs(candidates) do
+        local ok, hand_name = pcall(function()
+            return G.FUNCS.get_poker_hand_info(c.cards)
+        end)
+        if ok and hand_name and hand_name ~= 'NULL' then
+            c.hand_name = hand_name
+            valid[#valid + 1] = c
+        end
+    end
+
+    -- FEATURE: Boss blind constraint filtering — remove illegal plays before scoring
+    blind_constraints = blind_constraints or {}
+    if next(blind_constraints.blocked_hands or {}) or blind_constraints.only_hand
+       or blind_constraints.single_card then
+        local filtered = {}
+        for _, c in ipairs(valid) do
+            local ok = true
+            -- The Eye: skip already-used hand types
+            if blind_constraints.blocked_hands[c.hand_name] then ok = false end
+            -- The Mouth: skip any hand type that isn't the locked one
+            if blind_constraints.only_hand and c.hand_name ~= blind_constraints.only_hand then ok = false end
+            -- The Needle: only 1-card plays
+            if blind_constraints.single_card and #c.cards ~= 1 then ok = false end
+            if ok then filtered[#filtered + 1] = c end
+        end
+        -- If all plays filtered out, keep originals (don't strand the player)
+        if #filtered > 0 then valid = filtered end
+    end
+
+    -- Score the top candidates with sim_score (expensive — limited)
+    local scored = {}
+    local to_score = math.min(#valid, max_to_score)
+    for i = 1, to_score do
+        local c = valid[i]
+        local r = sim_score(c.cards)
+        if r and r.score > 0 then
+            r.label = c.label
+            r.reasons = {}
+            scored[#scored + 1] = r
+        end
+    end
+
+    -- Sort by score descending
+    table.sort(scored, function(a, b) return a.score > b.score end)
+    return scored
+end
+
+--- Deduplicate plays that produce the same hand type + same cards.
+local function dedup_plays(plays)
+    local seen = {}
+    local result = {}
+    for _, p in ipairs(plays) do
+        local key = p.hand_name
+        for _, c in ipairs(p.cards) do
+            key = key .. '|' .. tostring(c.sort_id or 0)
+        end
+        if not seen[key] then
+            seen[key] = true
+            result[#result + 1] = p
+        end
+    end
+    return result
+end
+
+-- ============================================================
+-- B. REASON TAGS
+-- ============================================================
+
+local function generate_reasons(play, blind_chips, mode)
+    if not play then return {} end
+    local reasons = {}
+
+    -- Does it clear the blind?
+    if blind_chips and blind_chips > 0 then
+        local current_chips = G.GAME and G.GAME.chips or 0
+        if current_chips + play.score >= blind_chips then
+            reasons[#reasons + 1] = "clears blind"
+        else
+            local pct = ((current_chips + play.score) / blind_chips) * 100
+            reasons[#reasons + 1] = string.format("%.0f%% of blind", pct)
+        end
+    end
+
+    -- Hand level boost
+    if G.GAME and G.GAME.hands and G.GAME.hands[play.hand_name] then
+        local lvl = G.GAME.hands[play.hand_name].level or 1
+        if lvl >= 5 then
+            reasons[#reasons + 1] = "Lv." .. lvl .. " " .. play.hand_name
+        end
+    end
+
+    -- Card count efficiency
+    if play.cards then
+        local n = #play.cards
+        if n <= 2 then
+            reasons[#reasons + 1] = "low card count"
+        end
+    end
+
+    -- Mult vs chips contribution
+    if play.mult and play.chips then
+        if play.mult > play.chips then
+            reasons[#reasons + 1] = "mult-heavy"
+        end
+    end
+
+    play.reasons = reasons
+    return reasons
+end
+
+-- ============================================================
+-- C. DISCARD ADVISOR
+-- ============================================================
+
+--- Get drawable unseen cards: draw pile + discard pile when deck nearly exhausted.
+--- FEATURE: Deck tracking — uses actual remaining draw pile for accurate probabilities.
+--- When ≤4 cards remain in draw, includes discard pile (Balatro reshuffles it on next draw).
+local function get_unseen_cards()
+    local unseen = {}
+    if not G or not G.deck or not G.deck.cards then return unseen end
+    for _, c in ipairs(G.deck.cards) do
+        unseen[#unseen + 1] = c
+    end
+    -- FIX: When draw pile is nearly exhausted, include discard pile (reshuffle imminent)
+    if #unseen <= 4 and G.discard and G.discard.cards then
+        for _, c in ipairs(G.discard.cards) do
+            unseen[#unseen + 1] = c
+        end
+    end
+    return unseen
+end
+
+--- FEATURE: Deck context — read which deck + stake the player is on, and draw pile composition.
+--- Returns { deck_name, deck_short, stake, stake_name, draw_remaining, discard_count,
+---           total_live, suit_counts{Spades,Hearts,Diamonds,Clubs,?} }
+local function get_deck_context()
+    local ctx = {
+        deck_name      = 'Unknown',
+        deck_short     = 'Unknown',
+        stake          = 1,
+        stake_name     = 'White',
+        draw_remaining = 0,
+        discard_count  = 0,
+        total_live     = 0,
+        suit_counts    = {},
+    }
+    if not G or not G.GAME then return ctx end
+
+    -- Deck (back) name
+    if G.GAME.selected_back then
+        ctx.deck_name  = G.GAME.selected_back.name or 'Unknown'
+        -- Strip trailing " Deck" for compact display (e.g. "Red Deck" → "Red")
+        ctx.deck_short = ctx.deck_name:gsub('%s?Deck$', '')
+    end
+
+    -- Stake number and name
+    ctx.stake = G.GAME.stake or 1
+    local STAKE_NAMES = {
+        'White', 'Red', 'Green', 'Black', 'Blue', 'Purple', 'Orange', 'Gold',
+        'Insanity', 'Chaos', 'Oblivion', 'Apocalypse', 'Transcendent',
+    }
+    ctx.stake_name = STAKE_NAMES[ctx.stake] or ('Stake ' .. ctx.stake)
+
+    -- Draw pile count + suit distribution
+    if G.deck and G.deck.cards then
+        ctx.draw_remaining = #G.deck.cards
+        for _, c in ipairs(G.deck.cards) do
+            local suit = (c.base and c.base.suit) or 'Unknown'
+            ctx.suit_counts[suit] = (ctx.suit_counts[suit] or 0) + 1
+        end
+    end
+
+    -- Discard pile count
+    if G.discard and G.discard.cards then
+        ctx.discard_count = #G.discard.cards
+    end
+
+    -- Total live cards in run (may differ from 52 due to consumable effects)
+r 3 4751 %20%20%20%20 -
+l 471
+        ctx.total_live = #G.playing_cards
+    end
+
+    return ctx
+end
+
+--- FEATURE: Ante pace projection — estimate which ante the best play score stops clearing boss blinds.
+--- Uses get_blind_amount() with boss mult=2 (typical boss) and current ante_scaling.
+--- Returns { current_ante, wall_ante, boss_chips_at_wall, best_score }
+local function estimate_ante_wall(best_score)
+    local result = { current_ante = 1, wall_ante = nil, boss_chips_at_wall = 0, best_score = best_score or 0 }
+    if not G or not G.GAME or not best_score or best_score <= 0 then return result end
+    if not get_blind_amount then return result end
+
+    result.current_ante = G.GAME.round_resets and G.GAME.round_resets.ante or 1
+    local ante_scaling = G.GAME.starting_params and G.GAME.starting_params.ante_scaling or 1
+    local hands_per_round = G.GAME.current_round and G.GAME.current_round.hands_left or 4
+
+    -- Get creative stake multiplier if available
+    local creative_mult = 1
+    if get_creative_blind_multiplier then
+        creative_mult = get_creative_blind_multiplier()
+    elseif get_insanity_blind_multiplier then
+        creative_mult = get_insanity_blind_multiplier()
+    end
+
+    -- Project forward: can our best score × hands clear the boss blind at each ante?
+    local round_output = best_score * math.max(hands_per_round, 1)
+    for ante = result.current_ante, result.current_ante + 12 do
+        local boss_chips = get_blind_amount(ante) * 2 * ante_scaling * creative_mult  -- boss mult=2
+        if round_output < boss_chips then
+            result.wall_ante = ante
+            result.boss_chips_at_wall = boss_chips
+            break
+        end
+    end
+
+    return result
+end
+
+-- ============================================================
+-- SHOP INTELLIGENCE (Phase 4) — ENCYCLOPEDIC KNOWLEDGE BASE
+-- ============================================================
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │ COMPLETE JOKER DATABASE (150 jokers)                        │
+-- │ type: xmult/mult/chips/econ/retrigger/utility               │
+-- │ tier: 1-5 power rating (context-independent baseline)       │
+-- │ synergy: tags for context-dependent bonuses                  │
+-- └─────────────────────────────────────────────────────────────┘
+local JOKER_DB = {
+    -- ══ COMMON (Rarity 1) ══
+    ['Joker']              = {type='mult',     tier=1, syn={}},
+    ['Greedy Joker']       = {type='mult',     tier=2, syn={'suit_Diamonds'}},
+    ['Lusty Joker']        = {type='mult',     tier=2, syn={'suit_Hearts'}},
+    ['Wrathful Joker']     = {type='mult',     tier=2, syn={'suit_Spades'}},
+    ['Gluttonous Joker']   = {type='mult',     tier=2, syn={'suit_Clubs'}},
+    ['Jolly Joker']        = {type='mult',     tier=2, syn={'hand_Pair'}},
+    ['Zany Joker']         = {type='mult',     tier=2, syn={'hand_Three of a Kind'}},
+    ['Mad Joker']          = {type='mult',     tier=2, syn={'hand_Two Pair'}},
+    ['Crazy Joker']        = {type='mult',     tier=2, syn={'hand_Straight'}},
+    ['Droll Joker']        = {type='mult',     tier=2, syn={'hand_Flush'}},
+    ['Sly Joker']          = {type='chips',    tier=2, syn={'hand_Pair'}},
+    ['Wily Joker']         = {type='chips',    tier=2, syn={'hand_Three of a Kind'}},
+    ['Clever Joker']       = {type='chips',    tier=2, syn={'hand_Two Pair'}},
+    ['Devious Joker']      = {type='chips',    tier=2, syn={'hand_Straight'}},
+    ['Crafty Joker']       = {type='chips',    tier=2, syn={'hand_Flush'}},
+    ['Half Joker']         = {type='mult',     tier=2, syn={'small_hand'}},
+    ['Credit Card']        = {type='econ',     tier=1, syn={}},
+    ['Banner']             = {type='chips',    tier=2, syn={'discards'}},
+    ['Mystic Summit']      = {type='mult',     tier=2, syn={'no_discards'}},
+    ['8 Ball']             = {type='utility',  tier=2, syn={'tarot_gen'}},
+    ['Misprint']           = {type='mult',     tier=1, syn={}},
+    ['Raised Fist']        = {type='mult',     tier=2, syn={}},
+    ['Chaos the Clown']    = {type='utility',  tier=2, syn={'reroll'}},
+    ['Scary Face']         = {type='chips',    tier=2, syn={'face_cards'}},
+    ['Abstract Joker']     = {type='mult',     tier=2, syn={'many_jokers'}},
+    ['Delayed Gratification']={type='econ',    tier=2, syn={'discards'}},
+    ['Gros Michel']        = {type='mult',     tier=2, syn={}},
+    ['Even Steven']        = {type='mult',     tier=2, syn={'even_ranks'}},
+    ['Odd Todd']           = {type='chips',    tier=2, syn={'odd_ranks'}},
+    ['Scholar']            = {type='mult',     tier=2, syn={'aces'}},
+    ['Business Card']      = {type='econ',     tier=1, syn={'face_cards'}},
+    ['Supernova']          = {type='mult',     tier=2, syn={'repeat_hand'}},
+    ['Ride the Bus']       = {type='mult',     tier=2, syn={'no_face'}},
+    ['Egg']                = {type='econ',     tier=1, syn={}},
+    ['Runner']             = {type='chips',    tier=3, syn={'hand_Straight', 'scaling'}},
+    ['Ice Cream']          = {type='chips',    tier=2, syn={'decay'}},
+    ['Splash']             = {type='utility',  tier=2, syn={}},
+    ['Blue Joker']         = {type='chips',    tier=2, syn={'big_deck'}},
+    ['Faceless Joker']     = {type='econ',     tier=2, syn={'face_cards', 'discards'}},
+    ['Green Joker']        = {type='mult',     tier=2, syn={'scaling'}},
+    ['Superposition']      = {type='utility',  tier=2, syn={'aces', 'hand_Straight'}},
+    ['To Do List']         = {type='econ',     tier=2, syn={}},
+    ['Cavendish']          = {type='xmult',    tier=3, syn={}},
+    ['Red Card']           = {type='mult',     tier=2, syn={'reroll', 'scaling'}},
+    ['Photograph']         = {type='xmult',    tier=3, syn={'face_cards'}},
+    ['Reserved Parking']   = {type='econ',     tier=1, syn={'face_cards'}},
+    ['Mail-In Rebate']     = {type='econ',     tier=2, syn={'discards'}},
+    ['Hallucination']      = {type='utility',  tier=2, syn={'tarot_gen'}},
+    ['Fortune Teller']     = {type='mult',     tier=2, syn={'tarot_use'}},
+    ['Juggler']            = {type='utility',  tier=2, syn={'hand_size'}},
+    ['Drunkard']           = {type='utility',  tier=2, syn={'discards'}},
+    ['Stone Joker']        = {type='chips',    tier=2, syn={'stone_cards'}},
+    ['Golden Joker']       = {type='econ',     tier=2, syn={}},
+    ['Popcorn']            = {type='mult',     tier=2, syn={'decay'}},
+    ['Walkie Talkie']      = {type='mult',     tier=2, syn={'10s', '4s'}},
+    ['Smiley Face']        = {type='mult',     tier=2, syn={'face_cards'}},
+    ['Golden Ticket']      = {type='econ',     tier=2, syn={'gold_cards'}},
+    ['Swashbuckler']       = {type='mult',     tier=2, syn={'many_jokers'}},
+    ['Hanging Chad']       = {type='retrigger',tier=3, syn={}},
+    ['Shoot the Moon']     = {type='mult',     tier=2, syn={'queens'}},
+    -- ══ UNCOMMON (Rarity 2) ══
+    ['Joker Stencil']      = {type='xmult',    tier=3, syn={'empty_slots'}},
+    ['Four Fingers']       = {type='utility',  tier=4, syn={'hand_Flush', 'hand_Straight'}},
+    ['Mime']               = {type='retrigger',tier=3, syn={'held_effects'}},
+    ['Ceremonial Dagger']  = {type='mult',     tier=3, syn={'scaling'}},
+    ['Marble Joker']       = {type='utility',  tier=2, syn={'stone_cards'}},
+    ['Loyalty Card']       = {type='xmult',    tier=3, syn={}},
+    ['Dusk']               = {type='retrigger',tier=3, syn={'final_hand'}},
+    ['Fibonacci']          = {type='mult',     tier=3, syn={'A_2_3_5_8'}},
+    ['Steel Joker']        = {type='xmult',    tier=3, syn={'steel_cards'}},
+    ['Hack']               = {type='retrigger',tier=3, syn={'2_3_4_5'}},
+    ['Pareidolia']         = {type='utility',  tier=3, syn={'face_cards'}},
+    ['Space Joker']        = {type='utility',  tier=3, syn={'hand_level'}},
+    ['Burglar']            = {type='utility',  tier=2, syn={}},
+    ['Blackboard']         = {type='xmult',    tier=3, syn={'suit_Spades', 'suit_Clubs'}},
+    ['DNA']                = {type='utility',  tier=3, syn={}},
+    ['Sixth Sense']        = {type='utility',  tier=2, syn={'spectral_gen'}},
+    ['Constellation']      = {type='xmult',    tier=4, syn={'planet_use', 'scaling'}},
+    ['Hiker']              = {type='chips',    tier=4, syn={'scaling'}},
+    ['Card Sharp']         = {type='xmult',    tier=3, syn={'repeat_hand'}},
+    ['Madness']            = {type='xmult',    tier=4, syn={'scaling'}},
+    ['Square Joker']       = {type='chips',    tier=3, syn={'4_card_plays'}},
+    ['Seance']             = {type='utility',  tier=2, syn={'hand_Straight Flush', 'spectral_gen'}},
+    ['Riff-raff']          = {type='utility',  tier=2, syn={}},
+    ['Vampire']            = {type='xmult',    tier=4, syn={'enhanced', 'scaling'}},
+    ['Shortcut']           = {type='utility',  tier=3, syn={'hand_Straight'}},
+    ['Hologram']           = {type='xmult',    tier=4, syn={'card_add', 'scaling'}},
+    ['Cloud 9']            = {type='econ',     tier=3, syn={'9s'}},
+    ['Rocket']             = {type='econ',     tier=3, syn={'scaling'}},
+    ['Midas Mask']         = {type='utility',  tier=3, syn={'face_cards', 'gold_cards'}},
+    ['Luchador']           = {type='utility',  tier=2, syn={'boss_blind'}},
+    ['Gift Card']          = {type='econ',     tier=3, syn={'many_jokers'}},
+    ['Turtle Bean']        = {type='utility',  tier=2, syn={'hand_size', 'decay'}},
+    ['Erosion']            = {type='mult',     tier=3, syn={'small_deck'}},
+    ['To the Moon']        = {type='econ',     tier=3, syn={'save_money'}},
+    ['Lucky Cat']          = {type='xmult',    tier=3, syn={'lucky_cards', 'scaling'}},
+    ['Bull']               = {type='chips',    tier=3, syn={'save_money'}},
+    ['Diet Cola']          = {type='utility',  tier=2, syn={}},
+    ['Trading Card']       = {type='econ',     tier=2, syn={'discards'}},
+    ['Flash Card']         = {type='mult',     tier=3, syn={'reroll', 'scaling'}},
+    ['Spare Trousers']     = {type='mult',     tier=3, syn={'hand_Two Pair', 'scaling'}},
+    ['Ramen']              = {type='xmult',    tier=2, syn={'decay', 'no_discards'}},
+    ['Seltzer']            = {type='retrigger',tier=3, syn={'decay'}},
+    ['Castle']             = {type='chips',    tier=3, syn={'scaling'}},
+    ['Campfire']           = {type='xmult',    tier=4, syn={'sell', 'scaling'}},
+    ['Mr. Bones']          = {type='utility',  tier=3, syn={'safety_net'}},
+    ['Acrobat']            = {type='xmult',    tier=3, syn={'final_hand'}},
+    ['Sock and Buskin']    = {type='retrigger',tier=3, syn={'face_cards'}},
+    ['Troubadour']         = {type='utility',  tier=2, syn={'hand_size'}},
+    ['Certificate']        = {type='utility',  tier=3, syn={'seal'}},
+    ['Smeared Joker']      = {type='utility',  tier=4, syn={'hand_Flush', 'suit_merge'}},
+    ['Throwback']          = {type='xmult',    tier=3, syn={'skip_blinds'}},
+    ['Rough Gem']          = {type='econ',     tier=2, syn={'suit_Diamonds'}},
+    ['Bloodstone']         = {type='xmult',    tier=3, syn={'suit_Hearts'}},
+    ['Arrowhead']          = {type='chips',    tier=3, syn={'suit_Spades'}},
+    ['Onyx Agate']         = {type='mult',     tier=3, syn={'suit_Clubs'}},
+    ['Glass Joker']        = {type='xmult',    tier=4, syn={'glass_cards', 'scaling'}},
+    ['Showman']            = {type='utility',  tier=3, syn={'shop'}},
+    ['Flower Pot']         = {type='xmult',    tier=3, syn={'all_suits'}},
+    ['Merry Andy']         = {type='utility',  tier=3, syn={'discards', 'hand_size_penalty'}},
+    ['Oops! All 6s']       = {type='utility',  tier=4, syn={'lucky_cards', 'probabilities'}},
+    ['The Idol']           = {type='xmult',    tier=3, syn={}},
+    ['Seeing Double']      = {type='xmult',    tier=3, syn={'suit_Clubs'}},
+    ['Matador']            = {type='econ',     tier=3, syn={'boss_blind'}},
+    ['Satellite']          = {type='econ',     tier=3, syn={'planet_use'}},
+    ["Driver's License"]   = {type='xmult',    tier=4, syn={'enhanced', '16_enhanced'}},
+    ['Cartomancer']        = {type='utility',  tier=3, syn={'tarot_gen'}},
+    ['Astronomer']         = {type='utility',  tier=4, syn={'planet_use'}},
+    ['Bootstraps']         = {type='mult',     tier=3, syn={'save_money'}},
+    -- ══ RARE (Rarity 3) ══
+    ['Vagabond']           = {type='utility',  tier=3, syn={'low_money', 'tarot_gen'}},
+    ['Baron']              = {type='xmult',    tier=4, syn={'kings'}},
+    ['Obelisk']            = {type='xmult',    tier=4, syn={'scaling'}},
+    ['Baseball Card']      = {type='xmult',    tier=4, syn={'uncommon_jokers'}},
+    ['Ancient Joker']      = {type='xmult',    tier=3, syn={}},
+    ['Blueprint']          = {type='utility',  tier=5, syn={'copy'}},
+    ['Wee Joker']          = {type='chips',    tier=4, syn={'2s', 'scaling'}},
+    ['Hit the Road']       = {type='xmult',    tier=4, syn={'jacks', 'discards', 'scaling'}},
+    ['The Duo']            = {type='xmult',    tier=4, syn={'hand_Pair'}},
+    ['The Trio']           = {type='xmult',    tier=4, syn={'hand_Three of a Kind'}},
+    ['The Family']         = {type='xmult',    tier=5, syn={'hand_Four of a Kind'}},
+    ['The Order']          = {type='xmult',    tier=4, syn={'hand_Straight'}},
+    ['The Tribe']          = {type='xmult',    tier=4, syn={'hand_Flush'}},
+    ['Stuntman']           = {type='chips',    tier=4, syn={'hand_size_penalty'}},
+    ['Invisible Joker']    = {type='utility',  tier=4, syn={'copy'}},
+    ['Brainstorm']         = {type='utility',  tier=5, syn={'copy'}},
+    ['Burnt Joker']        = {type='utility',  tier=4, syn={'hand_level', 'discards'}},
+    -- ══ LEGENDARY (Rarity 4) ══
+    ['Caino']              = {type='xmult',    tier=5, syn={'face_destroy', 'scaling'}},
+    ['Triboulet']          = {type='xmult',    tier=5, syn={'kings', 'queens'}},
+    ['Yorick']             = {type='xmult',    tier=5, syn={'discards', 'scaling'}},
+    ['Chicot']             = {type='utility',  tier=5, syn={'boss_blind'}},
+    ['Perkeo']             = {type='utility',  tier=5, syn={'consumable_gen'}},
+}
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │ COMPLETE TAROT DATABASE (22 tarots)                         │
+-- │ tier: 1-5 context-independent baseline                      │
+-- │ cat: enhancement/generation/economy/destruction/suit_change │
+-- └─────────────────────────────────────────────────────────────┘
+local TAROT_DB = {
+    ['The Fool']           = {tier=4, cat='generation',   desc='Copy last used Tarot/Planet'},
+    ['The Magician']       = {tier=3, cat='enhancement',  desc='Enhance 2 → Lucky Card',        enh='lucky'},
+    ['The High Priestess'] = {tier=3, cat='generation',   desc='Create 2 random Planets'},
+    ['The Empress']        = {tier=3, cat='enhancement',  desc='Enhance 2 → Mult Card (+4m)',   enh='mult'},
+    ['The Emperor']        = {tier=3, cat='generation',   desc='Create 2 random Tarots'},
+    ['The Hierophant']     = {tier=2, cat='enhancement',  desc='Enhance 2 → Bonus Card (+30c)', enh='bonus'},
+    ['The Lovers']         = {tier=3, cat='enhancement',  desc='Enhance 1 → Wild Card',         enh='wild'},
+    ['The Chariot']        = {tier=4, cat='enhancement',  desc='Enhance 1 → Steel Card (x1.5)', enh='steel'},
+    ['Justice']            = {tier=4, cat='enhancement',  desc='Enhance 1 → Glass Card (x2)',   enh='glass'},
+    ['The Hermit']         = {tier=3, cat='economy',      desc='Double money (cap $20)'},
+    ['Wheel of Fortune']   = {tier=4, cat='edition',      desc='1/4: Foil/Holo/Poly on joker'},
+    ['Strength']           = {tier=3, cat='enhancement',  desc='Increase rank of 2 cards by 1'},
+    ['The Hanged Man']     = {tier=2, cat='destruction',  desc='Destroy up to 2 cards'},
+    ['Death']              = {tier=4, cat='enhancement',  desc='Copy right card to left card'},
+    ['Temperance']         = {tier=3, cat='economy',      desc='Gain sell value of jokers as $ (cap $50)'},
+    ['The Devil']          = {tier=3, cat='enhancement',  desc='Enhance 1 → Gold Card ($3)',    enh='gold'},
+    ['The Tower']          = {tier=2, cat='enhancement',  desc='Enhance 1 → Stone Card (+50c)', enh='stone'},
+    ['The Star']           = {tier=4, cat='suit_change',  desc='Convert 3 cards → Diamonds',    suit='Diamonds'},
+    ['The Moon']           = {tier=4, cat='suit_change',  desc='Convert 3 cards → Clubs',       suit='Clubs'},
+    ['The Sun']            = {tier=4, cat='suit_change',  desc='Convert 3 cards → Hearts',      suit='Hearts'},
+    ['Judgement']          = {tier=5, cat='generation',   desc='Create random Joker'},
+    ['The World']          = {tier=4, cat='suit_change',  desc='Convert 3 cards → Spades',      suit='Spades'},
+}
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │ COMPLETE SPECTRAL DATABASE (18 spectrals)                   │
+-- └─────────────────────────────────────────────────────────────┘
+local SPECTRAL_DB = {
+    ['Familiar']    = {tier=3, desc='Destroy 1, add 3 Enhanced face cards',    danger=false},
+    ['Grim']        = {tier=3, desc='Destroy 1, add 2 Enhanced Aces',          danger=false},
+    ['Incantation'] = {tier=3, desc='Destroy 1, add 4 Enhanced numbered',      danger=false},
+    ['Talisman']    = {tier=3, desc='Add Gold Seal to 1 card ($3/play)'},
+    ['Aura']        = {tier=5, desc='Add Foil/Holo/Poly to 1 card'},
+    ['Wraith']      = {tier=4, desc='Create Rare Joker, set $ to 0',          danger_money=true},
+    ['Sigil']       = {tier=3, desc='Convert all hand → single suit'},
+    ['Ouija']       = {tier=3, desc='All hand → single rank, -1 hand size',   danger_hand=true},
+    ['Ectoplasm']   = {tier=4, desc='Negative on joker, -1 hand size',        danger_hand=true},
+    ['Immolate']    = {tier=3, desc='Destroy 5 hand cards, +$20',             danger=true},
+    ['Ankh']        = {tier=4, desc='Copy random joker, destroy others',       danger=true},
+    ['Deja Vu']     = {tier=3, desc='Add Red Seal (retrigger) to 1 card'},
+    ['Hex']         = {tier=4, desc='Polychrome on 1 joker, destroy others',   danger=true},
+    ['Trance']      = {tier=3, desc='Add Blue Seal (planet gen) to 1 card'},
+    ['Medium']      = {tier=3, desc='Add Purple Seal (tarot gen) to 1 card'},
+    ['Cryptid']     = {tier=4, desc='Create 2 copies of 1 card'},
+    ['The Soul']    = {tier=5, desc='Create a LEGENDARY Joker!'},
+    ['Black Hole']  = {tier=5, desc='Upgrade ALL hand types by 1 level'},
+}
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │ PLANET → HAND TYPE MAP (12 planets)                         │
+-- └─────────────────────────────────────────────────────────────┘
+local PLANET_HAND = {
+    ['Mercury']  = 'Pair',            ['Venus']    = 'Three of a Kind',
+    ['Earth']    = 'Full House',      ['Mars']     = 'Four of a Kind',
+    ['Jupiter']  = 'Flush',           ['Saturn']   = 'Straight',
+    ['Uranus']   = 'Two Pair',        ['Neptune']  = 'Straight Flush',
+    ['Pluto']    = 'High Card',       ['Planet X'] = 'Five of a Kind',
+    ['Ceres']    = 'Flush House',     ['Eris']     = 'Flush Five',
+}
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │ VOUCHER DATABASE (32 vouchers)                              │
+-- └─────────────────────────────────────────────────────────────┘
+local VOUCHER_DB = {
+    ['Overstock']       = {tier=4, desc='+1 shop card slot'},
+    ['Overstock Plus']  = {tier=5, desc='+1 more shop slot'},
+    ['Clearance Sale']  = {tier=3, desc='25% off boosters'},
+    ['Liquidation']     = {tier=4, desc='50% off boosters'},
+    ['Hone']            = {tier=3, desc='x2 edition appearance'},
+    ['Glow Up']         = {tier=4, desc='x4 edition appearance'},
+    ['Reroll Surplus']  = {tier=2, desc='-$2 per reroll'},
+    ['Reroll Glut']     = {tier=3, desc='-$2 more reroll'},
+    ['Crystal Ball']    = {tier=3, desc='+1 consumable slot'},
+    ['Omen Globe']      = {tier=3, desc='Spectrals in Arcana Packs'},
+    ['Telescope']       = {tier=4, desc='Best planet in Celestial'},
+    ['Observatory']     = {tier=5, desc='x1.5 for used planets'},
+    ['Grabber']         = {tier=4, desc='+1 hand per round'},
+    ['Nacho Tong']      = {tier=4, desc='+1 hand per round'},
+    ['Wasteful']        = {tier=3, desc='+1 discard per round'},
+    ['Recyclomancy']    = {tier=3, desc='+1 discard per round'},
+    ['Tarot Merchant']  = {tier=2, desc='x2 tarots in shop'},
+    ['Tarot Tycoon']    = {tier=3, desc='x4 tarots in shop'},
+    ['Planet Merchant'] = {tier=2, desc='x2 planets in shop'},
+    ['Planet Tycoon']   = {tier=3, desc='x4 planets in shop'},
+    ['Seed Money']      = {tier=3, desc='Interest cap → $50'},
+    ['Money Tree']      = {tier=4, desc='Interest cap → $100'},
+    ['Blank']           = {tier=2, desc='+$5 on boss defeat'},
+    ['Antimatter']      = {tier=5, desc='+1 joker slot'},
+    ['Magic Trick']     = {tier=2, desc='Playing cards in shop'},
+    ['Illusion']        = {tier=4, desc='Shop cards have editions/seals'},
+    ['Hieroglyph']      = {tier=3, desc='-1 Ante, -1 hand/round'},
+    ['Petroglyph']      = {tier=3, desc='-1 Ante, -1 discard/round'},
+    ["Director's Cut"]  = {tier=3, desc='Reroll boss for $10'},
+    ['Retcon']          = {tier=4, desc='Reroll boss free'},
+    ['Paint Brush']     = {tier=3, desc='+1 hand size'},
+    ['Palette']         = {tier=4, desc='+1 hand size'},
+}
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │ EDITION / ENHANCEMENT / SEAL value (for any card type)      │
+-- └─────────────────────────────────────────────────────────────┘
+local EDITION_VALUE = {
+    negative   = {score=5, label='Negative (+1 slot)'},
+    polychrome = {score=4, label='Polychrome (x1.5)'},
+    holo       = {score=3, label='Holographic (+10m)'},
+    foil       = {score=2, label='Foil (+50c)'},
+}
+local ENHANCEMENT_VALUE = {
+    glass  = {score=5, label='Glass (x2, fragile)'},
+    steel  = {score=4, label='Steel (x1.5 held)'},
+    lucky  = {score=3, label='Lucky (+20m / $20)'},
+    mult   = {score=3, label='Mult (+4m)'},
+    gold   = {score=3, label='Gold ($3 held)'},
+    wild   = {score=2, label='Wild (any suit)'},
+    bonus  = {score=2, label='Bonus (+30c)'},
+    stone  = {score=2, label='Stone (+50c, no rank)'},
+}
+local SEAL_VALUE = {
+    Gold   = {score=3, label='Gold ($3 on play)'},
+    Red    = {score=4, label='Red (retrigger)'},
+    Blue   = {score=3, label='Blue (planet gen)'},
+    Purple = {score=3, label='Purple (tarot on discard)'},
+}
+
+-- ┌─────────────────────────────────────────────────────────────┐
+-- │ HAND TYPE BASE DATA (for planet evaluation)                 │
+-- └─────────────────────────────────────────────────────────────┘
+local HAND_BASE = {
+    ['High Card']       = {base_chips=5,   base_mult=1,  rarity=1},
+    ['Pair']            = {base_chips=10,  base_mult=2,  rarity=1},
+    ['Two Pair']        = {base_chips=20,  base_mult=2,  rarity=2},
+    ['Three of a Kind'] = {base_chips=30,  base_mult=3,  rarity=2},
+    ['Straight']        = {base_chips=30,  base_mult=4,  rarity=3},
+    ['Flush']           = {base_chips=35,  base_mult=4,  rarity=3},
+    ['Full House']      = {base_chips=40,  base_mult=4,  rarity=3},
+    ['Four of a Kind']  = {base_chips=60,  base_mult=7,  rarity=4},
+    ['Straight Flush']  = {base_chips=100, base_mult=8,  rarity=5},
+    ['Five of a Kind']  = {base_chips=120, base_mult=12, rarity=5},
+    ['Flush House']     = {base_chips=140, base_mult=14, rarity=5},
+    ['Flush Five']      = {base_chips=160, base_mult=16, rarity=5},
+}
+
+--- Pick the weakest joker category using proper tri-min logic.
+--- Tie-break priority: xmult > mult > chips (multiplicative > additive scaling).
+local function find_weakest(lineup)
+    local m = math.min(lineup.xmult, lineup.mult, lineup.chips)
+    if lineup.xmult == m then return 'xmult'
+    elseif lineup.mult  == m then return 'mult'
+    else return 'chips' end
+end
+
+--- Classify a joker as 'xmult' / 'mult' / 'chips' / 'econ' / 'retrigger' / 'utility'.
+--- Uses JOKER_DB name table first, then falls back to runtime ability fields.
+local function classify_joker(joker)
+    if not joker then return 'utility' end
+    local name = (joker.ability and joker.ability.name) or
+                 (joker.config and joker.config.center and joker.config.center.name) or ''
+    local db = JOKER_DB[name]
+    if db then return db.type end
+    local ab = joker.ability or {}
+    local ed = joker.edition or {}
+    if (ab.x_mult and ab.x_mult > 1) or (ab.Xmult and ab.Xmult > 1) or ed.x_mult then
+        return 'xmult'
+    end
+    if (ab.mult and ab.mult ~= 0) or (ab.t_mult and ab.t_mult ~= 0) or ed.mult then
+        return 'mult'
+    end
+    if (ab.chips and ab.chips ~= 0) or (ab.t_chips and ab.t_chips ~= 0) or ed.chips then
+        return 'chips'
+    end
+    return 'utility'
+end
+
+--- Build a snapshot of the current run context for synergy checks.
+--- Returns a table of boolean flags the advisor uses to score jokers contextually.
+local function build_run_context()
+    local ctx = {}
+    if not G or not G.GAME then return ctx end
+    -- Hand play frequencies
+    ctx.hands = {}
+    ctx.most_played = nil
+    local most_count = 0
+    if G.GAME.hands then
+        for hname, info in pairs(G.GAME.hands) do
+            if info.visible then
+                ctx.hands[hname] = {
+                    played  = info.played or 0,
+                    level   = info.level or 1,
+                    l_chips = info.l_chips or 0,
+                    l_mult  = info.l_mult or 0,
+                    s_chips = info.s_chips or info.chips or 0,
+                    s_mult  = info.s_mult or info.mult or 0,
+                }
+                if (info.played or 0) > most_count then
+                    most_count = info.played or 0
+                    ctx.most_played = hname
+                end
+            end
+        end
+    end
+    -- Deck composition
+    ctx.deck_size = 0
+    ctx.suits = {Spades=0, Hearts=0, Clubs=0, Diamonds=0}
+    ctx.ranks = {}
+    ctx.face_count = 0
+    ctx.enhanced_count = 0
+    ctx.stone_count = 0
+    ctx.steel_count = 0
+    ctx.glass_count = 0
+    ctx.gold_count = 0
+    ctx.lucky_count = 0
+    ctx.wild_count = 0
+    local all_cards = {}
+    local function scan_area(area)
+        if area and area.cards then
+            for _, c in ipairs(area.cards) do
+                all_cards[#all_cards+1] = c
+            end
+        end
+    end
+    scan_area(G.deck)
+    scan_area(G.hand)
+    scan_area(G.play)
+    scan_area(G.discard)
+    for _, c in ipairs(all_cards) do
+        ctx.deck_size = ctx.deck_size + 1
+        local suit = c.base and c.base.suit
+        if suit and ctx.suits[suit] then ctx.suits[suit] = ctx.suits[suit] + 1 end
+        local id = c.base and c.base.id or 0
+        ctx.ranks[id] = (ctx.ranks[id] or 0) + 1
+        if id >= 11 or id == 1 then ctx.face_count = ctx.face_count + 1 end -- J/Q/K + Ace under some jokers
+        local ab = c.ability or {}
+        if ab.name and ab.name ~= '' and ab.name ~= 'Base Card' then
+            ctx.enhanced_count = ctx.enhanced_count + 1
+            if ab.name == 'Stone Card' then ctx.stone_count = ctx.stone_count + 1 end
+            if ab.name == 'Steel Card' then ctx.steel_count = ctx.steel_count + 1 end
+            if ab.name == 'Glass Card' then ctx.glass_count = ctx.glass_count + 1 end
+            if ab.name == 'Gold Card'  then ctx.gold_count  = ctx.gold_count + 1 end
+            if ab.name == 'Lucky Card' then ctx.lucky_count = ctx.lucky_count + 1 end
+            if ab.name == 'Wild Card'  then ctx.wild_count  = ctx.wild_count + 1 end
+        end
+    end
+    -- Game state
+    ctx.dollars     = G.GAME.dollars or 0
+    ctx.ante        = G.GAME.round_resets and G.GAME.round_resets.ante or 1
+    ctx.hands_left  = G.GAME.current_round and G.GAME.current_round.hands_left or 4
+    ctx.discards_left = G.GAME.current_round and G.GAME.current_round.discards_left or 3
+    ctx.joker_count = G.jokers and G.jokers.cards and #G.jokers.cards or 0
+    ctx.joker_limit = G.jokers and G.jokers.config and G.jokers.config.card_limit or 5
+    ctx.joker_slots_free = ctx.joker_limit - ctx.joker_count
+    ctx.consumable_count = G.consumeables and G.consumeables.cards and #G.consumeables.cards or 0
+    ctx.consumable_limit = G.consumeables and G.consumeables.config and G.consumeables.config.card_limit or 2
+    ctx.consumable_slots_free = ctx.consumable_limit - ctx.consumable_count
+    ctx.hand_size = (G.hand and G.hand.config and G.hand.config.hand_size) or
+                    (G.hand and G.hand.cards and #G.hand.cards) or 5
+    -- Joker names in lineup (for synergy: uncommon count, blueprint presence, etc.)
+    ctx.joker_names = {}
+    ctx.uncommon_joker_count = 0
+r 13 2531 %20%20%20%20 -
+l 289
+        for _, j in ipairs(G.jokers.cards) do
+            local n = (j.ability and j.ability.name) or ''
+            ctx.joker_names[n] = true
+            if j.config and j.config.center and j.config.center.rarity == 2 then
+                ctx.uncommon_joker_count = ctx.uncommon_joker_count + 1
+            end
+        end
+    end
+    -- Planets used this run
+    ctx.unique_planets_used = 0
+    if G.GAME.consumeable_usage and G.GAME.consumeable_usage.planet then
+        for _ in pairs(G.GAME.consumeable_usage.planet) do
+            ctx.unique_planets_used = ctx.unique_planets_used + 1
+        end
+    end
+    -- Tarots used this run
+    ctx.tarots_used = 0
+    if G.GAME.consumeable_usage and G.GAME.consumeable_usage.tarot then
+        for _, v in pairs(G.GAME.consumeable_usage.tarot) do
+            ctx.tarots_used = ctx.tarots_used + (v.count or 0)
+        end
+    end
+    return ctx
+end
+
+--- Score a joker from JOKER_DB using full run context. Returns rating (0-7) and reason string.
+local function score_joker_contextual(name, db_entry, ctx, lineup)
+    local d = db_entry
+    local rating = d.tier  -- baseline from DB
+    local reasons = {}
+
+    -- Type-based scaling
+    local cat = d.type
+    if cat == 'xmult'    then reasons[#reasons+1] = 'xMult'
+    elseif cat == 'mult'  then reasons[#reasons+1] = '+Mult'
+    elseif cat == 'chips' then reasons[#reasons+1] = '+Chips'
+    elseif cat == 'econ'  then reasons[#reasons+1] = 'Economy'
+    elseif cat == 'retrigger' then reasons[#reasons+1] = 'Retrigger'
+    else reasons[#reasons+1] = 'Utility' end
+
+    -- Map type to lineup category for gap detection
+    local lineup_cat = cat
+    if cat == 'econ' or cat == 'retrigger' or cat == 'utility' then lineup_cat = nil end
+
+    if lineup_cat then
+        local weakest = find_weakest(lineup)
+        if lineup_cat == weakest then
+            rating = rating + 1
+            reasons[#reasons+1] = 'fills gap!'
+        end
+        if lineup[lineup_cat] and lineup[lineup_cat] >= 3 then
+            rating = math.max(1, rating - 1)
+            reasons[#reasons+1] = 'saturated'
+        end
+    end
+
+    -- Synergy bonuses — check each tag
+    if d.syn then
+        for _, tag in ipairs(d.syn) do
+            -- Suit synergies: bonus if lots of that suit in deck
+            if tag:sub(1,5) == 'suit_' then
+                local s = tag:sub(6)
+                if ctx.suits and ctx.suits[s] and ctx.suits[s] >= 8 then
+                    rating = rating + 1; reasons[#reasons+1] = s .. ' deck'
+                    break
+                end
+            end
+            -- Hand type synergies: bonus if that hand is played frequently
+            if tag:sub(1,5) == 'hand_' then
+                local h = tag:sub(6)
+                if ctx.hands and ctx.hands[h] and (ctx.hands[h].played or 0) >= 3 then
+                    rating = rating + 1; reasons[#reasons+1] = h .. ' player'
+                    break
+                end
+            end
+            -- Specific synergies
+            if tag == 'face_cards' and ctx.face_count >= 10 then
+                rating = rating + 1; reasons[#reasons+1] = 'face-heavy deck'; break
+            end
+            if tag == 'scaling' and ctx.ante >= 4 then
+                rating = rating + 1; reasons[#reasons+1] = 'scales well late'; break
+            end
+            if tag == 'discards' and ctx.discards_left >= 3 then
+                rating = rating + 1; reasons[#reasons+1] = 'discard synergy'; break
+            end
+            if tag == 'save_money' and ctx.dollars >= 15 then
+                rating = rating + 1; reasons[#reasons+1] = 'money synergy'; break
+            end
+            if tag == 'many_jokers' and ctx.joker_count >= 4 then
+                rating = rating + 1; reasons[#reasons+1] = 'full lineup'; break
+            end
+            if tag == 'planet_use' and ctx.unique_planets_used >= 3 then
+                rating = rating + 1; reasons[#reasons+1] = 'planet user'; break
+            end
+            if tag == 'tarot_use' and ctx.tarots_used >= 5 then
+                rating = rating + 1; reasons[#reasons+1] = 'tarot user'; break
+            end
+            if tag == 'steel_cards' and ctx.steel_count >= 2 then
+                rating = rating + 1; reasons[#reasons+1] = 'steel synergy'; break
+            end
+            if tag == 'glass_cards' and ctx.glass_count >= 2 then
+                rating = rating + 1; reasons[#reasons+1] = 'glass synergy'; break
+            end
+            if tag == 'lucky_cards' and ctx.lucky_count >= 2 then
+                rating = rating + 1; reasons[#reasons+1] = 'lucky synergy'; break
+            end
+            if tag == 'gold_cards' and ctx.gold_count >= 2 then
+                rating = rating + 1; reasons[#reasons+1] = 'gold synergy'; break
+            end
+            if tag == 'stone_cards' and ctx.stone_count >= 3 then
+                rating = rating + 1; reasons[#reasons+1] = 'stone synergy'; break
+            end
+            if tag == 'enhanced' and ctx.enhanced_count >= 5 then
+                rating = rating + 1; reasons[#reasons+1] = 'enhanced deck'; break
+            end
+            if tag == '16_enhanced' and ctx.enhanced_count >= 12 then
+                rating = rating + 1; reasons[#reasons+1] = ctx.enhanced_count .. ' enhanced'; break
+            end
+            if tag == 'uncommon_jokers' and ctx.uncommon_joker_count >= 2 then
+                rating = rating + 1; reasons[#reasons+1] = ctx.uncommon_joker_count .. ' uncommon'; break
+            end
+            if tag == 'small_deck' and ctx.deck_size < 42 then
+                rating = rating + 1; reasons[#reasons+1] = 'thin deck'; break
+            end
+            if tag == 'big_deck' and ctx.deck_size > 52 then
+                rating = rating + 1; reasons[#reasons+1] = 'large deck'; break
+            end
+            if tag == 'probabilities' then
+                rating = rating + 1; reasons[#reasons+1] = 'doubles all odds'; break
+            end
+            if tag == 'boss_blind' then
+                reasons[#reasons+1] = 'boss utility'; break
+            end
+            if tag == 'skip_blinds' then
+                reasons[#reasons+1] = 'skip synergy'; break
+            end
+            if tag == 'reroll' then
+                reasons[#reasons+1] = 'reroll synergy'; break
+            end
+        end
+    end
+
+    rating = math.min(7, math.max(1, rating))
+    return rating, table.concat(reasons, ', ')
+end
+
+--- Score a planet card based on hand play data and current levels.
+local function score_planet_contextual(planet_name, ctx)
+    local ht = PLANET_HAND[planet_name]
+    if not ht then return 2, planet_name or '?' end
+    local hi = ctx.hands and ctx.hands[ht]
+    if not hi then
+        return 1, ht .. ' (not played)'
+    end
+    -- Compute value: play frequency * level-up gain
+    local gain = (hi.l_chips * (hi.s_mult + hi.l_mult * hi.level)) +
+                 (hi.l_mult * (hi.s_chips + hi.l_chips * hi.level))
+    local val = math.max(hi.played, 1) * gain
+    local rating = math.min(5, math.max(1, math.floor(val / 50 + 1)))
+    -- Boost if it's the most-played hand
+    if ht == ctx.most_played then
+        rating = math.min(5, rating + 1)
+    end
+    local reason = ht .. ' Lv' .. hi.level
+    if hi.played > 0 then reason = reason .. ' (x' .. hi.played .. ')' end
+    reason = reason .. ' +' .. hi.l_chips .. 'c +' .. hi.l_mult .. 'm'
+    return rating, reason
+end
+
+--- Score a tarot card based on full context (deck composition, hand size, etc.)
+local function score_tarot_contextual(name, ctx)
+    local td = TAROT_DB[name]
+    if not td then return 2, 'Tarot card' end
+    local rating = td.tier
+    local reasons = {td.desc}
+
+    -- Enhancement tarots: bonus if lots of unenhanced cards to target
+    if td.cat == 'enhancement' then
+        local unenhanced = ctx.deck_size - ctx.enhanced_count
+        if unenhanced >= 20 then rating = math.min(5, rating + 1); reasons[#reasons+1] = 'many targets' end
+    end
+    -- Suit change tarots: bonus if building flush and that suit is dominant
+    if td.cat == 'suit_change' and td.suit then
+        local most_suit, most_count = nil, 0
+        for s, v in pairs(ctx.suits or {}) do if v > most_count then most_count=v; most_suit=s end end
+        if td.suit == most_suit then
+            rating = math.min(5, rating + 1); reasons[#reasons+1] = 'dominant suit!'
+        end
+        -- Check if playing flush-heavy
+        if ctx.hands and ctx.hands['Flush'] and (ctx.hands['Flush'].played or 0) >= 3 then
+            rating = math.min(5, rating + 1); reasons[#reasons+1] = 'flush player'
+        end
+    end
+    -- Economy tarots
+    if name == 'The Hermit' then
+        if ctx.dollars >= 10 then rating = 5; reasons = {'Double $' .. ctx.dollars .. ' (up to $20)'}
+        elseif ctx.dollars <= 3 then rating = 2; reasons = {'Low money, weak double'} end
+    end
+    if name == 'Temperance' then
+        if ctx.joker_count >= 4 then rating = math.min(5, rating + 1); reasons[#reasons+1] = ctx.joker_count .. ' jokers' end
+    end
+    -- Generation tarots: check consumable space
+    if td.cat == 'generation' then
+        if ctx.consumable_slots_free <= 0 then
+            rating = math.max(1, rating - 1); reasons[#reasons+1] = 'NO SLOT!'
+        end
+    end
+    -- Destruction: useful if deck is cluttered
+    if name == 'The Hanged Man' then
+        if ctx.deck_size > 55 then rating = math.min(5, rating + 1); reasons[#reasons+1] = 'thin the deck' end
+    end
+    -- Judgement: always premium
+    if name == 'Judgement' then
+        if ctx.joker_slots_free <= 0 then rating = 3; reasons = {'No joker slots!'} end
+    end
+
+    return math.min(5, math.max(1, rating)), table.concat(reasons, ' | ')
+end
+
+--- Score a spectral card based on full context.
+local function score_spectral_contextual(name, ctx)
+    local sd = SPECTRAL_DB[name]
+    if not sd then return 3, 'Spectral' end
+    local rating = sd.tier
+    local reasons = {sd.desc}
+
+    -- Hand size danger check
+    if sd.danger_hand and ctx.hand_size <= 3 then
+        return 1, 'DANGER: hand size ' .. ctx.hand_size .. '!'
+    end
+    -- Money danger
+    if sd.danger_money and ctx.dollars <= 5 then
+        rating = math.max(2, rating - 1); reasons[#reasons+1] = 'low money warning'
+    end
+    -- Ankh/Hex: very risky with many jokers
+    if (name == 'Ankh' or name == 'Hex') and ctx.joker_count >= 3 then
+        rating = math.max(2, rating - 1); reasons[#reasons+1] = 'will destroy ' .. (ctx.joker_count-1) .. ' jokers!'
+    end
+    if (name == 'Ankh' or name == 'Hex') and ctx.joker_count <= 1 then
+        rating = math.min(5, rating + 1); reasons[#reasons+1] = 'safe with 1 joker'
+    end
+    -- Ectoplasm: bonus if joker slots tight, penalty if hand tiny
+    if name == 'Ectoplasm' then
+        if ctx.joker_slots_free <= 0 then
+            rating = math.min(5, rating + 1); reasons[#reasons+1] = 'need slot!'
+        end
+        if ctx.hand_size <= 4 then
+            reasons[#reasons+1] = 'CAUTION: hand → ' .. (ctx.hand_size - 1)
+        end
+    end
+    -- Black Hole: always amazing, even more so at higher antes
+    if name == 'Black Hole' then
+        if ctx.ante >= 5 then rating = 5; reasons = {'INCREDIBLE: upgrades ALL hands'} end
+    end
+    -- Soul: always 5
+    if name == 'The Soul' then rating = 5 end
+    -- Wraith: better if joker slots available
+    if name == 'Wraith' and ctx.joker_slots_free >= 1 then
+        reasons[#reasons+1] = 'has slot for rare joker'
+    end
+    -- Cryptid: amazing for strong cards
+    if name == 'Cryptid' then
+        if ctx.enhanced_count >= 5 then rating = math.min(5, rating + 1); reasons[#reasons+1] = 'copy enhanced!' end
+    end
+    -- Immolate: risky but $20 is huge early
+    if name == 'Immolate' and ctx.ante <= 3 then
+        rating = math.min(5, rating + 1); reasons[#reasons+1] = '$20 early is huge'
+    end
+
+    return math.min(5, math.max(1, rating)), table.concat(reasons, ' | ')
+end
+
+--- Analyze shop offerings using full encyclopedic knowledge base.
+--- Context-aware scoring for jokers, planets, tarots, spectrals, and vouchers.
+function BOT_ENGINE.analyze_shop()
+    if not G or not G.GAME then return nil end
+
+    local dollars = G.GAME.dollars or 0
+    local ctx = build_run_context()
+    local results = {
+        joker_ratings   = {},
+        planet_tip      = nil,
+        consumable_tips = {},
+        voucher_ratings = {},
+        timestamp       = love.timer.getTime(),
+    }
+
+    -- ── 1. Profile current joker lineup gaps ────────────────────
+    local lineup = { chips = 0, mult = 0, xmult = 0, econ = 0, retrigger = 0, utility = 0, total = 0 }
+r 13 2531 %20%20%20%20 -
+l 8
+        for _, j in ipairs(G.jokers.cards) do
+            local cat = classify_joker(j)
+            lineup[cat] = (lineup[cat] or 0) + 1
+            lineup.total = lineup.total + 1
+        end
+    end
+
+    -- ── 2. Score each shop joker using JOKER_DB + context ───────
+r 13 1100 %20%20%20%20 -
+l 46
+        for _, card in ipairs(G.shop_jokers.cards) do
+            local name = (card.ability and card.ability.name) or
+                         (card.config and card.config.center and card.config.center.name) or '?'
+            local cost = card.cost or 0
+            local affordable = dollars >= cost
+            local cat = classify_joker(card)
+            local db = JOKER_DB[name]
+            local rating, reason
+            if db then
+                rating, reason = score_joker_contextual(name, db, ctx, lineup)
+            else
+                -- Fallback for unknown jokers
+                rating = (cat == 'xmult') and 3 or (cat == 'mult') and 2 or 1
+                reason = (cat == 'xmult') and 'xMult' or (cat == 'mult') and '+Mult' or
+                         (cat == 'chips')  and '+Chips' or 'Unknown'
+            end
+
+            -- Edition bonus (Negative > Poly > Holo > Foil)
+            if card.edition then
+                if card.edition.negative then
+                    rating = math.min(7, rating + 3)
+                    reason = reason .. ' +NEGATIVE!'
+                elseif card.edition.polychrome then
+                    rating = rating + 2; reason = reason .. ' +Poly'
+                elseif card.edition.holo then
+                    rating = rating + 1; reason = reason .. ' +Holo'
+                elseif card.edition.foil then
+                    rating = rating + 1; reason = reason .. ' +Foil'
+                end
+            end
+
+            -- Slot check
+            if ctx.joker_slots_free <= 0 and not (card.edition and card.edition.negative) then
+                reason = reason .. ' NO SLOT!'
+            end
+
+            results.joker_ratings[#results.joker_ratings + 1] = {
+                name = name, type = cat, cost = cost, affordable = affordable,
+                rating = math.min(7, math.max(1, rating)), reason = reason,
+            }
+        end
+        table.sort(results.joker_ratings, function(a, b) return a.rating > b.rating end)
+    end
+
+    -- ── 3. Voucher analysis using VOUCHER_DB ─────────────────────
+    results.voucher_ratings = {}
+r 13 1999 %20%20%20%20 -
+l 131
+        for _, card in ipairs(G.shop_vouchers.cards) do
+            local name = (card.ability and card.ability.name) or
+                         (card.config and card.config.center and card.config.center.name) or '?'
+            local cost = card.cost or 0
+            local vd = VOUCHER_DB[name]
+            local rating = vd and vd.tier or 2
+            local reason = vd and vd.desc or 'Voucher'
+            -- Context bonuses
+            if name == 'Antimatter' then
+                if ctx.joker_slots_free <= 0 then rating = 5; reason = reason .. ' (NEED SLOT!)' end
+            elseif name == 'Grabber' or name == 'Nacho Tong' then
+                if ctx.ante >= 5 then rating = math.min(5, rating + 1); reason = reason .. ' (late game)' end
+            elseif name == 'Paint Brush' or name == 'Palette' then
+                if ctx.hand_size <= 4 then rating = math.min(5, rating + 1); reason = reason .. ' (small hand)' end
+            elseif name == 'Crystal Ball' then
+                if ctx.consumable_slots_free <= 0 then rating = 5; reason = reason .. ' (NEED SLOT!)' end
+            elseif name == 'Seed Money' or name == 'Money Tree' then
+                if ctx.dollars >= 20 then rating = math.min(5, rating + 1); reason = reason .. ' (saving $)' end
+            elseif name == 'Observatory' then
+                if ctx.unique_planets_used >= 4 then rating = 5; reason = reason .. ' (' .. ctx.unique_planets_used .. ' planets)' end
+            end
+            results.voucher_ratings[#results.voucher_ratings+1] = {
+                name=name, cost=cost, affordable=dollars>=cost,
+                rating=rating, reason=reason,
+            }
+        end
+    end
+
+    -- ── 4. Shop consumables (planets/tarots/spectrals in shop) ──
+    if G.shop_booster and G.shop_booster.cards then
+        for _, card in ipairs(G.shop_booster.cards) do
+            local ab = card.ability or {}
+            local name = ab.name or (card.config and card.config.center and card.config.center.name) or '?'
+            local set = ab.set or ''
+            if set == 'Planet' then
+                local rating, reason = score_planet_contextual(name, ctx)
+                results.consumable_tips[#results.consumable_tips+1] = {
+                    name=name, hand_type=PLANET_HAND[name] or '?', rating=rating, reason=reason }
+            elseif set == 'Tarot' then
+                local rating, reason = score_tarot_contextual(name, ctx)
+                results.consumable_tips[#results.consumable_tips+1] = {
+                    name=name, rating=rating, reason=reason }
+            elseif set == 'Spectral' then
+                local rating, reason = score_spectral_contextual(name, ctx)
+                results.consumable_tips[#results.consumable_tips+1] = {
+                    name=name, rating=rating, reason=reason }
+            end
+        end
+    end
+
+    -- Check held consumables for planet tip
+    if G.consumeables and G.consumeables.cards then
+        for _, card in ipairs(G.consumeables.cards) do
+            local ab = card.ability or {}
+            local name = ab.name or '?'
+            if ab.set == 'Planet' then
+                local rating, reason = score_planet_contextual(name, ctx)
+                results.consumable_tips[#results.consumable_tips + 1] = {
+                    name=name, hand_type=PLANET_HAND[name] or '', rating=rating, reason=reason }
+            end
+        end
+    end
+
+    -- Recommend best planet overall
+    if ctx.most_played then
+        local hi = ctx.hands[ctx.most_played]
+        if hi then
+            results.planet_tip = {
+                hand_type  = ctx.most_played,
+                level      = hi.level,
+                gain_chips = hi.l_chips,
+                gain_mult  = hi.l_mult,
+                played     = hi.played,
+            }
+        end
+    end
+
+    -- ── 5. Action recommendation ─────────────────────────────────
+    local best_j = results.joker_ratings[1]
+    local best_v = results.voucher_ratings[1]
+    local reroll_cost = (G.GAME.current_round and G.GAME.current_round.reroll_cost) or 5
+    results.reroll_cost = reroll_cost
+    results.dollars = dollars
+    local best_val = best_j and best_j.rating or 0
+    local voucher_val = best_v and best_v.rating or 0
+    -- Prioritize: great joker > great voucher > reroll > save
+    if best_j and best_j.affordable and best_val >= 4 then
+        results.action = 'BUY: ' .. best_j.name
+        results.action_good = true
+    elseif best_v and best_v.affordable and voucher_val >= 4 then
+        results.action = 'VOUCHER: ' .. best_v.name
+        results.action_good = true
+    elseif dollars >= reroll_cost and best_val <= 2 and dollars > reroll_cost + 2 then
+        results.action = 'REROLL ($' .. reroll_cost .. ')'
+        results.action_good = nil  -- neutral (gold)
+    else
+        results.action = 'SAVE $' .. dollars
+        results.action_good = false
+    end
+
+    BOT_ENGINE.shop_results = results
+    return results
+end
+
+-- FEATURE: Pack Advisor — analyze cards inside an open booster pack using
+-- full encyclopedic knowledge base (JOKER_DB, TAROT_DB, SPECTRAL_DB, PLANET_HAND, etc.)
+function BOT_ENGINE.analyze_pack()
+    if not G or not G.GAME then return nil end
+    if not G.pack_cards or not G.pack_cards.cards or #G.pack_cards.cards == 0 then return nil end
+
+    local ctx = build_run_context()
+    local results = {
+        choose_count = G.GAME.pack_choices or 1,
+        total_count  = #G.pack_cards.cards,
+        items        = {},
+        header       = 'Pack Advisor',
+        timestamp    = love.timer.getTime(),
+    }
+
+    -- Detect pack type from current state
+    local st = G.STATE
+    local is_joker   = st == G.STATES.BUFFOON_PACK
+    local is_planet  = st == G.STATES.PLANET_PACK
+    local is_tarot   = st == G.STATES.TAROT_PACK
+    local is_spec    = st == G.STATES.SPECTRAL_PACK
+    local is_std     = st == G.STATES.STANDARD_PACK
+
+    if is_joker then
+        -- ── Buffoon Pack: rate jokers with full JOKER_DB + context ──────
+        results.header = 'Joker Pack'
+        local lineup = { chips = 0, mult = 0, xmult = 0, econ = 0, retrigger = 0, utility = 0, total = 0 }
+r 13 2531 %20%20%20%20%20%20%20%20 -
+l 1212
+            for _, j in ipairs(G.jokers.cards) do
+                local cat = classify_joker(j)
+                lineup[cat] = (lineup[cat] or 0) + 1
+                lineup.total = lineup.total + 1
+            end
+        end
+        for _, card in ipairs(G.pack_cards.cards) do
+            local name = (card.ability and card.ability.name) or
+                         (card.config and card.config.center and card.config.center.name) or '?'
+            local cat  = classify_joker(card)
+            local db = JOKER_DB[name]
+            local rating, reason
+            if db then
+                rating, reason = score_joker_contextual(name, db, ctx, lineup)
+            else
+                rating = (cat == 'xmult') and 3 or (cat == 'mult') and 2 or 1
+                reason = (cat == 'xmult') and 'xMult' or (cat == 'mult') and '+Mult' or
+                         (cat == 'chips')  and '+Chips' or 'Utility'
+            end
+            -- Edition bonus
+            if card.edition then
+                if card.edition.negative then
+                    rating = math.min(7, rating + 3); reason = reason .. ' +NEGATIVE!'
+                elseif card.edition.polychrome then rating = rating + 2; reason = reason .. ' +Poly'
+                elseif card.edition.holo   then rating = rating + 1; reason = reason .. ' +Holo'
+                elseif card.edition.foil   then rating = rating + 1; reason = reason .. ' +Foil' end
+            end
+            local col = (cat == 'xmult') and (G.C.RED or {1,0,0,1}) or
+                        (cat == 'mult')  and (G.C.MULT or {1,0.3,0.3,1}) or
+                        (cat == 'chips') and (G.C.CHIPS or {0.3,0.5,1,1}) or
+                        (G.C.UI.TEXT_LIGHT)
+            results.items[#results.items + 1] = {
+                name=name, rating=math.min(7, math.max(1, rating)), reason=reason, colour=col,
+                is_negative=(card.edition and card.edition.negative) or false,
+            }
+        end
+        table.sort(results.items, function(a, b) return a.rating > b.rating end)
+        -- Joker slot warning
+        if ctx.joker_slots_free <= 0 then
+            local has_neg = false
+            for _, it in ipairs(results.items) do if it.is_negative then has_neg=true; break end end
+            if not has_neg then results.slot_warning = 'JOKER SLOTS FULL' end
+        end
+
+    elseif is_planet then
+        -- ── Planet Pack: rate using PLANET_HAND + hand play data ─────────
+        results.header = 'Celestial Pack'
+        for _, card in ipairs(G.pack_cards.cards) do
+            local ab = card.ability or {}
+            local name = ab.name or (card.config and card.config.center and card.config.center.name) or '?'
+            local rating, reason = score_planet_contextual(name, ctx)
+            results.items[#results.items + 1] = {
+                name = name, rating = rating, reason = reason,
+                colour = G.C.BLUE or {0.3,0.5,1,1},
+            }
+        end
+        table.sort(results.items, function(a, b) return a.rating > b.rating end)
+
+    elseif is_tarot then
+        -- ── Tarot (Arcana) Pack: rate using TAROT_DB + context ──────────
+        results.header = 'Arcana Pack'
+        for _, card in ipairs(G.pack_cards.cards) do
+            local ab = card.ability or {}
+            local name = ab.name or (card.config and card.config.center and card.config.center.name) or '?'
+            local rating, reason = score_tarot_contextual(name, ctx)
+            -- Consumable slot check for generation tarots
+            if ctx.consumable_slots_free <= 0 and TAROT_DB[name] and TAROT_DB[name].cat == 'generation' then
+                reason = reason .. ' | NO SLOT!'
+            end
+            results.items[#results.items + 1] = {
+                name = name, rating = rating, reason = reason,
+                colour = G.C.PURPLE or {0.5,0,0.8,1},
+            }
+        end
+        table.sort(results.items, function(a, b) return a.rating > b.rating end)
+
+    elseif is_spec then
+        -- ── Spectral Pack: rate using SPECTRAL_DB + context ──────────────
+        results.header = 'Spectral Pack'
+        for _, card in ipairs(G.pack_cards.cards) do
+            local ab = card.ability or {}
+            local name = ab.name or (card.config and card.config.center and card.config.center.name) or '?'
+            local rating, reason = score_spectral_contextual(name, ctx)
+            results.items[#results.items + 1] = {
+                name = name, rating = rating, reason = reason,
+                colour = G.C.DARK_EDITION or {0.2,0,0.4,1},
+            }
+        end
+        table.sort(results.items, function(a, b) return a.rating > b.rating end)
+
+    elseif is_std then
+        -- ── Standard Pack: rate by suit diversity, enhancements, editions, seals ──
+        results.header = 'Standard Pack'
+        -- Find dominant + weakest suit
+        local min_suit, min_val = 'Spades', 99
+        local max_suit, max_val = 'Spades', 0
+        for s, v in pairs(ctx.suits) do
+            if v < min_val then min_val = v; min_suit = s end
+            if v > max_val then max_val = v; max_suit = s end
+        end
+        local flush_build = ctx.hands and ctx.hands['Flush'] and (ctx.hands['Flush'].played or 0) >= 2
+        for _, card in ipairs(G.pack_cards.cards) do
+            local bc   = card.base or (card.config and card.config.card) or {}
+            local suit = bc.suit or '?'
+            local rank = bc.value or bc.id or '?'
+            local name = tostring(rank) .. ' of ' .. tostring(suit)
+            local ab   = card.ability or {}
+            if ab.name and ab.name ~= '' and ab.name ~= 'Base Card' then name = ab.name end
+            local rating = 2
+            local reasons = {}
+
+            -- Suit analysis
+            if flush_build and suit == max_suit then
+                rating = rating + 1; reasons[#reasons+1] = 'flush suit'
+            elseif suit == min_suit then
+                reasons[#reasons+1] = 'rare suit'
+            end
+
+            -- Enhancement
+            if ab.name and ab.name ~= 'Base Card' and ab.name ~= '' then
+                local ev = ENHANCEMENT_VALUE[ab.name:lower():gsub(' card', '')]
+                if ev then
+                    rating = rating + ev.score - 1; reasons[#reasons+1] = ev.label
+                else
+                    rating = rating + 1; reasons[#reasons+1] = 'enhanced'
+                end
+            end
+
+            -- Edition
+            if card.edition then
+                for ename, ev in pairs(EDITION_VALUE) do
+                    if card.edition[ename] then
+                        rating = rating + ev.score; reasons[#reasons+1] = ev.label
+                        break
+                    end
+                end
+            end
+
+            -- Seal
+            if card.seal then
+                local sv = SEAL_VALUE[card.seal]
+                if sv then rating = rating + sv.score; reasons[#reasons+1] = sv.label
+                else rating = rating + 1; reasons[#reasons+1] = 'Seal' end
+            end
+
+            -- Face card value if face-heavy lineup
+            local id = bc.id or 0
+            if id >= 11 and ctx.joker_names then
+                if ctx.joker_names['Scary Face'] or ctx.joker_names['Photograph'] or
+                   ctx.joker_names['Sock and Buskin'] or ctx.joker_names['Smiley Face'] then
+                    rating = rating + 1; reasons[#reasons+1] = 'face card synergy'
+                end
+            end
+
+            -- Rank synergy (Fibonacci: A,2,3,5,8)
+            if ctx.joker_names and ctx.joker_names['Fibonacci'] then
+                local fib = {[14]=true, [2]=true, [3]=true, [5]=true, [8]=true}
+                if fib[id] then rating = rating + 1; reasons[#reasons+1] = 'Fibonacci!' end
+            end
+
+            results.items[#results.items + 1] = {
+                name = name,
+                rating = math.min(7, math.max(1, rating)),
+                reason = #reasons > 0 and table.concat(reasons, ', ') or (suit .. ' card'),
+                colour = G.C.UI.TEXT_LIGHT,
+            }
+        end
+        table.sort(results.items, function(a, b) return a.rating > b.rating end)
+    end
+
+    -- Action synthesis
+    if #results.items > 0 then
+        local top  = results.items[1]
+        local pick = results.choose_count or 1
+        if results.slot_warning then
+            results.action = results.slot_warning
+            results.action_good = false
+        elseif top.rating >= 4 then
+            results.action = (pick == 1) and ('PICK: ' .. top.name) or ('PICK ' .. pick .. ' best')
+            results.action_good = true
+        else
+            results.action = 'All mediocre'
+            results.action_good = nil
+        end
+    end
+
+    BOT_ENGINE.pack_results = results
+    return results
+end
+
+-- ============================================================
+-- MONTE CARLO EV HELPERS (Tier 1 accuracy upgrade)
+-- ============================================================
+
+--- Build lookup: hand type name → best observed score from scored plays.
+--- Gives joker-aware reference scores since plays were scored via PREVIEW engine.
+local function build_hand_type_ev_map(plays)
+    local map = {}
+    for _, p in ipairs(plays) do
+        if p.hand_name and p.score then
+            if not map[p.hand_name] or p.score > map[p.hand_name] then
+                map[p.hand_name] = p.score
+            end
+        end
+    end
+    -- Also pull from hand level data for types not represented in current plays
+    if G and G.GAME and G.GAME.hands then
+        for hand_name, info in pairs(G.GAME.hands) do
+            if not map[hand_name] and info.level and info.level >= 1 then
+                -- Rough estimate: base chips × base mult × hand level
+                local l_chips = info.l_chips or info.chips or 0
+                local l_mult  = info.l_mult or info.mult or 0
+                if l_chips > 0 and l_mult > 0 then
+                    map[hand_name] = l_chips * l_mult
+                end
+            end
+        end
+    end
+    return map
+end
+
+--- Hypergeometric probability: P(≥1 hit in 'draws' draws from 'deck_size' cards with 'outs' targets).
+local function hyper_hit(outs, deck_size, draws)
+    if outs <= 0 or deck_size <= 0 or draws <= 0 then return 0 end
+    if outs >= deck_size then return 1 end
+    draws = math.min(draws, deck_size)
+    local non_outs = deck_size - outs
+    local p_miss = 1
+    for d = 0, draws - 1 do
+        p_miss = p_miss * math.max(0, (non_outs - d)) / math.max(1, (deck_size - d))
+    end
+    return 1 - p_miss
+end
+
+--- Hypergeometric probability: P(≥need hits in 'draws' draws).
+--- For need>1, uses recursive inclusion-exclusion approximation.
+local function hyper_hit_n(outs, deck_size, draws, need)
+    if need <= 0 then return 1 end
+    if need == 1 then return hyper_hit(outs, deck_size, draws) end
+    if outs < need or draws < need then return 0 end
+    -- P(≥need): use complement of cumulative hypergeometric
+    -- P(exactly k) = C(outs,k) * C(non,draws-k) / C(total,draws)
+    -- Sum P(0..need-1) then subtract from 1
+    local non_outs = deck_size - outs
+    -- Compute P(exactly k) iteratively using ratio trick
+    -- P(0) = C(non,draws)/C(total,draws) = product((non-d)/(total-d), d=0..draws-1)
+    local p0 = 1
+    for d = 0, draws - 1 do
+        p0 = p0 * math.max(0, (non_outs - d)) / math.max(1, (deck_size - d))
+    end
+    local cum = p0
+    local pk = p0
+    for k = 1, need - 1 do
+        -- P(k) = P(k-1) * (outs-k+1)/(k) * (draws-k+1)/(non_outs-draws+k)
+        local num = (outs - k + 1) * (draws - k + 1)
+        local den = k * math.max(1, (non_outs - draws + k))
+        if den == 0 then break end
+        pk = pk * num / den
+        cum = cum + pk
+    end
+    return math.max(0, math.min(1, 1 - cum))
+end
+
+--- Estimate expected value of discarding specific cards, drawing replacements.
+--- Uses probability-weighted scoring with joker-aware reference scores from plays.
+--- Returns { ev, keep_score, keep_hand, targets={{hand, prob, ref_score},...}, best_target }
+local function estimate_discard_ev(kept_cards, n_draws, unseen, ev_map)
+    if not kept_cards or #kept_cards < 1 or n_draws < 1 then
+        -- No draws: just score what we keep
+        local kr = (#kept_cards >= 1) and sim_score(kept_cards) or nil
+        return { ev = kr and kr.score or 0, keep_score = kr and kr.score or 0,
+                 keep_hand = kr and kr.hand_name or 'High Card', targets = {}, best_target = nil }
+    end
+
+    -- Score kept cards as-is (baseline)
+    local kr = sim_score(kept_cards)
+    local keep_score = kr and kr.score or 0
+    local keep_hand  = kr and kr.hand_name or 'High Card'
+
+    local by_rank, by_suit, id_set = analyze_hand_patterns(kept_cards)
+    local total_unseen = #unseen
+    if total_unseen < 1 then
+        return { ev = keep_score, keep_score = keep_score, keep_hand = keep_hand,
+                 targets = {}, best_target = nil }
+    end
+
+    local targets = {}
+    local post_draw_total = #kept_cards + n_draws -- hand size after drawing
+
+    -- ── Flush potential ──────────────────────────────────────────
+    for suit, suited_cards in pairs(by_suit) do
+        local have = #suited_cards
+        local need = 5 - have
+        if need > 0 and need <= n_draws and have >= 2 then
+            local suited_outs = 0
+            for _, uc in ipairs(unseen) do
+                if (uc.base and uc.base.suit or '') == suit then suited_outs = suited_outs + 1 end
+            end
+            local prob = hyper_hit_n(suited_outs, total_unseen, n_draws, need)
+            if prob > 0.005 then
+                local ref = ev_map['Flush'] or (keep_score * 3)
+                targets[#targets + 1] = { hand = 'Flush', prob = prob, ref_score = ref }
+            end
+            -- Straight Flush: suited + consecutive
+            if have >= 3 then
+                local suited_ids = {}
+                for _, c in ipairs(suited_cards) do
+                    suited_ids[#suited_ids + 1] = c.base and c.base.id or 0
+                end
+                table.sort(suited_ids)
+                local sf_runs = find_runs(suited_ids, nil, 3)
+                for _, run in ipairs(sf_runs) do
+                    local sf_need = 5 - #run
+                    if sf_need > 0 and sf_need <= n_draws then
+                        -- Need specific suited+ranked cards
+                        local sf_needed_ranks = {}
+                        local lo = run[1] == 1 and 14 or run[1]
+                        local hi = run[#run] == 1 and 14 or run[#run]
+                        for ext = 1, sf_need do
+                            if lo - ext >= 2 then sf_needed_ranks[lo - ext] = true end
+                            if hi + ext <= 14 then sf_needed_ranks[hi + ext] = true end
+                        end
+                        local sf_outs = 0
+                        for _, uc in ipairs(unseen) do
+                            if (uc.base and uc.base.suit or '') == suit
+                               and sf_needed_ranks[uc.base and uc.base.id or 0] then
+                                sf_outs = sf_outs + 1
+                            end
+                        end
+                        local sf_prob = hyper_hit_n(sf_outs, total_unseen, n_draws, sf_need)
+                        if sf_prob > 0.001 then
+                            local ref = ev_map['Straight Flush'] or (keep_score * 10)
+                            targets[#targets + 1] = { hand = 'Straight Flush', prob = sf_prob, ref_score = ref }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- ── Straight potential ───────────────────────────────────────
+    local runs = find_runs(id_set, by_rank, 3)
+    for _, run in ipairs(runs) do
+        local str_need = 5 - #run
+        if str_need > 0 and str_need <= n_draws then
+            local needed_ranks = {}
+            local lo = run[1] == 1 and 14 or run[1]
+            local hi = run[#run] == 1 and 14 or run[#run]
+            -- Extend both ends
+            for ext = 1, str_need do
+                if lo - ext >= 2 then needed_ranks[lo - ext] = true end
+                if hi + ext <= 14 then needed_ranks[hi + ext] = true end
+            end
+            local str_outs = 0
+            for _, uc in ipairs(unseen) do
+                if needed_ranks[uc.base and uc.base.id or 0] then str_outs = str_outs + 1 end
+            end
+            local str_prob = hyper_hit_n(str_outs, total_unseen, n_draws, str_need)
+            if str_prob > 0.005 then
+                local ref = ev_map['Straight'] or (keep_score * 2)
+                targets[#targets + 1] = { hand = 'Straight', prob = str_prob, ref_score = ref }
+            end
+        end
+    end
+
+    -- ── Pair / Trips / Quads upgrades ────────────────────────────
+    local best_rank_count, best_rank_id = 0, nil
+    for id, cards in pairs(by_rank) do
+        if #cards > best_rank_count then best_rank_count, best_rank_id = #cards, id end
+    end
+    if best_rank_id then
+        local upgrades = {
+            { from = 1, to = 2, hand = 'Pair' },
+            { from = 2, to = 3, hand = 'Three of a Kind' },
+            { from = 3, to = 4, hand = 'Four of a Kind' },
+        }
+        for _, u in ipairs(upgrades) do
+            if best_rank_count == u.from then
+                local rank_outs = 0
+                for _, uc in ipairs(unseen) do
+                    if (uc.base and uc.base.id or 0) == best_rank_id then rank_outs = rank_outs + 1 end
+                end
+                local prob = hyper_hit(rank_outs, total_unseen, n_draws)
+                if prob > 0.005 then
+                    local ref = ev_map[u.hand] or (keep_score * 1.5)
+                    targets[#targets + 1] = { hand = u.hand, prob = prob, ref_score = ref }
+                end
+            end
+        end
+        -- Full House: have trips, need pair from draws
+        if best_rank_count >= 3 then
+            local pair_outs = 0
+            for id, cards in pairs(by_rank) do
+                if id ~= best_rank_id then
+                    for _, uc in ipairs(unseen) do
+                        if (uc.base and uc.base.id or 0) == id then pair_outs = pair_outs + 1 end
+                    end
+                end
+            end
+            local prob = hyper_hit(pair_outs, total_unseen, n_draws)
+            if prob > 0.01 then
+                local ref = ev_map['Full House'] or (keep_score * 2.5)
+                targets[#targets + 1] = { hand = 'Full House', prob = prob, ref_score = ref }
+            end
+        end
+    end
+
+    -- ── Two Pair potential: have 1 pair, need another ────────────
+    local pair_count = 0
+    for _, cards in pairs(by_rank) do
+        if #cards >= 2 then pair_count = pair_count + 1 end
+    end
+    if pair_count == 1 and n_draws >= 1 then
+        local single_outs = 0
+        for id, cards in pairs(by_rank) do
+            if #cards == 1 then
+                for _, uc in ipairs(unseen) do
+                    if (uc.base and uc.base.id or 0) == id then single_outs = single_outs + 1 end
+                end
+            end
+        end
+        local prob = hyper_hit(single_outs, total_unseen, n_draws)
+        if prob > 0.01 then
+            local ref = ev_map['Two Pair'] or (keep_score * 1.4)
+            targets[#targets + 1] = { hand = 'Two Pair', prob = prob, ref_score = ref }
+        end
+    end
+
+    -- ── Compute weighted EV ──────────────────────────────────────
+    -- For each target: partial_ev = prob × ref_score
+    -- Total EV = keep_score + Σ(max(0, partial_ev - keep_score × prob))
+    -- This correctly accounts for opportunity cost: we only gain when upgrade > keep
+    local ev = keep_score
+    local best_target = nil
+    local best_uplift = 0
+    for _, t in ipairs(targets) do
+        local uplift = t.prob * math.max(0, t.ref_score - keep_score)
+        if uplift > best_uplift then
+            best_uplift = uplift
+            best_target = t
+        end
+    end
+    ev = keep_score + best_uplift
+
+    return {
+        ev = ev, keep_score = keep_score, keep_hand = keep_hand,
+        targets = targets, best_target = best_target,
+    }
+end
+
+--- Evaluate discard candidates using Monte Carlo EV estimation.
+--- Generates multiple candidate discard sets, scores each with sim_score + probability math,
+--- returns ALL candidates ranked by EV (best first). Joker-aware via PREVIEW engine.
+local function evaluate_discards(hand_cards, plays)
+    if not hand_cards or #hand_cards < 1 then return {} end
+
+    local discards_left = G.GAME and G.GAME.current_round and G.GAME.current_round.discards_left or 0
+    if discards_left <= 0 then return {} end
+
+    local n = #hand_cards
+    local ev_map = build_hand_type_ev_map(plays)
+    local unseen = get_unseen_cards()
+    local by_rank, by_suit, id_set = analyze_hand_patterns(hand_cards)
+
+    -- Collect candidate discard sets (cards to REMOVE from hand)
+    local candidates = {} -- { {cards={...}, label="..."}, ... }
+    local seen_keys = {}
+
+    local function add_candidate(discard_cards, label)
+        if #discard_cards < 1 or #discard_cards > math.min(5, discards_left) then return end
+        -- Dedup by sorted card identities
+        local ids = {}
+        for _, c in ipairs(discard_cards) do ids[#ids + 1] = tostring(c.sort_id or 0) end
+        table.sort(ids)
+        local key = table.concat(ids, '|')
+        if seen_keys[key] then return end
+        seen_keys[key] = true
+        candidates[#candidates + 1] = { cards = discard_cards, label = label }
+    end
+
+    -- ── Pattern-based candidates ─────────────────────────────────
+
+    -- 4-to-Straight-Flush: keep the 4 suited+consecutive, discard rest
+    for suit, suited_cards in pairs(by_suit) do
+        if #suited_cards >= 4 then
+            local suited_ids, suited_by_id = {}, {}
+            for _, c in ipairs(suited_cards) do
+                local id = c.base and c.base.id or 0
+                if not suited_by_id[id] then
+                    suited_by_id[id] = c
+                    suited_ids[#suited_ids + 1] = id
+                end
+            end
+            table.sort(suited_ids)
+            local sf_runs = find_runs(suited_ids, nil, 4)
+            for _, run in ipairs(sf_runs) do
+                local run_set = {}
+                for _, rid in ipairs(run) do run_set[rid == 1 and 14 or rid] = true end
+                local non_run = {}
+                for _, c in ipairs(hand_cards) do
+                    local id = c.base and c.base.id or 0
+                    if not (run_set[id] and suited_by_id[id] == c) then
+                        non_run[#non_run + 1] = c
+                    end
+                end
+                if #non_run > 0 then add_candidate(non_run, '4-to-SF') end
+            end
+        end
+    end
+
+    -- 4-to-Flush: keep 4 of the dominant suit, discard rest
+    for suit, suited_cards in pairs(by_suit) do
+        if #suited_cards >= 4 and n >= 5 then
+            local suit_set = {}
+            -- Keep top 4 by rank
+            local sorted_suited = {}
+            for _, c in ipairs(suited_cards) do sorted_suited[#sorted_suited + 1] = c end
+            table.sort(sorted_suited, function(a, b)
+                return (a.base and a.base.id or 0) > (b.base and b.base.id or 0)
+            end)
+            for i = 1, math.min(4, #sorted_suited) do suit_set[sorted_suited[i]] = true end
+            local to_discard = {}
+            for _, c in ipairs(hand_cards) do
+                if not suit_set[c] then to_discard[#to_discard + 1] = c end
+            end
+            if #to_discard > 0 then add_candidate(to_discard, '4-to-flush') end
+        end
+    end
+
+    -- 4-to-Straight: keep 4 consecutive, discard rest
+    local runs4 = find_runs(id_set, nil, 4)
+    for _, run in ipairs(runs4) do
+        local run_id_set = {}
+        for _, rid in ipairs(run) do run_id_set[rid == 1 and 14 or rid] = true end
+        local kept_count = 0
+        local non_run = {}
+        for _, c in ipairs(hand_cards) do
+            local id = c.base and c.base.id or 0
+            if run_id_set[id] and kept_count < 4 then
+                kept_count = kept_count + 1
+            else
+                non_run[#non_run + 1] = c
+            end
+        end
+        if #non_run > 0 then add_candidate(non_run, '4-to-straight') end
+    end
+
+    -- Keep best pair/trips, discard others
+    local rank_groups = {}
+    for id, cards in pairs(by_rank) do
+        if #cards >= 2 then
+            rank_groups[#rank_groups + 1] = { id = id, count = #cards, cards = cards }
+        end
+    end
+    table.sort(rank_groups, function(a, b) return a.count > b.count or (a.count == b.count and a.id > b.id) end)
+    if #rank_groups > 0 then
+        local best_group = rank_groups[1]
+        local keep_set = {}
+        for _, c in ipairs(best_group.cards) do keep_set[c] = true end
+        local to_discard = {}
+        for _, c in ipairs(hand_cards) do
+            if not keep_set[c] then to_discard[#to_discard + 1] = c end
+        end
+        if #to_discard > 0 and #to_discard <= 5 then
+            add_candidate(to_discard, 'keep-' .. best_group.count .. '-of-a-kind')
+        end
+    end
+
+    -- ── Dead-card candidates ─────────────────────────────────────
+    local card_usage = {}
+    for _, c in ipairs(hand_cards) do card_usage[c] = 0 end
+    for i = 1, math.min(#plays, 5) do
+        for _, c in ipairs((plays[i] and plays[i].cards) or {}) do
+            card_usage[c] = (card_usage[c] or 0) + 1
+        end
+    end
+    -- Sort by usage ascending (least used first)
+    local by_usage = {}
+    for _, c in ipairs(hand_cards) do by_usage[#by_usage + 1] = c end
+    table.sort(by_usage, function(a, b) return (card_usage[a] or 0) < (card_usage[b] or 0) end)
+
+    -- Try discarding 1, 2, 3 dead/low-usage cards
+    for sz = 1, math.min(3, #by_usage, discards_left) do
+        local d = {}
+        for i = 1, sz do d[#d + 1] = by_usage[i] end
+        if #d > 0 then add_candidate(d, 'dead-' .. sz) end
+    end
+
+    -- ── Score all candidates with Monte Carlo EV ─────────────────
+    local results = {}
+    local max_candidates = 10 -- limit sim_score calls for performance
+    for i = 1, math.min(#candidates, max_candidates) do
+        local cand = candidates[i]
+        -- Determine kept cards
+        local discard_set = {}
+        for _, c in ipairs(cand.cards) do discard_set[c] = true end
+        local kept = {}
+        for _, c in ipairs(hand_cards) do
+            if not discard_set[c] then kept[#kept + 1] = c end
+        end
+        if #kept >= 1 then
+            local ok, ev_data = pcall(estimate_discard_ev, kept, #cand.cards, unseen, ev_map)
+            if ok and ev_data then
+                local target_hand = ev_data.best_target and ev_data.best_target.hand or ev_data.keep_hand
+                local conf_parts = { cand.label }
+                if ev_data.best_target then
+                    conf_parts[#conf_parts + 1] = string.format(
+                        '%s ~%.0f%%', ev_data.best_target.hand,
+                        ev_data.best_target.prob * 100)
+                end
+                results[#results + 1] = {
+                    discard_cards = cand.cards,
+                    draw_count    = #cand.cards,
+                    target_hand   = target_hand,
+                    ev            = ev_data.ev,
+                    confidence    = table.concat(conf_parts, ' | '),
+                    -- FEATURE: Monte Carlo detail fields
+                    keep_score    = ev_data.keep_score,
+                    keep_hand     = ev_data.keep_hand,
+                    targets       = ev_data.targets,
+                    best_target   = ev_data.best_target,
+                }
+            end
+        end
+    end
+
+    -- Sort by EV descending
+    table.sort(results, function(a, b) return a.ev > b.ev end)
+
+    -- FEATURE: Multi-discard chain simulation
+    -- If multiple discards remain, estimate chained EV for the top candidates.
+    -- After discard 1 draws, the new hand may still benefit from discard 2, etc.
+    -- Uses probability compounding: chain_ev = step1_ev + (improvement_ratio × step1_ev × remaining_steps × decay)
+    -- Decay factor models diminishing returns (each subsequent discard is less impactful).
+    if discards_left >= 2 and #results > 0 then
+        local remaining = discards_left - 1  -- discards available after this one
+        local unseen_after = math.max(1, #unseen - 5)  -- approximate unseen after drawing
+        for _, dr in ipairs(results) do
+            -- Calculate improvement ratio from this single discard
+            local base_play = (plays and #plays > 0) and plays[1].score or dr.keep_score
+            if base_play > 0 and dr.ev > base_play then
+                local improvement = dr.ev / base_play - 1  -- fractional improvement (e.g. 0.30 = 30%)
+                -- Each subsequent discard contributes less (70% decay per step)
+                -- Chain bonus: sum of (improvement × 0.7^step) for step = 1..remaining
+                local chain_bonus = 0
+                local decay = 0.7
+                for step = 1, math.min(remaining, 3) do  -- Cap at 3 lookahead steps
+                    chain_bonus = chain_bonus + improvement * math.pow(decay, step)
+                end
+                dr.chain_ev       = dr.ev * (1 + chain_bonus)
+                dr.chain_steps    = math.min(remaining, 3)
+                dr.chain_bonus_pct = chain_bonus * 100
+            else
+                dr.chain_ev       = dr.ev
+                dr.chain_steps    = 0
+                dr.chain_bonus_pct = 0
+            end
+        end
+        -- Re-sort by chain_ev when available
+        table.sort(results, function(a, b) return (a.chain_ev or a.ev) > (b.chain_ev or b.ev) end)
+    end
+
+    return results
+end
+
+-- ============================================================
+-- D. OUTS / DRAW IMPROVEMENT VIEWER
+-- ============================================================
+
+--- Compute outs for improving toward a target hand type.
+--- FIX: Pure rank/suit analysis only — never calls Balatro engine functions
+--- so cannot trigger the moveable.lua:279 FRAME crash from async event scheduling.
+--- FEATURE: Now includes score_impact (joker-aware) via ev_map from plays.
+--- Returns { outs_list={card_descriptions}, count=N, probability=P, score_impact=N }
+local function compute_outs(hand_cards, target_play, ev_map)
+    if not hand_cards or not target_play then return nil end
+
+    local unseen = get_unseen_cards()
+    if #unseen < 1 then return { outs_list = {}, count = 0, probability = 0, estimated = true } end
+
+    local target_hand = target_play.hand_name
+    local by_rank, by_suit, id_set = analyze_hand_patterns(hand_cards)
+
+    local outs = {}
+    local seen_labels = {}
+    local function add_out(lbl)
+        if not seen_labels[lbl] then
+            seen_labels[lbl] = true
+            outs[#outs + 1] = lbl
+        end
+    end
+
+    -- Pure statistical analysis: no engine calls, no G.FUNCS, no event scheduling
+    if target_hand == 'Flush' or target_hand == 'Straight Flush'
+       or target_hand == 'Flush Five' or target_hand == 'Flush House' then
+        -- Need more of the dominant suit
+        local best_suit, best_count = nil, 0
+        for suit, cards in pairs(by_suit) do
+            if #cards > best_count then best_suit, best_count = suit, #cards end
+        end
+        if best_suit then
+            for _, uc in ipairs(unseen) do
+                if (uc.base and uc.base.suit or '') == best_suit then add_out(card_label(uc)) end
+                if #outs >= 30 then break end
+            end
+        end
+
+    elseif target_hand == 'Straight' then
+        -- Cards that complete the longest partial run
+        local runs4 = find_runs(id_set, by_rank, 4)
+        local needed = {}
+        for _, run in ipairs(runs4) do
+            local lo = run[1] == 1 and 14 or run[1]
+            local hi = run[#run] == 1 and 14 or run[#run]
+            if lo > 2  then needed[lo - 1] = true end
+            if hi < 14 then needed[hi + 1] = true end
+        end
+        for _, uc in ipairs(unseen) do
+            local id = uc.base and uc.base.id or 0
+            if needed[id] then add_out(card_label(uc)) end
+            if #outs >= 30 then break end
+        end
+
+    elseif target_hand == 'Four of a Kind' or target_hand == 'Five of a Kind' then
+        -- Need more copies of the best rank
+        local best_rank, best_count = nil, 0
+        for id, cards in pairs(by_rank) do
+            if #cards > best_count then best_rank, best_count = id, #cards end
+        end
+        if best_rank then
+            for _, uc in ipairs(unseen) do
+                if (uc.base and uc.base.id or 0) == best_rank then add_out(card_label(uc)) end
+            end
+        end
+
+    elseif target_hand == 'Full House' then
+        -- Need either the 3rd copy of the trip rank or any pair to fill
+        local trips_rank, pair_rank = nil, nil
+        for id, cards in pairs(by_rank) do
+            if #cards >= 3 then trips_rank = id
+            elseif #cards == 2 and not pair_rank then pair_rank = id end
+        end
+        for _, uc in ipairs(unseen) do
+            local id = uc.base and uc.base.id or 0
+            if (trips_rank and id == trips_rank) or (pair_rank and id == pair_rank) then
+                add_out(card_label(uc))
+            end
+            if #outs >= 30 then break end
+        end
+
+    elseif target_hand == 'Three of a Kind' then
+        -- Need more of the best pair rank
+        local best_rank, best_count = nil, 0
+        for id, cards in pairs(by_rank) do
+            if #cards > best_count then best_rank, best_count = id, #cards end
+        end
+        if best_rank then
+            for _, uc in ipairs(unseen) do
+                if (uc.base and uc.base.id or 0) == best_rank then add_out(card_label(uc)) end
+            end
+        end
+
+    elseif target_hand == 'Two Pair' then
+        -- Need a pair for the top single-card rank(s)
+        local singles = {}
+        for id, cards in pairs(by_rank) do
+            if #cards == 1 then singles[#singles + 1] = id end
+        end
+        table.sort(singles, function(a, b) return a > b end)
+        local needed = {}
+        for i = 1, math.min(2, #singles) do needed[singles[i]] = true end
+        for _, uc in ipairs(unseen) do
+            local id = uc.base and uc.base.id or 0
+            if needed[id] then add_out(card_label(uc)) end
+            if #outs >= 30 then break end
+        end
+
+    elseif target_hand == 'Pair' then
+        -- Any deck card matching a rank currently in hand
+        local in_hand = {}
+        for id, _ in pairs(by_rank) do in_hand[id] = true end
+        for _, uc in ipairs(unseen) do
+            local id = uc.base and uc.base.id or 0
+            if in_hand[id] then add_out(card_label(uc)) end
+            if #outs >= 30 then break end
+        end
+
+    else
+        -- High Card: top-rank cards in the deck (J+)
+        for _, uc in ipairs(unseen) do
+            local id = uc.base and uc.base.id or 0
+            if id >= 11 then add_out(card_label(uc)) end
+            if #outs >= 15 then break end
+        end
+    end
+
+    local draw_count = G.GAME and G.GAME.current_round and G.GAME.current_round.discards_left or 0
+    draw_count = math.min(draw_count, 5)
+    local total_unseen = #unseen
+    local out_count    = #outs
+
+    -- Hypergeometric probability: P(hit ≥1 out in draw_count draws)
+    local prob = 0
+    if total_unseen > 0 and draw_count > 0 and out_count > 0 then
+        local non_outs = total_unseen - out_count
+        if non_outs >= 0 and draw_count <= total_unseen then
+            local p_miss = 1
+            for d = 0, draw_count - 1 do
+                p_miss = p_miss * math.max(0, (non_outs - d)) / math.max(1, (total_unseen - d))
+            end
+            prob = (1 - p_miss) * 100
+        end
+    end
+
+    -- FEATURE: Joker-aware score impact using ev_map from plays
+    ev_map = ev_map or {}
+    local current_score = target_play.score or 0
+    local target_score  = ev_map[target_hand] or current_score
+    local score_impact  = math.max(0, target_score - current_score)
+    local ev_if_hit     = (prob / 100) * target_score  -- expected value contribution
+
+    return {
+        outs_list    = outs,
+        count        = out_count,
+        probability  = prob,
+        total_deck   = total_unseen,
+        draw_count   = draw_count,
+        estimated    = total_unseen < 10,
+        -- FEATURE: Score impact fields
+        score_impact = score_impact,
+        target_score = target_score,
+        ev_if_hit    = ev_if_hit,
+    }
+end
+
+-- ============================================================
+-- F. JOKER ORDER OPTIMIZATION
+-- ============================================================
+
+--- Test different joker orders for the given play.
+--- Returns { current_score=N, best_score=N, best_order={indices}, gain_pct=N }
+local function optimize_joker_order(play_cards)
+    if not play_cards or #play_cards < 1 then return nil end
+    if not G or not G.jokers or not G.jokers.cards then return nil end
+    local jokers = G.jokers.cards
+    local n = #jokers
+    if n < 2 or n > 8 then return nil end -- too few or too many
+
+    local max_perms = BOT_ENGINE.MAX_JOKER_PERMS
+
+    -- Score with current order
+    local current_result = sim_score(play_cards)
+    if not current_result then return nil end
+    local current_score = current_result.score
+
+    -- Generate permutations (limited)
+    local best_score = current_score
+    local best_order = nil
+
+    -- Simple approach: try swapping adjacent pairs and keep best
+    -- For small joker counts, try all permutations
+    if n <= 5 then
+        -- Generate permutations iteratively
+        local indices = {}
+        for i = 1, n do indices[i] = i end
+
+        local function permute(arr, k, count)
+            if count[1] >= max_perms then return end
+            if k == 1 then
+                -- Test this order
+                local saved = {}
+                for i = 1, n do saved[i] = jokers[i] end
+                for i = 1, n do
+                    -- We can't actually reorder jokers in G.jokers.cards safely
+                    -- Instead, we swap references temporarily
+                    G.jokers.cards[i] = saved[arr[i]]
+                end
+                local r = sim_score(play_cards)
+                if r and r.score > best_score then
+                    best_score = r.score
+                    best_order = {}
+                    for i = 1, n do best_order[i] = arr[i] end
+                end
+                -- Restore
+                for i = 1, n do G.jokers.cards[i] = saved[i] end
+                count[1] = count[1] + 1
+            else
+                for i = 1, k do
+                    permute(arr, k - 1, count)
+                    if k % 2 == 0 then
+                        arr[i], arr[k] = arr[k], arr[i]
+                    else
+                        arr[1], arr[k] = arr[k], arr[1]
+                    end
+                end
+            end
+        end
+
+        local perm_arr = {}
+        for i = 1, n do perm_arr[i] = i end
+        permute(perm_arr, n, {0})
+    else
+        -- For larger sets, try random swaps
+        local saved = {}
+        for i = 1, n do saved[i] = jokers[i] end
+        for attempt = 1, math.min(max_perms, n * (n - 1) / 2) do
+            local i, j = math.random(1, n), math.random(1, n)
+            if i ~= j then
+                G.jokers.cards[i], G.jokers.cards[j] = saved[j], saved[i]
+                local r = sim_score(play_cards)
+                if r and r.score > best_score then
+                    best_score = r.score
+                    best_order = {}
+                    for k = 1, n do
+                        for orig = 1, n do
+                            if G.jokers.cards[k] == saved[orig] then
+                                best_order[k] = orig
+                                break
+                            end
+                        end
+                    end
+                end
+                -- Restore
+                for k = 1, n do G.jokers.cards[k] = saved[k] end
+            end
+        end
+    end
+
+    if not best_order or best_score <= current_score then
+        return { current_score = current_score, best_score = current_score, best_order = nil, gain_pct = 0 }
+    end
+
+    local gain = best_score > 0 and ((best_score - current_score) / current_score * 100) or 0
+    return {
+        current_score = current_score,
+        best_score    = best_score,
+        best_order    = best_order,
+        gain_pct      = gain,
+    }
+end
+
+-- ============================================================
+-- MAIN ANALYSIS PIPELINE
+-- ============================================================
+
+function BOT_ENGINE.analyze()
+    if not G or not G.GAME or not G.hand or not G.hand.cards then return end
+    if #G.hand.cards < 1 then return end
+    if not (G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.DRAW_TO_HAND) then return end
+
+
+    -- Debounce
+    local now = love.timer.getTime()
+    local hash = state_hash()
+    if hash == BOT_ENGINE._last_hash and (now - BOT_ENGINE._last_time) < BOT_ENGINE._debounce then
+        return
+    end
+    BOT_ENGINE._last_hash = hash
+    BOT_ENGINE._last_time = now
+
+    local hand_cards = G.hand.cards
+    local blind_chips = G.GAME.blind and G.GAME.blind.chips or 0
+    local current_chips = G.GAME.chips or 0
+    local hands_left = G.GAME.current_round and G.GAME.current_round.hands_left or 0
+    local discards_left = G.GAME.current_round and G.GAME.current_round.discards_left or 0
+    local mode = 1
+    local perf = BOT_ENGINE.perf or 2
+    local num_suggestions = 5
+
+    -- FIX: Performance mode now controls sim_score budget (not brute-force subset count)
+    local max_to_score = 5
+    if perf == 1 then max_to_score = 3       -- Fast: 3 sim_score calls
+    elseif perf == 3 then max_to_score = 10  -- Deep: 10 sim_score calls
+    else max_to_score = 5 end                -- Balanced: 5
+
+    -- FEATURE: Read active boss blind constraints before play enumeration
+    local blind_constraints = get_blind_constraints()
+
+    -- FEATURE: Deck context — deck name, stake, draw pile composition
+    local deck_context = get_deck_context()
+
+    -- ── A. Enumerate and score plays (smart heuristic) ──────────
+    local plays = enumerate_plays(hand_cards, max_to_score, blind_constraints)
+    plays = dedup_plays(plays)
+
+    -- Generate reasons for top plays
+    for i = 1, math.min(#plays, num_suggestions + 5) do
+        generate_reasons(plays[i], blind_chips, mode)
+    end
+
+    -- Apply mode-based reranking
+    if mode == 2 and blind_chips > 0 then
+        -- Survive Blind: prefer lowest-cost play that clears
+        table.sort(plays, function(a, b)
+            local a_clears = (current_chips + a.score >= blind_chips)
+            local b_clears = (current_chips + b.score >= blind_chips)
+            if a_clears ~= b_clears then return a_clears end
+            if a_clears then
+                return #a.cards < #b.cards
+            end
+            return a.score > b.score
+        end)
+    elseif mode == 3 then
+        -- Conserve Resources: prefer fewer cards played
+        table.sort(plays, function(a, b)
+            if #a.cards ~= #b.cards then return #a.cards < #b.cards end
+            return a.score > b.score
+        end)
+    end
+
+    -- ── Build joker-aware score reference map ─────────────────────
+    local ev_map = build_hand_type_ev_map(plays)
+
+    -- ── C. Discard advisor (Monte Carlo EV) ─────────────────────
+    local discard_results = {}
+    if discards_left > 0 then
+        local ok_d, dr = pcall(evaluate_discards, hand_cards, plays)
+        if ok_d and dr then
+            discard_results = dr
+        end
+    end
+
+    -- ── D. Outs computation (joker-aware score impact) ──────────
+    local outs_data = nil
+    if #plays > 0 then
+        -- Compute outs for the best play's hand type
+        local ok_o, od = pcall(compute_outs, hand_cards, plays[1], ev_map)
+        if ok_o and od then
+            outs_data = od
+        end
+    end
+
+    -- ── E. Play vs Discard verdict (multi-hand lookahead) ──────
+    local best_play_score = #plays > 0 and plays[1].score or 0
+    local best_disc_ev = #discard_results > 0 and discard_results[1].ev or 0
+    local verdict = 'PLAY NOW'
+    local verdict_reason = ''
+
+    -- FEATURE: Multi-hand lookahead — calculate pace and urgency
+    local chips_remaining = blind_chips > 0 and math.max(0, blind_chips - current_chips) or 0
+    local chips_per_hand  = (hands_left > 0 and chips_remaining > 0) and (chips_remaining / hands_left) or 0
+    local on_pace         = best_play_score >= chips_per_hand  -- current play keeps us on track
+    local can_clear       = blind_chips > 0 and (current_chips + best_play_score >= blind_chips)
+    local is_last_hand    = hands_left <= 1
+    local has_discard     = discards_left > 0
+    local ev_ratio        = best_play_score > 0 and (best_disc_ev / best_play_score) or 0
+
+    -- Discard aggression scales with spare hands: more hands = more freedom to discard
+    -- Range: 1.05 (aggressive, many hands) to 1.4 (conservative, few hands)
+    local disc_threshold = 1.4
+    if hands_left >= 4 then disc_threshold = 1.05
+    elseif hands_left == 3 then disc_threshold = 1.10
+    elseif hands_left == 2 then disc_threshold = 1.20 end
+
+    if not has_discard then
+        verdict = 'PLAY NOW'
+        verdict_reason = mod_loc('no discards remaining')
+    elseif is_last_hand then
+        verdict = 'PLAY NOW'
+        verdict_reason = mod_loc('last hand — play best available')
+    elseif can_clear then
+        -- Already clears blind — but check if discarding could save hands for future rounds
+        if best_disc_ev > best_play_score * 1.3 and hands_left >= 3 then
+            verdict = 'DISCARD FIRST'
+            verdict_reason = string.format('clears blind already, but +%.0f%% EV saves future hands',
+                (ev_ratio - 1) * 100)
+        else
+            verdict = 'PLAY NOW'
+            verdict_reason = mod_loc('current play clears blind')
+        end
+    elseif best_play_score <= 0 then
+        if best_disc_ev > 0 then
+            verdict = 'DISCARD FIRST'
+            verdict_reason = mod_loc('no strong play available')
+        else
+            verdict = 'PLAY NOW'
+            verdict_reason = mod_loc('no improvement expected')
+        end
+    elseif not on_pace and has_discard and best_disc_ev > best_play_score then
+        -- Behind pace: need improvement to catch up
+        verdict = 'DISCARD FIRST'
+        local best_disc = discard_results[1]
+        local target = best_disc and best_disc.best_target
+        if target then
+            verdict_reason = string.format('behind pace (need ~%s/hand) — %s ~%.0f%% chance',
+                fmt_score(chips_per_hand), target.hand, target.prob * 100)
+        else
+            verdict_reason = string.format('behind pace (need ~%s/hand), +%.0f%% EV',
+                fmt_score(chips_per_hand), (ev_ratio - 1) * 100)
+        end
+    elseif ev_ratio >= disc_threshold then
+        -- EV improvement exceeds threshold (adjusted by hands remaining)
+        verdict = 'DISCARD FIRST'
+        local best_disc = discard_results[1]
+        local target = best_disc and best_disc.best_target
+        if target then
+            verdict_reason = string.format('+%.0f%% EV — %s ~%.0f%% chance',
+                (ev_ratio - 1) * 100, target.hand, target.prob * 100)
+        else
+            verdict_reason = string.format('+%.0f%% EV improvement expected', (ev_ratio - 1) * 100)
+        end
+    elseif on_pace then
+        verdict = 'PLAY NOW'
+        if hands_left >= 3 then
+            verdict_reason = mod_loc('on pace — comfortable margin')
+        else
+            verdict_reason = mod_loc('on pace — current play is strong enough')
+        end
+    else
+        verdict = 'PLAY NOW'
+        verdict_reason = mod_loc('current play is strong enough')
+    end
+
+    -- ── F. Joker order (optional) ───────────────────────────────
+    local joker_opt = nil
+    -- FIX: always compute when Jokers tab is active (not just when setting is enabled)
+    local should_optimize_jokers = false
+    if should_optimize_jokers and #plays > 0 then
+        local ok_j, jo = pcall(optimize_joker_order, plays[1].cards)
+        if ok_j and jo then
+            joker_opt = jo
+        end
+    end
+
+    -- ── G. Ante pace projection ─────────────────────────────────
+    local ante_wall = nil
+    if #plays > 0 then
+        local ok_aw, aw = pcall(estimate_ante_wall, plays[1].score)
+        if ok_aw and aw then ante_wall = aw end
+    end
+
+    -- ── Assemble results ────────────────────────────────────────
+    local r = {
+        plays          = plays,
+        num_plays      = #plays,
+        best_play      = #plays > 0 and plays[1] or nil,
+
+        discards       = discard_results,
+        num_discards   = #discard_results,
+        best_discard   = #discard_results > 0 and discard_results[1] or nil,
+
+        outs           = outs_data,
+
+        verdict        = verdict,
+        verdict_reason = verdict_reason,
+
+        joker_opt      = joker_opt,
+
+        blind_chips    = blind_chips,
+        current_chips  = current_chips,
+        hands_left     = hands_left,
+        discards_left  = discards_left,
+
+        -- FEATURE: Boss blind constraints (filtering + UI note)
+        blind_constraints = blind_constraints,
+
+        -- FEATURE: Deck tracking — deck name, stake, draw pile composition
+        deck_context   = deck_context,
+
+        -- FEATURE: Ante pace projection — when the run hits a wall
+        ante_wall      = ante_wall,
+
+        timestamp      = hash,  -- use state hash so panel only refreshes on actual state change
+    }
+    BOT_ENGINE.results = r
+
+    -- ── Update compact HUD text ─────────────────────────────────
+    if r.best_play then
+        BOT_ENGINE.hud_play.text  = r.best_play.hand_name or ''
+        BOT_ENGINE.hud_score.text = '~' .. fmt_score(r.best_play.score)
+        -- Card labels for compact HUD row
+        if r.best_play.cards then
+            local lbls = {}
+            for _, c in ipairs(r.best_play.cards) do lbls[#lbls+1] = card_label(c) end
+            BOT_ENGINE.hud_play_cards.text = table.concat(lbls, ' ')
+        else
+            BOT_ENGINE.hud_play_cards.text = ''
+        end
+    else
+        BOT_ENGINE.hud_play.text  = 'No play'
+        BOT_ENGINE.hud_score.text = ''
+        BOT_ENGINE.hud_play_cards.text = ''
+    end
+    BOT_ENGINE.hud_action.text = verdict
+    -- Populate discard hint with per-suit colored card data
+    if verdict == 'DISCARD FIRST' and r.best_discard and r.best_discard.discard_cards then
+        local cards_data = {}
+        local labels = {}
+        for _, c in ipairs(r.best_discard.discard_cards) do
+            local suit  = c.base and c.base.suit or ''
+            local color = suit_color(suit)
+            local lbl   = card_label(c)
+            cards_data[#cards_data + 1] = { text = lbl, color = color }
+            labels[#labels + 1] = lbl
+        end
+        BOT_ENGINE.hud_discard.cards = cards_data
+        -- FIX: include "Discard: " prefix so ref_table text node shows complete hint
+        BOT_ENGINE.hud_discard.text  = 'Discard: ' .. table.concat(labels, ' ')
+    else
+        BOT_ENGINE.hud_discard.cards = {}
+        BOT_ENGINE.hud_discard.text  = ''
+    end
+end
+
+-- ============================================================
+-- AUTO-SELECT HELPERS
+-- ============================================================
+
+local function ho_select_cards(cards)
+    if not G.hand or not G.hand.cards or G.STATE ~= G.STATES.SELECTING_HAND then return false end
+    if G.play and G.play.cards and G.play.cards[1] then return false end
+    if G.GAME and (G.GAME.STOP_USE or 0) > 0 then return false end
+r 2 582 %20%20%20%20 -
+l 48
+    local valid_hand_cards = {}
+    for _, hc in ipairs(G.hand.cards) do
+        if hc and hc.FRAME then valid_hand_cards[hc] = true end
+    end
+    for _, c in ipairs(cards) do
+        if valid_hand_cards[c] and not c.highlighted then
+            G.hand:add_to_highlighted(c, true)
+        end
+    end
+    return true
+end
+
+--- Highlight the cards for a specific play recommendation.
+function BOT_ENGINE.select_play(play_index)
+    if not BOT_ENGINE.results or not BOT_ENGINE.results.plays then return end
+    local play = BOT_ENGINE.results.plays[play_index]
+    if not play or not play.cards then return end
+    if not ho_select_cards(play.cards) then return end
+
+    -- Trigger UI refresh
+    pcall(PREVIEW.run)
+end
+
+--- Highlight cards to discard based on a discard recommendation.
+function BOT_ENGINE.select_discard(disc_index)
+    if not BOT_ENGINE.results or not BOT_ENGINE.results.discards then return end
+    local disc = BOT_ENGINE.results.discards[disc_index]
+    if not disc or not disc.discard_cards then return end
+    ho_select_cards(disc.discard_cards)
+end
+
+-- ============================================================
+local _be_eval = G.FUNCS.evaluate_play
+G.FUNCS.evaluate_play = function(e, ...)
+    BOT_ENGINE.results = nil
+    BOT_ENGINE._last_hash = ''
+    return _be_eval(e, ...)
+end
+
+local _be_discard = G.FUNCS.discard_cards_from_highlighted
+G.FUNCS.discard_cards_from_highlighted = function(e, is_hook_blind, ...)
+    local r = _be_discard(e, is_hook_blind, ...)
+    if not is_hook_blind then
+        BOT_ENGINE.results = nil
+        BOT_ENGINE._last_hash = ''
+    end
+    return r
+end
+end

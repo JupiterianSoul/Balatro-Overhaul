@@ -1,0 +1,541 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 59
+-- ============================================
+-- MULTIPLAYER UI — Facade: loads sub-modules, owns register_funcs + draw
+-- FEATURE: Stage 3 split — monolith replaced by 4 focused modules + facade
+-- Sub-modules: bom_ui_lobby, bom_ui_hud, bom_ui_results, bom_ui_overlays
+-- ============================================
+
+local bom_ui = {}
+
+function bom_ui.overlay(args)
+    G.FUNCS.overlay_menu(args)
+end
+
+-- ============================================
+-- MULTIPLAYER LOBBY (main menu entry point)
+-- ============================================
+-- MULTIPLAYER LOBBY (main menu entry point)
+-- FEATURE: Redesigned — cleaner layout, descriptions under each option, separator lines
+-- ============================================
+
+-- Shared table for join room text input
+local _mp_join_input = { room_code = "" }
+
+function create_UIBox_multiplayer_lobby()
+    -- Register lobby callbacks — show connecting screen immediately, then connect
+    G.FUNCS.mp_lobby_quick_match = function(e)
+        -- FEATURE: Quick Match flag — skips settings, shows simple ready screen
+        if G and G.GAME then G.GAME.bom_quick_match = true end
+        if bom_ui and bom_ui.show_connecting_screen then
+            bom_ui.show_connecting_screen()
+        end
+        if bom_room and bom_room.find_match then
+            bom_room.find_match()
+        end
+    end
+
+    G.FUNCS.mp_lobby_create_room = function(e)
+        if bom_browse and bom_browse.show_create then
+            bom_browse.show_create()
+        end
+    end
+
+    G.FUNCS.mp_lobby_browse = function(e)
+        if bom_browse and bom_browse.show then
+            bom_browse.show()
+        end
+    end
+
+    G.FUNCS.mp_lobby_join_room = function(e)
+        bom_ui.overlay{
+            definition = create_UIBox_join_room_input()
+        }
+    end
+
+    -- Thin separator
+    local function sep()
+        return { n = G.UIT.R, config = { align = "cm", minh = 0.02, minw = 7.18,
+            colour = { 1, 1, 1, 0.1 }, padding = 0.034 }, nodes = {} }
+    end
+
+r 15 2252 %20%20%20%20 -
+l 111
+        -- Title
+        { n = G.UIT.R, config = { align = "cm", padding = 0.085 }, nodes = {
+            { n = G.UIT.T, config = { text = mod_loc("MULTIPLAYER"), scale = 0.80,
+                colour = G.C.GOLD, shadow = true } },
+        }},
+        -- Subtitle
+        { n = G.UIT.R, config = { align = "cm", padding = 0.02 }, nodes = {
+            { n = G.UIT.T, config = { text = mod_loc((mp_config and tostring(mp_config.SERVER_URL or ""):find("127.0.0.1", 1, true)) and "PvP Battle (Local Server)" or "PvP Battle - Render Server"),
+                scale = 0.33, colour = G.C.WHITE, shadow = true } },
+        }},
+        { n = G.UIT.R, config = { align = "cm", minh = 0.22 }, nodes = {} },
+        sep(),
+        { n = G.UIT.R, config = { align = "cm", padding = 0.068 }, nodes = {
+            UIBox_button({ id = "mp_browse_btn", button = "mp_lobby_browse",
+                label = { mod_loc("BROWSE ROOMS") }, minw = 6.08, minh = 0.99,
+                colour = G.C.BLUE, scale = 0.497 }),
+        }},
+        { n = G.UIT.R, config = { align = "cm", padding = 0.068 }, nodes = {
+            UIBox_button({ button = "mp_lobby_create_room",
+                label = { mod_loc("CREATE ROOM") }, minw = 6.08, minh = 0.83,
+                colour = G.C.ORANGE, scale = 0.420 }),
+        }},
+        { n = G.UIT.R, config = { align = "cm", padding = 0.068 }, nodes = {
+            UIBox_button({ button = "mp_lobby_join_room",
+                label = { mod_loc("JOIN WITH CODE") }, minw = 6.08, minh = 0.83,
+                colour = G.C.GREEN, scale = 0.420 }),
+        }},
+        sep(),
+        { n = G.UIT.R, config = { align = "cm" }, nodes = {
+            { n = G.UIT.C, config = { align = "cm", padding = 0.068 }, nodes = {
+                UIBox_button({ id = "mp_ranked_btn", button = "mp_open_ranked",
+                    label = { mod_loc("RANKED") }, minw = 2.972, minh = 0.83,
+                    colour = G.C.PURPLE, scale = 0.420 }),
+            }},
+            { n = G.UIT.C, config = { align = "cm", padding = 0.068 }, nodes = {
+                UIBox_button({ id = "mp_friends_btn", button = "mp_open_friends",
+                    label = { mod_loc("FRIENDS") }, minw = 2.972, minh = 0.83,
+                    colour = G.C.GREEN, scale = 0.420 }),
+            }},
+        }},
+    }})
+    return t
+end
+
+-- ============================================
+-- JOIN ROOM — Text input overlay for entering room code
+-- FIX: Rebuilt to use the same UI style as Profile name change (main menu):
+--      clean create_text_input with keyboard_offset=2, w=4, minimal wrapper.
+-- ============================================
+
+function create_UIBox_join_room_input(opts)
+    opts = opts or {}
+    _mp_join_input.room_code = ""
+
+    G.FUNCS.mp_confirm_join_room = function(e)
+        local code = _mp_join_input.room_code or ""
+        code = code:upper():match("^%s*(.-)%s*$") or ""
+        if code == "" then return end
+        if bom_ui and bom_ui.show_connecting_screen then
+            bom_ui.show_connecting_screen()
+        end
+        if bom_room and bom_room.join then
+            bom_room.join(code, { id = opts.id, from_browse = opts.id ~= nil })
+        end
+    end
+
+    local contents = {
+        -- Same minh/padding pattern as profile_option name row
+        {n = G.UIT.R, config = {align = "cm", minh = 0.8, padding = 0.1}, nodes = {
+            create_text_input({
+                w = 4, max_length = 4,
+                prompt_text = mod_loc("Room Code"),
+                ref_table = _mp_join_input, ref_value = "room_code",
+                extended_corpus = true, strict_corpus = true,
+                keyboard_offset = 2,
+            }),
+        }},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {
+            UIBox_button({
+                button = "mp_confirm_join_room",
+                label = {mod_loc("JOIN")},
+                minw = 4, minh = 0.8,
+                colour = G.C.GREEN,
+                scale = 0.5,
+            }),
+        }},
+    }
+    if opts.title then
+        table.insert(contents, 1, {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {
+            {n = G.UIT.T, config = {text = opts.title, scale = 0.5, colour = G.C.GOLD, shadow = true}},
+        }})
+    end
+    return create_UIBox_generic_options({ back_func = opts.back or "open_multiplayer_menu", contents = contents })
+end
+
+-- ── MP Debug Log Viewer ────────────────────────────────────────────────────
+-- Deferred: G may be nil at require() time; register callback once G.FUNCS exists
+function bom_ui.register_funcs()
+    if not G or not G.FUNCS then return end
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    for _, name in ipairs({"bom_back_to_lobby", "bom_contest_cancel", "mp_browse_back", "mp_browse_reopen", "mp_cancel_connecting", "mp_cancel_room",
+        "mp_cancel_search", "mp_cancel_waiting", "mp_decline_rematch", "mp_lobby_leave", "mpm_coll_back", "mpm_mods_back", "mp_mods_no", "mpm_open_play",
+        "mpm_profile_back", "mp_name_cancel", "mp_ranked_back", "mp_ranked_coll_return", "mps_chat_back", "mps_chat_optin_back",
+        "mps_chat_report_back", "mp_version_ok", "open_multiplayer_menu", "party_leave", "party_back_to_results", "social_back",
+        "social_invite_later", "spec_close"}) do
+        G.ESC_BACK_FUNCS[name] = true
+    end
+    if G.FUNCS.open_multiplayer_menu and G.FUNCS.mp_return_to_lobby and G.FUNCS.mp_leave_lobby then return end
+
+    -- FEATURE: Main menu Multiplayer button — opens create/join lobby flow
+    G.FUNCS.open_multiplayer_menu = function(e)
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 24
+        local success, err = pcall(function()
+            bom_ui.overlay{
+                definition = create_UIBox_multiplayer_lobby()
+            }
+            G.BOM_MP_MENU = G.OVERLAY_MENU
+        end)
+        if not success then
+            mp_log.error("BOM_UI", "Error opening multiplayer lobby: %s", tostring(err))
+        end
+        pcall(function()
+            if bom_rejoin and bom_rejoin.has_match_session() and not bom_rejoin.prompt and not bom_rejoin.checking then
+                bom_rejoin.check_rejoin()
+            end
+        end)
+        -- FEATURE: Sub-showcase on first visit
+        pcall(function()
+            if G.FUNCS.trigger_sub_showcase_multiplayer then
+                G.FUNCS.trigger_sub_showcase_multiplayer()
+            end
+        end)
+    end
+
+    -- FEATURE: Join Lobby button — direct code entry from main menu
+    G.FUNCS.open_join_lobby = function(e)
+r 4 1381 %20%20%20%20%20%20%20%20 -
+l 41
+        local success, err = pcall(function()
+            bom_ui.overlay{
+                definition = create_UIBox_join_room_input()
+            }
+        end)
+        if not success then
+            mp_log.error("BOM_UI", "Error opening join lobby: %s", tostring(err))
+        end
+    end
+
+    -- FEATURE: Mods button — opens mod menu from main menu
+    G.FUNCS.open_mods_menu = function(e)
+        pcall(function()
+            if G.FUNCS.open_mod_menu_fullscreen then
+                G.FUNCS.open_mod_menu_fullscreen()
+            end
+        end)
+    end
+
+    -- ============================================
+    -- "Return to Lobby" — Keep connection, go to pre-game lobby
+    -- ============================================
+    G.FUNCS.mp_return_to_lobby = function(e)
+        pcall(function()
+            -- Destroy HUD
+            bom_ui.destroy_match_hud()
+            -- Clear MP flag but keep connection
+            if G.GAME then G.GAME.multiplayer = nil end
+            -- Tell server we're returning to lobby (keep room)
+            if bom_core and bom_core.send then
+                bom_core.send({ type = "return_to_lobby" })
+            end
+            -- Reset match state but preserve lobby data (room code, names, settings)
+            if bom_match and bom_match.return_to_lobby then
+                bom_match.return_to_lobby()
+            elseif bom_match and bom_match.reset then
+                bom_match.reset()
+            end
+        end)
+        -- Close overlay and go to menu, then open lobby
+        pcall(function()
+r 4 1825 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        end)
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 9
+            blocking = false,
+            blockable = false,
+            no_delete = true,
+            func = function()
+                pcall(function()
+                    G:delete_run()
+                    G:main_menu()
+                end)
+                -- Show pre-game lobby after menu loads
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 47
+                    trigger = 'after',
+                    delay = 0.6,
+                    blocking = false,
+                    blockable = false,
+                    func = function()
+                        -- FIX: Show Match Results debrief first; Lobby button will then show lobby
+                        pcall(function()
+                            bom_ui.show_debrief_popup()
+                        end)
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+    -- ============================================
+    -- "Leave Lobby" — Disconnect, go to main menu
+    -- ============================================
+    G.FUNCS.mp_leave_lobby = function(e)
+        pcall(function()
+            -- Store debrief
+            if bom_ui and bom_ui.store_match_debrief then
+                local result = "lose"
+                if bom_match and bom_match.get_state then
+                    local s = bom_match.get_state()
+                    result = s.match_result or result
+                end
+                bom_ui.store_match_debrief(result, {
+                    pvp_wins = bom_match and bom_match.get_state and bom_match.get_state().pvp_wins or 0,
+                    pvp_losses = bom_match and bom_match.get_state and bom_match.get_state().pvp_losses or 0,
+                    reason = "left_lobby",
+                })
+            end
+            -- Tell server we're leaving
+            if bom_core and bom_core.send then
+                bom_core.send({ type = "leave_lobby" })
+            end
+            -- Destroy HUD and disconnect
+            bom_ui.destroy_match_hud()
+            if G.GAME then G.GAME.multiplayer = nil end
+            if bom_core and bom_core.disconnect then bom_core.disconnect() end
+            if bom_match and bom_match.reset then bom_match.reset() end
+        end)
+        -- Close overlay and go to menu
+        pcall(function()
+r 4 1825 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        end)
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 8
+            blocking = false,
+            blockable = false,
+            no_delete = true,
+            func = function()
+                pcall(function()
+                    G:delete_run()
+                    G:main_menu()
+                end)
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 24
+                    trigger = 'after',
+                    delay = 0.5,
+                    blocking = false,
+                    blockable = false,
+                    func = function()
+                        pcall(function() bom_ui.show_debrief_popup() end)
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+    -- Legacy MP callbacks (kept for backward compat)
+    G.FUNCS.mp_vote_rematch_from_screen = function(e)
+        pcall(function()
+            if bom_match and bom_match.vote_rematch then
+                bom_match.vote_rematch()
+            end
+        end)
+        pcall(function()
+            -- Grey out the button and change text to "Waiting..."
+            if e and e.config then
+r 4 58 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 4 311 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 187
+            end
+            -- Update button label to show waiting state
+            if e and e.children then
+                for _, child in ipairs(e.children) do
+                    pcall(function()
+                        if child.config and child.config.text then
+                            child.config.text = mod_loc("Waiting...")
+                            child.config.colour = G.C.UI.TEXT_INACTIVE
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+
+    G.FUNCS.mp_main_menu_from_screen = function()
+        -- Redirect to leave_lobby
+        if G.FUNCS.mp_leave_lobby then
+            G.FUNCS.mp_leave_lobby()
+        end
+    end
+end
+
+-- ============================================
+-- MP GAME OVER — Matching the multiplayer results screen layout
+-- Shows: GAME OVER header, stats (Best Hand, Most Played Hand),
+-- Ante/Round/Seed, Return to Lobby / Leave Lobby buttons
+-- ============================================
+
+-- ============================================
+-- MP WIN SCREEN — Matching the multiplayer results screen layout
+-- Shows: YOU WIN! header, stats (Best Hand, Most Played Hand),
+-- Ante/Round/Seed, Return to Lobby / Leave Lobby buttons
+-- ============================================
+
+-- ============================================
+-- IN-GAME HUD — Stubs (overridden by bom_ui_hud sub-module)
+-- FIX: _hud_state and _hud_drag removed; draggable panel no longer exists.
+-- ============================================
+
+-- ============================================
+-- DRAW — Online status indicator + HUD refresh
+-- ============================================
+-- ============================================
+-- FEATURE: PVP WAITING OVERLAY — "Waiting for opponent..." during PvP resolve
+-- Shown after player finishes all hands; dismissed when server sends pvp_resolved
+-- ============================================
+
+function bom_ui.show_pvp_waiting(message)
+    if not G or not G.ROOM_ATTACH then return end
+    bom_ui.hide_pvp_waiting() -- remove any existing one first
+    local pb = rawget(_G, "bom_playback")
+    if pb and pb.active and pb.active() then return end
+
+    message = message or mod_loc("Waiting for opponent to finish...")
+    bom_ui._pvp_wait_msg = message
+    if bom_spectate and bom_spectate.defer_wait and bom_spectate.defer_wait() then return end
+
+    pcall(function()
+        -- FIX: Simple centered panel — draws on top via attention_text flag
+        local lines = {}
+        for line in (tostring(message) .. "\n"):gmatch("(.-)\n") do
+            if line ~= "" then lines[#lines + 1] = line end
+        end
+        local scale = 0.5
+        local widest = 0
+        for _, line in ipairs(lines) do
+            local w = UIK and UIK.text_w and UIK.text_w(line, scale) or #line * scale * 0.3
+            if w > widest then widest = w end
+        end
+        local room_w = (G.ROOM and G.ROOM.T and G.ROOM.T.w or 20) * 0.9 - 0.8
+        if widest > room_w and widest > 0 then
+            scale = scale * room_w / widest
+            widest = room_w
+        end
+        local rows = {}
+        local spec = bom_spectate and bom_spectate.wait_allowed and G.FUNCS.spec_wait and bom_spectate.wait_allowed()
+        for i, line in ipairs(lines) do
+            rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                { n = G.UIT.T, config = { text = line, scale = i == 1 and scale or scale * 0.8, colour = i == 1 and G.C.UI.TEXT_LIGHT or G.C.UI.TEXT_INACTIVE, shadow = true } },
+            }}
+        end
+        local mg = rawget(_G, "Minigames") and Minigames.wait_row and Minigames.wait_row()
+        if spec then
+            local touch = UIK.touch()
+            local sc = touch and 0.42 or 0.36
+            local bh = touch and 0.8 or 0.62
+            local label = mod_loc("Spectate")
+            local sw = math.max(touch and 2.2 or 1.9, UIK.text_w(label, sc) + 0.5)
+            local play = mod_loc("Play while you wait")
+            local mw = math.max(touch and 3.3 or 2.9, UIK.text_w(play, sc) + 0.5)
+            local side = mg and sw + mw + 0.5 <= room_w
+            local btn = UIK.button{ label = label, button = "spec_wait", colour = UIK.C.accent, w = (mg and not side) and mw or sw, h = bh, scale = sc, id = "spec_wait", col = side or nil }
+            if side then
+                rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.08 }, nodes = {
+                    btn, { n = G.UIT.C, config = { minw = 0.04 } }, { n = G.UIT.C, config = { align = "cm" }, nodes = mg.nodes },
+                }}
+                mg = nil
+            else
+                rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.08 }, nodes = { btn } }
+            end
+        end
+        if mg then rows[#rows + 1] = mg end
+        G.BOM_PVP_WAITING_OVERLAY = UIBox({
+            definition = {
+                n = G.UIT.ROOT,
+                config = { align = "cm", colour = G.C.CLEAR, padding = 0 },
+                nodes = {
+                    { n = G.UIT.C, config = { align = "cm", colour = G.C.BLACK, r = 0.15, padding = 0.3, emboss = 0.08, minw = math.min(widest + 0.6, 4) }, nodes = rows },
+                },
+            },
+            config = { align = "cm", offset = { x = 0, y = 0.2 }, major = G.ROOM_ATTACH },
+        })
+        -- Flag so game.lua draws this above all normal UI (attention_text layer)
+        G.BOM_PVP_WAITING_OVERLAY.attention_text = true
+    end)
+end
+
+function bom_ui.hide_pvp_waiting()
+    if not G then return end
+    if G.BOM_PVP_WAITING_OVERLAY then
+        pcall(function() G.BOM_PVP_WAITING_OVERLAY:remove() end)
+        G.BOM_PVP_WAITING_OVERLAY = nil
+    end
+end
+
+function bom_ui.draw()
+    pcall(function() bom_ui.register_funcs() end)
+    local connected = AndroidWS and AndroidWS.isConnected and AndroidWS.isConnected()
+
+    -- FIX: Show OFFLINE on the main menu even when WS is connected.
+    -- Status should only display ONLINE while inside a lobby or match.
+    -- This is purely cosmetic; the WS stays alive in the background.
+    local in_mp_context = false
+    pcall(function()
+        local phase = bom_match and bom_match.get_phase and bom_match.get_phase()
+        if phase and phase ~= "" and phase ~= "idle" and phase ~= "none" then
+            in_mp_context = true
+        end
+    end)
+    if bom_rejoin and bom_rejoin.prompt then in_mp_context = true end
+    if not in_mp_context then connected = false end
+    -- ARCH: Online status position from mp_config
+    local x, y = mp_config and mp_config.STATUS_INDICATOR_X or 18, mp_config and mp_config.STATUS_INDICATOR_Y or 18
+    local status_text = mod_loc and mod_loc(connected and "ONLINE" or "OFFLINE") or (connected and "ONLINE" or "OFFLINE")
+    local show_status = not (G and G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.show_online_status == false)
+    if CORNER_LABELS then CORNER_LABELS.status_box = nil end
+    if show_status and CORNER_LABELS then
+        local bw, bh, bx, by = CORNER_LABELS.draw(status_text, x, y, {scale = CORNER_LABELS.scale(),
+            colour = connected and {0.2, 0.95, 0.35, 1} or {1, 0.25, 0.25, 1}})
+        CORNER_LABELS.status_box = {x = bx, y = by, w = bw, h = bh}
+        show_status = false
+    end
+    local font = show_status and love.graphics.getFont()
+    local text_w = font and font:getWidth(status_text) or 60
+    local text_h = font and font:getHeight() or 14
+    local pad_x, pad_y = 6, 4
+
+    if show_status then
+    love.graphics.setColor(0, 0, 0, 0.75)
+    love.graphics.rectangle("fill", x, y, text_w + pad_x*2, text_h + pad_y*2, 4, 4)
+
+    if connected then
+        love.graphics.setColor(0.2, 0.95, 0.35, 1)
+    else
+        love.graphics.setColor(1, 0.25, 0.25, 1)
+    end
+    love.graphics.print(status_text, x + pad_x, y + pad_y)
+
+    love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    -- Refresh the Balatro UIBox HUD (no-op stub via bom_ui_hud sub-module)
+    pcall(function() bom_ui.refresh_match_hud() end)
+end
+
+-- ============================================
+-- SUB-MODULE OVERRIDE — Load after legacy bodies so sub-module versions win
+-- FEATURE: Stage 3 split — bom_ui_lobby, bom_ui_hud, bom_ui_results, bom_ui_overlays
+-- ============================================
+require("multiplayer.bom_ui_lobby").init(bom_ui)
+require("multiplayer.bom_ui_hud").init(bom_ui)
+require("multiplayer.bom_ui_results").init(bom_ui)
+require("multiplayer.bom_ui_overlays").init(bom_ui)
+
+mp_log.info("BOM_UI", "Multiplayer UI module loaded")
+return bom_ui
+end

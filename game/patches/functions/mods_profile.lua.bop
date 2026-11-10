@@ -1,0 +1,149 @@
+BOP 2
+eol lf
+final 1
+base 0
+l 41
+MODDED_PROFILE = "modded"
+MODDED_PROFILES = {"modded", "modded2", "modded3"}
+MODDED_SETTINGS_FILE = "modded_settings.jkr"
+
+local KEYS = MODDED_PROFILES
+local INDEX = {}
+for i, k in ipairs(KEYS) do INDEX[k] = i end
+local PROFILE_FILES = {"profile.jkr", "save.jkr", "meta.jkr", "unlock_notify.jkr"}
+local LOCAL_PROFILE_FILES = {["save.jkr"] = true, ["unlock_notify.jkr"] = true}
+
+local function modded()
+  local L = rawget(_G, "MODLOADER")
+  return L and L.modded or false
+end
+
+function modded_profile_index(p)
+  return INDEX[p]
+end
+
+local function modded_key(p)
+  if INDEX[p] then return p end
+  if type(p) == "number" and KEYS[p] then return KEYS[p] end
+  return KEYS[1]
+end
+
+local function file_lists()
+  local local_files = {[MODDED_SETTINGS_FILE] = true}
+  local names = {MODDED_SETTINGS_FILE}
+  for _, k in ipairs(KEYS) do
+    for _, name in ipairs(PROFILE_FILES) do
+      local file = k .. "/" .. name
+      names[#names + 1] = file
+      if LOCAL_PROFILE_FILES[name] then local_files[file] = true end
+    end
+  end
+  return local_files, names
+end
+
+local load_all_files = Game.load_all_files
+Game.load_all_files = function(self, retry)
+  if not modded() then return load_all_files(self, retry) end
+e 10 1212 %20%20 - =2,-2,=1,-1,+%4F%41%44,=13,-2,=1,-1,+%4F%41%44,=14
+l 34
+  if not G.LOAD_HANDLER.modded then
+    G.LOAD_HANDLER.LOCAL_FILES, G.LOAD_HANDLER.FILE_NAMES = file_lists()
+    G.LOAD_HANDLER.modded = true
+  end
+  load_all_files(self, retry)
+  if retry then return end
+  local settings = G.FILES[MODDED_SETTINGS_FILE]
+  if type(settings) ~= "table" then
+    settings = {}
+    local base = load_local_file('settings.jkr')
+    if type(base) == "table" then
+      for k, v in pairs(base) do settings[k] = v end
+    end
+    settings.profile = nil
+    settings.profile_counters = nil
+    settings._vanilla_profile = nil
+    G.FILES[MODDED_SETTINGS_FILE] = settings
+  end
+  settings.profile = modded_key(settings.profile)
+  local counters = {}
+  for _, k in ipairs(KEYS) do
+    counters[k] = type(settings.profile_counters) == "table" and tonumber(settings.profile_counters[k]) or 0
+  end
+  settings.profile_counters = counters
+  G.FILES['settings.jkr'] = settings
+  G.PROFILES = {}
+  for _, k in ipairs(KEYS) do G.PROFILES[k] = {} end
+end
+
+local function default_name(key)
+  return "M" .. INDEX[key]
+end
+
+local load_profile = Game.load_profile
+r 10 845 - -
+l 34
+  if not modded() then return load_profile(self, _profile) end
+  _profile = modded_key(_profile)
+  G.PROFILES[_profile] = G.PROFILES[_profile] or {}
+  G.SETTINGS.profile_counters[_profile] = G.SETTINGS.profile_counters[_profile] or 0
+  local data = G.FILES[_profile .. '/profile.jkr']
+  if type(data) == "table" and next(data) and not data.deleted and (not data.name or data.name == '' or data.name == "P" .. INDEX[_profile]) then
+    data.name = default_name(_profile)
+  end
+  load_profile(self, _profile)
+  local name = G.PROFILES[_profile].name
+  if _profile == G.SETTINGS.profile and (not name or name == '' or name == "P" .. INDEX[_profile]) then
+    G.PROFILES[_profile].name = default_name(_profile)
+  end
+end
+
+local function rename_tab_ids(node)
+  if type(node) ~= "table" then return end
+  local id = node.config and node.config.id
+  if type(id) == "string" then
+    local n = tonumber(id:match("^tab_but_(%d)$"))
+    if n and KEYS[n] then node.config.id = "tab_but_" .. KEYS[n] end
+  end
+  if node.nodes then
+    for _, child in pairs(node.nodes) do rename_tab_ids(child) end
+  end
+end
+
+local function modded_profile_select_ui()
+  G.focused_profile = modded_key(G.focused_profile or G.SETTINGS.profile)
+  local tabs = {}
+  for i, k in ipairs(KEYS) do
+    tabs[i] = {label = i, chosen = G.focused_profile == k, tab_definition_function = G.UIDEF.profile_option, tab_definition_function_args = k}
+  end
+  local t = create_UIBox_generic_options({padding = 0, contents = {
+r 15 5343 %20%20%20%20 -
+l 8
+      create_tabs({tabs = tabs, snap_to_nav = true}),
+    }},
+  }})
+  rename_tab_ids(t)
+  return t
+end
+
+local profile_select_ui = G.UIDEF.profile_select
+r 15 5339 - -
+l 5
+  if not modded() then return profile_select_ui() end
+  return modded_profile_select_ui()
+end
+
+local profile_select = G.FUNCS.profile_select
+r 4 1661 - -
+l 1
+  if not modded() then return profile_select(e) end
+r 4 1381 %20%20 -
+l 4
+  G.focused_profile = modded_key(G.SETTINGS.profile)
+  for _, k in ipairs(KEYS) do
+    if k ~= G.focused_profile and love.mod_filesystem.getInfo(k .. '/profile.jkr') then G:load_profile(k) end
+  end
+r 4 242 %20%20 -
+l 2
+  G.FUNCS.overlay_menu{definition = modded_profile_select_ui()}
+end
+end

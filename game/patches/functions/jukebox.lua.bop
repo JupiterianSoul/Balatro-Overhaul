@@ -1,0 +1,2156 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 327
+-- ============================================
+-- JUKEBOX v3.0 — Custom Music Player
+-- ============================================
+-- Drop .ogg files into resources/sounds/jukebox/
+-- Songs keep their original filenames.
+-- When enabled, replaces game music with your playlist.
+-- Supports: play in order, shuffle, enable/disable songs,
+--           play/pause, skip forward/back, pagination.
+-- ============================================
+
+local JUKEBOX_DIR = "resources/sounds/jukebox"
+local MY_MUSIC_DIR = "music"
+local DL_MOUNT = "jukebox_dl"
+local EXT_MOUNT = "jukebox_ext"
+local MAX_ITERATIONS = 500
+local MAX_IMPORT_BYTES = 300 * 1024 * 1024
+local PLAYABLE = {ogg = true, mp3 = true, wav = true, flac = true}
+local CONVERTIBLE = {opus = true, oga = true, m4a = true, aac = true, wma = true, webm = true, mp4 = true, mka = true,
+    aif = true, aiff = true, ape = true, wv = true, ac3 = true, amr = true, ["3gp"] = true, alac = true}
+
+-- ============================================
+-- MODULE STATE
+-- ============================================
+local Jukebox = {
+    initialized  = false,
+    enabled      = false,
+    songs        = {},
+    playlist     = {},
+    playlist_pos = 0,
+    shuffle      = false,
+    playing      = false,
+    paused       = false,
+    source       = nil,
+    song_name    = "None",
+    page         = 1,
+    message      = nil,
+    offers       = {},
+    problems     = {},
+    broken_ids   = {},
+    busy         = {},
+    dl_state     = "none",
+    info         = {time = ""},
+}
+
+local function release_build()
+    return rawget(_G, "RELEASE_BUILD") == true
+end
+
+local function os_name()
+    local ok, n = pcall(love.system.getOS)
+    return ok and n or "Linux"
+end
+
+local function is_phone()
+    local n = os_name()
+    return n == "Android" or n == "iOS"
+end
+
+local utf8_ok, utf8lib = pcall(require, "utf8")
+
+local function clean_text(s)
+    s = tostring(s or "")
+    if utf8_ok and utf8lib.len(s) then return s end
+    return (s:gsub("[\128-\255]", "?"))
+end
+
+local glyph_cache = {}
+
+local function shown(s)
+    local f = G and G.LANG and G.LANG.font and G.LANG.font.FONT
+    if not (f and utf8_ok and f.hasGlyphs) then return s end
+    local key = tostring(f) .. s
+    if glyph_cache[key] then return glyph_cache[key] end
+    local out = s
+    local ok, all = pcall(f.hasGlyphs, f, s)
+    if ok and not all then
+        local parts = {}
+        for _, c in utf8lib.codes(s) do
+            local ch = utf8lib.char(c)
+            local okc, has = pcall(f.hasGlyphs, f, ch)
+            parts[#parts + 1] = (okc and has or ch == " ") and ch or "?"
+        end
+        out = table.concat(parts)
+    end
+    glyph_cache[key] = out
+    return out
+end
+
+local function clip(s, n)
+    s = shown(clean_text(s))
+    if not utf8_ok then return #s > n and (s:sub(1, n - 2) .. "..") or s end
+    if utf8lib.len(s) <= n then return s end
+    return s:sub(1, utf8lib.offset(s, n - 1) - 1) .. ".."
+end
+
+local function clip_left(s, n)
+    s = shown(clean_text(s))
+    if not utf8_ok then return #s > n and (".." .. s:sub(-(n - 2))) or s end
+    local len = utf8lib.len(s)
+    if len <= n then return s end
+    return ".." .. s:sub(utf8lib.offset(s, len - n + 3))
+end
+
+local function title_of(stem)
+    local t = clean_text(stem):gsub("_", " "):gsub("%s+", " ")
+    t = t:match("^%s*(.-)%s*$") or ""
+    return t ~= "" and t or "?"
+end
+
+local function split_name(filename)
+    local stem, ext = filename:match("^(.*)%.([^%.]+)$")
+    if not stem or stem == "" then return filename, "" end
+    return stem, ext:lower()
+end
+
+local function sniff(head)
+    if type(head) ~= "string" or #head < 4 then return nil end
+    local tag = head:sub(1, 4)
+    if tag == "OggS" then return head:find("OpusHead", 1, true) and "opus" or "ogg" end
+    if tag == "fLaC" then return "flac" end
+    if tag == "RIFF" and head:sub(9, 12) == "WAVE" then return "wav" end
+    if head:sub(1, 3) == "ID3" then return "mp3" end
+    local a, b = head:byte(1, 2)
+    if a == 0xFF and b and b >= 0xE0 then return "mp3" end
+    return nil
+end
+
+local function fmt_size(bytes)
+    return string.format(mod_loc("%.1f MB"), (tonumber(bytes) or 0) / (1024 * 1024))
+end
+
+local function add_problem(fmt, name)
+    for _, p in ipairs(Jukebox.problems) do if p.fmt == fmt and p.name == name then return end end
+    table.insert(Jukebox.problems, 1, {fmt = fmt, name = name})
+    while #Jukebox.problems > 4 do table.remove(Jukebox.problems) end
+end
+
+local FFI = {}
+
+local function physfs()
+    if FFI.tried then return FFI.lib end
+    FFI.tried = true
+    local ok, ffi = pcall(require, "ffi")
+    if not ok then return nil end
+    FFI.ffi = ffi
+    pcall(ffi.cdef, [[
+        int PHYSFS_mount(const char* dir, const char* mountPoint, int appendToPath);
+        int PHYSFS_unmount(const char* dir);
+        const char* PHYSFS_getMountPoint(const char* dir);
+    ]])
+    for _, name in ipairs({false, "love"}) do
+        local okl, lib = pcall(function() return name and ffi.load(name) or ffi.C end)
+        if okl and lib and pcall(function() return lib.PHYSFS_mount end) then
+            FFI.lib = lib
+            return lib
+        end
+    end
+    return nil
+end
+
+local function mount_dir(dir, point)
+    local lib = physfs()
+    if not lib or not dir or dir == "" then return false end
+    local ok, res = pcall(function()
+        local cur = lib.PHYSFS_getMountPoint(dir)
+        if cur ~= nil then return FFI.ffi.string(cur):gsub("/+$", "") == point end
+        return lib.PHYSFS_mount(dir, point, 1) ~= 0
+    end)
+    return ok and res and love.filesystem.getInfo(point, "directory") ~= nil
+end
+
+local function android_music_dir()
+    if os_name() ~= "Android" or not physfs() then return nil end
+    local ffi = FFI.ffi
+    local base
+    pcall(function()
+        pcall(ffi.cdef, "const char* SDL_AndroidGetExternalStoragePath(void);")
+        local sdl = ffi.load("SDL2")
+        local p = sdl.SDL_AndroidGetExternalStoragePath()
+        if p ~= nil then base = ffi.string(p) end
+    end)
+    if not base then
+        local pkg = tostring(love.filesystem.getSaveDirectory() or ""):match("/data/[^/]+/[^/]+/([^/]+)/files")
+            or tostring(love.filesystem.getSaveDirectory() or ""):match("/data/data/([^/]+)/")
+        if pkg then base = "/storage/emulated/0/Android/data/" .. pkg .. "/files" end
+    end
+    if not base then return nil end
+    local abs = base .. "/music"
+    pcall(os.execute, "mkdir -p '" .. abs:gsub("'", "") .. "'")
+    if not mount_dir(abs, EXT_MOUNT) then return nil end
+    return {lfs = EXT_MOUNT, abs = abs, via_lfs = false, usb = true, shown = abs:gsub("^/storage/emulated/0/", "")}
+end
+
+local MM
+
+local function my_music()
+    if MM then return MM end
+    pcall(love.filesystem.createDirectory, MY_MUSIC_DIR)
+    local save = ""
+    pcall(function() save = love.filesystem.getSaveDirectory() end)
+    MM = {lfs = MY_MUSIC_DIR, abs = save .. "/" .. MY_MUSIC_DIR, via_lfs = true}
+    MM.shown = MM.abs
+    local ok, ext = pcall(android_music_dir)
+    if ok and ext then MM = ext end
+    return MM
+end
+
+local function download_dirs()
+    local env = os.getenv("JUKEBOX_DOWNLOADS") or os.getenv("MODLOADER_DOWNLOADS")
+    if env ~= nil then
+        local dirs = {}
+        for d in env:gmatch("[^;]+") do dirs[#dirs + 1] = d end
+        return dirs
+    end
+    local ok, inst = pcall(require, "modloader.installer")
+    if ok and type(inst) == "table" and inst.download_dirs then
+        local okd, dirs = pcall(inst.download_dirs)
+        if okd and type(dirs) == "table" then return dirs end
+    end
+    return {}
+end
+
+local function make_song(dir, filename, mine)
+    local stem, ext = split_name(filename)
+    local path = dir .. "/" .. filename
+    local song = {
+        id       = mine and ("my/" .. filename) or stem,
+        name     = title_of(stem),
+        filename = filename,
+        path     = path,
+        ext      = ext,
+        enabled  = true,
+        mine     = mine,
+    }
+    if mine then
+        local head = love.filesystem.read(path, 64)
+        local kind = sniff(head)
+        if not kind then
+            song.broken = mod_loc("This file is not a sound file")
+        elseif kind == "opus" then
+            song.broken = mod_loc("This ogg file is Opus, convert it to mp3 or ogg Vorbis")
+        elseif kind ~= ext then
+            song.kind = kind
+        end
+    end
+    if Jukebox.broken_ids[song.id] then song.broken = Jukebox.broken_ids[song.id] end
+    return song
+end
+
+local function cleanup_parts()
+    local mm = my_music()
+    local ok, items = pcall(love.filesystem.getDirectoryItems, mm.lfs)
+    if not ok or type(items) ~= "table" then return end
+    for _, name in ipairs(items) do
+        if name:sub(1, 6) == ".part-" then
+            if mm.via_lfs then pcall(love.filesystem.remove, mm.lfs .. "/" .. name)
+            else pcall(os.remove, mm.abs .. "/" .. name) end
+        end
+    end
+end
+
+local queue_convert
+
+local function scan_songs()
+    local found = {}
+    if not release_build() then
+        local ok, items = pcall(function()
+            return love.filesystem.getDirectoryItems(JUKEBOX_DIR)
+        end)
+        if ok and type(items) == "table" then
+            local count = 0
+            for _, filename in ipairs(items) do
+                if count >= MAX_ITERATIONS then break end
+                if type(filename) == "string" and #filename > 4 and filename:sub(-4):lower() == ".ogg" then
+                    count = count + 1
+                    found[#found + 1] = make_song(JUKEBOX_DIR, filename, false)
+                end
+            end
+        end
+    end
+    local mm = my_music()
+    local ok, items = pcall(love.filesystem.getDirectoryItems, mm.lfs)
+    if ok and type(items) == "table" then
+        local names = {}
+        for _, filename in ipairs(items) do names[filename:lower()] = true end
+        local count = 0
+        for _, filename in ipairs(items) do
+            if count >= MAX_ITERATIONS then break end
+            local stem, ext = split_name(filename)
+            local info = filename:sub(1, 1) ~= "." and not Jukebox.busy[filename] and love.filesystem.getInfo(mm.lfs .. "/" .. filename)
+            if info and info.type == "file" then
+                if PLAYABLE[ext] then
+                    count = count + 1
+                    local song = make_song(mm.lfs, filename, true)
+                    if (info.size or 0) == 0 then song.broken = mod_loc("This file is empty") end
+                    found[#found + 1] = song
+                elseif CONVERTIBLE[ext] and not names[(stem .. ".ogg"):lower()] and queue_convert then
+                    queue_convert(filename, mm.abs .. "/" .. filename, stem)
+                end
+            end
+        end
+    end
+    table.sort(found, function(a, b)
+        if a.mine ~= b.mine then return a.mine == true end
+        local an, bn = a.name:lower(), b.name:lower()
+        if an == bn then return a.id < b.id end
+        return an < bn
+    end)
+    return found
+end
+
+-- ============================================
+-- PLAYLIST MANAGEMENT
+-- ============================================
+local function rebuild_playlist()
+    local old_idx = (Jukebox.playlist_pos > 0 and Jukebox.playlist_pos <= #Jukebox.playlist)
+        and Jukebox.playlist[Jukebox.playlist_pos] or nil
+
+    Jukebox.playlist = {}
+    for i, song in ipairs(Jukebox.songs) do
+        if song.enabled and not song.broken then
+            Jukebox.playlist[#Jukebox.playlist + 1] = i
+        end
+    end
+
+    if Jukebox.shuffle and #Jukebox.playlist > 1 then
+        for i = #Jukebox.playlist, 2, -1 do
+r 12 214 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1589
+            Jukebox.playlist[i], Jukebox.playlist[j] = Jukebox.playlist[j], Jukebox.playlist[i]
+        end
+    end
+
+    if old_idx then
+        for i, idx in ipairs(Jukebox.playlist) do
+            if idx == old_idx then Jukebox.playlist_pos = i; return end
+        end
+    end
+    Jukebox.playlist_pos = math.max(1, math.min(Jukebox.playlist_pos, #Jukebox.playlist))
+end
+
+local function current_song()
+    if Jukebox.playlist_pos < 1 or Jukebox.playlist_pos > #Jukebox.playlist then return nil end
+    return Jukebox.songs[Jukebox.playlist[Jukebox.playlist_pos]]
+end
+
+local function open_source(song)
+    if not song or song.broken then return nil end
+    local ok, src = pcall(function()
+        if song.kind and song.kind ~= song.ext then
+            local data = love.filesystem.newFileData(love.filesystem.read(song.path), "song." .. song.kind)
+            return love.audio.newSource(data, "stream")
+        end
+        return love.audio.newSource(song.path, "stream")
+    end)
+    if ok and src then return src end
+    print("[JUKEBOX] Failed to load: " .. tostring(song.path) .. " " .. tostring(src))
+    song.broken = mod_loc("This file can't be played")
+    Jukebox.broken_ids[song.id] = song.broken
+    Jukebox.message = string.format(mod_loc("Can't play %s"), clip(song.name, 30))
+    return nil
+end
+
+-- ============================================
+-- PLAYBACK
+-- ============================================
+local function music_volume()
+    local v = 1
+    pcall(function()
+        if G and G.SETTINGS and G.SETTINGS.SOUND then
+            v = (G.SETTINGS.SOUND.volume or 100) / 100 * (G.SETTINGS.SOUND.music_volume or 100) / 100
+        end
+    end)
+    return v
+end
+
+local function stop_playback()
+    if Jukebox.source then
+        pcall(function() Jukebox.source:stop() end)
+        pcall(function() Jukebox.source:release() end)
+        Jukebox.source = nil
+    end
+    Jukebox.playing   = false
+    Jukebox.paused    = false
+    Jukebox.song_name = "None"
+end
+
+-- Fade state
+local FadeState = {
+    active = false,
+    fade_out_source = nil,
+    fade_timer = 0,
+    fade_duration = 0.5,
+    pending_pos = nil,
+    fade_in = false,
+    fade_in_timer = 0,
+}
+
+local function play_at(pos)
+    if pos < 1 or pos > #Jukebox.playlist then return false end
+    Jukebox.playlist_pos = pos
+    local song = current_song()
+    if not song then return false end
+
+    -- If currently playing, fade out first then fade in the new song
+    if Jukebox.source and Jukebox.playing then
+        -- Start fade out of current source
+        FadeState.active = true
+        FadeState.fade_out_source = Jukebox.source
+        FadeState.fade_timer = 0
+        FadeState.pending_pos = pos
+        FadeState.fade_in = false
+        FadeState.fade_in_timer = 0
+        -- Detach current source so stop_playback won't kill it yet
+        Jukebox.source = nil
+        Jukebox.playing = false
+        Jukebox.paused = false
+        return true
+    end
+
+    -- No current playback - just start directly
+    stop_playback()
+
+    local src = open_source(song)
+    if not src then
+        Jukebox.play_tries = (Jukebox.play_tries or 0) + 1
+        rebuild_playlist()
+        if Jukebox.play_tries <= 3 and #Jukebox.playlist > 0 then
+            local ok_next = play_at(math.min(pos, #Jukebox.playlist))
+            Jukebox.play_tries = 0
+            return ok_next
+        end
+        Jukebox.play_tries = 0
+        return false
+    end
+
+    src:setLooping(false)
+    src:setVolume(music_volume())
+    love.audio.play(src)
+
+    Jukebox.source    = src
+    Jukebox.playing   = true
+    Jukebox.paused    = false
+    Jukebox.song_name = song.name
+    return true
+end
+
+local function skip_next()
+    if #Jukebox.playlist == 0 then stop_playback(); return end
+    local p = Jukebox.playlist_pos + 1
+    if p > #Jukebox.playlist then
+        p = 1
+        if Jukebox.shuffle then rebuild_playlist() end
+    end
+    play_at(p)
+end
+
+local function skip_prev()
+    if #Jukebox.playlist == 0 then stop_playback(); return end
+    local p = Jukebox.playlist_pos - 1
+    if p < 1 then p = #Jukebox.playlist end
+    play_at(p)
+end
+
+local function toggle_pause()
+    if not Jukebox.source then return end
+    if Jukebox.paused then
+        pcall(function() love.audio.play(Jukebox.source) end)
+        Jukebox.paused  = false
+        Jukebox.playing = true
+    else
+        pcall(function() Jukebox.source:pause() end)
+        Jukebox.paused  = true
+        Jukebox.playing = false
+    end
+end
+
+-- ============================================
+-- PERSISTENCE
+-- ============================================
+local function save_settings()
+    pcall(function()
+        if not G or not G.SETTINGS then return end
+        local old_cfg = type(G.SETTINGS.JUKEBOX) == "table" and G.SETTINGS.JUKEBOX or {}
+        local disabled = {}
+        if type(old_cfg.disabled_songs) == "table" then
+            for k, v in pairs(old_cfg.disabled_songs) do disabled[k] = v end
+        end
+        for _, s in ipairs(Jukebox.songs) do
+            disabled[s.id] = (not s.enabled) or nil
+        end
+        -- Save current song id for restoration on restart
+        local cur_song_id = nil
+        pcall(function()
+            local cs = current_song()
+            if cs then cur_song_id = cs.id end
+        end)
+        local mini = type(G.SETTINGS.JUKEBOX) == "table" and G.SETTINGS.JUKEBOX.mini or nil
+        G.SETTINGS.JUKEBOX = {
+            enabled        = Jukebox.enabled,
+            shuffle        = Jukebox.shuffle,
+            disabled_songs = disabled,
+            current_song   = cur_song_id,
+            mini           = mini,
+            seen           = type(old_cfg.seen) == "table" and old_cfg.seen or nil,
+        }
+        if G.save_settings then pcall(function() G:save_settings() end) end
+    end)
+end
+
+-- ============================================
+local WORKER_CODE = [[
+require("love.filesystem")
+local jobs = love.thread.getChannel("jukebox_jobs")
+local done = love.thread.getChannel("jukebox_done")
+local ffmpeg
+local function run(cmd)
+    local r = os.execute(cmd)
+    return r == 0 or r == true
+end
+local function q(s, win)
+    if win then return '"' .. s .. '"' end
+    return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+local function pump(src, out)
+    while true do
+        local chunk, n = src:read(1048576)
+        if not chunk or (n or #chunk) == 0 then return true end
+        if not out:write(chunk) then return false end
+    end
+end
+local function open_out(lfs_path, abs_path)
+    if lfs_path then
+        local f = love.filesystem.newFile(lfs_path)
+        if f:open("w") then return f end
+        return nil
+    end
+    return io.open(abs_path, "wb")
+end
+local function finish(job)
+    if os.rename(job.tmp_abs, job.final_abs) then return true end
+    if not (job.tmp_lfs and job.final_lfs) then return false end
+    local src = love.filesystem.newFile(job.tmp_lfs)
+    if not src:open("r") then return false end
+    local out = open_out(job.final_lfs)
+    if not out then src:close() return false end
+    local ok = pump(src, out)
+    src:close() out:close()
+    love.filesystem.remove(job.tmp_lfs)
+    return ok
+end
+local function drop_tmp(job)
+    if job.tmp_lfs then love.filesystem.remove(job.tmp_lfs) else os.remove(job.tmp_abs) end
+end
+while true do
+    local job = jobs:demand()
+    if type(job) ~= "table" or job.op == "quit" then break end
+    local res = {id = job.id, op = job.op, name = job.name, final = job.final}
+    if job.op == "copy" then
+        local src = love.filesystem.newFile(job.src)
+        local out = src:open("r") and open_out(job.tmp_lfs, job.tmp_abs)
+        if out then
+            local ok = pump(src, out)
+            src:close() out:close()
+            res.ok = ok and finish(job)
+        else
+            pcall(function() src:close() end)
+            res.ok = false
+        end
+        if not res.ok then res.err = "copy" drop_tmp(job) end
+    elseif job.op == "convert" then
+        if ffmpeg == nil then ffmpeg = run(job.win and "ffmpeg -version >NUL 2>&1" or "ffmpeg -version >/dev/null 2>&1") end
+        if not ffmpeg then
+            res.ok, res.err = false, "no_ffmpeg"
+        else
+            local null = job.win and "NUL" or "/dev/null"
+            res.ok = run("ffmpeg -nostdin -y -loglevel error -i " .. q(job.src_abs, job.win) .. " -vn -map_metadata -1 -c:a libvorbis -q:a 4 -f ogg " .. q(job.tmp_abs, job.win) .. " >" .. null .. " 2>&1")
+                and finish(job)
+            if not res.ok then res.err = "convert" drop_tmp(job) end
+        end
+    end
+    done:push(res)
+end
+]]
+
+local Worker = {thread = nil, next_id = 0, pending = {}, tried = {}}
+
+local function worker_send(job)
+    if not Worker.thread then
+        local ok, t = pcall(love.thread.newThread, WORKER_CODE)
+        if not ok or not t then return false end
+        Worker.thread = t
+        local oks = pcall(function() t:start() end)
+        if not oks then Worker.thread = nil return false end
+    end
+    Worker.next_id = Worker.next_id + 1
+    job.id = Worker.next_id
+    job.win = os_name() == "Windows"
+    local mm = my_music()
+    local tmp = ".part-" .. job.id .. "." .. (job.op == "convert" and "ogg" or job.ext)
+    job.tmp_abs = mm.abs .. "/" .. tmp
+    job.final_abs = mm.abs .. "/" .. job.final
+    if mm.via_lfs then
+        job.tmp_lfs = mm.lfs .. "/" .. tmp
+        job.final_lfs = mm.lfs .. "/" .. job.final
+    end
+    job.ext = nil
+    Worker.pending[job.id] = job
+    Jukebox.busy[job.final] = true
+    love.thread.getChannel("jukebox_jobs"):push(job)
+    return true
+end
+
+local function unique_name(stem, ext)
+    local mm = my_music()
+    local name = stem .. "." .. ext
+    local n = 2
+    while love.filesystem.getInfo(mm.lfs .. "/" .. name) or Jukebox.busy[name] do
+        name = stem .. " (" .. n .. ")." .. ext
+        n = n + 1
+    end
+    return name
+end
+
+queue_convert = function(filename, src_abs, stem)
+    if Worker.tried[src_abs] then return end
+    Worker.tried[src_abs] = true
+    if is_phone() then
+        add_problem("%s: convert it to mp3 or ogg first", clip(filename, 28))
+        return
+    end
+    local final = unique_name(stem, "ogg")
+    if not worker_send({op = "convert", name = filename, src_abs = src_abs, final = final}) then
+        add_problem("%s: convert it to mp3 or ogg first", clip(filename, 28))
+    end
+end
+
+local function offer_key(o)
+    return o.name .. "|" .. tostring(o.size or 0)
+end
+
+local function scan_downloads()
+    Jukebox.offers = {}
+    local cfg = G and G.SETTINGS and type(G.SETTINGS.JUKEBOX) == "table" and G.SETTINGS.JUKEBOX or {}
+    local seen = type(cfg.seen) == "table" and cfg.seen or {}
+    local mm = my_music()
+    local have = {}
+    local ok_items, mine = pcall(love.filesystem.getDirectoryItems, mm.lfs)
+    if ok_items and type(mine) == "table" then
+        for _, name in ipairs(mine) do
+            local info = love.filesystem.getInfo(mm.lfs .. "/" .. name)
+            if info then have[name .. "|" .. tostring(info.size or 0)] = true end
+        end
+    end
+    local dirs = download_dirs()
+    local readable, dup = false, {}
+    for i, dir in ipairs(dirs) do
+        local point = DL_MOUNT .. i
+        if mount_dir(dir, point) then
+            readable = true
+            local ok, items = pcall(love.filesystem.getDirectoryItems, point)
+            if ok and type(items) == "table" then
+                local count = 0
+                for _, name in ipairs(items) do
+                    if count >= MAX_ITERATIONS then break end
+                    local stem, ext = split_name(name)
+                    if name:sub(1, 1) ~= "." and (PLAYABLE[ext] or CONVERTIBLE[ext]) then
+                        local info = love.filesystem.getInfo(point .. "/" .. name)
+                        if info and info.type == "file" and (info.size or 0) > 0 then
+                            count = count + 1
+                            local o = {name = name, stem = stem, ext = ext, size = info.size, lfs = point .. "/" .. name,
+                                abs = dir .. (os_name() == "Windows" and "\\" or "/") .. name, modtime = info.modtime or 0}
+                            local key = offer_key(o)
+                            if not seen[key] and not have[key] and not dup[key] then
+                                dup[key] = true
+                                if o.size > MAX_IMPORT_BYTES then
+                                    add_problem("%s is too big to add (over 300 MB)", clip(name, 24))
+                                elseif CONVERTIBLE[ext] and is_phone() then
+                                    add_problem("%s: convert it to mp3 or ogg first", clip(name, 28))
+                                else
+                                    Jukebox.offers[#Jukebox.offers + 1] = o
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(Jukebox.offers, function(a, b)
+        if a.modtime ~= b.modtime then return a.modtime > b.modtime end
+        return a.name < b.name
+    end)
+    Jukebox.dl_state = readable and "ok" or (#dirs > 0 and "blocked" or "none")
+    return #Jukebox.offers
+end
+
+local function mark_seen(o)
+    if not (G and G.SETTINGS) then return end
+    if type(G.SETTINGS.JUKEBOX) ~= "table" then G.SETTINGS.JUKEBOX = {} end
+    local cfg = G.SETTINGS.JUKEBOX
+    if type(cfg.seen) ~= "table" then cfg.seen = {} end
+    cfg.seen[offer_key(o)] = true
+end
+
+local function import_offer(o)
+    mark_seen(o)
+    if CONVERTIBLE[o.ext] then
+        Worker.tried[o.abs] = true
+        local final = unique_name(o.stem, "ogg")
+        if not worker_send({op = "convert", name = o.name, src_abs = o.abs, final = final}) then
+            add_problem("%s: convert it to mp3 or ogg first", clip(o.name, 28))
+        end
+        return
+    end
+    local final = unique_name(o.stem, o.ext)
+    if not worker_send({op = "copy", name = o.name, src = o.lfs, final = final, ext = o.ext}) then
+        add_problem("%s could not be added", clip(o.name, 28))
+    end
+end
+
+local refresh_ui
+
+local function rescan()
+    if FadeState.active then
+        if FadeState.fade_out_source then
+            pcall(function() FadeState.fade_out_source:stop() end)
+            pcall(function() FadeState.fade_out_source:release() end)
+            FadeState.fade_out_source = nil
+        end
+        if Jukebox.source then pcall(function() Jukebox.source:setVolume(music_volume()) end) end
+        FadeState.active, FadeState.fade_in, FadeState.pending_pos = false, false, nil
+    end
+    local cur = current_song()
+    local cur_id = cur and Jukebox.source and cur.id
+    local off = {}
+    for _, s in ipairs(Jukebox.songs) do if not s.enabled then off[s.id] = true end end
+    pcall(function()
+        local d = G.SETTINGS.JUKEBOX and G.SETTINGS.JUKEBOX.disabled_songs
+        if type(d) == "table" then for k in pairs(d) do off[k] = true end end
+    end)
+    Jukebox.songs = scan_songs()
+    for _, s in ipairs(Jukebox.songs) do if off[s.id] then s.enabled = false end end
+    Jukebox.playlist_pos = 0
+    rebuild_playlist()
+    if cur_id then
+        for i, idx in ipairs(Jukebox.playlist) do
+            if Jukebox.songs[idx].id == cur_id then Jukebox.playlist_pos = i break end
+        end
+    end
+    if Jukebox.enabled and not Jukebox.source and #Jukebox.playlist > 0 then play_at(Jukebox.playlist_pos) end
+end
+
+local function poll_worker()
+    if not Worker.thread then return end
+    local err = Worker.thread:getError()
+    if err then
+        print("[JUKEBOX] worker: " .. tostring(err))
+        for id, job in pairs(Worker.pending) do
+            Jukebox.busy[job.final] = nil
+            add_problem("%s could not be added", clip(job.name, 28))
+            Worker.pending[id] = nil
+        end
+        Worker.thread = nil
+        refresh_ui()
+        return
+    end
+    local ch = love.thread.getChannel("jukebox_done")
+    local changed = false
+    for _ = 1, 8 do
+        local res = ch:pop()
+        if not res then break end
+        local job = Worker.pending[res.id]
+        Worker.pending[res.id] = nil
+        if job then Jukebox.busy[job.final] = nil end
+        if res.ok then
+            Jukebox.message = string.format(mod_loc("Added %s"), clip(title_of((split_name(res.final or res.name or ""))), 30))
+        elseif res.err == "no_ffmpeg" then
+            add_problem("%s: install ffmpeg or convert it to mp3 or ogg", clip(res.name, 24))
+            Jukebox.message = string.format(mod_loc("%s could not be added"), clip(res.name, 28))
+        else
+            add_problem("%s could not be added", clip(res.name, 28))
+            Jukebox.message = string.format(mod_loc("%s could not be added"), clip(res.name, 28))
+        end
+        changed = true
+    end
+    if changed then
+        rescan()
+        save_settings()
+        refresh_ui()
+    end
+end
+
+local function remove_song(idx)
+    local song = Jukebox.songs[idx]
+    if not (song and song.mine) then return false end
+    local cur = current_song()
+    if cur == song or (FadeState.active and FadeState.pending_pos and Jukebox.playlist[FadeState.pending_pos] == idx) then
+        stop_playback()
+        if FadeState.fade_out_source then
+            pcall(function() FadeState.fade_out_source:stop() end)
+            pcall(function() FadeState.fade_out_source:release() end)
+        end
+        FadeState.active, FadeState.fade_in, FadeState.pending_pos, FadeState.fade_out_source = false, false, nil, nil
+    end
+    local mm = my_music()
+    local function drop(name)
+        if mm.via_lfs then return love.filesystem.remove(mm.lfs .. "/" .. name) end
+        return os.remove(mm.abs .. "/" .. name) ~= nil
+    end
+    local ok = drop(song.filename)
+    if ok then
+        local stem = split_name(song.filename):lower()
+        local okl, items = pcall(love.filesystem.getDirectoryItems, mm.lfs)
+        for _, name in ipairs(okl and items or {}) do
+            local st, ext = split_name(name)
+            if CONVERTIBLE[ext] and st:lower() == stem then pcall(drop, name) end
+        end
+    end
+    Jukebox.broken_ids[song.id] = nil
+    pcall(function()
+        local d = G.SETTINGS.JUKEBOX and G.SETTINGS.JUKEBOX.disabled_songs
+        if type(d) == "table" then d[song.id] = nil end
+    end)
+    song.enabled = true
+    Jukebox.message = ok and string.format(mod_loc("Removed %s"), clip(song.name, 30))
+        or string.format(mod_loc("%s could not be removed"), clip(song.name, 28))
+    rescan()
+    save_settings()
+    return ok
+end
+
+-- INIT
+-- ============================================
+local function jukebox_init()
+    if Jukebox.initialized then return true end
+    if not G then return false end
+
+    pcall(cleanup_parts)
+    Jukebox.songs = scan_songs()
+    pcall(scan_downloads)
+
+    pcall(function()
+        if G.SETTINGS and type(G.SETTINGS.JUKEBOX) == "table" then
+            local s = G.SETTINGS.JUKEBOX
+            Jukebox.enabled = s.enabled == true
+            Jukebox.shuffle = s.shuffle == true
+            if type(s.disabled_songs) == "table" then
+                for _, song in ipairs(Jukebox.songs) do
+                    if s.disabled_songs[song.id] then song.enabled = false end
+                end
+            end
+        end
+    end)
+
+    rebuild_playlist()
+
+    if Jukebox.enabled and #Jukebox.playlist > 0 then
+        -- Restore saved song position if available
+        local start_pos = 1
+        pcall(function()
+            if G.SETTINGS.JUKEBOX and G.SETTINGS.JUKEBOX.current_song then
+                local saved_id = G.SETTINGS.JUKEBOX.current_song
+                for i, pi in ipairs(Jukebox.playlist) do
+                    if Jukebox.songs[pi] and Jukebox.songs[pi].id == saved_id then
+                        start_pos = i; break
+                    end
+                end
+            end
+        end)
+        Jukebox.playlist_pos = start_pos
+        play_at(start_pos)
+    end
+
+    Jukebox.initialized = true
+    print("[JUKEBOX] v3.0 - " .. #Jukebox.songs .. " song(s) found, " .. #Jukebox.offers .. " new in Downloads.")
+    return true
+end
+
+-- ============================================
+-- FRAME UPDATE (called from main.lua)
+-- ============================================
+local function clock(secs)
+    secs = math.max(0, math.floor(tonumber(secs) or 0))
+    return string.format("%d:%02d", math.floor(secs / 60), secs % 60)
+end
+
+local function update_info(dt)
+    Jukebox.info_timer = (Jukebox.info_timer or 0) + (dt or 0)
+    if Jukebox.info_timer < 0.5 then return end
+    Jukebox.info_timer = 0
+    local text = ""
+    if Jukebox.source then
+        pcall(function()
+            text = clock(Jukebox.source:tell("seconds")) .. " / " .. clock(Jukebox.source:getDuration("seconds"))
+        end)
+        if Jukebox.paused then text = mod_loc("(Paused)") .. "  " .. text end
+    end
+    Jukebox.info.time = text
+end
+
+local function jukebox_update(dt)
+    if not Jukebox.initialized then pcall(jukebox_init); return end
+    pcall(poll_worker)
+    pcall(update_info, dt)
+
+    -- Global flag for modulate_sound() to silence game music
+    G.JUKEBOX_ACTIVE = Jukebox.enabled and #Jukebox.playlist > 0
+
+    -- Handle fade transitions
+    if FadeState.active then
+        FadeState.fade_timer = FadeState.fade_timer + dt
+        local progress = math.min(FadeState.fade_timer / FadeState.fade_duration, 1)
+
+        -- Fade out old source
+        if FadeState.fade_out_source and not FadeState.fade_in then
+            local vol = music_volume() * (1 - progress)
+            pcall(function() FadeState.fade_out_source:setVolume(math.max(0, vol)) end)
+
+            if progress >= 1 then
+                -- Fade out complete - stop and release old source
+                pcall(function() FadeState.fade_out_source:stop() end)
+                pcall(function() FadeState.fade_out_source:release() end)
+                FadeState.fade_out_source = nil
+
+                -- Now start the new song with fade in
+                if FadeState.pending_pos then
+                    local song_idx = Jukebox.playlist[FadeState.pending_pos]
+                    local song = song_idx and Jukebox.songs[song_idx]
+                    if song then
+                        local src = open_source(song)
+                        if src then
+                            src:setLooping(false)
+                            src:setVolume(0) -- Start silent for fade in
+                            love.audio.play(src)
+                            Jukebox.source = src
+                            Jukebox.playing = true
+                            Jukebox.paused = false
+                            Jukebox.song_name = song.name
+                            FadeState.fade_in = true
+                            FadeState.fade_in_timer = 0
+                        else
+                            local p = FadeState.pending_pos
+                            FadeState.active = false
+                            FadeState.pending_pos = nil
+                            rebuild_playlist()
+                            if #Jukebox.playlist > 0 then play_at(math.min(p, #Jukebox.playlist)) end
+                        end
+                    else
+                        FadeState.active = false
+                        FadeState.pending_pos = nil
+                    end
+                else
+                    FadeState.active = false
+                end
+            end
+        end
+
+        -- Fade in new source
+        if FadeState.fade_in and Jukebox.source then
+            FadeState.fade_in_timer = FadeState.fade_in_timer + dt
+            local in_progress = math.min(FadeState.fade_in_timer / FadeState.fade_duration, 1)
+            local vol = music_volume() * in_progress
+            pcall(function() Jukebox.source:setVolume(vol) end)
+
+            if in_progress >= 1 then
+                -- Fade in complete
+                FadeState.active = false
+                FadeState.fade_in = false
+                FadeState.pending_pos = nil
+            end
+        end
+
+        return -- Don't do normal update during fade
+    end
+
+    if not Jukebox.enabled or not Jukebox.playing then return end
+    if not Jukebox.source then return end
+
+    -- Sync volume with game settings
+    pcall(function() Jukebox.source:setVolume(music_volume()) end)
+
+    -- Auto-advance when song finishes
+    local ok, still = pcall(function() return Jukebox.source:isPlaying() end)
+    if ok and not still and not Jukebox.paused then
+        skip_next()
+    end
+end
+
+-- ============================================
+-- UI REFRESH HELPER
+-- ============================================
+-- Forward declaration so refresh_ui can call create_jukebox_ui defined below
+local create_jukebox_ui
+
+refresh_ui = function()
+    -- FIX: In-place UIBox swap — no exit/reopen animation.
+    -- Previous version closed the overlay_menu and reopened it via
+    -- G.E_MANAGER events, which played the overlay open animation
+    -- on every button click (visible "window reappears" flash).
+    if not G or not G.OVERLAY_MENU or G.OVERLAY_MENU == true then return end
+    if not create_jukebox_ui then return end
+    local win = rawget(_G, "UIK") and UIK._win
+    if not (win and win.id == 'jukebox') then return end
+    local ok, body = pcall(function() return G.OVERLAY_MENU:get_UIE_by_ID('uik_body') end)
+    if not ok or not body then return end
+    pcall(UIK.refresh)
+end
+
+-- ============================================
+-- UI BUILDER
+-- ============================================
+local SOURCES = {
+    {name = "Free Music Archive", url = "https://freemusicarchive.org/", note = "Creative Commons songs, check each licence"},
+    {name = "ccMixter", url = "https://ccmixter.org/", note = "Creative Commons remixes and instrumentals"},
+    {name = "Incompetech", url = "https://incompetech.com/music/royalty-free/", note = "Kevin MacLeod, free with credit (CC BY)"},
+    {name = "OpenGameArt", url = "https://opengameart.org/art-search-advanced?field_art_type_tid%5B%5D=12", note = "Game music, much of it CC0 or CC BY"},
+    {name = "Pixabay Music", url = "https://pixabay.com/music/", note = "Free to use under the Pixabay licence"},
+    {name = "Musopen", url = "https://musopen.org/music/", note = "Classical recordings, mostly public domain"},
+}
+
+local function per_page()
+    if UIK.portrait() then return UIK.touch() and 9 or 11 end
+    return UIK.touch() and 5 or 6
+end
+
+local function text_line(str, o)
+    o = o or {}
+    local w = o.w or UIK.row_w(2)
+    local sc = o.scale or (UIK.touch() and 0.42 or 0.38)
+    local h = o.h or (sc * 1.2 + 0.12)
+    local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", maxw = w - 0.2}, nodes = {
+            {n = G.UIT.T, config = {text = tostring(str or ""), ref_table = o.ref_table, ref_value = o.ref_value, scale = sc,
+                colour = o.colour or G.C.UI.TEXT_LIGHT, shadow = o.shadow}},
+        }},
+    }}
+    node.uik_h = h
+    return node
+end
+
+local function cell_button(text, fn, colour, w, h, ref, sc, fg)
+    return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, r = 0.08, colour = colour, padding = 0.02,
+        button = fn, hover = fn ~= nil, shadow = fn ~= nil, ref_value = ref}, nodes = {
+        {n = G.UIT.T, config = {text = text, scale = sc, colour = fg or G.C.WHITE}},
+    }}
+end
+
+local function song_row(i, song, rw, rh, cur_idx)
+    local touch = UIK.touch()
+    local tw = touch and 1.3 or 1.1
+    local xw = touch and 0.95 or 0.8
+    local gap = 0.1
+    local nw = rw - tw - xw - 2 * gap
+    local sc = touch and 0.42 or 0.38
+    local is_cur = (i == cur_idx) and (Jukebox.playing or Jukebox.paused)
+    local bg = is_cur and G.C.GOLD or ((song.enabled and not song.broken) and G.C.L_BLACK or G.C.BLACK)
+    local fg = is_cur and G.C.BLACK or ((song.enabled and not song.broken) and G.C.WHITE or G.C.UI.TEXT_INACTIVE)
+    local label = (is_cur and "> " or "") .. clip(song.name, 46)
+    local tog
+    if song.broken then
+        tog = cell_button("!", "jukebox_why", G.C.ORANGE, tw, rh, i, sc)
+    else
+        tog = cell_button(song.enabled and mod_loc("ON") or mod_loc("OFF"), "jukebox_toggle_song", song.enabled and G.C.GREEN or G.C.RED, tw, rh, i, sc)
+    end
+    local rm = song.mine and cell_button("X", "jukebox_ask_remove", G.C.RED, xw, rh, i, sc)
+        or {n = G.UIT.C, config = {minw = xw, minh = rh}, nodes = {}}
+    return {n = G.UIT.R, config = {align = "cm", minw = rw, padding = 0.04}, nodes = {
+        {n = G.UIT.C, config = {align = "cl", minw = nw, minh = rh, r = 0.08, colour = bg, padding = 0.02,
+            button = "jukebox_play_song", hover = true, shadow = true, ref_value = i}, nodes = {
+            {n = G.UIT.C, config = {minw = 0.12}, nodes = {}},
+            {n = G.UIT.C, config = {align = "cl", maxw = nw - 0.3}, nodes = {
+                {n = G.UIT.T, config = {text = label, scale = sc, colour = fg}},
+            }},
+        }},
+        {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+        tog,
+        {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+        rm,
+    }}
+end
+
+local function now_panel(w)
+    local touch = UIK.touch()
+    local bh = touch and 0.9 or 0.78
+    local on = Jukebox.enabled
+    local status = (on and (Jukebox.playing or Jukebox.paused)) and Jukebox.song_name or mod_loc("Stopped")
+    local card = {
+        text_line(mod_loc("Now Playing"), {w = w - 0.2, scale = touch and 0.34 or 0.32, colour = UIK.C.muted}),
+        text_line(clip(status, 40), {w = w - 0.2, scale = touch and 0.48 or 0.45, colour = G.C.WHITE, shadow = true}),
+        text_line(nil, {w = w - 0.2, scale = touch and 0.34 or 0.32, colour = UIK.C.muted, ref_table = Jukebox.info, ref_value = "time"}),
+    }
+    local nodes = {
+        {n = G.UIT.R, config = {align = "cm", minw = w, r = 0.12, colour = G.C.BLACK, emboss = 0.05, padding = 0.08}, nodes = card},
+        {n = G.UIT.R, config = {minh = 0.12}, nodes = {}},
+    }
+    local playing = Jukebox.playing and not Jukebox.paused
+    local half = (w - 0.3) / 2
+    local third = (2 * half - 0.06) / 3
+    nodes[#nodes + 1] = UIK.button_bar({
+        UIK.button{label = "<<", button = "jukebox_skip_prev", colour = UIK.C.accent, w = third, h = bh, disabled = not on, col = true},
+        UIK.button{label = playing and "| |" or ">", button = "jukebox_play_pause", colour = playing and UIK.C.warn or UIK.C.ok, w = third, h = bh, disabled = not on or #Jukebox.playlist == 0, col = true},
+        UIK.button{label = ">>", button = "jukebox_skip_next", colour = UIK.C.accent, w = third, h = bh, disabled = not on, col = true},
+    }, {w = w, padding = 0.06})
+    nodes[#nodes + 1] = UIK.button_bar({
+        UIK.button{label = on and mod_loc("ENABLED") or mod_loc("DISABLED"), button = "jukebox_toggle_enabled", colour = on and UIK.C.ok or UIK.C.danger, w = half, h = bh, col = true, scale = touch and 0.44 or 0.4},
+        UIK.button{label = Jukebox.shuffle and mod_loc("SHUFFLE") or mod_loc("IN ORDER"), button = "jukebox_toggle_shuffle", colour = Jukebox.shuffle and UIK.C.gold or G.C.L_BLACK, w = half, h = bh, col = true, scale = touch and 0.44 or 0.4},
+    }, {w = w, padding = 0.06})
+    if #Jukebox.songs > 0 then
+        nodes[#nodes + 1] = text_line(string.format(mod_loc("%d of %d songs on"), #Jukebox.playlist, #Jukebox.songs), {w = w, colour = UIK.C.muted, scale = touch and 0.34 or 0.32})
+    end
+    if Jukebox.message then
+        nodes[#nodes + 1] = text_line(clip(Jukebox.message, 44), {w = w, colour = G.C.ORANGE, scale = touch and 0.34 or 0.32})
+    end
+    return nodes
+end
+
+local function list_panel(w)
+    local touch = UIK.touch()
+    local rh = touch and 0.78 or 0.6
+    local nodes = {}
+    local count = #Jukebox.songs
+    if count == 0 then
+        nodes[#nodes + 1] = text_line(mod_loc("No songs yet"), {w = w, colour = UIK.C.title, scale = touch and 0.5 or 0.45, shadow = true})
+        nodes[#nodes + 1] = text_line(mod_loc("Put mp3, ogg, wav or flac files in My Music,"), {w = w, colour = UIK.C.muted})
+        nodes[#nodes + 1] = text_line(mod_loc("or add the songs found in your Downloads."), {w = w, colour = UIK.C.muted})
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {minh = 0.15}, nodes = {}}
+        nodes[#nodes + 1] = UIK.button_bar({{label = mod_loc("My Music"), button = "jukebox_tab_mine", colour = UIK.C.accent}}, {w = w})
+        return nodes
+    end
+    local pp = per_page()
+    local pages = math.max(1, math.ceil(count / pp))
+    Jukebox.page = math.max(1, math.min(Jukebox.page, pages))
+    local cur_idx = (Jukebox.playlist_pos > 0 and Jukebox.playlist_pos <= #Jukebox.playlist) and Jukebox.playlist[Jukebox.playlist_pos] or nil
+    local s1 = (Jukebox.page - 1) * pp + 1
+    for i = s1, math.min(s1 + pp - 1, count) do
+        nodes[#nodes + 1] = song_row(i, Jukebox.songs[i], w, rh, cur_idx)
+    end
+    for _ = math.min(s1 + pp - 1, count) + 1, s1 + pp - 1 do
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {minw = w, minh = rh + 0.08}, nodes = {}}
+    end
+    if pages > 1 then
+        nodes[#nodes + 1] = UIK.pager{prev = "jukebox_prev_page", next = "jukebox_next_page", text = Jukebox.page .. " / " .. pages,
+            prev_disabled = Jukebox.page <= 1, next_disabled = Jukebox.page >= pages, w = w}
+    end
+    return nodes
+end
+
+local function songs_tab()
+    local portrait = UIK.portrait()
+    local full = UIK.W - 0.4
+    local lw = portrait and math.min(full, 7.5) or 5
+    local rw = portrait and full or (UIK.W - lw - UIK.GAP - 0.4)
+    local left, right = now_panel(lw), list_panel(rw)
+    if portrait then
+        local all = {}
+        for _, nd in ipairs(left) do all[#all + 1] = nd end
+        all[#all + 1] = {n = G.UIT.R, config = {minh = 0.25}, nodes = {}}
+        for _, nd in ipairs(right) do all[#all + 1] = nd end
+        return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = all},
+        }}
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", minw = lw, padding = 0}, nodes = left},
+        {n = G.UIT.C, config = {minw = UIK.GAP}, nodes = {}},
+        {n = G.UIT.C, config = {align = "tm", minw = rw, padding = 0}, nodes = right},
+    }}
+end
+
+local function pending_count()
+    local n = 0
+    for _ in pairs(Worker.pending) do n = n + 1 end
+    return n
+end
+
+local function my_music_tab()
+    local mm = my_music()
+    local portrait = UIK.portrait()
+    local cw = portrait and (UIK.W - 0.4) or (UIK.col_w(2) - 0.2)
+    local iw = cw - 2 * UIK.PAD
+    local mine = 0
+    for _, s in ipairs(Jukebox.songs) do if s.mine then mine = mine + 1 end end
+    local folder = {
+        UIK.note({mod_loc("Put mp3, ogg, wav or flac files here."), mod_loc("Other types are turned into ogg when possible."), mod_loc("Song names come from the file names.")}, {w = iw}),
+        UIK.value{label = string.format(mod_loc("%d songs in My Music"), mine), value = clip_left(mm.shown, 44), w = iw, vw = iw - 0.2},
+    }
+    if is_phone() then
+        if mm.usb then folder[#folder + 1] = UIK.note({mod_loc("Reach this folder from a computer over USB.")}, {w = iw}) end
+        folder[#folder + 1] = UIK.button_bar({{label = mod_loc("Scan again"), button = "jukebox_rescan", colour = UIK.C.accent}}, {w = iw})
+    else
+        folder[#folder + 1] = UIK.button_bar({
+            {label = mod_loc("Open folder"), button = "jukebox_open_folder", colour = UIK.C.accent, w = (iw - 0.4) / 2},
+            {label = mod_loc("Scan again"), button = "jukebox_rescan", colour = UIK.C.accent, w = (iw - 0.4) / 2},
+        }, {w = iw})
+    end
+    local status
+    if #Jukebox.offers > 0 then status = string.format(mod_loc("%d new songs found"), #Jukebox.offers)
+    elseif Jukebox.dl_state == "blocked" then status = mod_loc("Downloads can't be read here")
+    elseif Jukebox.dl_state == "none" then status = mod_loc("No Downloads folder found")
+    else status = mod_loc("No new songs") end
+    local busy = pending_count()
+    local dl = {
+        UIK.note({mod_loc("New songs in Downloads are offered here."), mod_loc("Nothing is copied unless you say yes."), mod_loc("Files over 300 MB are skipped.")}, {w = iw}),
+        UIK.value{label = busy > 0 and string.format(mod_loc("Adding %d songs..."), busy) or mod_loc("Status"), value = status, w = iw, vw = iw - 0.2},
+        UIK.button_bar({
+            {label = mod_loc("Check Downloads"), button = "jukebox_check_downloads", colour = UIK.C.accent, w = (iw - 0.4) / 2},
+            {label = mod_loc("Review"), button = "jukebox_check_downloads", colour = UIK.C.ok, w = (iw - 0.4) / 2, disabled = #Jukebox.offers == 0},
+        }, {w = iw}),
+    }
+    if #Jukebox.problems > 0 then
+        local lines = {}
+        for i = 1, math.min(#Jukebox.problems, portrait and 4 or 2) do
+            local pr = Jukebox.problems[i]
+            lines[i] = clip(string.format(mod_loc(pr.fmt), pr.name), 52)
+        end
+        dl[#dl + 1] = UIK.note(lines, {w = iw, colour = G.C.ORANGE})
+    end
+    local a = UIK.section(mod_loc("My Music folder"), folder, {w = cw, col = not portrait})
+    local b = UIK.section(mod_loc("Downloads"), dl, {w = cw, col = not portrait})
+    local h = math.max(a.uik_h or 0, b.uik_h or 0)
+    a.config.minh, b.config.minh = h, h
+    if portrait then
+        return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {a, {n = G.UIT.R, config = {minh = 0.25}, nodes = {}}, b}},
+        }}
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        a, {n = G.UIT.C, config = {minw = UIK.GAP}, nodes = {}}, b,
+    }}
+end
+
+local function find_music_tab()
+    local portrait = UIK.portrait()
+    local per = portrait and 2 or 3
+    local cw = (UIK.W - 0.4 - (per - 1) * 0.16) / per - 0.16
+    local cards = {}
+    for _, src in ipairs(SOURCES) do
+        cards[#cards + 1] = UIK.section(nil, {
+            UIK.action{label = src.name, info = mod_loc(src.note), button_label = mod_loc("Open"), button = "jukebox_open_source", ref_table = src, colour = UIK.C.accent, w = cw - 2 * UIK.PAD},
+        }, {w = cw, col = true})
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+            UIK.note({mod_loc("Only add music you own or that is free to use."), mod_loc("CC BY means you must credit the artist when you share."),
+                mod_loc("Songs you add stay on this device and are never shared.")}, {w = UIK.W - 0.4}),
+            UIK.grid(cards, per, {w = UIK.W - 0.4}),
+        }},
+    }}
+end
+
+local function dialog_window(id, title, rows, footer, back_func, back_label)
+    local w = math.min(UIK.W, 10)
+    return UIK.window{id = id, compact = true, w = w, title = title,
+        build = function() return UIK.stack(rows, {w = w - 0.4}) end,
+        footer = footer, back_func = back_func, back_label = back_label}
+end
+
+local function offer_window()
+    local o = Jukebox.offers[1]
+    if not o then return nil end
+    local w = math.min(UIK.W, 10) - 0.4
+    local rows = {
+        text_line(clip(o.name, 44), {w = w, colour = UIK.C.title, shadow = true, scale = UIK.touch() and 0.48 or 0.45}),
+        text_line(string.format(mod_loc("%s, in your Downloads"), fmt_size(o.size)), {w = w, colour = UIK.C.muted, scale = UIK.touch() and 0.34 or 0.32}),
+        text_line(mod_loc("Add to the Jukebox?"), {w = w}),
+    }
+    if #Jukebox.offers > 1 then
+        rows[#rows + 1] = text_line(string.format(mod_loc("%d more after this one"), #Jukebox.offers - 1), {w = w, colour = UIK.C.muted, scale = UIK.touch() and 0.34 or 0.32})
+    end
+    return dialog_window("jukebox_offer", mod_loc("NEW SONG FOUND"), rows, {
+        {label = mod_loc("Add"), button = "jukebox_offer_add", colour = UIK.C.ok},
+        {label = mod_loc("Don't add"), button = "jukebox_offer_skip", colour = UIK.C.danger},
+        #Jukebox.offers > 1 and {label = string.format(mod_loc("Add all (%d)"), #Jukebox.offers), button = "jukebox_offer_all", colour = UIK.C.accent} or nil,
+    }, "jukebox_offer_later", mod_loc("Not now"))
+end
+
+local function remove_window(song)
+    local w = math.min(UIK.W, 10) - 0.4
+    return dialog_window("jukebox_remove", mod_loc("REMOVE SONG"), {
+        text_line(mod_loc("Remove this song from the Jukebox?"), {w = w}),
+        text_line(clip(song.name, 44), {w = w, colour = UIK.C.title, shadow = true, scale = UIK.touch() and 0.48 or 0.45}),
+        text_line(mod_loc("The file is deleted from My Music."), {w = w, colour = UIK.C.muted, scale = UIK.touch() and 0.34 or 0.32}),
+    }, {
+        {label = mod_loc("Remove"), button = "jukebox_remove_yes", colour = UIK.C.danger},
+    }, "jukebox_remove_no", mod_loc("Keep"))
+end
+
+create_jukebox_ui = function(tab)
+    if not jukebox_init() then
+        return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc("Loading..."), scale = 0.4, colour = G.C.WHITE}}
+        }}
+    end
+    return UIK.window{
+        id = 'jukebox',
+        title = mod_loc("JUKEBOX"),
+        tab = tab,
+        tabs = {
+            {key = 'songs', label = mod_loc("Songs"), build = songs_tab},
+            {key = 'mine', label = mod_loc("My Music"), build = my_music_tab},
+            {key = 'find', label = mod_loc("Find Music"), build = find_music_tab},
+        },
+        back_func = 'settings',
+        back_inline = true,
+        footer = {{label = mod_loc("Mini Player"), button = 'jukebox_mini_settings', colour = UIK.C.accent}},
+    }
+end
+
+-- ============================================
+-- BUTTON CALLBACKS
+-- ============================================
+G.FUNCS = G.FUNCS or {}
+
+G.FUNCS.jukebox_toggle_enabled = function()
+    Jukebox.enabled = not Jukebox.enabled
+    if Jukebox.enabled then
+        rebuild_playlist()
+        if #Jukebox.playlist > 0 then play_at(1) end
+    else
+        stop_playback()
+        G.JUKEBOX_ACTIVE = false
+    end
+    save_settings(); refresh_ui()
+end
+
+G.FUNCS.jukebox_toggle_shuffle = function()
+    Jukebox.shuffle = not Jukebox.shuffle
+    rebuild_playlist()
+    save_settings(); refresh_ui()
+end
+
+G.FUNCS.jukebox_play_pause = function()
+    if not Jukebox.source and not FadeState.active then
+        if Jukebox.enabled and #Jukebox.playlist > 0 then play_at(math.max(1, Jukebox.playlist_pos)) end
+    else
+        toggle_pause()
+    end
+    refresh_ui()
+end
+
+G.FUNCS.jukebox_skip_next = function()
+    skip_next(); refresh_ui()
+end
+
+G.FUNCS.jukebox_skip_prev = function()
+    skip_prev(); refresh_ui()
+end
+
+G.FUNCS.jukebox_play_song = function(e)
+    if not e or not e.config or not e.config.ref_value then return end
+    local idx = e.config.ref_value
+    if not Jukebox.songs[idx] then return end
+    if Jukebox.songs[idx].broken then
+        Jukebox.message = clip(Jukebox.songs[idx].name, 18) .. ": " .. Jukebox.songs[idx].broken
+        refresh_ui()
+        return
+    end
+
+    if not Jukebox.enabled then Jukebox.enabled = true end
+
+    -- Enable song if disabled
+    if not Jukebox.songs[idx].enabled then
+        Jukebox.songs[idx].enabled = true
+        rebuild_playlist()
+    end
+
+    -- Find in playlist and play
+    for i, pi in ipairs(Jukebox.playlist) do
+        if pi == idx then play_at(i); break end
+    end
+    save_settings(); refresh_ui()
+end
+
+G.FUNCS.jukebox_toggle_song = function(e)
+    if not e or not e.config or not e.config.ref_value then return end
+    local idx = e.config.ref_value
+    if not Jukebox.songs[idx] then return end
+
+    Jukebox.songs[idx].enabled = not Jukebox.songs[idx].enabled
+
+    -- Check if we just disabled the currently playing song
+    local was = (Jukebox.playlist_pos > 0 and Jukebox.playlist_pos <= #Jukebox.playlist)
+        and Jukebox.playlist[Jukebox.playlist_pos] or nil
+
+    rebuild_playlist()
+
+    if was == idx and not Jukebox.songs[idx].enabled and Jukebox.enabled then
+        if #Jukebox.playlist > 0 then
+            Jukebox.playlist_pos = math.min(Jukebox.playlist_pos, #Jukebox.playlist)
+            play_at(Jukebox.playlist_pos)
+        else
+            stop_playback()
+        end
+    end
+    save_settings(); refresh_ui()
+end
+
+G.FUNCS.jukebox_prev_page = function()
+    Jukebox.page = math.max(1, Jukebox.page - 1); refresh_ui()
+end
+
+G.FUNCS.jukebox_next_page = function()
+    local pc = math.max(1, math.ceil(#Jukebox.songs / per_page()))
+    Jukebox.page = math.min(pc, Jukebox.page + 1); refresh_ui()
+end
+
+local function show_window(def)
+    if not def then return false end
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    G.ESC_BACK_FUNCS.jukebox_offer_later = true
+    G.ESC_BACK_FUNCS.jukebox_remove_no = true
+    if G.SETTINGS then G.SETTINGS.paused = true end
+    G.FUNCS.overlay_menu({definition = def})
+    return true
+end
+
+-- Open jukebox overlay
+G.FUNCS.open_jukebox = function()
+    pcall(function()
+        jukebox_init()
+        local tab = Jukebox.want_tab or 'songs'
+        Jukebox.want_tab = nil
+        if not Jukebox.keep_message then Jukebox.message = nil end
+        Jukebox.keep_message = nil
+        if not Jukebox.offers_snoozed then pcall(scan_downloads) end
+        if G.SETTINGS then G.SETTINGS.paused = true end
+        if G.FUNCS.overlay_menu then
+            if #Jukebox.offers > 0 and not Jukebox.offers_snoozed then
+                show_window(offer_window())
+            else
+                G.FUNCS.overlay_menu({definition = create_jukebox_ui(tab)})
+            end
+        end
+        if G.FUNCS.trigger_sub_showcase_jukebox then
+            G.FUNCS.trigger_sub_showcase_jukebox()
+        end
+    end)
+end
+
+local function back_to_jukebox(tab)
+    Jukebox.want_tab = tab
+    Jukebox.keep_message = true
+    G.FUNCS.open_jukebox()
+end
+
+local function next_offer()
+    save_settings()
+    if #Jukebox.offers > 0 then
+        show_window(offer_window())
+    else
+        Jukebox.offers_snoozed = true
+        back_to_jukebox('mine')
+    end
+end
+
+G.FUNCS.jukebox_offer_add = function()
+    local o = table.remove(Jukebox.offers, 1)
+    if o then
+        import_offer(o)
+        Jukebox.message = string.format(mod_loc("Adding %s..."), clip(o.name, 30))
+    end
+    next_offer()
+end
+
+G.FUNCS.jukebox_offer_skip = function()
+    local o = table.remove(Jukebox.offers, 1)
+    if o then mark_seen(o) end
+    next_offer()
+end
+
+G.FUNCS.jukebox_offer_all = function()
+    local n = #Jukebox.offers
+    for _, o in ipairs(Jukebox.offers) do import_offer(o) end
+    Jukebox.offers = {}
+    Jukebox.message = string.format(mod_loc("Adding %d songs..."), n)
+    next_offer()
+end
+
+G.FUNCS.jukebox_offer_later = function()
+    Jukebox.offers_snoozed = true
+    back_to_jukebox('mine')
+end
+
+G.FUNCS.jukebox_check_downloads = function()
+    Jukebox.offers_snoozed = false
+    local n = scan_downloads()
+    if n > 0 then
+        show_window(offer_window())
+        return
+    end
+    Jukebox.message = Jukebox.dl_state == "ok" and mod_loc("No new songs in Downloads") or mod_loc("Downloads can't be read here")
+    refresh_ui()
+end
+
+G.FUNCS.jukebox_rescan = function()
+    Worker.tried = {}
+    Jukebox.broken_ids = {}
+    Jukebox.problems = {}
+    rescan()
+    pcall(scan_downloads)
+    local mine = 0
+    for _, s in ipairs(Jukebox.songs) do if s.mine then mine = mine + 1 end end
+    Jukebox.message = string.format(mod_loc("%d songs in My Music"), mine)
+    save_settings()
+    refresh_ui()
+end
+
+G.FUNCS.jukebox_open_folder = function()
+    local mm = my_music()
+    pcall(love.filesystem.createDirectory, MY_MUSIC_DIR)
+    local ok = pcall(love.system.openURL, "file://" .. mm.abs)
+    if not ok then Jukebox.message = mod_loc("The folder could not be opened") refresh_ui() end
+end
+
+G.FUNCS.jukebox_open_source = function(e)
+    local src = e and e.config and e.config.ref_table
+    if src and src.url then pcall(love.system.openURL, src.url) end
+end
+
+G.FUNCS.jukebox_why = function(e)
+    local song = e and e.config and Jukebox.songs[e.config.ref_value]
+    if song then
+        Jukebox.message = song.broken and (clip(song.name, 18) .. ": " .. song.broken) or nil
+        refresh_ui()
+    end
+end
+
+G.FUNCS.jukebox_tab_mine = function()
+    UIK.open_tab('mine')
+end
+
+G.FUNCS.jukebox_open_mine = function()
+    Jukebox.want_tab = 'mine'
+    G.FUNCS.open_jukebox()
+end
+
+G.FUNCS.jukebox_open_find = function()
+    Jukebox.want_tab = 'find'
+    Jukebox.offers_snoozed = true
+    G.FUNCS.open_jukebox()
+end
+
+G.FUNCS.jukebox_ask_remove = function(e)
+    local song = e and e.config and Jukebox.songs[e.config.ref_value]
+    if not (song and song.mine) then return end
+    Jukebox.remove_id = song.id
+    show_window(remove_window(song))
+end
+
+G.FUNCS.jukebox_remove_yes = function()
+    local id = Jukebox.remove_id
+    Jukebox.remove_id = nil
+    for i, s in ipairs(Jukebox.songs) do
+        if s.id == id then remove_song(i) break end
+    end
+    back_to_jukebox('songs')
+end
+
+G.FUNCS.jukebox_remove_no = function()
+    Jukebox.remove_id = nil
+    back_to_jukebox('songs')
+end
+
+local MINI_DEFAULTS = {
+    show = true, size = 2, opacity = 4, title = true, controls = true, time = true,
+    in_menus = true, in_runs = true, in_mp = true,
+}
+local MINI_SIZES = {0.75, 1, 1.3}
+local MINI_SIZE_NAMES = {"Small", "Medium", "Large"}
+local MINI_OPACITY = {0.4, 0.6, 0.8, 1}
+local MINI_OPACITY_NAMES = {"40%", "60%", "80%", "100%"}
+local Mini = {box = nil, key = nil, info = {time = ""}, dragging = false, timer = 0}
+
+local function mini_cfg()
+    if type(G.SETTINGS.JUKEBOX) ~= "table" then G.SETTINGS.JUKEBOX = {} end
+    local m = G.SETTINGS.JUKEBOX.mini
+    if type(m) ~= "table" then
+        m = {}
+        G.SETTINGS.JUKEBOX.mini = m
+    end
+    for k, v in pairs(MINI_DEFAULTS) do
+        if m[k] == nil then m[k] = v end
+    end
+    if m.size_set == nil then
+        m.size_set = true
+        if rawget(_G, "_IS_DESKTOP") == false then m.size = 3 end
+    end
+    if not m.menu_spot_set then
+        m.menu_spot_set = true
+        m.show, m.in_menus = true, true
+        m.x, m.y = nil, nil
+    end
+    return m
+end
+
+local function mini_context()
+    local mp = false
+    pcall(function()
+        mp = (bom_match and bom_match.is_active and bom_match.is_active()) or (G.GAME and G.GAME.multiplayer) and true or false
+    end)
+    if mp then return "mp" end
+    if G.STAGE == G.STAGES.RUN then return "run" end
+    return "menu"
+end
+
+local function menu_ui()
+    local ui = G.MAIN_MENU_UI
+    if ui and not ui.REMOVED and G.STAGE == G.STAGES.MAIN_MENU then return ui end
+end
+
+local function mini_wanted()
+    if not (Jukebox.enabled and #Jukebox.playlist > 0) then return false end
+    if not G.STAGE or G.STAGE == G.STAGES.SPLASH or not G.ROOM_ATTACH then return false end
+    if G.OVERLAY_MENU or math.abs((G.MENU_ZOOM or 1) - 1) > 0.01 then return false end
+    local m = mini_cfg()
+    if not m.show then return false end
+    local c = mini_context()
+    if c == "mp" then return m.in_mp end
+    if c == "run" then return m.in_runs end
+    local ui = m.in_menus and menu_ui()
+    return ui and math.abs(ui.VT.y - ui.T.y) < 0.6 or false
+end
+
+local function fmt_time(secs)
+    secs = math.max(0, math.floor(tonumber(secs) or 0))
+    return string.format("%d:%02d", math.floor(secs / 60), secs % 60)
+end
+
+local function mini_time_text()
+    local pos, len = 0, 0
+    if Jukebox.source then
+        pcall(function()
+            pos = Jukebox.source:tell("seconds")
+            len = Jukebox.source:getDuration("seconds")
+        end)
+    end
+    return fmt_time(pos) .. " / " .. fmt_time(len)
+end
+
+local function with_alpha(c, a)
+    return {c[1], c[2], c[3], (c[4] or 1) * a}
+end
+
+local function mini_button(label, fn, colour, sc, alpha)
+    return {n = G.UIT.C, config = {align = "cm", minw = 0.6 * sc, minh = 0.45 * sc, r = 0.08, colour = with_alpha(colour, alpha),
+        button = fn, hover = true, shadow = true, padding = 0.02 * sc}, nodes = {
+        {n = G.UIT.T, config = {text = label, scale = 0.33 * sc, colour = G.C.WHITE}}
+    }}
+end
+
+local function mini_definition()
+    local m = mini_cfg()
+    local sc = MINI_SIZES[m.size] or 1
+    local alpha = MINI_OPACITY[m.opacity] or 1
+    local rows = {}
+    local title = Jukebox.song_name or ""
+    if Jukebox.paused then title = title .. " " .. mod_loc("(Paused)") end
+    local max_chars = math.floor(26 * (sc >= 1 and 1 or 0.85))
+    title = clip(title, max_chars)
+    if m.title then
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02 * sc}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc("JUKEBOX"), scale = 0.22 * sc, colour = with_alpha(G.C.GOLD, alpha)}},
+        }}
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02 * sc, maxw = 3.6 * sc}, nodes = {
+            {n = G.UIT.T, config = {text = title, scale = 0.3 * sc, colour = with_alpha(G.C.WHITE, alpha), shadow = true}},
+        }}
+    end
+    if m.time then
+        Mini.info.time = mini_time_text()
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.01 * sc}, nodes = {
+            {n = G.UIT.T, config = {ref_table = Mini.info, ref_value = "time", scale = 0.26 * sc, colour = with_alpha(G.C.UI.TEXT_LIGHT, alpha)}},
+        }}
+    end
+    if m.controls then
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04 * sc}, nodes = {
+            mini_button("<<", "jukebox_mini_prev", G.C.BLUE, sc, alpha),
+            {n = G.UIT.B, config = {w = 0.08 * sc, h = 0.1}},
+            mini_button(Jukebox.paused and ">" or "| |", "jukebox_mini_play_pause", Jukebox.paused and G.C.GREEN or G.C.ORANGE, sc, alpha),
+            {n = G.UIT.B, config = {w = 0.08 * sc, h = 0.1}},
+            mini_button(">>", "jukebox_mini_next", G.C.BLUE, sc, alpha),
+            {n = G.UIT.B, config = {w = 0.08 * sc, h = 0.1}},
+            mini_button("...", "jukebox_mini_open", G.C.L_BLACK, sc, alpha),
+        }}
+    end
+    if #rows == 0 then
+        rows[1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04 * sc}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc("JUKEBOX"), scale = 0.3 * sc, colour = with_alpha(G.C.GOLD, alpha)}},
+        }}
+    end
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", padding = 0.06 * sc, r = 0.12, colour = with_alpha(G.C.BLACK, 0.85 * alpha),
+            outline = 1, outline_colour = with_alpha(G.C.L_BLACK, alpha), minw = 2.4 * sc}, nodes = rows},
+    }}
+end
+
+local function mini_drag_targets(node, allow)
+    if not node then return end
+    local blocked = node.config and (node.config.button or node.config.object ~= nil)
+    local child_allow = allow and not blocked
+    if child_allow and node.states and node.states.drag then
+        node.states.drag.can = true
+        node.drag = function(self, offset) if self.UIBox then self.UIBox:drag(offset) end end
+        node.stop_drag = function(self) if self.UIBox then self.UIBox:stop_drag() end end
+    end
+    for _, child in pairs(node.children or {}) do mini_drag_targets(child, child_allow) end
+end
+
+local function mini_set_pos(box, x, y)
+    local ra = G.ROOM_ATTACH
+    x = math.max(0, math.min(x, ra.T.w - box.T.w))
+    y = math.max(0, math.min(y, ra.T.h - box.T.h))
+    if box.alignment.offset.x ~= x or box.alignment.offset.y ~= y then
+        box.alignment.offset.x = x
+        box.alignment.offset.y = y
+        box:align_to_major()
+        box:recalculate()
+    end
+    return x, y
+end
+
+local MENU_ANCHORS = {"achievements_button", "mpm_profile_button", "collection_button"}
+
+local function mini_default(box)
+    local ra = G.ROOM_ATTACH
+    local ui = mini_context() == "menu" and menu_ui()
+    if ui then
+        for _, id in ipairs(MENU_ANCHORS) do
+            local btn = ui:get_UIE_by_ID(id)
+            if btn then
+                local panel = btn.parent and btn.parent.parent
+                local top = panel and panel ~= ui.UIRoot and panel.T.y or btn.T.y
+                return btn.T.x - ra.T.x, top - ra.T.y - box.T.h - 0.12, true
+            end
+        end
+    end
+    return ra.T.w - box.T.w - 0.2, ra.T.h * 0.45, false
+end
+
+local function mini_place(box)
+    local m = mini_cfg()
+    local x, y = tonumber(m.x), tonumber(m.y)
+    if not x or not y then x, y = mini_default(box) end
+    box.alignment.offset.x = -1
+    mini_set_pos(box, x, y)
+    box.VT.x, box.VT.y = box.T.x, box.T.y
+    local ui = mini_context() == "menu" and menu_ui()
+    if ui and ui.VT.y > ui.T.y + 0.05 then box.VT.y = box.T.y + (ui.VT.y - ui.T.y) end
+end
+
+local function mini_cursor()
+    local s = G.TILESCALE * G.TILESIZE
+    return G.CONTROLLER.cursor_position.x / s - G.ROOM.T.x - G.ROOM_ATTACH.T.x,
+        G.CONTROLLER.cursor_position.y / s - G.ROOM.T.y - G.ROOM_ATTACH.T.y
+end
+
+local function mini_remove()
+    if Mini.box then
+        pcall(function() Mini.box:remove() end)
+        Mini.box = nil
+    end
+    Mini.key = nil
+end
+
+local MINI_KEYS = {"size", "opacity", "title", "controls", "time"}
+
+local function mini_snapshot()
+    local m = mini_cfg()
+    local snap = {song = Jukebox.song_name, paused = Jukebox.paused, stage = G.STAGE}
+    for _, k in ipairs(MINI_KEYS) do snap[k] = m[k] end
+    return snap
+end
+
+local function mini_changed()
+    local snap = Mini.key
+    if not snap then return true end
+    if snap.song ~= Jukebox.song_name or snap.paused ~= Jukebox.paused or snap.stage ~= G.STAGE then return true end
+    local m = G.SETTINGS.JUKEBOX.mini
+    for _, k in ipairs(MINI_KEYS) do
+        if snap[k] ~= m[k] then return true end
+    end
+    return false
+end
+
+local function mini_build()
+    mini_remove()
+    local ok, box = pcall(UIBox, {
+        definition = mini_definition(),
+        config = {align = "tli", offset = {x = 0, y = 0}, major = G.ROOM_ATTACH, instance_type = "POPUP"},
+    })
+    if not ok or not box then return end
+    box.states.drag.can = true
+    box.attention_text = true
+    mini_drag_targets(box.UIRoot, true)
+    mini_place(box)
+    Mini.box = box
+    Mini.key = mini_snapshot()
+end
+
+local function mini_update(dt)
+    if not (G and G.SETTINGS and G.STAGES) then return end
+    if not mini_wanted() then
+        if Mini.box then mini_remove() end
+        return
+    end
+    if Mini.box and Mini.box.REMOVED then Mini.box = nil end
+    local dragging = G.CONTROLLER and G.CONTROLLER.dragging and G.CONTROLLER.dragging.target
+    local mine = dragging and Mini.box and (dragging == Mini.box or dragging.UIBox == Mini.box)
+    if mine then
+        local cx, cy = mini_cursor()
+        if not Mini.dragging then
+            Mini.dragging = true
+            Mini.grab_x = cx - Mini.box.alignment.offset.x
+            Mini.grab_y = cy - Mini.box.alignment.offset.y
+        end
+        Mini.drag_x, Mini.drag_y = mini_set_pos(Mini.box, cx - Mini.grab_x, cy - Mini.grab_y)
+        return
+    end
+    if Mini.dragging and Mini.box then
+        Mini.dragging = false
+        local m = mini_cfg()
+        m.x, m.y = Mini.drag_x or m.x, Mini.drag_y or m.y
+        save_settings()
+    end
+    if not Mini.box or mini_changed() then
+        mini_build()
+        return
+    end
+    local m = mini_cfg()
+    if not (tonumber(m.x) and tonumber(m.y)) then
+        local x, y = mini_default(Mini.box)
+        local ox, oy = Mini.box.alignment.offset.x, Mini.box.alignment.offset.y
+        if math.abs(ox - x) > 0.01 or math.abs(oy - y) > 0.01 then
+            local vy = Mini.box.VT.y - Mini.box.T.y
+            mini_set_pos(Mini.box, x, y)
+            Mini.box.VT.x, Mini.box.VT.y = Mini.box.T.x, Mini.box.T.y + vy
+        end
+    end
+    Mini.timer = Mini.timer + (dt or 0)
+    if Mini.timer >= 0.5 then
+        Mini.timer = 0
+        if mini_cfg().time then Mini.info.time = mini_time_text() end
+    end
+end
+
+G.FUNCS.jukebox_mini_prev = function() skip_prev() end
+G.FUNCS.jukebox_mini_next = function() skip_next() end
+G.FUNCS.jukebox_mini_play_pause = function() toggle_pause() end
+G.FUNCS.jukebox_mini_open = function()
+    if G.OVERLAY_MENU then return end
+    G.FUNCS.open_jukebox()
+end
+
+local function mini_toggle_row(label, key)
+    local m = mini_cfg()
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.03, minw = 5.25}, nodes = {
+        {n = G.UIT.C, config = {align = "cr", minw = 3.6, maxw = 3.6, padding = 0.05}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc(label), scale = 0.38, colour = G.C.WHITE}},
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = 1.5, minh = 0.55, r = 0.08, colour = m[key] and G.C.GREEN or G.C.RED,
+            button = "jukebox_mini_toggle", ref_value = key, hover = true, shadow = true}, nodes = {
+            {n = G.UIT.T, config = {text = m[key] and mod_loc("ON") or mod_loc("OFF"), scale = 0.36, colour = G.C.WHITE}},
+        }},
+    }}
+end
+
+local function mini_cycle_row(label, key, names)
+    local m = mini_cfg()
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.03, minw = 5.25}, nodes = {
+        {n = G.UIT.C, config = {align = "cr", minw = 3.6, maxw = 3.6, padding = 0.05}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc(label), scale = 0.38, colour = G.C.WHITE}},
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = 1.5, minh = 0.55, r = 0.08, colour = G.C.BLUE,
+            button = "jukebox_mini_cycle", ref_value = key, hover = true, shadow = true}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc(names[m[key]] or "?"), scale = 0.36, colour = G.C.WHITE}},
+        }},
+    }}
+end
+
+local function mini_settings_ui()
+    local left = {
+        mini_toggle_row("Show mini player", "show"),
+        mini_toggle_row("In menus", "in_menus"),
+        mini_toggle_row("In runs", "in_runs"),
+        mini_toggle_row("In multiplayer", "in_mp"),
+    }
+    local right = {
+        mini_cycle_row("Size", "size", MINI_SIZE_NAMES),
+        mini_cycle_row("Opacity", "opacity", MINI_OPACITY_NAMES),
+        mini_toggle_row("Song title", "title"),
+        mini_toggle_row("Time", "time"),
+        mini_toggle_row("Controls", "controls"),
+    }
+    return create_UIBox_generic_options({back_func = "open_jukebox", contents = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc("MINI PLAYER"), scale = 0.7, colour = G.C.GOLD, shadow = true}},
+        }},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc("Drag the mini player to move it"), scale = 0.3, colour = G.C.UI.TEXT_LIGHT}},
+        }},
+        {n = G.UIT.R, config = {align = "tm", padding = 0.08}, nodes = {
+            {n = G.UIT.C, config = {align = "tm", padding = 0.08, r = 0.1, colour = G.C.L_BLACK}, nodes = left},
+            {n = G.UIT.C, config = {align = "tm", padding = 0.08, r = 0.1, colour = G.C.L_BLACK}, nodes = right},
+        }},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+            UIBox_button({label = {mod_loc("Reset position")}, button = "jukebox_mini_reset", minw = 4, minh = 0.6, scale = 0.4, colour = G.C.ORANGE}),
+        }},
+    }})
+end
+
+local function mini_refresh_settings()
+    save_settings()
+    if G.OVERLAY_MENU and G.OVERLAY_MENU ~= true then
+        local cfg = G.OVERLAY_MENU.config
+        local old = G.OVERLAY_MENU
+        local ok, def = pcall(mini_settings_ui)
+        if not ok then return end
+        G.OVERLAY_MENU = UIBox{definition = def, config = cfg}
+r 4 1353 %20%20%20%20%20%20%20%20 -
+r 4 1355 %20%20%20%20%20%20%20%20 -
+l 229
+        old:remove()
+    end
+end
+
+G.FUNCS.jukebox_mini_settings = function()
+    jukebox_init()
+    G.FUNCS.overlay_menu({definition = mini_settings_ui()})
+end
+
+G.FUNCS.jukebox_mini_toggle = function(e)
+    local key = e and e.config and e.config.ref_value
+    if not key then return end
+    local m = mini_cfg()
+    m[key] = not m[key]
+    mini_refresh_settings()
+end
+
+G.FUNCS.jukebox_mini_cycle = function(e)
+    local key = e and e.config and e.config.ref_value
+    if not key then return end
+    local m = mini_cfg()
+    local n = key == "size" and #MINI_SIZES or #MINI_OPACITY
+    m[key] = (m[key] or 1) % n + 1
+    mini_refresh_settings()
+end
+
+G.FUNCS.jukebox_mini_reset = function()
+    local m = mini_cfg()
+    m.x, m.y = nil, nil
+    if Mini.box then mini_place(Mini.box) end
+    save_settings()
+end
+
+-- ============================================
+-- EXPOSE UPDATE FOR main.lua
+-- ============================================
+G.JUKEBOX_UPDATE = function(dt)
+    jukebox_update(dt)
+    local ok, err = pcall(mini_update, dt)
+    if not ok then print("[JUKEBOX] mini player: " .. tostring(err)) end
+end
+G.JUKEBOX_MINI = Mini
+G.JUKEBOX_STATE = Jukebox
+
+-- ============================================
+-- REGISTER UI FUNCTION
+-- ============================================
+G.UIDEF = G.UIDEF or {}
+-- When the Jukebox tab is clicked, immediately trigger the overlay (second window)
+-- instead of rendering the player inside the flat settings tab area.
+G.UIDEF.jukebox_tab = function()
+    jukebox_init()
+    local m = mini_cfg()
+    local function mini_save() save_settings() if Mini.box then pcall(mini_place, Mini.box) end end
+    local cur = current_song()
+    local items = {
+        UIK.header(mod_loc("Jukebox")),
+        UIK.toggle{id = 'jb_enabled', label = mod_loc("Jukebox"), info = mod_loc("Plays your own songs instead of the soundtrack"), ref_table = Jukebox, ref_value = 'enabled',
+            callback = function(v)
+                if v then
+                    rebuild_playlist()
+                    if #Jukebox.playlist > 0 then play_at(1) end
+                else
+                    stop_playback()
+                    G.JUKEBOX_ACTIVE = false
+                end
+                save_settings()
+            end},
+        UIK.toggle{id = 'jb_shuffle', label = mod_loc("Shuffle"), info = mod_loc("Random order"), ref_table = Jukebox, ref_value = 'shuffle',
+            callback = function() rebuild_playlist() save_settings() end},
+        UIK.action{id = 'jb_open', label = mod_loc("Song List"), info = cur and cur.name and clip(cur.name, 28) or mod_loc("Pick and play songs"), button_label = mod_loc("Open"), button = 'open_jukebox', colour = UIK.C.accent},
+        UIK.action{id = 'jb_my_music', label = mod_loc("My Music"), info = #Jukebox.offers > 0 and string.format(mod_loc("%d new songs found"), #Jukebox.offers) or mod_loc("Add your own songs"), button_label = mod_loc("Open"), button = 'jukebox_open_mine', colour = UIK.C.accent},
+        UIK.action{id = 'jb_find', label = mod_loc("Find Music"), info = mod_loc("Free music you can add"), button_label = mod_loc("Open"), button = 'jukebox_open_find', colour = UIK.C.accent},
+        UIK.header(mod_loc("Mini Player")),
+        UIK.toggle{id = 'jb_mini_show', label = mod_loc("Show mini player"), info = mod_loc("Drag it to move it"), ref_table = m, ref_value = 'show', callback = mini_save},
+        UIK.toggle{id = 'jb_mini_menus', label = mod_loc("In menus"), ref_table = m, ref_value = 'in_menus', callback = mini_save},
+        UIK.toggle{id = 'jb_mini_runs', label = mod_loc("In runs"), ref_table = m, ref_value = 'in_runs', callback = mini_save},
+        UIK.toggle{id = 'jb_mini_mp', label = mod_loc("In multiplayer"), ref_table = m, ref_value = 'in_mp', callback = mini_save},
+        UIK.cycle{id = 'jb_mini_size', label = mod_loc("Size"), options = {mod_loc("Small"), mod_loc("Medium"), mod_loc("Large")}, current = m.size or 2,
+            callback = function(i) m.size = i mini_save() end},
+        UIK.cycle{id = 'jb_mini_opacity', label = mod_loc("Opacity"), options = MINI_OPACITY_NAMES, current = m.opacity or 4,
+            callback = function(i) m.opacity = i mini_save() end},
+        UIK.toggle{id = 'jb_mini_title', label = mod_loc("Song title"), ref_table = m, ref_value = 'title', callback = mini_save},
+        UIK.toggle{id = 'jb_mini_time', label = mod_loc("Time"), ref_table = m, ref_value = 'time', callback = mini_save},
+        UIK.toggle{id = 'jb_mini_controls', label = mod_loc("Controls"), ref_table = m, ref_value = 'controls', callback = mini_save},
+        UIK.action{id = 'jb_mini_reset', label = mod_loc("Reset position"), info = mod_loc("Back to the default corner"), button_label = mod_loc("Reset"), button = 'jukebox_mini_reset', colour = UIK.C.warn},
+    }
+    return UIK.flow{id = 'set_jukebox', items = items}
+end
+
+mod_loc_register{
+    fr = {
+        ["%d more after this one"] = "Encore %d après celle-ci",
+        ["%.1f MB"] = "%.1f Mo",
+        ["%d new songs found"] = "%d nouvelles chansons trouvées",
+        ["%d of %d songs on"] = "%d sur %d chansons actives",
+        ["%d songs in My Music"] = "%d chansons dans Ma musique",
+        ["%s could not be added"] = "%s n'a pas pu être ajoutée",
+        ["%s could not be removed"] = "%s n'a pas pu être retirée",
+        ["%s is too big to add (over 300 MB)"] = "%s est trop lourde (plus de 300 Mo)",
+        ["%s, in your Downloads"] = "%s, dans vos Téléchargements",
+        ["%s: convert it to mp3 or ogg first"] = "%s : convertissez-la d'abord en mp3 ou ogg",
+        ["%s: install ffmpeg or convert it to mp3 or ogg"] = "%s : installez ffmpeg ou convertissez-la en mp3 ou ogg",
+        ["Add all (%d)"] = "Tout ajouter (%d)",
+        ["Add to the Jukebox?"] = "L'ajouter au Jukebox ?",
+        ["Add your own songs"] = "Ajoutez vos propres chansons",
+        ["Added %s"] = "%s ajoutée",
+        ["Adding %d songs..."] = "Ajout de %d chansons...",
+        ["Adding %s..."] = "Ajout de %s...",
+        ["CC BY means you must credit the artist when you share."] = "CC BY : citez l'artiste si vous partagez.",
+        ["Can't play %s"] = "Impossible de lire %s",
+        ["Check Downloads"] = "Vérifier",
+        ["Classical recordings, mostly public domain"] = "Musique classique, surtout du domaine public",
+        ["Creative Commons remixes and instrumentals"] = "Remix et instrumentaux Creative Commons",
+        ["Creative Commons songs, check each licence"] = "Chansons Creative Commons, voyez chaque licence",
+        ["Don't add"] = "Ne pas ajouter",
+        ["Downloads"] = "Téléchargements",
+        ["Downloads can't be read here"] = "Téléchargements illisibles ici",
+        ["Find Music"] = "Trouver",
+        ["Free music you can add"] = "Musique libre à ajouter",
+        ["Files over 300 MB are skipped."] = "Les fichiers de plus de 300 Mo sont ignorés.",
+        ["Status"] = "État",
+        ["Free to use under the Pixabay licence"] = "Libre d'usage sous licence Pixabay",
+        ["Game music, much of it CC0 or CC BY"] = "Musique de jeu, souvent CC0 ou CC BY",
+        ["Keep"] = "Garder",
+        ["Kevin MacLeod, free with credit (CC BY)"] = "Kevin MacLeod, libre en le citant (CC BY)",
+        ["My Music"] = "Ma musique",
+        ["My Music folder"] = "Dossier Ma musique",
+        ["NEW SONG FOUND"] = "NOUVELLE CHANSON",
+        ["New song found:"] = "Nouvelle chanson trouvée :",
+        ["New songs in Downloads are offered here."] = "Les chansons de vos Téléchargements sont proposées ici.",
+        ["No Downloads folder found"] = "Aucun dossier Téléchargements",
+        ["No new songs"] = "Aucune nouvelle chanson",
+        ["No new songs in Downloads"] = "Aucune nouvelle chanson dans Téléchargements",
+        ["No songs yet"] = "Aucune chanson pour l'instant",
+        ["Not now"] = "Plus tard",
+        ["Nothing is copied unless you say yes."] = "Rien n'est copié sans votre accord.",
+        ["Only add music you own or that is free to use."] = "N'ajoutez que de la musique à vous ou libre d'usage.",
+        ["Open folder"] = "Ouvrir le dossier",
+        ["Other types are turned into ogg when possible."] = "Les autres formats sont convertis en ogg si possible.",
+        ["Put mp3, ogg, wav or flac files here."] = "Mettez ici des fichiers mp3, ogg, wav ou flac.",
+        ["Put mp3, ogg, wav or flac files in My Music,"] = "Mettez des fichiers mp3, ogg, wav ou flac dans Ma musique,",
+        ["REMOVE SONG"] = "RETIRER LA CHANSON",
+        ["Reach this folder from a computer over USB."] = "Accédez à ce dossier depuis un ordinateur en USB.",
+        ["Remove this song from the Jukebox?"] = "Retirer cette chanson du Jukebox ?",
+        ["Removed %s"] = "%s retirée",
+        ["Review"] = "Voir",
+        ["Scan again"] = "Rechercher",
+        ["Song names come from the file names."] = "Le nom d'une chanson vient du nom du fichier.",
+        ["Songs you add stay on this device and are never shared."] = "Vos chansons restent sur cet appareil, jamais partagées.",
+        ["The file is deleted from My Music."] = "Le fichier est supprimé de Ma musique.",
+        ["The folder could not be opened"] = "Le dossier n'a pas pu être ouvert",
+        ["This file can't be played"] = "Ce fichier ne peut pas être lu",
+        ["This file is empty"] = "Ce fichier est vide",
+        ["This file is not a sound file"] = "Ce fichier n'est pas un son",
+        ["This ogg file is Opus, convert it to mp3 or ogg Vorbis"] = "Ce ogg est en Opus, convertissez-le en mp3 ou ogg Vorbis",
+        ["or add the songs found in your Downloads."] = "ou ajoutez celles trouvées dans vos Téléchargements.",
+    },
+    es = {
+        ["%.1f MB"] = "%.1f MB",
+        ["%d more after this one"] = "%d más después de esta",
+        ["%d new songs found"] = "%d canciones nuevas encontradas",
+        ["%d of %d songs on"] = "%d de %d canciones activas",
+        ["%d songs in My Music"] = "%d canciones en Mi música",
+        ["%s could not be added"] = "No se pudo añadir %s",
+        ["%s could not be removed"] = "No se pudo quitar %s",
+        ["%s is too big to add (over 300 MB)"] = "%s es demasiado grande (más de 300 MB)",
+        ["%s, in your Downloads"] = "%s, en tus Descargas",
+        ["%s: convert it to mp3 or ogg first"] = "%s: conviértela antes a mp3 u ogg",
+        ["%s: install ffmpeg or convert it to mp3 or ogg"] = "%s: instala ffmpeg o conviértela a mp3 u ogg",
+        ["Add all (%d)"] = "Añadir todas (%d)",
+        ["Add to the Jukebox?"] = "¿Añadirla al Jukebox?",
+        ["Add your own songs"] = "Añade tus propias canciones",
+        ["Added %s"] = "%s añadida",
+        ["Adding %d songs..."] = "Añadiendo %d canciones...",
+        ["Adding %s..."] = "Añadiendo %s...",
+        ["CC BY means you must credit the artist when you share."] = "CC BY: cita al artista si lo compartes.",
+        ["Can't play %s"] = "No se puede reproducir %s",
+        ["Check Downloads"] = "Buscar",
+        ["Classical recordings, mostly public domain"] = "Música clásica, casi toda de dominio público",
+        ["Creative Commons remixes and instrumentals"] = "Remixes e instrumentales Creative Commons",
+        ["Creative Commons songs, check each licence"] = "Canciones Creative Commons, mira cada licencia",
+        ["Don't add"] = "No añadir",
+        ["Downloads"] = "Descargas",
+        ["Downloads can't be read here"] = "No se pueden leer las Descargas",
+        ["Find Music"] = "Buscar música",
+        ["Free music you can add"] = "Música libre para añadir",
+        ["Files over 300 MB are skipped."] = "Se omiten los archivos de más de 300 MB.",
+        ["Status"] = "Estado",
+        ["Free to use under the Pixabay licence"] = "Uso libre con la licencia de Pixabay",
+        ["Game music, much of it CC0 or CC BY"] = "Música de juegos, mucha CC0 o CC BY",
+        ["Keep"] = "Conservar",
+        ["Kevin MacLeod, free with credit (CC BY)"] = "Kevin MacLeod, libre citándolo (CC BY)",
+        ["My Music"] = "Mi música",
+        ["My Music folder"] = "Carpeta Mi música",
+        ["NEW SONG FOUND"] = "CANCIÓN NUEVA",
+        ["New song found:"] = "Canción nueva encontrada:",
+        ["New songs in Downloads are offered here."] = "Aquí se ofrecen las canciones de tus Descargas.",
+        ["No Downloads folder found"] = "No hay carpeta de Descargas",
+        ["No new songs"] = "No hay canciones nuevas",
+        ["No new songs in Downloads"] = "No hay canciones nuevas en Descargas",
+        ["No songs yet"] = "Aún no hay canciones",
+        ["Not now"] = "Ahora no",
+        ["Nothing is copied unless you say yes."] = "No se copia nada sin tu permiso.",
+        ["Only add music you own or that is free to use."] = "Añade solo música tuya o de uso libre.",
+        ["Open folder"] = "Abrir carpeta",
+        ["Other types are turned into ogg when possible."] = "Otros formatos se pasan a ogg si se puede.",
+        ["Put mp3, ogg, wav or flac files here."] = "Pon aquí archivos mp3, ogg, wav o flac.",
+        ["Put mp3, ogg, wav or flac files in My Music,"] = "Pon archivos mp3, ogg, wav o flac en Mi música,",
+        ["REMOVE SONG"] = "QUITAR CANCIÓN",
+        ["Reach this folder from a computer over USB."] = "Abre esta carpeta desde un ordenador por USB.",
+        ["Remove this song from the Jukebox?"] = "¿Quitar esta canción del Jukebox?",
+        ["Removed %s"] = "%s quitada",
+        ["Review"] = "Ver",
+        ["Scan again"] = "Volver a buscar",
+        ["Song names come from the file names."] = "El nombre sale del nombre del archivo.",
+        ["Songs you add stay on this device and are never shared."] = "Tus canciones se quedan en este equipo, nunca se comparten.",
+        ["The file is deleted from My Music."] = "El archivo se borra de Mi música.",
+        ["The folder could not be opened"] = "No se pudo abrir la carpeta",
+        ["This file can't be played"] = "Este archivo no se puede reproducir",
+        ["This file is empty"] = "Este archivo está vacío",
+        ["This file is not a sound file"] = "Este archivo no es de sonido",
+        ["This ogg file is Opus, convert it to mp3 or ogg Vorbis"] = "Este ogg es Opus, conviértelo a mp3 u ogg Vorbis",
+        ["or add the songs found in your Downloads."] = "o añade las que hay en tus Descargas.",
+    },
+}
+
+print("[JUKEBOX] v3.0 loaded! Song folder: " .. JUKEBOX_DIR)
+
+end

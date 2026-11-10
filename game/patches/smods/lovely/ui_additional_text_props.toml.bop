@@ -1,0 +1,586 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 13
+[manifest]
+version = "1.2"
+dump_lua = true
+priority = -10
+
+[[patches]]
+[patches.regex]
+target = "functions/misc_functions.lua"
+pattern = "local final_line = \\{\\}(\n.*)*\\s*if args\\.type == 'name' or args\\.type == 'text' then return final_line end\n\\s*args\\.nodes\\[#args\\.nodes\\+1\\] = final_line\n(?<indent>[\t ]*)end"
+position = "at"
+payload = """local final_line = SMODS.localize_box(lines, args)
+    if args.type == 'text' then return final_line end
+    if not args.nodes and args.type == 'name' then args.nodes = {} end
+r 12 1811 %20%20%20%20 -
+l 1
+end
+r 12 1763 - -
+l 69
+    local final_name = {}
+
+    for _, line in ipairs(args.nodes or {}) do
+        final_name[#final_name+1] = {n=G.UIT.R, config={align = "m"}, nodes=line}
+    end
+
+    return final_name
+end"""
+line_prepend = "$indent"
+
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = """loc_target = G.localization.descriptions[(args.set or args.node.config.center.set)][args.key or args.node.config.center.key]"""
+position = "at"
+payload = """
+loc_target = loc_target or {}
+if pcall(function() loc_target.name_parsed = {loc_parse_string(G.localization.descriptions[(args.set or args.node.config.center.set)][args.key or args.node.config.center.key].name)} end) then
+else loc_target.name_parsed = {} end"""
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = """if ret_string then return ret_string end"""
+position = "before"
+payload = """if ret_string and type(ret_string) == 'string' then ret_string = string.gsub(ret_string, "{.-}", "") end"""
+match_indent = true
+
+# Replace all instances of the language font
+[[patches]]
+[patches.regex]
+target = "engine/ui.lua"
+pattern = '''
+self.config.lang.font'''
+position = "at"
+payload = '''(self.config.font or self.config.lang.font)'''
+line_prepend = "$indent"
+
+[[patches]]
+[patches.regex]
+target = "engine/ui.lua"
+pattern = '''
+node.config.lang.font'''
+position = "at"
+payload = '''(node.config.font or node.config.lang.font)'''
+line_prepend = "$indent"
+
+# Add support for multi line name
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = '''
+if pcall(function() loc_target.name_parsed = {loc_parse_string(G.localization.descriptions[(args.set or args.node.config.center.set)][args.key or args.node.config.center.key].name)} end) then
+'''
+position = 'at'
+match_indent = true
+payload = '''
+if pcall(function()
+local name = G.localization.descriptions[(args.set or args.node.config.center.set)][args.key or args.node.config.center.key]
+loc_target.name_parsed = name.name_parsed or {loc_parse_string(name.name)}
+end) then
+'''
+
+[[patches]]
+[patches.pattern]
+target = "functions/misc_functions.lua"
+pattern = '''
+r 12 1745 - -
+l 35
+'''
+position = 'at'
+match_indent = true
+payload = '''
+if pcall(function()
+    local name_text = G.localization.descriptions[(args.set or args.node.config.center.set)][args.key or args.node.config.center.key].name
+    if type(name_text) == "table" then
+        ret_string = ""
+        for i, line in ipairs(name_text) do
+            ret_string = ret_string.. (i ~= 1 and " " or "")..line
+        end
+    else
+        ret_string = name_text
+    end
+end) then
+'''
+
+# Align parsing
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+local part_scale = 1
+'''
+payload = '''
+local part_align = self.config.text_align or ""
+'''
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 32 86 - -
+l 10
+'''
+payload = '''
+part_align = v.text_align or part_align or ""
+'''
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 32 95 - -
+l 22
+'''
+payload = '''
+self.strings[k].align_list = {
+    a = part_align == 'a',
+    m = string.find(part_align, "m"),
+    c = string.find(part_align, "c"),
+    b = string.find(part_align, "b"),
+    t = string.find(part_align, "t"),
+    l = string.find(part_align, "l"),
+    r = string.find(part_align, "r"),
+    i = string.find(part_align, "i"),
+}
+'''
+
+# Marquee text in DynaText
+# Adjust width when marquee is enabled
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 32 134 - -
+l 22
+'''
+payload = '''
+if self.strings[k].W > self.config.W then
+    self.config.W = self.strings[k].W
+    self.strings[k].W_offset = 0
+    if self.config.marquee and self.config.maxw then
+        if self.config.W > self.config.maxw then
+            self.config.marquee_width = self.config.W/self.config.maxw
+            self.config.W = self.config.maxw
+        else
+            self.config.marquee = 'no'
+        end
+    end
+end
+'''
+# Adjust width when marquee is enabled
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 32 33 - -
+l 12
+'''
+payload = '''
+if self.config.maxw and self.config.W > self.config.maxw and not self.config.marquee then
+'''
+# Adjust width when marquee is enabled
+# Apply align property to x position
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 32 151 - -
+l 13
+'''
+payload = '''
+v.W_offset = 0.5*(self.config.W - (self.config.marquee and self.config.maxw and self.config.maxw < v.W and self.config.maxw or v.W))
+if v.align_list.l then v.W_offset = 0 end
+if v.align_list.r then v.W_offset = v.W_offset * 2 end
+'''
+# Apply align property to y position (respecting offset_y)
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 32 152 - -
+l 13
+'''
+payload = '''
+if v.align_list.t then v.H_offset = 0.5*(self.config.offset_y or 0) end
+if v.align_list.b then v.H_offset = v.H_offset * 2 - 0.5*(self.config.offset_y or 0) end
+'''
+
+# Add start/end index calculation
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 32 258 - -
+l 21
+'''
+payload = '''
+local start_index = 1
+local end_index = #self.strings[self.focused_string].letters
+if self.config.marquee and self.config.marquee ~= 'no' then
+    local padding = math.floor(#self.strings[self.focused_string].letters / (self.config.marquee_width or 1)) - 1
+    if self.dt and (self.dt - self.config.hold) / self.config.scroll_speed > (#self.strings[self.focused_string].letters + math.ceil(padding/4)) then self.dt = 0 end
+    if self.dt and self.dt > self.config.hold then
+        start_index = 1 + (math.floor((self.dt - self.config.hold) / self.config.scroll_speed) % (#self.strings[self.focused_string].letters + math.ceil(padding/4)))
+    end
+    end_index = math.min(start_index + padding, #self.strings[self.focused_string].letters)
+end
+'''
+
+# Use start/end index
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 32 167 - -
+r 32 270 %20%20%20%20 -
+l 4
+'''
+payload = '''
+for k=start_index, end_index do
+    local letter = self.strings[self.focused_string].letters[k]
+r 32 270 %20%20%20%20 -
+l 9
+'''
+
+# Update dt
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 32 64 - -
+l 15
+'''
+payload = '''
+function DynaText:update(dt, real_dt)
+if self.config.marquee then
+    self.dt = (self.dt or 0) + real_dt
+end
+'''
+
+# Ensure hold is present
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 32 22 - -
+l 27
+'''
+payload = '''
+self.config.marquee = self.config.marquee and not G.SETTINGS.reduced_motion
+self.config.hold = self.config.hold or self.config.marquee and 1.5 or nil
+self.config.scroll_speed = self.config.scroll_speed or self.config.marquee and 0.1 or nil
+'''
+
+# Pass real_dt to update function
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+mv:update(upd_dt)
+'''
+payload = '''
+mv:update(upd_dt, self.real_dt)
+'''
+
+# Add outline_colour_opacity
+[[patches]]
+[patches.pattern]
+target = 'engine/ui.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 24 798 - -
+r 24 799 - -
+l 3
+'''
+payload = '''
+local old_outline_opacity
+r 24 798 - -
+r 24 799 - -
+l 13
+    if self.config.outline_colour_opacity then
+        old_outline_opacity = self.config.outline_colour[4]
+        self.config.outline_colour[4] = self.config.outline_colour[4] * self.config.outline_colour_opacity
+    end
+'''
+
+# Cancel outline_colour_opacity
+[[patches]]
+[patches.pattern]
+target = 'engine/ui.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 24 818 - -
+l 15
+'''
+payload = '''
+if old_outline_opacity then
+    self.config.outline_colour[4] = old_outline_opacity
+end
+
+'''
+
+# Add under-/overline and strikethrough properties for text
+[[patches]]
+[patches.pattern]
+target = 'engine/ui.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 24 834 - -
+l 9
+'''
+payload = '''
+if self.config.strikethrough and self.config.strikethrough[4] > 0.01 then 
+    local old_colour_opacity
+    if self.config.strikethrough_colour_opacity then
+        old_colour_opacity = self.config.strikethrough[4]
+        self.config.strikethrough[4] = self.config.strikethrough[4] * self.config.strikethrough_colour_opacity
+    end
+    prep_draw(self, 1)
+r 24 732 %20%20%20%20 -
+r 17 115 %20%20%20%20 -
+l 14
+    love.graphics.setColor(self.config.strikethrough)
+    self:draw_pixellated_strikethough('line', parallax_dist)
+    love.graphics.pop()
+    if old_colour_opacity then
+        self.config.strikethrough[4] = old_colour_opacity
+    end
+end
+if self.config.underline and self.config.underline[4] > 0.01 then 
+    local old_colour_opacity
+    if self.config.underline_colour_opacity then
+        old_colour_opacity = self.config.underline[4]
+        self.config.underline[4] = self.config.underline[4] * self.config.underline_colour_opacity
+    end
+    prep_draw(self, 1)
+r 24 732 %20%20%20%20 -
+r 17 115 %20%20%20%20 -
+l 14
+    love.graphics.setColor(self.config.underline)
+    self:draw_pixellated_under('line', parallax_dist)
+    love.graphics.pop()
+    if old_colour_opacity then
+        self.config.underline[4] = old_colour_opacity
+    end
+end
+if self.config.overline and self.config.overline[4] > 0.01 then
+    local old_colour_opacity
+    if self.config.overline_colour_opacity then
+        old_colour_opacity = self.config.overline[4]
+        self.config.overline[4] = self.config.overline[4] * self.config.overline_colour_opacity
+    end
+    prep_draw(self, 1)
+r 24 732 %20%20%20%20 -
+r 17 115 %20%20%20%20 -
+l 16
+    love.graphics.setColor(self.config.overline)
+    self:draw_pixellated_over('line', parallax_dist)
+    love.graphics.pop()
+    if old_colour_opacity then
+        self.config.overline[4] = old_colour_opacity
+    end
+end
+'''
+
+# Add text_colour support for card_eval_status_text extra tables
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 13 887 - -
+l 52
+'''
+payload = '''
+colour = extra and extra.text_colour,
+'''
+
+# DynaText update_text: buffer font
+[[patches]]
+[patches.pattern]
+target = '''engine/text.lua'''
+pattern = '''for k, v in ipairs(self.config.string) do'''
+position = "before"
+payload = '''
+self.font_buffer = self.font
+'''
+match_indent = true
+
+# DynaText update_text: set font
+[[patches]]
+[patches.pattern]
+target = '''engine/text.lua'''
+pattern = '''if old_string ~= new_string or first_pass then'''
+position = "before"
+payload = '''
+self.font = self.config.string[k].font or self.font_buffer
+self.strings[k].font = self.config.string[k].font or self.font_buffer
+'''
+match_indent = true
+
+# DynaText update_text: revert font
+[[patches]]
+[patches.pattern]
+target = '''engine/text.lua'''
+pattern = '''for k, v in ipairs(self.strings) do'''
+position = "before"
+payload = '''
+if self.font_buffer then
+    self.font = self.font_buffer
+    self.font_buffer = nil
+end
+'''
+match_indent = true
+
+# DynaText draw: buffer + set font
+[[patches]]
+[patches.pattern]
+target = '''engine/text.lua'''
+pattern = '''if self.children.particle_effect then self.children.particle_effect:draw() end'''
+position = "after"
+payload = '''
+self.font_buffer = self.font
+self.font = self.strings[self.focused_string].font or self.font_buffer or G.LANG.font
+self.text_offset = {
+r 32 17 %20%20%20%20 -
+r 32 18 %20%20%20%20 -
+l 47
+}
+'''
+match_indent = true
+
+# DynaText draw: revert font
+[[patches]]
+[patches.pattern]
+target = '''engine/text.lua'''
+pattern = '''self:draw_boundingrect()'''
+position = "after"
+payload = '''
+if self.font_buffer then
+    self.font = self.font_buffer
+    self.font_buffer = nil
+end
+'''
+match_indent = true
+
+# DynaText keep text colour when string changes
+[[patches]]
+[patches.pattern]
+target = '''engine/text.lua'''
+pattern = '''if first_pass then'''
+position = "before"
+payload = '''
+if v.colour then inner_colour = v.colour or nil end
+'''
+match_indent = true
+
+# DynaText outline
+# shadow
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+pattern = '''if v then self:set_letter_shader(v.shader, v.send, true, letter) end'''
+position = 'after'
+payload = '''
+if letter.text_outline or self.config.text_outline then
+    local outline_scale = (letter.text_outline_scale or self.config.text_outline_scale or 1)*G.TILESIZE
+    for x = -1, 1 do
+        for y = -1, 1 do
+            if x ~= 0 or y ~= 0 then
+                love.graphics.draw(
+                    letter.letter,
+                    0.5*(letter.dims.x - letter.offset.x + x*outline_scale)*self.font.FONTSCALE/G.TILESIZE -self.shadow_parrallax.x*self.scale/(G.TILESIZE),
+                    0.5*(letter.dims.y + y*outline_scale)*self.font.FONTSCALE/G.TILESIZE -self.shadow_parrallax.y*self.scale/(G.TILESIZE), 
+                    letter.r or 0,
+r 32 276 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 32 276 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 32 278 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 32 279 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+                )
+            end
+        end
+    end
+end
+'''
+match_indent = true
+# actual text
+[[patches]]
+[patches.pattern]
+target = 'engine/text.lua'
+pattern = '''if v then self:set_letter_shader(v.shader, v.send, false, letter) end'''
+position = 'after'
+payload = '''
+if letter.text_outline or self.config.text_outline then
+    love.graphics.setColor(letter.text_outline or self.config.text_outline)
+    local outline_scale = (letter.text_outline_scale or self.config.text_outline_scale or 1)*G.TILESIZE
+    for x = -1, 1 do
+        for y = -1, 1 do
+            if x ~= 0 or y ~= 0 then
+                love.graphics.draw(
+                    letter.letter,
+                    0.5*(letter.dims.x - letter.offset.x + x*outline_scale)*self.font.FONTSCALE/G.TILESIZE + _shadow_norm.x,
+                    0.5*(letter.dims.y - letter.offset.y + y*outline_scale)*self.font.FONTSCALE/G.TILESIZE + _shadow_norm.y, 
+                    letter.r or 0,
+r 32 304 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 32 304 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 32 306 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 32 307 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+                )
+            end
+        end
+    end
+r 32 297 %20%20%20%20 -
+l 11
+end
+'''
+match_indent = true
+
+# Fix empty loc tags being ignored
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 12 1643 - -
+l 4
+'''
+payload = '''
+if str_parts[1] or control.element then parsed_line[#parsed_line+1] = {strings = str_parts, control = control or {}} end
+'''
+end

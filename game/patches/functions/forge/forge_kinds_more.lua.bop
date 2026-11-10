@@ -1,0 +1,1265 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 393
+local Store = require("functions/forge/forge_store")
+local Cat = require("functions/forge/forge_catalog")
+local D = require("functions/forge/forge_doc")
+local FJ = require("functions/forge/forge_joker")
+
+local M = {}
+M.SEAL_POS = {Gold = {x = 2, y = 0}, Purple = {x = 4, y = 4}, Red = {x = 5, y = 4}, Blue = {x = 6, y = 4}}
+M.SEAL_ORDER = 100
+M.PACK_SHOWN = {Normal = 3, Jumbo = 5, Mega = 5}
+M.PACK_CHOOSE = {Normal = 1, Jumbo = 1, Mega = 2}
+M.PACK_SAMPLE = {Arcana = "arcana", Celestial = "celestial", Spectral = "spectral", Standard = "standard", Buffoon = "buffoon", Forge = "buffoon"}
+
+local function log_once(key, msg) FJ.log_once("more_" .. key, msg) end
+
+local function wrap(obj, name, make)
+  if obj and type(obj[name]) == "function" then obj[name] = make(obj[name]) end
+end
+
+local function fields(c)
+  local f = {}
+  for k, v in pairs(Cat.default_fields(c.kind) or {}) do f[k] = v end
+  for k, v in pairs(c.fields or {}) do f[k] = v end
+  return f
+end
+M.fields = fields
+
+local function sum(c, id)
+  local n, found = 0, false
+  for _, e in ipairs(c and c.effects or {}) do
+    if e.id == id then n = n + (tonumber(e.n) or 1); found = true end
+  end
+  return n, found
+end
+
+local function prod(c, id)
+  local n = 1
+  for _, e in ipairs(c and c.effects or {}) do if e.id == id then n = n * (tonumber(e.n) or 1) end end
+  return n
+end
+
+local function badge_col(key, col)
+  if type(get_badge_colour) == "function" then pcall(get_badge_colour, key) end
+  G.BADGE_COL = G.BADGE_COL or {}
+  G.BADGE_COL[key] = col
+end
+
+local function lines_of(c)
+  local ok, lines = pcall(D.lines, c, FJ.lang())
+  if not ok or type(lines) ~= "table" or #lines == 0 then
+    log_once("text_" .. tostring(c.id), "text failed for " .. tostring(c.id) .. ": " .. tostring(lines))
+    lines = {mod_loc("Does nothing yet")}
+  end
+  return lines
+end
+
+function M.seal_key(c) return "Forge_" .. c.id end
+function M.seal_badge(key) return string.lower(key) .. "_seal" end
+function M.edition_type(c) return "forge_" .. c.id end
+
+local function seal_item(card)
+  local s = card and card.seal
+  if type(s) ~= "string" or s:sub(1, 6) ~= "Forge_" then return nil end
+  local p = G.P_SEALS and G.P_SEALS[s]
+  return p and p.forge_id and Store.get_item(p.forge_id) or nil
+end
+M.seal_item = seal_item
+
+local function seal_sprite(c)
+  local key = M.seal_key(c)
+  local atlas, pos
+  if c.art and c.art.file then atlas, pos = FJ.load_art(c) end
+  if not atlas or atlas == "Joker" then
+    atlas = "centers"
+    pos = M.SEAL_POS[c.from or ""] or M.SEAL_POS.Red
+  end
+  G.shared_seals = G.shared_seals or {}
+  local spr = G.shared_seals[key]
+  if spr then
+    spr.atlas = G.ASSET_ATLAS[atlas]
+    spr:set_sprite_pos(pos)
+  else
+    G.shared_seals[key] = Sprite(0, 0, G.CARD_W, G.CARD_H, G.ASSET_ATLAS[atlas], pos)
+  end
+end
+
+local function register_seal(c, i)
+  local key = M.seal_key(c)
+  local p = G.P_SEALS[key] or {discovered = true, unlocked = true, alerted = true, set = "Seal", key = key}
+  p.order = M.SEAL_ORDER + i
+  p.forge_kind = "seal"
+  p.forge_id = c.id
+  p.forge_on = c.enabled
+  G.P_SEALS[key] = p
+  local ok, err = pcall(seal_sprite, c)
+  if not ok then log_once("seal_spr_" .. c.id, "seal sprite failed: " .. tostring(err)) end
+end
+
+function M.edition_table(c)
+  local f = fields(c)
+  local shader = f.shader or "foil"
+  local t = {type = M.edition_type(c), forge = c.id}
+  if shader == "negative" then t.negative = true
+  elseif shader == "holo" or shader == "polychrome" or shader == "foil" then t[shader] = true end
+  if (tonumber(f.chips) or 0) > 0 then t.chips = tonumber(f.chips) end
+  if (tonumber(f.mult) or 0) > 0 then t.mult = tonumber(f.mult) end
+  if (tonumber(f.xmult) or 1) > 1 then t.x_mult = tonumber(f.xmult) end
+  if f.slot and not t.negative then t.forge_slot = true end
+  return t
+end
+
+function M.edition_center(c, center)
+  local f = fields(c)
+  center.set = "Edition"
+  center.config = {forge = true}
+  center.cost = 0
+  if not (c.art and (c.art.file or c.art.atlas)) then center.atlas, center.pos = "Joker", {x = 0, y = 0} end
+  center.forge_shader = f.shader or "foil"
+end
+
+function M.pack_shape(c)
+  local f = fields(c)
+  local size = M.PACK_SHOWN[f.size] and f.size or "Normal"
+  local shown, choose = M.PACK_SHOWN[size], M.PACK_CHOOSE[size]
+  if c.mode == "advanced" then
+    shown = math.max(1, math.floor(tonumber(f.shown) or shown))
+    choose = math.max(1, math.floor(tonumber(f.choose) or choose))
+  end
+  return math.min(choose, shown), shown, size
+end
+
+function M.booster_center(c, center)
+  local f = fields(c)
+  local pack = M.PACK_SAMPLE[f.pack] and f.pack or "Arcana"
+  local choose, shown, size = M.pack_shape(c)
+  center.set = "Booster"
+  center.kind = pack
+  center.forge_only = pack == "Forge" or nil
+  center.name = "Forge " .. (pack == "Forge" and "Buffoon" or pack) .. " Pack"
+  center.weight = c.mode == "advanced" and math.max(0.05, (tonumber(f.weight) or 4) / 4) or 1
+  center.cost = tonumber(f.cost) or 4
+  center.config = {extra = shown, choose = choose}
+  if not (c.art and (c.art.file or c.art.atlas)) then
+    local sample = G.P_CENTERS["p_" .. M.PACK_SAMPLE[pack] .. "_" .. string.lower(size) .. "_1"] or G.P_CENTERS.p_arcana_normal_1
+    center.atlas, center.pos = sample.atlas or "Booster", sample.pos
+  end
+end
+
+function M.register_all()
+  if not (G and G.P_SEALS) then return end
+  local live = {}
+  for i, c in ipairs(Store.live_items()) do
+    if c.kind == "seal" then
+      register_seal(c, i)
+      live[M.seal_key(c)] = true
+    end
+  end
+  for key, p in pairs(G.P_SEALS) do
+    if p.forge_kind and not live[key] then p.forge_on = false end
+  end
+  M.register_tags_blinds()
+  M.inject_loc()
+  M.sync_pools()
+  local ok, err = pcall(M.register_collabs)
+  if not ok then log_once("collabs", "collabs failed: " .. tostring(err)) end
+end
+
+function M.refresh(id)
+  local c = Store.get_item(id)
+  if c and c.kind == "seal" and G.P_SEALS then
+    for i, it in ipairs(Store.live_items()) do if it.id == id then register_seal(c, i) end end
+  end
+  if not c and G.P_SEALS then
+    for _, p in pairs(G.P_SEALS) do if p.forge_id == id then p.forge_on = false end end
+  end
+  M.register_tags_blinds()
+  M.inject_loc()
+  M.sync_pools()
+  local ok, err = pcall(M.register_collabs)
+  if not ok then log_once("collabs", "collabs failed: " .. tostring(err)) end
+end
+
+function M.inject_loc()
+  if not (G and G.localization and G.localization.descriptions) then return end
+  pcall(M.collab_names)
+  local d = G.localization.descriptions
+  local labels = G.localization.misc and G.localization.misc.labels
+  d.Other = d.Other or {}
+  for _, c in ipairs(Store.live_items()) do
+    if c.kind == "seal" then
+      local badge = M.seal_badge(M.seal_key(c))
+      d.Other[badge] = FJ.parsed({name = c.name, text = lines_of(c)})
+      if labels then labels[badge] = c.name end
+      badge_col(badge, G.C.SECONDARY_SET and G.C.SECONDARY_SET.Spectral or G.C.PURPLE)
+    elseif c.kind == "edition" then
+      local t = M.edition_type(c)
+      if labels then labels[t] = c.name end
+      badge_col(t, G.C.DARK_EDITION)
+    elseif c.kind == "booster" then
+      d.Other["p_forge_" .. c.id] = FJ.parsed({name = c.name, text = lines_of(c)})
+    elseif c.kind == "tag" then
+      d.Tag = d.Tag or {}
+      d.Tag[M.tag_key(c)] = FJ.parsed({name = c.name, text = lines_of(c)})
+    elseif c.kind == "blind" then
+      d.Blind = d.Blind or {}
+      local lines = M.blind_text(c)
+      d.Blind[M.blind_key(c)] = FJ.parsed({name = c.name, text = #lines > 0 and lines or {""}})
+    end
+  end
+end
+
+local function pool_toggle(pool, item, want)
+  if not pool then return end
+  local at
+  for i, v in ipairs(pool) do if v == item then at = i end end
+  if want and not at then pool[#pool + 1] = item
+  elseif not want and at then table.remove(pool, at) end
+end
+
+function M.sync_pools()
+  if not (G and G.P_SEALS and G.P_CENTER_POOLS) then return end
+  local here = FJ.allowed_here()
+  for key, p in pairs(G.P_SEALS) do
+    if p.forge_kind == "seal" then
+      local c = Store.get_item(p.forge_id)
+      pool_toggle(G.P_CENTER_POOLS.Seal, p, (c and c.enabled and here and M.seal_key(c) == key) and true or false)
+    end
+  end
+  M.sync_tags_blinds()
+end
+
+function M.live(kind)
+  local out = {}
+  if not FJ.allowed_here() then return out end
+  for _, c in ipairs(Store.live_items()) do
+    if c.kind == kind and c.enabled then out[#out + 1] = c end
+  end
+  table.sort(out, function(a, b) return a.id < b.id end)
+  return out
+end
+
+local function forge_edition_poll(key, mod, no_neg)
+  local live = {}
+  for _, c in ipairs(M.live("edition")) do
+    local f = fields(c)
+    if not (no_neg and (f.shader == "negative" or f.slot)) then live[#live + 1] = c end
+  end
+  if #live == 0 then return nil end
+  local total, weights = 0, {}
+  for i, c in ipairs(live) do
+    local f = fields(c)
+    weights[i] = (c.mode == "advanced" and tonumber(f.weight) or 5) * 0.002 * ((G.GAME and G.GAME.edition_rate) or 1) * (mod or 1)
+    total = total + weights[i]
+  end
+  local roll = pseudorandom(pseudoseed("forge_ed" .. tostring(key or "")))
+  if roll > total then return nil end
+  local acc = 0
+  for i, c in ipairs(live) do
+    acc = acc + weights[i]
+    if roll <= acc and G.P_CENTERS["e_forge_" .. c.id] then return {forge = c.id} end
+  end
+  return nil
+end
+
+M.TAG_CTX = {{"free_joker", "store_joker_create"}, {"coupon", "shop_final_pass"}, {"free_pack", "new_blind_choice"}, {"double", "tag_add"}, {"hand_size", "round_start_bonus"}, {"free_rerolls", "shop_start"}}
+M.TAG_WHEN = {now = "immediate", shop = "shop_start", round = "round_start_bonus"}
+M.MEGA = {Arcana = "p_arcana_mega_1", Celestial = "p_celestial_mega_1", Spectral = "p_spectral_mega_1", Standard = "p_standard_mega_1", Buffoon = "p_buffoon_mega_1"}
+M.RARITY_ROLL = {[1] = 0, [2] = 0.8, [3] = 0.99}
+M.TAG_ORDER = 100
+M.BLIND_ORDER = 100
+
+function M.tag_key(c) return "tag_forge_" .. c.id end
+function M.blind_key(c) return "bl_forge_" .. c.id end
+
+function M.tag_type(c)
+  local has = {}
+  for _, e in ipairs(c.effects or {}) do has[e.id] = true end
+  for _, pair in ipairs(M.TAG_CTX) do if has[pair[1]] then return pair[2] end end
+  return M.TAG_WHEN[fields(c).when] or "immediate"
+end
+
+local function register_tag(c, i)
+  local key = M.tag_key(c)
+  local p = G.P_TAGS[key] or {set = "Tag", discovered = true, unlocked = true, alerted = true, key = key}
+  local a = c.art or {}
+  local from = c.from and G.P_TAGS[c.from]
+  p.name = "Forge Tag " .. c.id
+  p.order = M.TAG_ORDER + i
+  p.config = {type = M.tag_type(c)}
+  p.pos = (a.atlas == "tags" and {x = a.x or 0, y = a.y or 0}) or (from and from.pos) or G.P_TAGS.tag_double.pos
+  p.forge_kind = "tag"
+  p.forge_id = c.id
+  p.forge_copy = sum(c, "double") > 0 or nil
+  p.min_ante = nil
+  G.P_TAGS[key] = p
+end
+
+local function blind_effects(c)
+  local debuff, flags = {}, {}
+  for _, e in ipairs(c.effects or {}) do
+    local n = tonumber(e.n) or 1
+    if e.id == "debuff_suit" then debuff.suit = e.v or "Clubs"
+    elseif e.id == "debuff_face" then debuff.is_face = "face"
+    elseif e.id == "must_play" then debuff.h_size_ge = math.max(1, math.floor(n))
+    else flags[e.id] = e.v or n end
+  end
+  return debuff, flags
+end
+
+local function register_blind(c, i)
+  local key = M.blind_key(c)
+  local f = fields(c)
+  local p = G.P_BLINDS[key] or {set = "Blind", discovered = true, unlocked = true, alerted = true, key = key, defeated = false, demo = false, vars = {}}
+  local a = c.art or {}
+  local from = c.from and G.P_BLINDS[c.from]
+  local debuff = blind_effects(c)
+  p.name = "Forge Blind " .. c.id
+  p.order = M.BLIND_ORDER + i
+  p.dollars = math.floor(tonumber(f.reward) or 5)
+  p.mult = tonumber(f.size) or 2
+  p.debuff = debuff
+  p.pos = (a.atlas == "blind_chips" and {x = 0, y = a.y or 0}) or (from and from.pos) or G.P_BLINDS.bl_wall.pos
+  p.atlas = nil
+  local adv = c.mode == "advanced"
+  p.boss = {min = adv and math.max(1, math.floor(tonumber(f.min_ante) or 1)) or 1, max = 10, showdown = adv and f.showdown and true or nil}
+  p.boss_colour = (adv and G.C[f.colour or ""]) or (from and from.boss_colour) or G.C[f.colour or ""] or G.C.RED
+  p.forge_kind = "blind"
+  p.forge_id = c.id
+  G.P_BLINDS[key] = p
+end
+
+function M.register_tags_blinds()
+  if not (G and G.P_TAGS and G.P_BLINDS) then return end
+  local live = {}
+  for i, c in ipairs(Store.live_items()) do
+    if c.kind == "tag" then register_tag(c, i); live[M.tag_key(c)] = true end
+    if c.kind == "blind" then register_blind(c, i); live[M.blind_key(c)] = true end
+  end
+  for _, t in ipairs({G.P_TAGS, G.P_BLINDS}) do
+    for key, p in pairs(t) do if p.forge_kind and not live[key] then p.forge_gone = true else p.forge_gone = nil end end
+  end
+end
+
+function M.blind_text(c)
+  local own = type(c.text) == "table" and type(c.text[FJ.lang()]) == "table" and #c.text[FJ.lang()] > 0
+  local lines = lines_of(c)
+  if not own then
+    local out = {}
+    for i = 2, #lines do out[#out + 1] = lines[i] end
+    lines = out
+  end
+  if #lines > 2 then
+    local best, cut = nil, 1
+    for k = 1, #lines - 1 do
+      local a = table.concat(lines, ", ", 1, k)
+      local b = table.concat(lines, ", ", k + 1, #lines)
+      local w = math.max(#a, #b)
+      if not best or w < best then best, cut = w, k end
+    end
+    lines = {table.concat(lines, ", ", 1, cut), table.concat(lines, ", ", cut + 1, #lines)}
+  end
+  return lines
+end
+
+function M.sync_tags_blinds()
+  if not (G and G.P_TAGS and G.P_BLINDS and G.P_CENTER_POOLS) then return end
+  local here = FJ.allowed_here()
+  for _, p in pairs(G.P_TAGS) do
+    if p.forge_kind == "tag" then
+      local c = Store.get_item(p.forge_id)
+      pool_toggle(G.P_CENTER_POOLS.Tag, p, (c and c.enabled and here and not p.forge_gone) and true or false)
+    end
+  end
+  for key, p in pairs(G.P_BLINDS) do
+    if p.forge_kind == "blind" then
+      local c = Store.get_item(p.forge_id)
+      p.in_pool = (c and c.enabled and here and not p.forge_gone) and true or false
+      p.no_collection = not (c and c.enabled and not p.forge_gone) or nil
+      if G.GAME and G.GAME.bosses_used then G.GAME.bosses_used[key] = G.GAME.bosses_used[key] or 0 end
+    end
+  end
+end
+
+local function tag_joker(rarity, area)
+  local r = tonumber(rarity) or 1
+  return create_card("Joker", area, r == 4, M.RARITY_ROLL[r], nil, nil, nil, "forge_tag")
+end
+
+local function open_pack(key)
+  local center = G.P_CENTERS[key]
+  if not (center and G.play) then return end
+  local card = Card(G.play.T.x + G.play.T.w / 2 - G.CARD_W * 1.27 / 2, G.play.T.y + G.play.T.h / 2 - G.CARD_H * 1.27 / 2, G.CARD_W * 1.27, G.CARD_H * 1.27, G.P_CARDS.empty, center, {bypass_discovery_center = true, bypass_discovery_ui = true})
+  card.cost = 0
+  card.from_tag = true
+r 5 216 %20%20 -
+r 3 1446 %20%20 -
+l 29
+end
+
+local function pack_key(v)
+  if v == "Forge" then
+    local live = M.live("booster")
+    if live[1] and G.P_CENTERS["p_forge_" .. live[1].id] then return "p_forge_" .. live[1].id end
+    return M.MEGA.Buffoon
+  end
+  return M.MEGA[v] or M.MEGA.Arcana
+end
+
+local function level_hand(tag, hand, n)
+  if not (G.GAME.hands[hand]) then return end
+  update_hand_text({sound = "button", volume = 0.7, pitch = 0.8, delay = 0.3}, {handname = localize(hand, "poker_hands"), chips = G.GAME.hands[hand].chips, mult = G.GAME.hands[hand].mult, level = G.GAME.hands[hand].level})
+  level_up_hand(tag, hand, nil, n)
+  update_hand_text({sound = "button", volume = 0.7, pitch = 1.1, delay = 0}, {mult = 0, chips = 0, handname = "", level = ""})
+end
+
+function M.tag_apply(tag, ctx, p)
+  local c = Store.get_item(p.forge_id)
+  if not c then return nil end
+  local t = ctx.type
+  if t == "tag_add" then
+    local other = ctx.tag
+    local op = other and G.P_TAGS[other.key]
+    if not other or other == tag or other.key == tag.key or other.key == "tag_double" or (op and op.forge_copy) then return nil end
+  end
+  if t == "shop_final_pass" and not (G.shop and G.shop_jokers) then return nil end
+  local lock = tag.ID
+r 5 133 %20%20 -
+l 11
+  local card = nil
+  local later = {}
+  for _, e in ipairs(c.effects or {}) do
+    local n = tonumber(e.n) or 1
+    local id = e.id
+    if id == "money" then later[#later + 1] = function() ease_dollars(n) end
+    elseif id == "money_per_skip" then later[#later + 1] = function() ease_dollars(n * (G.GAME.skips or 0)) end
+    elseif id == "free_joker" then
+      if t == "store_joker_create" and ctx.area and not card then
+        card = tag_joker(e.v, ctx.area)
+        create_shop_card_ui(card, "Joker", ctx.area)
+r 15 4156 %20%20%20%20%20%20%20%20 -
+l 27
+        local made = card
+        later[#later + 1] = function() made:start_materialize(); made.ability.couponed = true; made:set_cost() end
+      elseif t ~= "store_joker_create" and G.jokers and #G.jokers.cards + (G.GAME.joker_buffer or 0) < G.jokers.config.card_limit then
+        later[#later + 1] = function()
+          local j = tag_joker(e.v, G.jokers)
+          j:add_to_deck()
+          G.jokers:emplace(j)
+          j:start_materialize()
+        end
+      end
+    elseif id == "free_pack" then
+      if t == "new_blind_choice" or G.STATE == G.STATES.BLIND_SELECT then later[#later + 1] = function() open_pack(pack_key(e.v)) end end
+    elseif id == "double" then
+      if t == "tag_add" then
+        local other = ctx.tag
+        later[#later + 1] = function()
+          if other.ability and other.ability.orbital_hand then G.orbital_hand = other.ability.orbital_hand end
+          add_tag(Tag(other.key))
+          G.orbital_hand = nil
+        end
+      end
+    elseif id == "hand_size" then
+      G.hand:change_size(math.floor(n))
+      G.GAME.round_resets.temp_handsize = (G.GAME.round_resets.temp_handsize or 0) + math.floor(n)
+    elseif id == "free_rerolls" then
+      later[#later + 1] = function()
+        G.GAME.current_round.free_rerolls = (G.GAME.current_round.free_rerolls or 0) + math.floor(n)
+r 3 603 %20%20%20%20%20%20%20%20 -
+l 2
+      end
+    elseif id == "coupon" then
+r 5 451 %20%20%20%20%20%20 -
+r 5 449 %20%20%20%20%20%20%20%20 -
+l 14
+        later[#later + 1] = function()
+          for _, v in pairs(G.shop_jokers.cards) do v.ability.couponed = true; v:set_cost() end
+          for _, v in pairs(G.shop_booster.cards) do v.ability.couponed = true; v:set_cost() end
+        end
+      end
+    elseif id == "level_up" then
+      later[#later + 1] = function() level_hand(tag, e.v or "Pair", math.max(1, math.floor(n))) end
+    end
+  end
+  tag:yep("+", G.C.SECONDARY_SET and G.C.SECONDARY_SET.Spectral or G.C.GOLD, function()
+    for _, f in ipairs(later) do
+      local ok, err = pcall(f)
+      if not ok then log_once("tag_" .. c.id, "tag effect failed: " .. tostring(err)) end
+    end
+r 5 143 %20%20%20%20 -
+l 114
+    return true
+  end)
+  tag.triggered = true
+  if t == "store_joker_create" then return card end
+  return true
+end
+
+local function blind_item(blind)
+  local p = blind and blind.config and blind.config.blind
+  if not (p and p.forge_kind == "blind") then return nil end
+  return Store.get_item(p.forge_id)
+end
+
+function M.blind_set(blind)
+  local c = blind_item(blind)
+  if not c then return end
+  local _, flags = blind_effects(c)
+  if flags.no_discards then
+    blind.discards_sub = G.GAME.current_round.discards_left
+    ease_discard(-blind.discards_sub)
+  end
+  if flags.one_hand then
+    blind.hands_sub = G.GAME.round_resets.hands - 1
+    ease_hands_played(-blind.hands_sub)
+  end
+  if flags.hand_size_minus then G.hand:change_size(-math.floor(tonumber(flags.hand_size_minus) or 1)) end
+end
+
+function M.blind_restore(blind, disabling)
+  local c = blind_item(blind)
+  if not c then return end
+  local _, flags = blind_effects(c)
+  if disabling then
+    if flags.no_discards and blind.discards_sub then ease_discard(blind.discards_sub) end
+    if flags.one_hand and blind.hands_sub then ease_hands_played(blind.hands_sub) end
+    if flags.face_down_first then
+      for _, v in ipairs(G.hand.cards) do if v.facing == "back" then v:flip() end end
+    end
+  end
+  if flags.hand_size_minus then
+    local n = math.floor(tonumber(flags.hand_size_minus) or 1)
+    G.hand:change_size(n)
+    if disabling then G.FUNCS.draw_from_deck_to_hand(n) end
+  end
+end
+
+function M.install_stakes()
+  if Game and Game.start_run then
+    local orig = Game.start_run
+    Game.start_run = function(self, args, ...)
+      M.pending_stake = type(args) == "table" and not args.savetext and args.forge_stake or nil
+      if M.pending_stake and not FJ.allowed_here() then M.pending_stake = nil end
+      local r = orig(self, args, ...)
+      M.pending_stake = nil
+      return r
+    end
+  end
+  if Back and Back.apply_to_run then
+    local orig = Back.apply_to_run
+    Back.apply_to_run = function(self, ...)
+      local id = M.pending_stake
+      M.pending_stake = nil
+      if id then
+        local ok, err = pcall(M.apply_stake, id)
+        if not ok then log_once("stake", "stake failed: " .. tostring(err)) end
+      end
+      return orig(self, ...)
+    end
+  end
+end
+
+function M.install_tags_blinds()
+  if Tag and Tag.apply_to_run then
+    local orig = Tag.apply_to_run
+    Tag.apply_to_run = function(self, ctx)
+      local p = G.P_TAGS and G.P_TAGS[self.key]
+      if p and p.forge_kind == "tag" then
+        if self.triggered or not ctx or self.config.type ~= ctx.type then return nil end
+        local ok, r = pcall(M.tag_apply, self, ctx, p)
+        if not ok then
+          log_once("tag_apply", "tag failed: " .. tostring(r))
+          G.CONTROLLER.locks[self.ID] = nil
+          return nil
+        end
+        return r
+      end
+      return orig(self, ctx)
+    end
+  end
+  wrap(Blind, "set_blind", function(orig) return function(self, blind, reset, silent)
+    local r = orig(self, blind, reset, silent)
+    if not reset then
+      local ok, err = pcall(M.blind_set, self)
+      if not ok then log_once("blind_set", "blind failed: " .. tostring(err)) end
+    end
+    return r
+  end end)
+  wrap(Blind, "disable", function(orig) return function(self, ...)
+    local was = self.disabled
+    local r = orig(self, ...)
+    if not was then pcall(M.blind_restore, self, true) end
+    return r
+  end end)
+  wrap(Blind, "defeat", function(orig) return function(self, ...)
+    if not self.disabled then pcall(M.blind_restore, self, false) end
+    return orig(self, ...)
+  end end)
+  wrap(Blind, "debuff_hand", function(orig) return function(self, cards, hand, handname, check)
+    local r = orig(self, cards, hand, handname, check)
+    if r or self.disabled then return r end
+    local c = blind_item(self)
+    if not c then return r end
+    local _, flags = blind_effects(c)
+    if (flags.debuff_hand and handname == flags.debuff_hand) or (flags.only_hand and handname ~= flags.only_hand) then
+r 2 484 %20%20%20%20%20%20 -
+l 23
+      return true
+    end
+    return r
+  end end)
+  wrap(Blind, "stay_flipped", function(orig) return function(self, area, card)
+    local r = orig(self, area, card)
+    if r or self.disabled then return r end
+    local c = blind_item(self)
+    if c and area == G.hand and G.GAME.current_round.hands_played == 0 and G.GAME.current_round.discards_used == 0 then
+      local _, flags = blind_effects(c)
+      if flags.face_down_first then return true end
+    end
+    return r
+  end end)
+  wrap(Blind, "press_play", function(orig) return function(self, ...)
+    local r = orig(self, ...)
+    if self.disabled then return r end
+    local c = blind_item(self)
+    if not c then return r end
+    local _, flags = blind_effects(c)
+    local n = math.floor(tonumber(flags.money_per_card) or 0)
+    if n > 0 then
+      G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.2, func = function()
+r 2 499 %20%20%20%20%20%20%20%20 -
+l 6
+          G.E_MANAGER:add_event(Event({func = function() if G.play.cards[i] then G.play.cards[i]:juice_up() end return true end}))
+          ease_dollars(-n)
+          delay(0.23)
+        end
+        return true
+      end}))
+r 2 484 %20%20%20%20%20%20 -
+l 11
+      return true
+    end
+    return r
+  end end)
+  wrap(Blind, "modify_hand", function(orig) return function(self, cards, poker_hands, text, mult, hand_chips)
+    local m, h, changed = orig(self, cards, poker_hands, text, mult, hand_chips)
+    if self.disabled then return m, h, changed end
+    local c = blind_item(self)
+    if not c then return m, h, changed end
+    local _, flags = blind_effects(c)
+    if flags.halve_base then
+r 2 484 %20%20%20%20%20%20 -
+l 85
+      return math.max(math.floor(m * 0.5 + 0.5), 1), math.max(math.floor(h * 0.5 + 0.5), 0), true
+    end
+    return m, h, changed
+  end end)
+  if type(get_new_boss) == "function" then
+    local orig = get_new_boss
+    get_new_boss = function(...)
+      pcall(M.sync_tags_blinds)
+      return orig(...)
+    end
+  end
+  local function hide_off(tbl, fn)
+    return function(...)
+      local hidden = {}
+      for key, p in pairs(tbl()) do
+        if p.forge_kind then
+          local c = Store.get_item(p.forge_id)
+          if not (c and c.enabled) or p.forge_gone then hidden[key] = p end
+        end
+      end
+      for key in pairs(hidden) do tbl()[key] = nil end
+      local ok, r = pcall(fn, ...)
+      for key, p in pairs(hidden) do tbl()[key] = p end
+      if not ok then error(r) end
+      return r
+    end
+  end
+  if type(create_UIBox_your_collection_tags) == "function" then
+    create_UIBox_your_collection_tags = hide_off(function() return G.P_TAGS end, create_UIBox_your_collection_tags)
+  end
+  if type(create_UIBox_your_collection_blinds) == "function" then
+    local orig = create_UIBox_your_collection_blinds
+    create_UIBox_your_collection_blinds = function(exit)
+      if not M.blind_keep then M.blind_page = 1 end
+      M.blind_keep = nil
+      M.blind_exit = exit
+      local shown = {}
+      for key, p in pairs(G.P_BLINDS) do
+        if p.forge_kind == "blind" then
+          local c = Store.get_item(p.forge_id)
+          if c and c.enabled and not p.forge_gone then shown[#shown + 1] = key end
+        end
+      end
+      table.sort(shown, function(a, b) return (G.P_BLINDS[a].order or 0) < (G.P_BLINDS[b].order or 0) end)
+      local per = 30
+      local pages = #shown > 0 and 1 + math.ceil(#shown / per) or 1
+      local page = math.max(1, math.min(M.blind_page or 1, pages))
+      local keep = {}
+      if page > 1 then
+        for i = (page - 2) * per + 1, math.min(#shown, (page - 1) * per) do keep[shown[i]] = true end
+      end
+      local plain = 0
+      for _, p in pairs(G.P_BLINDS) do if p.forge_kind ~= "blind" and not p.rr_plain then plain = plain + 1 end end
+      local hidden = {}
+      for key, p in pairs(G.P_BLINDS) do
+        local forge = p.forge_kind == "blind"
+        if (page == 1 and forge) or (page > 1 and not keep[key]) then hidden[key] = p end
+      end
+      local was = {}
+      for key, p in pairs(hidden) do was[key] = p.rr_plain; p.rr_plain = true end
+      local ok, t = pcall(orig, exit)
+      for key, p in pairs(hidden) do p.rr_plain = was[key] end
+      if not ok then error(t) end
+      if pages > 1 then
+        pcall(function()
+          local column = t.nodes[1].nodes[1].nodes[1].nodes[1].nodes[1].nodes
+          local grid = t.nodes[1].nodes[1].nodes[1].nodes[1].nodes[2]
+          if page > 1 and grid and grid.config then
+            grid.config.minw = math.min(5, plain) * 1.5 + (plain >= 5 and 0.5 or 0)
+            grid.config.minh = math.ceil(plain / 5) * 1.5
+            grid.config.align = "tm"
+          end
+          local options = {}
+          for i = 1, pages do options[i] = localize("k_page") .. " " .. i .. "/" .. pages end
+          column[#column + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {
+            create_option_cycle({options = options, w = 2.6, scale = 0.8, cycle_shoulders = true, opt_callback = "forge_collection_blind_page", focus_args = {snap_to = true, nav = "wide"}, current_option = page, colour = G.C.RED, no_pips = true}),
+          }}
+        end)
+      end
+      return t
+    end
+  end
+end
+
+G.FUNCS.forge_collection_blind_page = function(args)
+r 4 603 %20%20 -
+l 152
+  M.blind_page = args.cycle_config.current_option
+  M.blind_keep = true
+  G.FUNCS.overlay_menu{definition = create_UIBox_your_collection_blinds(M.blind_exit)}
+end
+
+function M.stake_base(c)
+  local f = fields(c)
+  for i, k in ipairs(Cat.STAKES) do if k == f.base then return i end end
+  return 1
+end
+
+function M.stake_choices()
+  local out = {}
+  for _, c in ipairs(M.live("stake")) do out[#out + 1] = {id = c.id, name = c.name, stake = M.stake_base(c)} end
+  return out
+end
+
+function M.apply_stake(id)
+  local c = Store.get_item(id)
+  if not (c and c.kind == "stake" and G.GAME) then return false end
+  local g = G.GAME
+  local sp, mods = g.starting_params, g.modifiers
+  for _, e in ipairs(c.effects or {}) do
+    local n = tonumber(e.n) or 1
+    local k = e.id
+    if k == "blind_scaling" then sp.ante_scaling = (sp.ante_scaling or 1) * (1 + n / 100)
+    elseif k == "discards_minus" then sp.discards = math.max(0, sp.discards - math.floor(n))
+    elseif k == "hands_minus" then sp.hands = math.max(1, sp.hands - math.floor(n))
+    elseif k == "no_interest" then mods.no_interest = true
+    elseif k == "small_no_reward" then mods.no_blind_reward = mods.no_blind_reward or {}; mods.no_blind_reward.Small = true
+    elseif k == "prices_plus" then g.inflation = (g.inflation or 0) + math.floor(n)
+    elseif k == "eternal" then mods.enable_eternals_in_shop = true
+    elseif k == "perishable" then mods.enable_perishables_in_shop = true
+    elseif k == "rental" then mods.enable_rentals_in_shop = true
+    elseif k == "win_ante" then g.win_ante = math.max(1, math.floor(n)) end
+  end
+  g.forge_stake = c.id
+  g.forge_stake_name = c.name
+  return true
+end
+
+M.FACES = {{"J", "Jack", 0}, {"Q", "Queen", 1}, {"K", "King", 2}}
+M.SUIT_PRE = {Hearts = "H", Diamonds = "D", Spades = "S", Clubs = "C"}
+
+function M.collab_key(c) return "collab_forge_" .. c.id end
+
+local function face_file(c, r)
+  local f = c.faces and c.faces[r]
+  if not f and r == "K" and c.art and c.art.file then f = c.art.file end
+  return f
+end
+
+local function deck_data(opt)
+  M.deck_cache = M.deck_cache or {}
+  local name = opt and "8BitDeck_opt2.png" or "8BitDeck.png"
+  if M.deck_cache[name] == nil then
+    local ok, data = pcall(love.image.newImageData, "resources/textures/1x/" .. name)
+    M.deck_cache[name] = ok and data or false
+  end
+  return M.deck_cache[name] or nil
+end
+
+function M.face_image(c, r, suit, opt)
+  local f = face_file(c, r)
+  if f and love.filesystem.getInfo(f) then
+    local ok, data = pcall(love.image.newImageData, f)
+    if ok and data and data:getWidth() == 71 and data:getHeight() == 95 then return data end
+  end
+  local deck = deck_data(opt)
+  local card = G.P_CARDS[(M.SUIT_PRE[suit] or "H") .. "_" .. r]
+  local out = love.image.newImageData(71, 95)
+  if deck and card then out:paste(deck, 0, 0, card.pos.x * 71, card.pos.y * 95, 71, 95) end
+  return out
+end
+
+local function collab_unlocked()
+  local PRM = rawget(_G, "ProfileRewardsManager")
+  if not (PRM and type(PRM.is_deck_unlocked) == "function") or M.prm_hooked == PRM then return end
+  M.prm_hooked = PRM
+  local orig = PRM.is_deck_unlocked
+  PRM.is_deck_unlocked = function(id, ...)
+    if type(id) == "string" and id:sub(1, 13) == "collab_forge_" then return true end
+    return orig(id, ...)
+  end
+end
+
+function M.register_collabs()
+  if not (G and G.COLLABS and G.COLLABS.options and G.ASSET_ATLAS and G.P_CARDS) then return end
+  collab_unlocked()
+  local want = {}
+  for _, c in ipairs(Store.live_items()) do
+    if c.kind == "collab" and c.enabled then
+      local suit = fields(c).suit
+      if G.COLLABS.options[suit] then
+        local key = M.collab_key(c)
+        want[key] = {c = c, suit = suit}
+        for opt = 1, 2 do
+          local ok, err = pcall(function()
+            local img = love.image.newImageData(213, 95)
+            for _, face in ipairs(M.FACES) do img:paste(M.face_image(c, face[1], suit, opt == 2), face[3] * 71, 0, 0, 0, 71, 95) end
+            FJ.atlas_from_data(key .. "_" .. opt, img)
+          end)
+          if not ok then log_once("collab_" .. c.id, "collab art failed: " .. tostring(err)) end
+        end
+      end
+    end
+  end
+  for suit, list in pairs(G.COLLABS.options) do
+    for i = #list, 1, -1 do
+      local key = list[i]
+      if type(key) == "string" and key:sub(1, 13) == "collab_forge_" and not (want[key] and want[key].suit == suit) then table.remove(list, i) end
+    end
+  end
+  local keys = {}
+  for key in pairs(want) do keys[#keys + 1] = key end
+  table.sort(keys)
+  for _, key in ipairs(keys) do
+    local list = G.COLLABS.options[want[key].suit]
+    local at = nil
+    for i, v in ipairs(list) do if v == key then at = i end end
+    if not at then list[#list + 1] = key end
+  end
+  M.collab_names()
+end
+
+function M.collab_names()
+  local names = G.localization and G.localization.misc and G.localization.misc.collabs
+  if not (names and G.COLLABS and G.COLLABS.options) then return end
+  for suit, list in pairs(G.COLLABS.options) do
+    names[suit] = names[suit] or {}
+    for i, key in ipairs(list) do
+      if type(key) == "string" and key:sub(1, 13) == "collab_forge_" then
+        local c = Store.get_item(key:sub(14))
+        if c then names[suit][tostring(i)] = c.name end
+      end
+    end
+  end
+end
+
+local function slot_area(card)
+  if card.ability and card.ability.consumeable then return G.consumeables end
+  if card.ability and card.ability.set == "Joker" then return G.jokers end
+  return nil
+end
+
+local function slot_change(card, n)
+  local area = slot_area(card)
+  if area and area.config then area.config.card_limit = area.config.card_limit + n end
+end
+
+local function seal_planet(card)
+  if #G.consumeables.cards + G.GAME.consumeable_buffer >= G.consumeables.config.card_limit then return false end
+r 3 1042 %20%20 -
+l 1
+  G.E_MANAGER:add_event(Event({trigger = "before", delay = 0.0, func = function()
+r 3 1047 %20%20%20%20 -
+l 8
+      local planet = nil
+      for _, v in pairs(G.P_CENTER_POOLS.Planet) do
+        if v.config.hand_type == G.GAME.last_hand_played and not v.forge_kind then planet = v.key end
+      end
+      local made = create_card("Planet", G.consumeables, nil, nil, nil, nil, planet, "forge_blusl")
+      made:add_to_deck()
+      G.consumeables:emplace(made)
+    end
+r 3 1057 %20%20%20%20 -
+l 8
+    return true
+  end}))
+  card_eval_status_text(card, "extra", nil, nil, nil, {message = localize("k_plus_planet"), colour = G.C.SECONDARY_SET.Planet})
+  return true
+end
+
+local function seal_tarot(card)
+  if #G.consumeables.cards + G.GAME.consumeable_buffer >= G.consumeables.config.card_limit then return end
+r 3 1042 %20%20 -
+l 4
+  G.E_MANAGER:add_event(Event({trigger = "before", delay = 0.0, func = function()
+    local made = create_card("Tarot", G.consumeables, nil, nil, nil, nil, nil, "forge_8ba")
+    made:add_to_deck()
+    G.consumeables:emplace(made)
+r 3 1057 %20%20%20%20 -
+l 30
+    return true
+  end}))
+  card_eval_status_text(card, "extra", nil, nil, nil, {message = localize("k_plus_tarot"), colour = G.C.PURPLE})
+end
+
+function M.try_give(c)
+  if c.kind == "seal" or c.kind == "edition" then
+    local pile = G.deck and G.deck.cards or {}
+    local n = 0
+    for i = #pile, 1, -1 do
+      if n >= 5 then break end
+      if c.kind == "seal" then pile[i]:set_seal(M.seal_key(c), true, true) else pile[i]:set_edition({forge = c.id}, true, true) end
+      n = n + 1
+    end
+    return n > 0
+  end
+  if c.kind == "tag" then
+    local key = M.tag_key(c)
+    if not G.P_TAGS[key] then return false end
+    local tag = Tag(key)
+    add_tag(tag)
+    local ty = G.P_TAGS[key].config.type
+    if ty == "immediate" or ty == "new_blind_choice" then tag:apply_to_run({type = ty}) end
+    return true
+  end
+  if c.kind == "blind" then
+    local key = M.blind_key(c)
+    if not (G.P_BLINDS[key] and G.blind_select_opts and G.blind_select_opts.boss) then return false end
+    G.GAME.bosses_used[key] = G.GAME.bosses_used[key] or 0
+    G.FORCE_BOSS = key
+r 5 288 %20%20%20%20 -
+r 5 289 %20%20%20%20 -
+l 15
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.5, func = function() G.FORCE_BOSS = nil; return true end}))
+    return true
+  end
+  if c.kind == "booster" then
+    if not (G.P_CENTERS["p_forge_" .. c.id] and G.play) then return false end
+    open_pack("p_forge_" .. c.id)
+    return true
+  end
+  return false
+end
+
+
+function M.fill_page(page)
+  local o = M.page_state
+  if not (o and G.your_collection) then return end
+r 15 3558 %20%20 -
+l 1
+    for i = #G.your_collection[j].cards, 1, -1 do
+r 4 606 %20%20%20%20%20%20 -
+l 4
+      c:remove()
+    end
+  end
+  local per = o.cols * o.rows
+r 15 3558 %20%20 -
+l 9
+    for i = 1, o.cols do
+      local item = o.items[i + (j - 1) * o.cols + per * (page - 1)]
+      if not item then break end
+      local area = G.your_collection[j]
+      local card = o.make(item, area)
+      card:start_materialize(nil, i > 1 or j > 1)
+      area:emplace(card)
+    end
+  end
+r 15 3566 %20%20 -
+l 4
+end
+
+function M.paged(o)
+  local rows = {}
+r 15 3538 %20%20 -
+l 19
+  for j = 1, o.rows do
+    G.your_collection[j] = CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, (o.cols + 0.25) * G.CARD_W, 1.03 * G.CARD_H, {card_limit = o.cols, type = "title", highlight_limit = 0, collection = true})
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0, no_fill = true}, nodes = {{n = G.UIT.O, config = {object = G.your_collection[j]}}}}
+  end
+  M.page_state = o
+  M.fill_page(1)
+  local pages = math.max(1, math.ceil(#o.items / (o.cols * o.rows)))
+  local options = {}
+  for i = 1, pages do options[i] = localize("k_page") .. " " .. i .. "/" .. pages end
+  local touch = (G and G.F_MOBILE) or rawget(_G, "_IS_DESKTOP") == false
+  return create_UIBox_generic_options({infotip = not touch and localize("ml_edition_seal_enhancement_explanation") or nil, back_func = o.back or "your_collection", snap_back = true, contents = {
+    {n = G.UIT.R, config = {align = "cm", minw = 2.5, padding = 0.1, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes = rows},
+    {n = G.UIT.R, config = {align = "cm"}, nodes = {
+      create_option_cycle({options = options, w = 4.5, cycle_shoulders = true, opt_callback = "forge_collection_page", focus_args = {snap_to = true, nav = "wide"}, current_option = 1, colour = G.C.RED, no_pips = true}),
+    }},
+  }})
+end
+
+G.FUNCS.forge_collection_page = function(args)
+r 4 603 %20%20 -
+l 56
+  M.fill_page(args.cycle_config.current_option)
+end
+
+local function card_at(area, center, front)
+  return Card(area.T.x + area.T.w / 2, area.T.y, G.CARD_W, G.CARD_H, front or G.P_CARDS.empty, center)
+end
+
+function M.collection_seals(exit)
+  return M.paged{items = G.P_CENTER_POOLS.Seal, cols = 4, rows = 2, back = exit, make = function(v, area)
+    local card = card_at(area, G.P_CENTERS.c_base)
+    if G.shared_seals and G.shared_seals[v.key] then card:set_seal(v.key, true) end
+    return card
+  end}
+end
+
+function M.collection_enhancements(exit)
+  return M.paged{items = G.P_CENTER_POOLS.Enhanced, cols = 4, rows = 2, back = exit, make = function(v, area) return card_at(area, v) end}
+end
+
+function M.collection_editions()
+  local items = {}
+  for _, k in ipairs({"e_base", "e_foil", "e_holo", "e_polychrome", "e_negative"}) do items[#items + 1] = G.P_CENTERS[k] end
+  for _, v in ipairs(G.P_CENTER_POOLS.Edition) do if v.forge_kind == "edition" then items[#items + 1] = v end end
+  return M.paged{items = items, cols = 5, rows = 2, make = function(v, area)
+    local card = card_at(area, v)
+    if v.forge_kind == "edition" then card:set_edition({forge = v.forge_id}, true, true)
+    elseif v.discovered and v.key ~= "e_base" then card:set_edition({[v.key:sub(3)] = true}, true, true) end
+    return card
+  end}
+end
+
+local function forge_count(pool)
+  local n = 0
+  for _, v in ipairs(pool or {}) do if v.forge_kind then n = n + 1 end end
+  return n
+end
+
+local function collection_hook(name, test, build)
+  if type(_G[name]) ~= "function" then return end
+  local orig = _G[name]
+  _G[name] = function(...)
+    if G.P_CENTER_POOLS and test() then
+      local ok, r = pcall(build, ...)
+      if ok and r then return r end
+      log_once("coll_" .. name, "collection failed: " .. tostring(r))
+    end
+    return orig(...)
+  end
+end
+
+function M.install_hooks()
+  if M.hooked then return end
+  M.hooked = true
+  wrap(Card, "calculate_seal", function(orig) return function(self, context)
+    local c = not self.debuff and seal_item(self)
+    if not c then return orig(self, context) end
+r 3 2244 %20%20%20%20 -
+l 3
+      local n = sum(c, "scored_retrigger")
+      if n > 0 then return {message = localize("k_again_ex"), repetitions = n, card = self} end
+    end
+r 3 2253 %20%20%20%20 -
+l 177
+      local _, tarot = sum(c, "discard_tarot")
+      if tarot then seal_tarot(self) end
+      local money = sum(c, "discard_money")
+      if money > 0 then
+        ease_dollars(money)
+        card_eval_status_text(self, "dollars", money)
+      end
+    end
+    return nil
+  end end)
+  wrap(Card, "get_chip_bonus", function(orig) return function(self, ...)
+    local r = orig(self, ...)
+    local c = not self.debuff and seal_item(self)
+    return c and r + sum(c, "scored_chips") or r
+  end end)
+  wrap(Card, "get_chip_mult", function(orig) return function(self, ...)
+    local r = orig(self, ...)
+    local c = not self.debuff and seal_item(self)
+    return c and r + sum(c, "scored_mult") or r
+  end end)
+  wrap(Card, "get_chip_x_mult", function(orig) return function(self, ...)
+    local r = orig(self, ...)
+    local c = not self.debuff and seal_item(self)
+    if not c then return r end
+    local x = prod(c, "scored_xmult")
+    if x == 1 then return r end
+    return (r > 0 and r or 1) * x
+  end end)
+  wrap(Card, "get_p_dollars", function(orig) return function(self, ...)
+    local r = orig(self, ...)
+    local c = not self.debuff and seal_item(self)
+    local extra = c and sum(c, "scored_money") or 0
+    if extra > 0 then
+      G.GAME.dollar_buffer = (G.GAME.dollar_buffer or 0) + extra
+      G.E_MANAGER:add_event(Event({func = function() G.GAME.dollar_buffer = 0; return true end}))
+    end
+    return r + extra
+  end end)
+  wrap(Card, "get_end_of_round_effect", function(orig) return function(self, ...)
+    local r = orig(self, ...)
+    local c = not self.debuff and seal_item(self)
+    if not c then return r end
+    local _, planet = sum(c, "held_planet")
+    if planet and seal_planet(self) then r.effect = true end
+    local money = sum(c, "held_money")
+    if money > 0 then
+      r.h_dollars = (r.h_dollars or 0) + money
+      r.card = self
+    end
+    return r
+  end end)
+  wrap(Card, "set_seal", function(orig) return function(self, seal, silent, immediate)
+    if seal and M.SEAL_POS[seal] and not self.area and G.STATE == G.STATES.STANDARD_PACK then
+      local ok, pick = pcall(function()
+        local live = {}
+        for _, c in ipairs(M.live("seal")) do if G.P_SEALS[M.seal_key(c)] then live[#live + 1] = M.seal_key(c) end end
+        if #live == 0 then return nil end
+        if pseudorandom(pseudoseed("forge_seal")) >= #live / (#live + 4) then return nil end
+        return (pseudorandom_element(live, pseudoseed("forge_seal_pick")))
+      end)
+      if ok and pick then seal = pick end
+    end
+    return orig(self, seal, silent, immediate)
+  end end)
+  wrap(Card, "set_edition", function(orig) return function(self, edition, immediate, silent)
+    local before = self.edition and self.edition.forge_slot and not self.edition.negative
+    local c = type(edition) == "table" and edition.forge and Store.get_item(edition.forge)
+    local t = c and M.edition_table(c)
+    if not t then
+      local r = orig(self, edition, immediate, silent)
+      if before and self.added_to_deck then slot_change(self, -1) end
+      return r
+    end
+    local shader = nil
+    for _, s in ipairs({"negative", "polychrome", "holo", "foil"}) do if t[s] then shader = {[s] = true} end end
+    if shader then orig(self, shader, immediate, silent) else orig(self, nil, immediate, silent) end
+    self.edition = t
+    if t.forge_slot and not before and self.added_to_deck then slot_change(self, 1) end
+    if before and not t.forge_slot and self.added_to_deck then slot_change(self, -1) end
+    if self.set_cost then self:set_cost() end
+  end end)
+  wrap(Card, "add_to_deck", function(orig) return function(self, from_debuff, ...)
+    local was = self.added_to_deck
+    local r = orig(self, from_debuff, ...)
+    if not was and not from_debuff and self.edition and self.edition.forge_slot and not self.edition.negative then slot_change(self, 1) end
+    return r
+  end end)
+  wrap(Card, "remove_from_deck", function(orig) return function(self, from_debuff, ...)
+    local was = self.added_to_deck
+    local r = orig(self, from_debuff, ...)
+    if was and not from_debuff and self.edition and self.edition.forge_slot and not self.edition.negative and G.jokers then slot_change(self, -1) end
+    return r
+  end end)
+  if type(poll_edition) == "function" then
+    local orig = poll_edition
+    poll_edition = function(_key, _mod, _no_neg, _guaranteed, ...)
+      local r = orig(_key, _mod, _no_neg, _guaranteed, ...)
+      if r == nil and not _guaranteed then
+        local ok, f = pcall(forge_edition_poll, _key, _mod, _no_neg)
+        if ok and f then return f end
+      end
+      return r
+    end
+  end
+  wrap(Card, "open", function(orig) return function(self, ...)
+    if self.ability and self.ability.set == "Booster" and G.GAME then
+      G.GAME.forge_only_pack = self.config and self.config.center and self.config.center.forge_only or nil
+    end
+    return orig(self, ...)
+  end end)
+  if type(create_card) == "function" then
+    local orig = create_card
+    create_card = function(_type, area, legendary, _rarity, skip_materialize, soulable, forced_key, key_append, ...)
+      if G.GAME and G.GAME.forge_only_pack and _type == "Joker" and area and area == G.pack_cards and not forced_key then
+        local ok, key = pcall(function()
+          local keys = {}
+          local FJm = rawget(_G, "JokerForge") and JokerForge.joker
+          for _, it in ipairs(Store.live_jokers and Store.live_jokers() or {}) do
+            local k = FJm and FJm.key_of and FJm.key_of(it.id)
+            if it.enabled ~= false and k and G.P_CENTERS[k] then keys[#keys + 1] = k end
+          end
+          table.sort(keys)
+          if #keys == 0 then return nil end
+          return (pseudorandom_element(keys, pseudoseed("forge_pack")))
+        end)
+        if ok and key then forced_key = key end
+      end
+      return orig(_type, area, legendary, _rarity, skip_materialize, soulable, forced_key, key_append, ...)
+    end
+  end
+  if type(generate_card_ui) == "function" then
+    local orig = generate_card_ui
+    generate_card_ui = function(_c, full_UI_table, specific_vars, card_type, badges, ...)
+      local first = not full_UI_table
+      local booster = type(_c) == "table" and _c.forge_kind == "booster"
+      if booster then _c = setmetatable({set = "Other"}, {__index = _c}) end
+      local r = orig(_c, full_UI_table, specific_vars, card_type, badges, ...)
+      if first and type(r) == "table" then
+        pcall(function()
+          if booster and not r.name then r.name = localize{type = "name", set = "Other", key = _c.key, nodes = {}} end
+          if type(badges) == "table" and _c.set ~= "Edition" then
+            for _, b in ipairs(badges) do
+              if type(b) == "string" and b:sub(1, 6) == "forge_" then
+                if b:sub(-5) == "_seal" then
+                  if G.localization.descriptions.Other[b] then generate_card_ui({key = b, set = "Other"}, r) end
+                elseif G.P_CENTERS["e_" .. b] then
+                  generate_card_ui(G.P_CENTERS["e_" .. b], r)
+                end
+              end
+            end
+          end
+        end)
+      end
+      return r
+    end
+  end
+  if Card and Card.load then
+    local orig = Card.load
+    Card.load = function(self, cardTable, other_card)
+      pcall(function()
+        local s = cardTable and cardTable.seal
+        if type(s) == "string" and s:sub(1, 6) == "Forge_" and not (G.shared_seals and G.shared_seals[s]) then cardTable.seal = nil end
+        local e = cardTable and cardTable.edition
+        if type(e) == "table" and e.forge and not G.P_CENTERS["e_forge_" .. tostring(e.forge)] then cardTable.edition = nil end
+      end)
+      return orig(self, cardTable, other_card)
+    end
+  end
+  M.install_tags_blinds()
+  M.install_stakes()
+  collection_hook("create_UIBox_your_collection_seals", function() return forge_count(G.P_CENTER_POOLS.Seal) > 0 end, M.collection_seals)
+  collection_hook("create_UIBox_your_collection_enhancements", function() return forge_count(G.P_CENTER_POOLS.Enhanced) > 0 end, M.collection_enhancements)
+  collection_hook("create_UIBox_your_collection_editions", function() return forge_count(G.P_CENTER_POOLS.Edition) > 0 end, M.collection_editions)
+  if G and G.P_SEALS then pcall(M.register_all) end
+end
+
+return M
+end

@@ -1,0 +1,39 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 20
+assert(SMODS.path, "SMODS was not properly setup.\n\n!!!!!!!!!!!!!!\nPlease make sure your lovely is up to date (Minimum lovely v0.9.0)\n!!!!!!!!!!!!!!")
+for _, path in ipairs {
+    "src/ui.lua",
+    "src/index.lua",
+    "src/utils.lua",
+    "src/overrides.lua",
+    "src/game_object.lua",
+    "src/compat_0_9_8.lua",
+    "src/utils/weights.lua"
+} do
+    assert(load(SMODS.NFS.read(SMODS.path..path), ('=[SMODS _ "%s"]'):format(path)))()
+end
+
+function boot_print_stage(stage)
+    if not SMODS.booted then
+        boot_timer(nil, "STEAMODDED - " .. stage, 0.95)
+    end
+end
+
+LOADING_SCREEN = LOADING_SCREEN or require("functions/loading_screen")
+r 12 105 - -
+r 12 107 %20%20%20%20 -
+r 12 108 %20%20%20%20%20%20%20%20 -
+l 3
+    }
+    LOADING_SCREEN.draw(_next)
+
+r 12 125 %20%20%20%20 -
+r 12 126 %20%20%20%20 -
+l 3
+end
+sendInfoMessage("Steamodded v" .. SMODS.version, "SMODS")
+
+end

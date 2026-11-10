@@ -1,0 +1,812 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 222
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+local H = MG.host or {}
+MG.host = H
+
+local min, max = math.min, math.max
+
+H.CHECK_EVERY = 0.2
+H.GAP = 0.18
+H.PAD = 0.3
+H.view = H.view or {name = ""}
+H.next_check = 0
+
+local function alive(o) return o and not o.REMOVED end
+
+local function in_match()
+    return bom_match and bom_match.is_in_match and bom_match.is_in_match()
+end
+
+local function lobby_waiting(st)
+    return st and (st.waiting_guest or not st.opp_name or (st.my_ready and not st.opp_ready)) and true or false
+end
+
+function H.wait_kind()
+    if not (G and G.STAGES) then return nil end
+    if bom_playback and bom_playback.active and bom_playback.active() then return nil end
+    if alive(G.BOM_PVP_WAITING_OVERLAY) then return "pvp_finish" end
+    if in_match() and G.STATE == G.STATES.BLIND_SELECT and G.GAME and G.GAME.mp_blind_ready then return "pvp_ready" end
+    local R = bom_rejoin and bom_rejoin.opp_away
+    if R and not R.dismissed and not R.leaving and in_match() then return "away" end
+    if G.GAME and G.GAME.mp_searching and G.OVERLAY_MENU then return "search" end
+    local U = bom_ranked_ui and bom_ranked_ui.Q
+    if U and U.status == "searching" then return "queue" end
+    if bom_match and bom_match.get_phase and bom_match.get_phase() == "lobby" and G.OVERLAY_MENU then
+        if bom_party and bom_party.active and bom_party.active() then
+            local open = bom_party.lobby_open and bom_party.lobby_open()
+            if open == nil then open = UIK and UIK._win and UIK._win.id == "party" and G.OVERLAY_MENU == bom_party._box end
+            if open then return "party_lobby" end
+            return nil
+        end
+        if lobby_waiting(bom_match.get_state and bom_match.get_state()) then return "lobby" end
+    end
+    return nil
+end
+
+local function frame()
+    local o = G.OVERLAY_MENU
+    if not (alive(o) and o.UIRoot) then return nil end
+    local R = G.ROOM and G.ROOM.T or {w = 20, h = 11.5}
+    local best, area = nil, 0
+    local queue, qi = {o.UIRoot}, 1
+    while queue[qi] and qi <= 120 do
+        local node = queue[qi]
+        qi = qi + 1
+        local V, c = node.VT, node.config and node.config.colour
+        if node ~= o.UIRoot and V and V.w >= 2 and V.h >= 1.5 and V.w <= R.w * 1.2 and V.h <= R.h * 1.4
+            and type(c) == "table" and (c[4] or 1) > 0.3 and V.w * V.h > area then
+            best, area = V, V.w * V.h
+        end
+        if type(node.children) == "table" then
+            for _, ch in ipairs(node.children) do queue[#queue + 1] = ch end
+        end
+    end
+    return best
+end
+H.frame = frame
+
+local function screen()
+    if bom_emotes and bom_emotes.screen_box then return bom_emotes.screen_box() end
+    local R = G.ROOM and G.ROOM.T or {w = 20, h = 11.5}
+    return 0, 0, R.w, R.h
+end
+
+local function each_node(node, fn)
+    if not node then return end
+    fn(node)
+    if type(node.children) == "table" then
+        for _, ch in pairs(node.children) do each_node(ch, fn) end
+    end
+end
+
+local function over_px(b, x, y, w, h, sx, sy, s)
+    if not (b and b.w and b.h) then return false end
+    local bx, by, bw, bh = sx + b.x / s - H.GAP, sy + b.y / s - H.GAP, b.w / s + 2 * H.GAP, b.h / s + 2 * H.GAP
+    return x < bx + bw and bx < x + w and y < by + bh and by < y + h
+end
+
+local ver_box = {x = 0, y = 0, w = 0, h = 0}
+
+local function on_labels(x, y, w, h, sx, sy)
+    local CL = CORNER_LABELS
+    if not CL then return false end
+    local s = (G.TILESIZE or 20) * (G.TILESCALE or 1)
+    if over_px(CL.status_box, x, y, w, h, sx, sy, s) then return true end
+    local GR = G.SETTINGS and G.SETTINGS.GRAPHICS
+    if GR and GR.show_fps and over_px(CL.fps_box, x, y, w, h, sx, sy, s) then return true end
+    if _G._IS_DESKTOP and G.STAGE == G.STAGES.MAIN_MENU and CL.box and CL.version_text then
+        local ok, vw, vh = pcall(CL.box, CL.version_text(), 1, CL.last_font or love.graphics.getFont())
+        if ok and vw then
+            ver_box.w, ver_box.h = vw, vh + 46
+            ver_box.x, ver_box.y = love.graphics.getWidth() - (CL.MARGIN or 10) - vw, 0
+            if over_px(ver_box, x, y, w, h, sx, sy, s) then return true end
+        end
+    end
+    return false
+end
+
+local function fits(x, y, w, h)
+    local sx, sy, sw, sh = screen()
+    if not (x >= sx + H.PAD and y >= sy + H.PAD and x + w <= sx + sw - H.PAD and y + h <= sy + sh - H.PAD) then return false end
+    return not on_labels(x, y, w, h, sx, sy)
+end
+
+function H.button_spot(kind, w, h)
+    if kind == "pvp_finish" then return nil end
+    local F = frame()
+    if kind == "pvp_ready" or (kind == "away" and not F) then
+        local mb = bom_social and bom_social.S and bom_social.S.match_button
+        local bx0, bx1, by1 = nil, nil, nil
+        local chat = package.loaded["multiplayer.mps_chat"]
+        for _, b in ipairs({mb or false, type(chat) == "table" and chat.run_button or false}) do
+            local V = alive(b) and b.VT
+            if V and V.w > 0.1 then
+                bx0 = min(bx0 or V.x, V.x)
+                bx1, by1 = max(bx1 or V.x + V.w, V.x + V.w), max(by1 or V.y + V.h, V.y + V.h)
+            end
+        end
+        if bx0 then
+            local x, y = (bx0 + bx1) / 2 - w / 2, by1 + H.GAP
+            if fits(x, y, w, h) then return x, y end
+        end
+        local D = G.deck and G.deck.T
+        if D then
+            local x, y = D.x + D.w / 2 - w / 2, D.y - h - H.GAP * 2
+            if fits(x, y, w, h) then return x, y end
+        end
+        return nil
+    end
+    if not F then return nil end
+    local _, sy = screen()
+    local top = max(F.y + 0.1, sy + H.PAD)
+    local bottom = F.y + F.h - h
+    local rx, lx, cx = F.x + F.w + H.GAP, F.x - H.GAP - w, F.x + F.w / 2 - w / 2
+    local y = top
+    while y <= bottom + 1e-6 do
+        if fits(rx, y, w, h) then return rx, y end
+        y = y + 0.25
+    end
+    if fits(cx, F.y + F.h + H.GAP, w, h) then return cx, F.y + F.h + H.GAP end
+    if fits(cx, F.y - h - H.GAP, w, h) then return cx, F.y - h - H.GAP end
+    y = top
+    while y <= bottom + 1e-6 do
+        if fits(lx, y, w, h) then return lx, y end
+        y = y + 0.25
+    end
+    return nil
+end
+
+local function pin(box)
+    box.created_on_pause = true
+    each_node(box.UIRoot, function(n)
+        n.created_on_pause = true
+        if n.config and n.config.object then n.config.object.created_on_pause = true end
+    end)
+end
+
+local function button_size(tall)
+    local touch = UIK.touch()
+    local sc = touch and 0.42 or 0.36
+    if tall then
+        local a, b = L("Play while"), L("you wait")
+        local w = max(touch and 2.2 or 1.9, UIK.text_w(a, sc) + 0.4, UIK.text_w(b, sc) + 0.4)
+        return w, touch and 1.1 or 0.92, sc, {a, b}
+    end
+    local label = L("Play while you wait")
+    local w = max(touch and 3.3 or 2.9, UIK.text_w(label, sc) + 0.5)
+    return w, touch and 0.8 or 0.62, sc, {label}
+end
+
+local function remove_button()
+    if H.btn then pcall(function() H.btn:remove() end) end
+    H.btn = nil
+end
+
+function H.update_button(kind)
+    if H.win or not kind or kind == "lobby" or kind == "party_lobby" or #MG.enabled() == 0 then remove_button() return end
+    local tall = false
+    local w, h, sc, label = button_size(false)
+    local x, y = H.button_spot(kind, w, h)
+    if not x then
+        tall = true
+        w, h, sc, label = button_size(true)
+        x, y = H.button_spot(kind, w, h)
+    end
+    if not x then remove_button() return end
+    if alive(H.btn) and H.btn_tall ~= tall then remove_button() end
+    H.btn_tall = tall
+    if not alive(H.btn) then
+        H.btn = UIBox{
+            definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = {
+                UIK.button{label = label, button = "mg_wait_play", colour = UIK.C.purple, w = w, h = h, scale = sc, id = "mg_wait_play"},
+            }},
+            config = {align = "tli", offset = {x = x, y = y}, major = G.ROOM_ATTACH, bond = "Weak", instance_type = "POPUP"},
+        }
+        pin(H.btn)
+        H.btn:align_to_major()
+        H.btn:hard_set_VT()
+    else
+        H.btn.alignment.offset.x, H.btn.alignment.offset.y = x, y
+        H.btn:align_to_major()
+    end
+    H.btn_kind = kind
+end
+
+local Board
+
+local function board_class()
+    if Board then return Board end
+    Board = Moveable:extend()
+    function Board:init(w, h)
+        Moveable.init(self, 0, 0, w, h)
+r 2 14 %20%20%20%20%20%20%20%20 -
+r 3 21 %20%20%20%20%20%20%20%20 -
+r 7 8 %20%20%20%20%20%20%20%20 -
+r 3 19 %20%20%20%20%20%20%20%20 -
+l 3
+        self.created_on_pause = true
+    end
+    function Board:draw()
+r 2 447 %20%20%20%20%20%20%20%20 -
+r 2 461 %20%20%20%20%20%20%20%20 -
+l 368
+        local ok, err = pcall(H.draw_board, self)
+        if not ok and not H.draw_err then
+            H.draw_err = true
+            print("[Minigames] draw: " .. tostring(err))
+        end
+    end
+    function Board:click()
+        local C, R = G.CURSOR and G.CURSOR.T, G.ROOM and G.ROOM.T
+        if not (C and R) then return end
+        H.tap(C.x - R.x - self.VT.x, C.y - R.y - self.VT.y)
+    end
+    return Board
+end
+
+function H.layout()
+    local touch = UIK.touch()
+    local l = H.lay or {}
+    H.lay = l
+    l.pad = 0.15
+    l.port = UIK.portrait and UIK.portrait() or false
+    if l.port then
+        l.gw, l.gh = 10.6, 5.4
+        l.sw = l.gw
+        l.band = 1.25 + 0.12 + 0.85
+        l.gx = l.pad
+        l.gy = l.pad + l.band + 0.15
+    else
+        l.sw = touch and 3.6 or 3.2
+        l.gw = touch and 11.8 or 10.6
+        l.gh = touch and 5.1 or 5.4
+        l.gx = l.pad + l.sw + 0.15
+        l.gy = l.pad
+    end
+    l.w = l.gx + l.gw + l.pad
+    l.h = l.gy + l.gh + l.pad
+    return l
+end
+
+function H.board_size()
+    local l = H.layout()
+    return l.w, l.h
+end
+
+local function build_ui()
+    local l = H.layout()
+    local touch = UIK.touch()
+    local x, w, gap = l.pad, l.sw, 0.12
+    local bh = touch and 0.85 or 0.7
+    local u = {}
+    H.ui = u
+    u.name = {x = x, y = l.pad, w = w, h = touch and 1.0 or 1.15}
+    u.score = {x = x, y = u.name.y + u.name.h + gap, w = w, h = touch and 1.25 or 1.3}
+    u.best = {x = x, y = u.score.y + u.score.h + gap, w = w, h = touch and 0.7 or 0.75}
+    u.restart = {x = x, y = l.pad + l.gh - bh, w = w, h = bh, label = L("Restart"), colour = G.C.GREEN, scale = touch and 0.48 or 0.42}
+    local aw = (w - gap) / 2
+    u.prev = {x = x, y = u.restart.y - gap - bh, w = aw, h = bh, label = "<", colour = UIK.C.arrow, scale = 0.6}
+    u.next = {x = x + aw + gap, y = u.prev.y, w = aw, h = bh, label = ">", colour = UIK.C.arrow, scale = 0.6}
+    if l.port then
+        local hw, th = (w - gap) / 2, 1.25
+        u.name.w, u.name.h = hw, th
+        u.score.x, u.score.y, u.score.w, u.score.h = x + hw + gap, l.pad, hw, th
+        local y2, bw2, rw = l.pad + th + gap, 3.6, 1.3
+        u.best.y, u.best.w, u.best.h = y2, bw2, bh
+        u.prev.x, u.prev.y, u.prev.w = x + bw2 + gap, y2, rw
+        u.next.x, u.next.y, u.next.w = u.prev.x + rw + gap, y2, rw
+        u.restart.x, u.restart.y = u.next.x + rw + gap, y2
+        u.restart.w = x + w - u.restart.x
+    end
+    u.prev.disabled = #(H.list or {}) < 2
+    u.next.disabled = u.prev.disabled
+    local pw = min(l.gw - 0.8, 7.2)
+    local ph = min(l.gh - 0.6, touch and 4.6 or 4.5)
+    u.card = {x = l.gw / 2 - pw / 2, y = l.gh / 2 - ph / 2, w = pw, h = ph}
+    local cbw, cbh = touch and 3.6 or 3.2, touch and 0.95 or 0.8
+    u.play = {x = l.gw / 2 - cbw / 2, y = u.card.y + ph - cbh - 0.3, w = cbw, h = cbh, label = L("Play"), colour = G.C.GREEN, scale = touch and 0.55 or 0.5}
+    u.name_wrap, u.how_wrap, u.sum_wrap = {}, {}, {}
+    H.pops = H.pops or K.pops(2)
+    return u
+end
+
+local function stop_game(g)
+    if g and g.stop then pcall(g.stop, g) end
+end
+
+local function new_game(def)
+    local l = H.layout()
+    local g = def.new()
+    g.W, g.H = l.gw, l.gh
+    g.rng = K.rng()
+    g.score = g.score or 0
+    if g.start then g:start() end
+    return g
+end
+
+local function fmt(def, v)
+    if def.format then return def.format(v) end
+    return tostring(v)
+end
+
+local function set_disp(v)
+    H.disp = v
+    H.disp_v = math.floor(v + 0.5)
+    H.disp_s = H.def and fmt(H.def, H.disp_v) or tostring(H.disp_v)
+end
+
+function H.set_game(key)
+    local def = MG.def(key)
+    if not def then return end
+    H.cur = key
+    H.def = def
+    stop_game(H.game)
+    stop_game(H.preview)
+    H.game = nil
+    H.phase = "intro"
+    H.phase_t = K.now()
+    H.recorded = false
+    H.new_best = false
+    H.view.name = L(def.name)
+    H.view.index = 1
+    for i, d in ipairs(H.list or {}) do if d.key == key then H.view.index = i end end
+    set_disp(0)
+    H.target = 0
+    local okp, pg = pcall(new_game, def)
+    H.preview = okp and pg or nil
+    local b = MG.best(key)
+    H.best_v = b
+    H.passed = false
+    H.best_s = b and fmt(def, b) or "-"
+    if H.ui then
+        H.ui.prev.disabled = #(H.list or {}) < 2
+        H.ui.next.disabled = H.ui.prev.disabled
+        H.ui.play.label = L("Play")
+    end
+end
+
+function H.start_game()
+    if not H.def then return end
+    if H.phase == "play" and H.game and (H.game.score or 0) > 0 and not H.def.end_only then H.finish() end
+    local ok, g = pcall(new_game, H.def)
+    if not ok then print("[Minigames] start " .. tostring(H.cur) .. ": " .. tostring(g)) return end
+    stop_game(H.game)
+    H.game = g
+    H.preview = nil
+    H.phase = "play"
+    H.phase_t = K.now()
+    H.recorded = false
+    H.new_best = false
+    H.best_v = MG.best(H.cur)
+    H.passed = false
+    K.sh_t, K.fl_t = nil, nil
+    set_disp(g.score or 0)
+    H.target = g.score or 0
+    K.sound("cardSlide1", 1, 0.5)
+end
+
+function H.finish()
+    if H.recorded or not H.game then return end
+    H.recorded = true
+    H.new_best = MG.record(H.cur, H.game.score or 0)
+    local b = MG.best(H.cur)
+    H.best_v = b
+    H.best_s = b and fmt(H.def, b) or "-"
+end
+local finish_game = H.finish
+
+function H.tap(x, y)
+    if not H.win or H.closing then return end
+    local u, l = H.ui, H.lay
+    if not (u and l) then return end
+    local now = K.now()
+    if K.hit(u.restart, x, y, 0.05) then K.press(u.restart) H.start_game() return end
+    if K.hit(u.prev, x, y, 0.05) then if not u.prev.disabled then K.press(u.prev) H.switch(-1) end return end
+    if K.hit(u.next, x, y, 0.05) then if not u.next.disabled then K.press(u.next) H.switch(1) end return end
+    local gx, gy = x - l.gx, y - l.gy
+    if gx < -0.1 or gy < -0.1 or gx > l.gw + 0.1 or gy > l.gh + 0.1 then return end
+    if H.phase == "intro" then
+        K.press(u.play)
+        H.start_game()
+        return
+    end
+    if H.phase == "end" then
+        if now - H.phase_t > 0.5 then K.press(u.play) H.start_game() end
+        return
+    end
+    local g = H.game
+    if g and g.press then
+        local ok, err = pcall(g.press, g, gx, gy)
+        if not ok then print("[Minigames] press: " .. tostring(err)) end
+    end
+end
+
+local area_col = {0, 0, 0, 0.22}
+local box_col = {0, 0, 0, 0.3}
+local veil = {0, 0, 0, 0.45}
+
+local function draw_name(u, def, bx, by, touch)
+    local b = u.name
+    K.panel(bx + b.x, by + b.y, b.w, b.h, def.colour or G.C.RED, 0.12, 1, 0.06)
+    local l1, l2, sc = K.wrap2(L(def.name), touch and 0.55 or 0.5, b.w - 0.3, u.name_wrap)
+    local cx, cy = bx + b.x + b.w / 2, by + b.y + b.h / 2 - 0.03
+    if l2 then
+        K.text(l1, cx, cy - sc * 0.42, sc, G.C.UI.TEXT_LIGHT, "c")
+        K.text(l2, cx, cy + sc * 0.42, sc, G.C.UI.TEXT_LIGHT, "c")
+    else
+        K.text(l1, cx, cy, sc, G.C.UI.TEXT_LIGHT, "c")
+    end
+end
+
+local function draw_score(u, def, bx, by, touch)
+    local b = u.score
+    K.rect(bx + b.x, by + b.y, b.w, b.h, box_col, 0.12)
+    K.text(L(def.score or "Score"), bx + b.x + b.w / 2, by + b.y + 0.26, touch and 0.36 or 0.32, UIK.C.muted, "c")
+    local ix, iy, iw, ih = bx + b.x + 0.12, by + b.y + 0.48, b.w - 0.24, b.h - 0.6
+    K.rect(ix, iy, iw, ih, G.C.BLACK, 0.1, 0.6)
+    local jk = K.jk(b)
+    local sc = (touch and 0.75 or 0.7) * jk
+    local tw = K.text_w(H.disp_s, sc)
+    if tw > iw - 0.2 then sc = sc * (iw - 0.2) / tw end
+    K.text(H.disp_s, ix + iw / 2, iy + ih / 2, sc, G.C.UI.TEXT_LIGHT, "c")
+    local b2 = u.best
+    K.rect(bx + b2.x, by + b2.y, b2.w, b2.h, box_col, 0.12)
+    local ts = touch and 0.38 or 0.34
+    K.text(L("Best"), bx + b2.x + 0.2, by + b2.y + b2.h / 2, ts, UIK.C.muted, "l")
+    local bs = (touch and 0.48 or 0.44) * K.jk(b2)
+    local bw = K.text_w(H.best_s, bs)
+    if bw > b2.w - 1.3 then bs = bs * (b2.w - 1.3) / bw end
+    K.text(H.best_s, bx + b2.x + b2.w - 0.2, by + b2.y + b2.h / 2, bs, G.C.GOLD, "r")
+end
+
+local function draw_card_panel(u, ax, ay, a)
+    local c = u.card
+    K.panel(ax + c.x, ay + c.y, c.w, c.h, G.C.BLACK, 0.15, a, 0.08)
+end
+
+local function draw_intro(u, def, ax, ay, now, touch)
+    local c = u.card
+    local k = K.out_back(min(1, (now - H.phase_t) / 0.3))
+    local cx, top, pw = ax + c.x + c.w / 2, ay + c.y, c.w - 0.6
+    local name = L(def.name)
+    K.text(name, cx, top + 0.62, K.fit(name, touch and 0.9 or 0.85, pw) * k, G.C.GOLD, "c")
+    local l1, l2, hs = K.wrap2(L(def.how or def.desc), touch and 0.46 or 0.42, pw, u.how_wrap)
+    local my = top + (c.h - (u.play.h + 0.3)) / 2 + 0.35
+    if l2 then
+        K.text(l1, cx, my - hs * 0.5, hs, G.C.UI.TEXT_LIGHT, "c")
+        K.text(l2, cx, my + hs * 0.5, hs, G.C.UI.TEXT_LIGHT, "c")
+    else
+        K.text(l1, cx, my, hs, G.C.UI.TEXT_LIGHT, "c")
+    end
+    u.play.label = L("Play")
+    K.button(u.play, 1, ax, ay)
+end
+
+local row_col = {0, 0, 0, 0.35}
+
+local function draw_end(u, def, g, ax, ay, now, touch)
+    local c = u.card
+    local t = now - H.phase_t
+    local k = K.out_back(min(1, t / 0.35))
+    local cx, top, pw = ax + c.x + c.w / 2, ay + c.y, c.w - 0.6
+    local rx, rw = ax + c.x + 0.4, c.w - 0.8
+    local rt = L(g and g.result or "Game over")
+    K.text(rt, cx, top + 0.52, K.fit(rt, touch and 0.8 or 0.75, pw) * k, g and g.result_col or G.C.RED, "c")
+    local ry, rh = top + 0.98, 0.84
+    K.rect(rx, ry, rw, rh, row_col, 0.1)
+    local ls = touch and 0.44 or 0.4
+    K.text(L(def.score or "Score"), rx + 0.25, ry + rh / 2, ls, UIK.C.muted, "l")
+    local vs = (touch and 0.8 or 0.75) * K.out_back(min(1, max(0, t - 0.1) / 0.3))
+    K.text(H.disp_s, rx + rw - 0.25, ry + rh / 2, vs, G.C.UI.TEXT_LIGHT, "r")
+    local by, bh = ry + rh + 0.1, 0.62
+    K.rect(rx, by, rw, bh, row_col, 0.1)
+    if H.new_best then
+        local nk = K.out_back(min(1, max(0, t - 0.3) / 0.3))
+        K.outline(rx, by, rw, bh, G.C.GOLD, 0.1, 0.05, 0.6 + 0.4 * math.sin(now * 5))
+        K.text(L("New best!"), rx + 0.25, by + bh / 2, ls * nk, G.C.GOLD, "l")
+    else
+        K.text(L("Best"), rx + 0.25, by + bh / 2, ls, UIK.C.muted, "l")
+    end
+    K.text(H.best_s, rx + rw - 0.25, by + bh / 2, (touch and 0.52 or 0.48) * K.jk(u.best), G.C.GOLD, "r")
+    if g and g.summary then
+        local s1, s2, ss = K.wrap2(g.summary, touch and 0.38 or 0.35, pw, u.sum_wrap)
+        local sy = (by + bh + ay + u.play.y) / 2
+        if s2 then
+            K.text(s1, cx, sy - ss * 0.42, ss, G.C.UI.TEXT_LIGHT, "c")
+            K.text(s2, cx, sy + ss * 0.42, ss, G.C.UI.TEXT_LIGHT, "c")
+        else
+            K.text(s1, cx, sy, ss, G.C.UI.TEXT_LIGHT, "c")
+        end
+    end
+    local a = min(1, max(0, (t - 0.35) / 0.2))
+    u.play.disabled = t < 0.5
+    u.play.label = L("Play again")
+    K.button(u.play, a, ax, ay)
+end
+
+function H.draw_board(b)
+    local V = b.VT
+    local x0, y0 = V.x, V.y
+    local def, u, l = H.def, H.ui, H.lay
+    if not (def and u and l) then return end
+    local g = H.game or (H.phase == "intro" and H.preview) or nil
+    local touch = UIK.touch()
+    local now = K.now()
+    K.set_cursor(not touch and G.CURSOR and G.ROOM and (G.CURSOR.T.x - G.ROOM.T.x) or nil, G.CURSOR and G.ROOM and (G.CURSOR.T.y - G.ROOM.T.y) or nil)
+    draw_name(u, def, x0, y0, touch)
+    draw_score(u, def, x0, y0, touch)
+    K.button(u.prev, 1, x0, y0)
+    K.button(u.next, 1, x0, y0)
+    K.button(u.restart, 1, x0, y0)
+    local ax, ay = x0 + l.gx, y0 + l.gy
+    K.rect(ax, ay, l.gw, l.gh, area_col, 0.12)
+    local sx, sy = K.shake_off()
+    if g and g.draw then g:draw(ax + sx, ay + sy) end
+    K.draw_flash(ax, ay, l.gw, l.gh)
+    if H.phase == "intro" or H.phase == "end" then
+        local t = now - H.phase_t
+        local a = H.phase == "end" and min(1, t / 0.25) or 1
+        K.rect(ax, ay, l.gw, l.gh, veil, 0.12, a)
+        draw_card_panel(u, ax, ay, a)
+        if H.phase == "intro" then draw_intro(u, def, ax, ay, now, touch) else draw_end(u, def, g, ax, ay, now, touch) end
+    end
+    if H.pops then K.draw_pops(H.pops, x0, y0) end
+    K.set_cursor(nil, nil)
+end
+
+local function window_def()
+    local bw, bh = H.board_size()
+    build_ui()
+    H.board = board_class()(bw, bh)
+    local keep = UIK._win
+    local body = function()
+        return {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+            {n = G.UIT.O, config = {object = H.board, can_collide = true}},
+        }}
+    end
+    local def = UIK.window{id = "mg_window", title = H.mode == "wait" and L("PLAY WHILE YOU WAIT") or L("MINIGAMES"), compact = true, w = bw + 0.3,
+        tabs = {{key = "game", label = "", build = body}}, back_func = "mg_close"}
+    UIK._win = keep
+    local function rename(n)
+        if type(n) ~= "table" then return end
+        if n.config and n.config.id == "overlay_menu_back_button" then n.config.id = "mg_back_button" end
+        for _, ch in ipairs(n.nodes or {}) do rename(ch) end
+    end
+    rename(def)
+    return def
+end
+
+function H.open(key, mode)
+    if H.win or H.closing then return end
+    mode = mode or "menu"
+    if mode == "wait" and not H.wait_kind() then return end
+    if bom_playback and bom_playback.active and bom_playback.active() then return end
+    H.mode = mode
+    H.list = MG.enabled()
+    if mode == "menu" and MG.def(key) and not MG.on(key) then table.insert(H.list, 1, MG.def(key)) end
+    if #H.list == 0 then return end
+    key = key or H.last or H.list[1].key
+    if not MG.def(key) then key = H.list[1].key end
+    H.set_game(key)
+    remove_button()
+    H.stage = G.STAGE
+    H.wait_at_open = mode == "wait" and H.wait_kind() or nil
+    local ok, def = pcall(window_def)
+    if not ok then print("[Minigames] window: " .. tostring(def)) return end
+    H.win = UIBox{definition = def, config = {align = "cm", offset = {x = 0, y = 10}, major = G.ROOM_ATTACH, bond = "Weak", instance_type = "POPUP"}}
+    pin(H.win)
+    H.win.alignment.offset.y = 0
+    H.win:align_to_major()
+    H.closing = nil
+r 17 360 %20%20%20%20 -
+l 140
+    K.sound("whoosh1", 1.1, 0.5)
+end
+
+local function no_input(box)
+    each_node(box.UIRoot, function(n)
+        if n.states then n.states.collide.can = false end
+        if n.config and n.config.object and n.config.object.states then n.config.object.states.collide.can = false end
+    end)
+    box.states.collide.can = false
+end
+
+function H.close(reason)
+    if not H.win or H.closing then return end
+    if H.phase == "play" and H.game and (H.game.score or 0) > 0 and not (H.def and H.def.end_only) then finish_game() end
+    H.last = H.cur
+    H.close_reason = reason
+    pcall(no_input, H.win)
+    H.win.alignment.offset.y = 15
+    H.win:align_to_major()
+    H.closing = K.now() + 0.35
+    if reason ~= "ended" then K.sound("cancel", 1, 0.4) end
+end
+
+function H.drop()
+    if H.win then pcall(function() H.win:remove() end) end
+    stop_game(H.game)
+    H.win, H.board, H.game, H.closing, H.def, H.preview = nil, nil, nil, nil, nil, nil
+    K.clear()
+    if MG.pick and MG.pick.back then
+        local ok, err = pcall(MG.pick.back, H.last)
+        if not ok then print("[Minigames] pick back: " .. tostring(err)) end
+    end
+end
+
+function H.switch(dir)
+    local list = H.list or {}
+    if #list < 2 or not H.win then return end
+    if H.phase == "play" and H.game and (H.game.score or 0) > 0 and not (H.def and H.def.end_only) then finish_game() end
+    local i = ((H.view.index or 1) - 1 + dir) % #list + 1
+    H.set_game(list[i].key)
+    K.sound("paper1", 1, 0.5)
+end
+
+function H.key(key)
+    if key == "escape" then H.close("back") return end
+    if key == "left" or key == "right" then
+        if H.phase ~= "play" then H.switch(key == "left" and -1 or 1) return end
+    end
+    if key == "r" then if H.ui then K.press(H.ui.restart) end H.start_game() return end
+    if (key == "space" or key == "return") and H.phase ~= "play" then
+        if H.phase == "end" and K.now() - H.phase_t <= 0.5 then return end
+        if H.ui then K.press(H.ui.play) end
+        H.start_game()
+        return
+    end
+    local g = H.game
+    if H.phase == "play" and g and g.key then pcall(g.key, g, key) end
+end
+
+function H.pointer()
+    local b, l = H.board, H.lay
+    local C, R = G.CURSOR and G.CURSOR.T, G.ROOM and G.ROOM.T
+    if not (b and b.VT and l and C and R) then return nil end
+    return C.x - R.x - b.VT.x - l.gx, C.y - R.y - b.VT.y - l.gy
+end
+
+function H.drag_tick(g)
+    local CT, ds = G.CONTROLLER, rawget(_G, "DRAG_SELECT")
+    local on = not (G.SETTINGS and G.SETTINGS.drag_select == false)
+    local x, y = H.pointer()
+    local down = on and x ~= nil and ((CT and CT.is_cursor_down) or (ds and ds._rclick_down)) and true or false
+    g:drag(x, y, down)
+end
+
+function H.tick(dt)
+    local now = K.now()
+    if H.win then
+        if H.closing then
+            if now >= H.closing then H.drop() end
+        elseif H.win.REMOVED or G.STAGE ~= H.stage then
+            H.drop()
+        elseif H.mode == "wait" and now >= H.next_check and not H.wait_kind() then
+            H.close("ended")
+        elseif H.phase == "play" and H.game then
+            local g = H.game
+            if g.drag then
+                local ok, err = pcall(H.drag_tick, g)
+                if not ok and not H.drag_err then H.drag_err = true print("[Minigames] drag: " .. tostring(err)) end
+            end
+            if g.update then
+                local ok, err = pcall(g.update, g, dt)
+                if not ok then print("[Minigames] update: " .. tostring(err)) g.over = true end
+            end
+            if g.over then
+                finish_game()
+                H.phase = "end"
+                H.phase_t = now
+                if H.new_best then
+                    K.sound("win", 1, 0.5)
+                    K.flash(G.C.GOLD, 0.3)
+                    K.shake(0.06)
+                    if H.ui then K.juice(H.ui.best, 0.6) end
+                else
+                    K.sound(g.end_sound or "cancel", g.end_sound and 1 or 0.9, 0.6)
+                end
+            end
+        end
+        local g = H.game
+        if g and H.ui and not H.closing then
+            local s = g.score or 0
+            if s ~= H.target then
+                if s > H.target then K.juice(H.ui.score, 0.35) end
+                H.target = s
+                if H.phase == "play" and not H.passed and not (H.def and H.def.end_only) and H.best_v and H.best_v > 0 and s > H.best_v then
+                    H.passed = true
+                    K.juice(H.ui.best, 0.6)
+                    K.sound("highlight1", 1, 0.5)
+                    if H.pops and H.lay then K.pop(H.pops, L("New best!"), H.lay.gx + H.lay.gw / 2, H.lay.gy + (g.best_y or 0.45), G.C.GOLD, 0.6) end
+                end
+            end
+            if H.disp ~= s then
+                local d = H.disp + (s - H.disp) * min(1, dt * 10)
+                if math.abs(s - d) < 0.5 then d = s end
+                if math.floor(d + 0.5) ~= H.disp_v then set_disp(d) else H.disp = d end
+            end
+        end
+    end
+    if now >= H.next_check then
+        H.next_check = now + H.CHECK_EVERY
+        local ok, kind = pcall(H.wait_kind)
+        local ok2, err = pcall(H.update_button, ok and kind or nil)
+        if not ok2 and not H.btn_err then H.btn_err = true print("[Minigames] button: " .. tostring(err)) end
+    end
+end
+
+function H.install()
+    if H.installed then return end
+    H.installed = true
+    local press, release = Controller.key_press, Controller.key_release
+    H.ate = {}
+r 23 934 %20%20%20%20 -
+l 11
+        if H.win and not H.closing then H.key(key) return end
+        if not H.win and MG.pick and MG.pick.key then
+            local ok, used = pcall(MG.pick.key, key)
+            if ok and used then
+                H.ate[key] = true
+                if MG.pick.sync then pcall(MG.pick.sync) end
+                return
+            end
+        end
+        return press(self, key)
+    end
+r 23 939 %20%20%20%20 -
+l 48
+        if H.win and not H.closing then return end
+        if H.ate[key] then H.ate[key] = nil return end
+        return release(self, key)
+    end
+end
+
+function MG.wants_key(key)
+    if H.win and not H.closing then return true end
+    return MG.pick and MG.pick.wants and MG.pick.wants(key) or false
+end
+
+function MG.wait_row()
+    if not MG.available() or #MG.enabled() == 0 then return nil end
+    if bom_playback and bom_playback.active and bom_playback.active() then return nil end
+    local touch = UIK.touch()
+    local sc = touch and 0.42 or 0.36
+    local label = L("Play while you wait")
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+        UIK.button{label = label, button = "mg_wait_play", colour = UIK.C.purple, w = max(touch and 3.3 or 2.9, UIK.text_w(label, sc) + 0.5), h = touch and 0.8 or 0.62, scale = sc, id = "mg_wait_row"},
+    }}
+end
+
+function MG.end_wait()
+    if H.win and H.mode == "wait" and not H.closing then H.close("ended") end
+    remove_button()
+end
+
+function MG.lobby_wait(st)
+    if not MG.available() or #MG.enabled() == 0 then return false end
+    if st == true then return true end
+    return lobby_waiting(st)
+end
+
+G.FUNCS.mg_close = function() H.close("back") end
+G.FUNCS.mg_prev = function() H.switch(-1) end
+G.FUNCS.mg_next = function() H.switch(1) end
+G.FUNCS.mg_wait_play = function() H.open(H.last, "wait") end
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Play while you wait"] = "Jouer en attendant", ["Play while"] = "Jouer en", ["you wait"] = "attendant", ["PLAY WHILE YOU WAIT"] = "JOUER EN ATTENDANT", ["Tap to start"] = "Touchez pour commencer",
+            ["Tap to play again"] = "Touchez pour rejouer", ["Restart"] = "Recommencer", ["Best"] = "Record", ["Play again"] = "Rejouer", ["New best!"] = "Nouveau record !", ["Game over"] = "Partie terminée", ["Score"] = "Score", ["Chips"] = "Jetons"},
+        es = {["Play while you wait"] = "Jugar mientras esperas", ["Play while"] = "Jugar mientras", ["you wait"] = "esperas", ["PLAY WHILE YOU WAIT"] = "JUGAR MIENTRAS ESPERAS", ["Tap to start"] = "Toca para empezar",
+            ["Tap to play again"] = "Toca para jugar otra vez", ["Restart"] = "Reiniciar", ["Best"] = "Récord", ["Play again"] = "Jugar otra vez", ["New best!"] = "¡Nuevo récord!", ["Game over"] = "Fin de la partida", ["Score"] = "Puntos", ["Chips"] = "Fichas"},
+    }
+end
+
+return H
+end

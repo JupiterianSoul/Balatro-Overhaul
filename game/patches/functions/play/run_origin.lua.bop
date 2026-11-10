@@ -1,0 +1,380 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 150
+RunOrigin = RunOrigin or {}
+local RO = RunOrigin
+
+RO.V = 1
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function copy(t) return type(t) == 'table' and copy_table(t) or t end
+
+local function playing_back()
+  local pb = rawget(_G, 'bom_playback')
+  return pb and pb.active and pb.active() or false
+end
+
+local function back_key(g)
+  local c = g.selected_back and g.selected_back.effect and g.selected_back.effect.center
+  return c and c.key or nil
+end
+
+local function name_of(set, key, fallback)
+  local ok, n = pcall(localize, {type = 'name_text', set = set, key = key})
+  if ok and type(n) == 'string' and n ~= '' and n ~= 'ERROR' then return n end
+  return fallback or tostring(key)
+end
+
+local function find_challenge(id)
+  for _, c in ipairs(G.CHALLENGES or {}) do
+    if c.id == id then return c end
+  end
+end
+
+function RO.derive(g, tag)
+  if type(g) ~= 'table' or g.multiplayer then return nil end
+  local o = {v = RO.V, deck = back_key(g) or 'b_red', stake = tonumber(g.stake) or 1,
+    seed = g.pseudorandom and g.pseudorandom.seed or nil, seeded = (g.seeded and not g.cheats_seeded) and true or nil, tag = tag,
+    cheats = g.cheats_allowed and true or nil}
+  if type(g.bo_practice) == 'table' then
+    o.mode = 'practice'
+    o.practice = copy(g.bo_practice)
+    o.practice.set, o.practice.done, o.practice.won, o.practice.score, o.practice.hands = nil, nil, nil, nil, nil
+  elseif type(g.speedrun) == 'table' and g.speedrun.cat then
+    o.mode = 'speedrun'
+    o.speedrun = {cat = g.speedrun.cat, deck = g.speedrun.deck, stake = g.speedrun.stake, seed_type = g.speedrun.seed_type}
+  elseif tag == 'bot' then
+    o.mode = 'bot'
+  elseif g.daily and type(g.daily_rules) == 'table' then
+    o.mode = 'daily'
+    o.daily = copy(g.daily_rules)
+  elseif g.challenge then
+    o.mode = 'challenge'
+    o.challenge = tostring(g.challenge)
+  elseif g.run_rules_source == 'custom' and type(g.run_rules) == 'table' then
+    o.mode = tag == 'random' and 'random_custom' or 'custom'
+    o.rules = copy(g.run_rules)
+  elseif tag == 'random' then
+    o.mode = 'random'
+  else
+    o.mode = o.seeded and 'seeded' or 'normal'
+  end
+  return o
+end
+
+function RO.current()
+  local g = G and G.GAME
+  if type(g) ~= 'table' or g.multiplayer then return nil end
+  if type(g.bo_origin) == 'table' and g.bo_origin.mode then return g.bo_origin end
+  return RO.derive(g)
+end
+
+function RO.choices(o)
+  if type(o) ~= 'table' then return {} end
+  if o.mode == 'speedrun' then return {{key = 'new', label = L("New attempt")}} end
+  if o.mode == 'daily' then return {{key = 'same', label = L("Practice again")}} end
+  if o.mode == 'practice' then return {{key = 'same', label = L("Try again")}} end
+  return {{key = 'same', label = L("Same seed")}, {key = 'new', label = L("New seed")}}
+end
+
+function RO.mode_label(o)
+  local m = o and o.mode
+  if m == 'challenge' then
+    local ok, n = pcall(localize, o.challenge, 'challenge_names')
+    if ok and type(n) == 'string' and n ~= '' and n ~= 'ERROR' then return n end
+    return L("Challenge")
+  end
+  if m == 'speedrun' then
+    local S = rawget(_G, 'Speedrun')
+    local c = S and S.cat and o.speedrun and S.cat(o.speedrun.cat)
+    return L("Speedrun") .. (c and c.label and (" " .. L(c.label)) or "")
+  end
+  if m == 'practice' then
+    local b = o.practice and o.practice.boss
+    return L("Boss Practice") .. (b and (", " .. name_of('Blind', b, b)) or "")
+  end
+  local labels = {normal = "Normal run", seeded = "Seeded run", custom = "Custom Run", random = "Random run",
+    random_custom = "Custom random", daily = "Daily run", bot = "Bot-latro"}
+  if o.cheats and (m == 'normal' or m == 'seeded') then
+    return L(m == 'seeded' and "Seeded run with cheats" or "Run with cheats")
+  end
+  return L(labels[m] or "Normal run")
+end
+
+function RO.setup_line(o)
+  if type(o) ~= 'table' then return "" end
+  local stake = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and G.P_CENTER_POOLS.Stake[o.stake]
+  local deck = name_of('Back', o.deck, G.P_CENTERS[o.deck] and G.P_CENTERS[o.deck].name)
+  if o.mode == 'challenge' then return deck end
+  return deck .. ", " .. (stake and name_of('Stake', stake.key, stake.name) or tostring(o.stake))
+end
+
+function RO.note(o)
+  if type(o) ~= 'table' then return nil end
+  if o.mode == 'daily' then return L("Restarts as practice, it does not score") end
+  if o.mode == 'speedrun' then return L("A new attempt, the timer starts again") end
+  if o.mode == 'practice' then return nil end
+  if not o.seeded then return L("Same seed makes it a seeded run") end
+  return nil
+end
+
+local function set_back(center)
+  if G.GAME.viewed_back then G.GAME.viewed_back:change_to(center) else G.GAME.viewed_back = Back(center) end
+end
+
+local function reset_streak()
+  local g = G.GAME
+  local p = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+  if g and p and p.high_scores and p.high_scores.current_streak and not g.won and not g.seeded and not g.challenge then
+    p.high_scores.current_streak.amt = 0
+  end
+  pcall(function() G:save_settings() end)
+end
+
+local function start_bot(o, seed)
+  local B = rawget(_G, 'BOT')
+  local U = B and B.ui
+  local cfg = B and B.config
+  local v = cfg and (cfg.values or (cfg.load and cfg.load()))
+  if not (U and U.launch_run and type(v) == 'table') then return false end
+  local keep = {v.deck, v.stake, v.seed}
+  v.deck, v.stake, v.seed = o.deck, o.stake, seed or ""
+  local ok, err = pcall(U.launch_run)
+  v.deck, v.stake, v.seed = keep[1], keep[2], keep[3]
+  if not ok then print("[RunOrigin] bot: " .. tostring(err)) end
+  return ok
+end
+
+function RO.start(o, same)
+  if type(o) ~= 'table' or not o.mode then return false end
+  local back = G.P_CENTERS[o.deck]
+  if not back then return false end
+  local seed = same and o.seed or nil
+  reset_streak()
+r 4 1825 %20%20 -
+l 222
+  local custom = o.mode == 'custom' or o.mode == 'random_custom'
+  local RR = rawget(_G, 'RunRules')
+  if RR and not custom then RR.disarm() end
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = o.mode == 'custom' end
+  if o.mode == 'speedrun' then
+    local S = rawget(_G, 'Speedrun')
+    local s = o.speedrun or {}
+    if not (S and S.start) then return false end
+    S.start{cat = s.cat, deck = s.deck or o.deck, stake = s.stake or o.stake, seed = s.seed_type}
+    return true
+  end
+  if o.mode == 'practice' then
+    local BP = rawget(_G, 'BO_PRACTICE')
+    local p = o.practice or {}
+    if not BP then return false end
+    if BP.restart then return BP.restart(copy(p)) ~= false end
+    if BP.start then BP.start(p.boss, p.deck or o.deck) return true end
+    return false
+  end
+  if o.mode == 'bot' then
+    set_back(back)
+    return start_bot(o, seed)
+  end
+  if o.mode == 'daily' and type(o.daily) == 'table' then
+    local R = copy(o.daily)
+    G.FUNCS.start_run(nil, {stake = R.stake or o.stake, seed = R.seed or o.seed, back = G.P_CENTERS[R.deck] or back, bo_daily = R})
+    return true
+  end
+  set_back(back)
+  local args = {stake = o.stake, seed = seed, back = back, bo_origin_tag = o.tag, cheats = o.cheats}
+  if o.mode == 'challenge' then
+    local ch = find_challenge(o.challenge)
+    if not ch then return false end
+    args.challenge, args.back = ch, nil
+    G.FUNCS.start_run(nil, args)
+    return true
+  end
+  if custom and RR and RR.start then
+    args.rules_source = 'custom'
+    RR.start(copy(o.rules or {}), args)
+    return true
+  end
+  G.FUNCS.start_run(nil, args)
+  return true
+end
+
+function RO.again(same)
+  local o = RO.ended or RO.current()
+  RO.ended = nil
+  if not o then
+    if G.FUNCS.replay_run then return G.FUNCS.replay_run() end
+    return
+  end
+  RO.start(o, same)
+end
+
+G.FUNCS.bo_origin_same = function() RO.again(true) end
+G.FUNCS.bo_origin_new = function() RO.again(false) end
+
+local function choice_button(c, w, h)
+  local fn = c.key == 'same' and 'bo_origin_same' or 'bo_origin_new'
+  return {n = G.UIT.C, config = {id = fn, align = 'cm', minw = w, minh = h, padding = 0.1, r = 0.1, hover = true, colour = G.C.BLUE, button = fn, shadow = true, focus_args = {nav = 'wide'}}, nodes = {
+    {n = G.UIT.R, config = {align = 'cm', padding = 0, no_fill = true, maxw = w - 0.2}, nodes = {
+      {n = G.UIT.T, config = {text = c.label, scale = 0.5, colour = G.C.UI.TEXT_LIGHT}},
+    }},
+  }}
+end
+
+local function lose_nodes(list)
+  if #list == 1 then
+    return {{n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {choice_button(list[1], 5, nil)}}}
+  end
+  local row = {}
+  for i, c in ipairs(list) do
+    if i > 1 then row[#row + 1] = {n = G.UIT.C, config = {minw = 0.2}, nodes = {}} end
+    row[#row + 1] = choice_button(c, (5 - 0.2 * (#list - 1)) / #list, nil)
+  end
+  return {{n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = row}}
+end
+
+local WIN_H, WIN_GAP = 0.75, 0.15
+
+local function win_nodes(list)
+  local out = {}
+  for i, c in ipairs(list) do
+    local fn = c.key == 'same' and 'bo_origin_same' or 'bo_origin_new'
+    if i > 1 then out[#out + 1] = {n = G.UIT.R, config = {align = 'cm', minh = WIN_GAP, minw = 0.1}, nodes = {}} end
+    out[#out + 1] = UIBox_button({id = fn, button = fn, label = {c.label}, colour = G.C.BLUE, minw = 2.5, maxw = 2.5, minh = WIN_H, focus_args = {nav = 'wide'}})
+  end
+  return out
+end
+
+local function tighten(nodes)
+  for _, ch in ipairs(nodes) do
+    local c = ch.config or {}
+    local inner = type(ch.nodes) == 'table' and ch.nodes[1]
+    if type(inner) == 'table' and inner.config and inner.config.button and inner.config.minh == 1 then
+      inner.config.minh = WIN_H
+    elseif c.minh == 0.2 and type(ch.nodes) == 'table' and #ch.nodes == 0 then
+      c.minh = WIN_GAP
+    end
+  end
+end
+
+local function is_replay(node)
+  if type(node) ~= 'table' then return false end
+  if node.config and node.config.button == 'replay_run' then return true end
+  local inner = type(node.nodes) == 'table' and node.nodes[1]
+  return type(inner) == 'table' and inner.config and inner.config.button == 'replay_run' or false
+end
+
+function RO.patch_end(def, win)
+  local o = RO.current()
+  if not o or type(def) ~= 'table' then return def end
+  RO.ended = copy(o)
+  local list = RO.choices(o)
+  local function walk(node, depth)
+    if type(node) ~= 'table' or type(node.nodes) ~= 'table' or depth > 30 then return false end
+    local n = table.maxn(node.nodes)
+    for i = 1, n do
+      local ch = node.nodes[i]
+      if is_replay(ch) then
+        local out = {}
+        for j = 1, n do
+          if j == i then
+            for _, x in ipairs(win and win_nodes(list) or lose_nodes(list)) do out[#out + 1] = x end
+          elseif node.nodes[j] ~= nil then
+            out[#out + 1] = node.nodes[j]
+          end
+        end
+        node.nodes = out
+        if win and #list > 1 then tighten(out) end
+        return true
+      end
+      if walk(ch, depth + 1) then return true end
+    end
+    return false
+  end
+  walk(def, 0)
+  return def
+end
+
+if create_UIBox_game_over and not RO._over_wrapped then
+  RO._over_wrapped = true
+  local base = create_UIBox_game_over
+  create_UIBox_game_over = function(...)
+    local def = base(...)
+    local ok, r = pcall(RO.patch_end, def, false)
+    if ok and r then return r end
+    if not ok then print("[RunOrigin] game over: " .. tostring(r)) end
+    return def
+  end
+end
+
+if create_UIBox_win and not RO._win_wrapped then
+  RO._win_wrapped = true
+  local base = create_UIBox_win
+  create_UIBox_win = function(...)
+    local def = base(...)
+    local ok, r = pcall(RO.patch_end, def, true)
+    if ok and r then return r end
+    if not ok then print("[RunOrigin] win: " .. tostring(r)) end
+    return def
+  end
+end
+
+if Game and Game.start_run and not RO._run_wrapped then
+  RO._run_wrapped = true
+  local orig = Game.start_run
+  Game.start_run = function(self, args, ...)
+    local fresh = not (type(args) == 'table' and (args.savetext or args.mp_start))
+    local tag = type(args) == 'table' and args.bo_origin_tag or nil
+    local B = rawget(_G, 'BOT')
+    local bot = B and B.ui and B.ui.solo and true or false
+    local r = {orig(self, args, ...)}
+    if fresh then
+      local ok, err = pcall(function()
+        local g = G.GAME
+        if type(g) == 'table' and not g.multiplayer and not playing_back() then
+          g.bo_origin = RO.derive(g, bot and 'bot' or tag)
+        end
+      end)
+      if not ok then print("[RunOrigin] record: " .. tostring(err)) end
+    end
+    return unpack(r)
+  end
+end
+
+if G and G.FUNCS and G.FUNCS.start_setup_run and not RO._setup_wrapped then
+  RO._setup_wrapped = true
+  local base = G.FUNCS.start_setup_run
+  G.FUNCS.start_setup_run = function(e, ...)
+    if e == nil and G.forced_stake ~= nil and G.STAGE == G.STAGES.RUN and G.SETTINGS.current_setup == 'New Run' then
+      local o = RO.current()
+      if o then
+        local FL = rawget(_G, 'FairLock')
+        if FL and FL.refuse and FL.refuse('quick_restart') then return end
+        if RO.start(o, (G.GAME.seeded and not G.GAME.cheats_seeded) and true or false) then return end
+      end
+    end
+    return base(e, ...)
+  end
+end
+
+mod_loc_register{
+  fr = {
+    ["Normal run"] = "Partie normale", ["Seeded run"] = "Partie avec seed", ["Run with cheats"] = "Partie avec triches", ["Seeded run with cheats"] = "Partie avec seed et triches", ["Daily run"] = "Partie du jour",
+    ["New attempt"] = "Nouvel essai", ["Practice again"] = "Rejouer en entraînement", ["Try again"] = "Réessayer",
+    ["Restarts as practice, it does not score"] = "Reprend en entraînement, sans score",
+    ["A new attempt, the timer starts again"] = "Un nouvel essai, le chrono repart",
+    ["Same seed"] = "Même seed", ["New seed"] = "Nouvelle seed",
+  },
+  es = {
+    ["Normal run"] = "Partida normal", ["Seeded run"] = "Partida con código", ["Run with cheats"] = "Partida con trucos", ["Seeded run with cheats"] = "Partida con código y trucos", ["Daily run"] = "Partida diaria",
+    ["New attempt"] = "Nuevo intento", ["Practice again"] = "Practicar otra vez", ["Try again"] = "Reintentar",
+    ["Restarts as practice, it does not score"] = "Vuelve como práctica, no puntúa",
+    ["A new attempt, the timer starts again"] = "Un nuevo intento, el cronómetro vuelve a empezar",
+    ["Same seed"] = "Mismo código", ["New seed"] = "Nuevo código",
+  },
+}
+
+return RO
+end

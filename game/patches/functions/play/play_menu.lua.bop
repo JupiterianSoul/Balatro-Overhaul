@@ -1,0 +1,1071 @@
+BOP 2
+eol lf
+final 1
+base 0
+l 849
+PlayMenu = PlayMenu or {}
+local PM = PlayMenu
+
+PM.ENABLED = true
+PM.sel = PM.sel or {}
+PM.page = PM.page or {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() or false end
+
+local function profile()
+  return (G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]) or {}
+end
+
+local function name_of(set, key, fallback)
+  local ok, n = pcall(localize, {type = 'name_text', set = set, key = key})
+  if ok and type(n) == 'string' and n ~= '' and n ~= 'ERROR' then return n end
+  return fallback or tostring(key)
+end
+
+local function T(text, scale, colour, shadow)
+  return {n = G.UIT.T, config = {text = tostring(text or ''), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = shadow ~= false}}
+end
+
+local function C(cfg, nodes)
+  cfg.align = cfg.align or 'cm'
+  return {n = G.UIT.C, config = cfg, nodes = nodes or {}}
+end
+
+local function R(cfg, nodes)
+  cfg.align = cfg.align or 'cm'
+  return {n = G.UIT.R, config = cfg, nodes = nodes or {}}
+end
+
+local function pack(...)
+  local out = {}
+  for i = 1, select('#', ...) do
+    local v = select(i, ...)
+    if v then out[#out + 1] = v end
+  end
+  return out
+end
+
+local function O(object) return {n = G.UIT.O, config = {object = object}} end
+local function hgap(w) return C({minw = w or 0.15, minh = 0.05}) end
+local function vgap(h) return R({minh = h or 0.1, minw = 0.05}) end
+
+local function wrap(text, scale, w)
+  local tw = UIK and UIK.text_w
+  text = tostring(text or '')
+  if not tw or tw(text, scale) <= w then return {text} end
+  local out, cur = {}, ''
+  for word in text:gmatch('%S+') do
+    local nxt = cur == '' and word or (cur .. ' ' .. word)
+    if cur ~= '' and tw(nxt, scale) > w then
+      out[#out + 1] = cur
+      cur = word
+    else
+      cur = nxt
+    end
+  end
+  if cur ~= '' then out[#out + 1] = cur end
+  return out
+end
+
+local function line(text, scale, colour, w, align)
+  return R({align = align or 'cm', minw = w}, {C({align = align or 'cm', maxw = w and (w - 0.1) or nil}, {T(text, scale, colour)})})
+end
+
+function PM.sizes()
+  local t = touch()
+  local cw, ch = 1.85, 1.55
+  local rail = cw * 2 + 0.12
+  local pw = UIK.W - rail - 0.2
+  local ph = UIK.H - 0.1
+  local th = t and 0.62 or 0.56
+  local bar = (t and 0.9 or 0.78) + 0.24
+  if UIK.portrait() then
+    cw, ch = (UIK.W - 3 * 0.12) / 4, 1.45
+    local rh = 2 * ch + 0.1
+    pw, ph = UIK.W, UIK.H - rh - 0.2
+    return {t = t, port = true, cw = cw, ch = ch, rail = UIK.W, rh = rh, pw = pw, ph = ph, iw = pw - 0.3, th = th, bar = bar, bh = ph - 0.2 - th - bar,
+      s = t and 0.36 or 0.33, small = t and 0.3 or 0.27, big = t and 0.46 or 0.42}
+  end
+  return {t = t, cw = cw, ch = ch, rail = rail, pw = pw, ph = ph, iw = pw - 0.3, th = th, bar = bar, bh = ph - 0.2 - th - bar,
+    s = t and 0.36 or 0.33, small = t and 0.3 or 0.27, big = t and 0.46 or 0.42}
+end
+
+local function saved()
+  local ok, yes = pcall(G.FUNCS.can_continue, {config = {func = true}})
+  if not (ok and yes) then return nil end
+  local s = G.SAVED_GAME
+  if type(s) == 'table' and s.GAME and s.BACK then return s end
+  return nil
+end
+
+local function can_continue()
+  return G.STAGE == G.STAGES.MAIN_MENU and saved() ~= nil
+end
+
+local function back_center(name_or_key)
+  if G.P_CENTERS[name_or_key] then return G.P_CENTERS[name_or_key] end
+  for _, v in ipairs(G.P_CENTER_POOLS.Back or {}) do
+    if v.name == name_or_key then return v end
+  end
+  return G.P_CENTERS.b_red
+end
+
+local function deck_sprite(center, w)
+  local atlas = G.ASSET_ATLAS[center.atlas or 'centers'] or G.ASSET_ATLAS.centers
+  local s = Sprite(0, 0, w, w * G.CARD_H / G.CARD_W, atlas, center.pos or {x = 0, y = 0})
+  s.states.drag.can = false
+  return s
+end
+
+local function coated(s)
+  local A = rawget(_G, 'Tavern') and Tavern.apply
+  return A and A.coat and A.coat(s) or s
+end
+
+local function card_sprite(key, w)
+  local c = G.P_CENTERS[key]
+  local atlas = c and G.ASSET_ATLAS[c.atlas or 'Joker'] or G.ASSET_ATLAS.Joker
+  local s = Sprite(0, 0, w, w * G.CARD_H / G.CARD_W, atlas, (c and c.pos) or {x = 0, y = 0})
+  s.states.drag.can = false
+  return s
+end
+
+local function chip_sprite(key, w)
+  local b = G.P_BLINDS[key] or G.P_BLINDS.bl_small
+  local s = AnimatedSprite(0, 0, w, w, G.ANIMATION_ATLAS[b.atlas or 'blind_chips'] or G.ANIMATION_ATLAS.blind_chips, b.pos)
+  s:define_draw_steps({{shader = 'dissolve', shadow_height = 0.05}, {shader = 'dissolve'}})
+  return s
+end
+
+local function stake_chip(i, w)
+  local ok, s = pcall(get_stake_sprite, i, w)
+  return ok and s or nil
+end
+
+local function stake_label(i)
+  local c = G.P_CENTER_POOLS.Stake[i]
+  return c and name_of('Stake', c.key, c.name) or tostring(i)
+end
+
+local function tile(label, value, w, colour, z)
+  return C({minw = w, minh = z.t and 0.86 or 0.82, r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.04}, {
+    R({minw = w - 0.1}, {C({maxw = w - 0.2}, {T(label, z.small, UIK.C.muted, false)})}),
+    R({minw = w - 0.1}, {C({maxw = w - 0.2}, {T(value, z.big, colour)})}),
+  })
+end
+
+local function strip(label, keys, slots, size, w, editions)
+  local cw, chh = G.CARD_W * size, G.CARD_H * size
+  local inner
+  if #keys > 0 then
+    local area = CardArea(0, 0, w, chh, {card_limit = math.max(1, slots, #keys), card_w = cw, type = 'title_2', highlight_limit = 0})
+    for i, k in ipairs(keys) do
+      if G.P_CENTERS[k] then
+        local c = Card(0, 0, cw, chh, nil, G.P_CENTERS[k], {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true})
+        if editions and type(editions[i]) == 'table' then pcall(c.set_edition, c, editions[i], true, true) end
+        area:emplace(c)
+      end
+    end
+    inner = O(area)
+  else
+    inner = T(localize('k_none'), 0.34, G.C.UI.TEXT_INACTIVE)
+  end
+  return C({padding = 0.05, r = 0.1, colour = G.C.L_BLACK}, {
+    {n = G.UIT.T, config = {text = label, scale = 0.3, colour = G.C.UI.TEXT_LIGHT, vert = true, shadow = true}},
+    C({minh = chh + 0.06, minw = w, r = 0.1, colour = G.C.UI.TRANSPARENT_DARK}, {inner}),
+  })
+end
+
+local function new_run_deck()
+  local key = PM.sel.deck
+  if not (key and G.P_CENTERS[key]) then
+    local m = profile().MEMORY
+    key = back_center(m and m.deck or 'b_red').key
+  end
+  return G.P_CENTERS[key] or G.P_CENTERS.b_red
+end
+
+local function decks()
+  local PR = rawget(_G, 'PlayRandom')
+  return PR and PR.decks and PR.decks() or {G.P_CENTERS.b_red}
+end
+
+local function max_stake(key)
+  local PR = rawget(_G, 'PlayRandom')
+  return PR and PR.max_stake and PR.max_stake(key) or 1
+end
+
+local function speedrun() return rawget(_G, 'Speedrun') end
+local function daily() return rawget(_G, 'BO_DAILY') end
+local function bot() return rawget(_G, 'BOT') end
+
+PM.MODES = {
+  {key = 'continue', title = function() return localize('b_continue') end, art = function(w)
+    local s = saved()
+    local sp = deck_sprite(s and back_center(s.BACK.name) or G.P_CENTERS.b_red, w)
+    if not s then sp.greyed = true end
+    return sp
+  end, ok = can_continue},
+  {key = 'new_run', title = function() return localize('b_new_run') end, art = function(w) return deck_sprite(new_run_deck(), w) end},
+  {key = 'challenges', title = function() return localize('b_challenges') end, art = function(w) return deck_sprite(G.P_CENTERS.b_challenge or G.P_CENTERS.b_red, w) end,
+    ok = function() return G.CHALLENGES ~= nil and #G.CHALLENGES > 0 end},
+  {key = 'daily', label = "Daily", art = function(w)
+    local DY = daily()
+    local Rr = DY and DY.preview
+    return deck_sprite(G.P_CENTERS[Rr and Rr.deck or 'b_plasma'] or G.P_CENTERS.b_red, w)
+  end, ok = function() return daily() ~= nil and daily().build ~= nil end},
+  {key = 'custom', label = "Custom", art = function(w) return deck_sprite(G.P_CENTERS.b_painted or G.P_CENTERS.b_red, w) end,
+    ok = function() return G.UIDEF.custom_run_tab ~= nil and rawget(_G, 'RunRules') ~= nil end},
+  {key = 'random', label = "Random", art = function(w) return card_sprite('j_misprint', w) end,
+    ok = function() return rawget(_G, 'PlayRandom') ~= nil end},
+  {key = 'speedrun', label = "Speedrun", art = function(w) return chip_sprite('bl_hook', w * 1.1) end,
+    ok = function() return speedrun() ~= nil and speedrun().start ~= nil and not (G.GAME and G.GAME.multiplayer) end},
+  {key = 'botlatro', label = "Bot-latro", art = function(w) return card_sprite('j_joker', w) end,
+    ok = function() return bot() ~= nil and bot().ui ~= nil and bot().config ~= nil end},
+}
+
+function PM.title(m)
+  return m.title and m.title() or L(m.label)
+end
+
+local function mode(key)
+  for _, m in ipairs(PM.MODES) do if m.key == key then return m end end
+end
+
+local function available(m)
+  return m and (not m.ok or m.ok())
+end
+
+function PM.current()
+  local m = mode(PM.sel.mode)
+  if m and available(m) and (m.key ~= 'continue' or can_continue()) then return m.key end
+  if can_continue() then return 'continue' end
+  return 'new_run'
+end
+
+local function mode_card(m, z, cur)
+  local chosen = cur == m.key
+  local on = available(m)
+  local art_w = z.ch * 0.52
+  return C({id = 'bo_play_mode_' .. m.key, minw = z.cw, minh = z.ch, padding = 0.05, r = 0.12,
+    colour = chosen and G.C.L_BLACK or G.C.BLACK, emboss = 0.05, hover = on, shadow = true,
+    outline = chosen and 1.2 or nil, outline_colour = chosen and G.C.GOLD or nil,
+    button = on and 'bo_play_mode' or nil, ref_table = {key = m.key}, focus_args = {snap_to = chosen}}, {
+    R({minh = z.ch * 0.64}, {O(m.art(art_w))}),
+    R({maxw = z.cw - 0.15}, {T(PM.title(m), z.s, on and (chosen and G.C.GOLD or G.C.UI.TEXT_LIGHT) or G.C.UI.TEXT_INACTIVE)}),
+  })
+end
+
+local function rail(z)
+  local cur = PM.current()
+  local rows = {}
+  if z.port then
+    for i = 1, #PM.MODES, 4 do
+      local row = {}
+      for j = i, math.min(#PM.MODES, i + 3) do
+        if #row > 0 then row[#row + 1] = hgap(0.12) end
+        row[#row + 1] = mode_card(PM.MODES[j], z, cur)
+      end
+      if #rows > 0 then rows[#rows + 1] = vgap(0.1) end
+      rows[#rows + 1] = R({padding = 0}, row)
+    end
+    return R({minw = z.rail, minh = z.rh, padding = 0}, {C({}, rows)})
+  end
+  for i = 1, #PM.MODES, 2 do
+    local a, b = PM.MODES[i], PM.MODES[i + 1]
+    rows[#rows + 1] = R({padding = 0}, {mode_card(a, z, cur), hgap(0.12), b and mode_card(b, z, cur) or nil})
+    if i + 1 < #PM.MODES then rows[#rows + 1] = vgap(0.1) end
+  end
+  return C({minw = z.rail, minh = z.ph}, rows)
+end
+
+function PM.continue_panel(z)
+  local s = saved()
+  if not s then return {rows = {UIK.note({L("No saved run")}, {w = z.iw})}} end
+  local g = s.GAME
+  local center = back_center(s.BACK.name)
+  local st = g.stake or 1
+  local RO = rawget(_G, 'RunOrigin')
+  local o = RO and (type(g.bo_origin) == 'table' and g.bo_origin or (RO.derive and RO.derive(g))) or nil
+  local rs = g.round_scores or {}
+  local best = rs.hand and tonumber(rs.hand.amt) or 0
+  local tw = 2.85
+  local function pair(a, b) return R({padding = 0.05}, {a, hgap(0.12), b}) end
+  local grid = C({}, {
+    pair(tile(L("Mode"), RO and o and RO.mode_label and RO.mode_label(o) or L("Normal run"), tw, G.C.GOLD, z),
+      tile(localize('k_stake'), stake_label(st), tw, nil, z)),
+    pair(tile(localize('k_ante'), tostring(g.round_resets and g.round_resets.ante or 1), tw, G.C.FILTER, z),
+      tile(localize('k_round'), tostring(g.round or 0), tw, G.C.FILTER, z)),
+    pair(tile(L("Money"), localize('$') .. tostring(g.dollars or 0), tw, G.C.MONEY, z),
+      tile(L("Best hand"), number_format and number_format(best) or tostring(best), tw, G.C.RED, z)),
+  })
+  local chip = stake_chip(st, 0.42)
+  local deck_col = C({minw = 3.0}, {
+    R({}, {O(coated(deck_sprite(center, 1.3)))}),
+    vgap(0.06),
+    line(name_of('Back', center.key, center.name), z.s + 0.03, G.C.UI.TEXT_LIGHT, 3.0),
+    R({padding = 0.02}, pack(chip and O(chip) or nil, hgap(0.08), C({maxw = 2.3}, {T(stake_label(st), z.small, UIK.C.muted, false)}))),
+  })
+  local function keys(area)
+    local out, eds = {}, {}
+    for _, v in ipairs(area and area.cards or {}) do
+      local key = v.save_fields and v.save_fields.center
+      if key and G.P_CENTERS[key] then out[#out + 1] = key eds[#out] = v.edition end
+    end
+    return out, eds
+  end
+  local areas = s.cardAreas or {}
+  local jk, jed = keys(areas.jokers)
+  local ck, ced = keys(areas.consumeables)
+  local jl = areas.jokers and areas.jokers.config and areas.jokers.config.card_limit or 5
+  local cl = areas.consumeables and areas.consumeables.config and areas.consumeables.config.card_limit or 2
+  return {rows = {
+    R({padding = 0.04}, {deck_col, hgap(0.3), grid}),
+    vgap(0.12),
+    R({}, {strip(localize('k_jokers_cap'), jk, jl, z.t and 0.43 or 0.48, 5.4, jed), hgap(0.15), strip(localize('k_cap_consumables'), ck, cl, z.t and 0.43 or 0.48, 2.3, ced)}),
+  }, bar = {UIK.button{label = localize('b_continue'), button = 'bo_play_continue', colour = UIK.C.ok, id = 'bo_play_start', w = 4}}}
+end
+
+local function arrow(dir, what, h, disabled)
+  local w = touch() and 0.6 or 0.5
+  if disabled then return C({minw = w, minh = h}) end
+  return C({minw = w, minh = h, r = 0.1, colour = G.C.RED, hover = true, shadow = true, button = 'bo_play_step', ref_table = {what = what, d = dir},
+    id = 'bo_play_' .. what .. (dir < 0 and '_prev' or '_next'), focus_args = {nav = 'wide'}}, {
+    T(dir < 0 and '<' or '>', 0.5, G.C.UI.TEXT_LIGHT),
+  })
+end
+
+local function picker(what, inner, w, h, disabled)
+  return C({padding = 0}, {R({padding = 0}, {
+    arrow(-1, what, h, disabled), hgap(0.06),
+    C({minw = w, minh = h, r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.08}, inner),
+    hgap(0.06), arrow(1, what, h, disabled),
+  })})
+end
+
+local function embed(def)
+  if type(def) ~= 'table' then return nil end
+  if def.n ~= G.UIT.ROOT then def = {n = G.UIT.ROOT, config = {align = 'cm', colour = G.C.CLEAR}, nodes = {def}} end
+  return O(UIBox{definition = def, config = {offset = {x = 0, y = 0}}})
+end
+
+local function stake_desc(i, w)
+  local c = G.P_CENTER_POOLS.Stake[i]
+  local nodes = {}
+  if c then pcall(localize, {type = 'descriptions', key = c.key, set = c.set, nodes = nodes}) end
+  local rows = {}
+  for _, v in ipairs(nodes) do rows[#rows + 1] = R({maxw = w - 0.2}, v) end
+  return rows
+end
+
+function PM.new_run_panel(z)
+  local list = decks()
+  local center = new_run_deck()
+  local idx = 1
+  for i, d in ipairs(list) do if d.key == center.key then idx = i end end
+  center = list[idx] or center
+  local top = max_stake(center.key)
+  local stake = math.max(1, math.min(PM.sel.stake or (profile().MEMORY and profile().MEMORY.stake) or 1, top))
+  PM.sel.deck, PM.sel.stake = center.key, stake
+  local h = z.t and 2.55 or 2.4
+  local aw = (touch() and 0.6 or 0.5) * 2 + 0.12
+  local sw = 3.1
+  local dw = z.iw - sw - 2 * aw - 0.3
+  if z.port then
+    dw = z.iw - aw - 0.1
+    sw = dw
+  end
+  local desc
+  local ok, d = pcall(function() return Back(center):generate_UI(nil, 0.7, 0.5) end)
+  if ok then desc = d end
+  local deck_inner = {
+    C({minw = 1.5}, {O(coated(deck_sprite(center, 1.35)))}),
+    hgap(0.1),
+    C({minw = dw - 1.8}, {
+      line(name_of('Back', center.key, center.name), z.big, G.C.UI.TEXT_LIGHT, dw - 1.8),
+      vgap(0.06),
+      R({}, {C({minw = dw - 1.9, minh = 1.2, r = 0.1, colour = G.C.WHITE, padding = 0.05}, {desc and embed(desc) or nil})}),
+      vgap(0.04),
+      line(idx .. " / " .. #list, z.small, UIK.C.muted, dw - 1.8),
+    }),
+  }
+  local chip = stake_chip(stake, 0.6)
+  local stake_inner = {
+    R({}, {chip and O(chip) or nil}),
+    vgap(0.04),
+    line(stake_label(stake), z.s + 0.03, G.C.UI.TEXT_LIGHT, sw - 0.1),
+    vgap(0.04),
+    R({}, {C({minw = sw - 0.2, minh = 0.9, r = 0.1, colour = G.C.WHITE, padding = 0.05}, stake_desc(stake, sw - 0.2))}),
+  }
+  local function tw(lb) return ui_text_width(lb, z.t and 0.44 or 0.4) + (z.t and 1.15 or 1) * 0.5 + 0.06 + 0.35 end
+  local toggles = {UIK.toggle{label = L("Seeded run"), ref_table = PM.sel, ref_value = 'seeded', w = tw(L("Seeded run")), id = 'bo_play_seeded', callback = function() UIK.refresh() end}}
+  local tws = tw(L("Seeded run"))
+  if PM.cheats_on() then
+    toggles[#toggles + 1] = UIK.toggle{label = L("Cheats"), ref_table = PM.sel, ref_value = 'cheats', w = tw(L("Cheats")), id = 'bo_play_cheats', callback = function() UIK.refresh() end}
+    tws = tws + 0.5 + tw(L("Cheats"))
+  end
+  local seed_box = PM.sel.seeded and UIK.input{prompt = localize('k_enter_seed'), ref_table = PM.sel, ref_value = 'seed', w = 3.8, max_length = 8, all_caps = true, id = 'bo_play_seed'} or nil
+  local seed_row = {}
+  for i, n in ipairs(toggles) do
+    if i > 1 then seed_row[#seed_row + 1] = hgap(0.5) end
+    seed_row[#seed_row + 1] = C({}, {n})
+  end
+  local note = PM.cheats_on() and (PM.sel.cheats and L("Cheats on: this run counts like a seeded run") or " ") or nil
+  local bw
+  if z.port then
+    bw = (z.iw - 0.36) / 2
+    local sh = z.t and 2.0 or 1.9
+    return {rows = {
+      R({}, {picker('deck', deck_inner, dw, h)}),
+      vgap(0.12),
+      R({}, {picker('stake', stake_inner, sw, sh, top < 2)}),
+      vgap(0.12),
+      R({minh = z.t and 1.0 or 0.9}, seed_row),
+      seed_box and R({minh = z.t and 1.0 or 0.9}, {C({}, {seed_box})}) or nil,
+    }, note = note, bar = {
+      UIK.button{label = L("Random deck"), button = 'bo_play_random_deck', colour = UIK.C.purple, id = 'bo_play_random_deck', w = bw, scale = z.t and 0.44 or 0.4},
+      top > 1 and UIK.button{label = L("Random stake"), button = 'bo_play_random_stake', colour = UIK.C.purple, id = 'bo_play_random_stake', w = bw, scale = z.t and 0.44 or 0.4} or nil,
+    }, bar2 = {
+      UIK.button{label = L("START"), button = 'bo_play_new_run', colour = UIK.C.ok, id = 'bo_play_start', w = z.iw * 0.6},
+    }}
+  end
+  local seed_own = seed_box and (tws + 4.5 > z.iw - 0.2)
+  if seed_box and not seed_own then
+    seed_row[#seed_row + 1] = hgap(0.5)
+    seed_row[#seed_row + 1] = C({}, {seed_box})
+  end
+  bw = (z.iw - 0.45) / 3
+  return {rows = {
+    R({}, {picker('deck', deck_inner, dw, h), hgap(0.3), picker('stake', stake_inner, sw, h, top < 2)}),
+    vgap(0.12),
+    R({minh = z.t and 1.0 or 0.9}, seed_row),
+    seed_own and R({minh = z.t and 1.0 or 0.9}, {C({}, {seed_box})}) or nil,
+  }, note = note, bar = {
+    UIK.button{label = L("Random deck"), button = 'bo_play_random_deck', colour = UIK.C.purple, id = 'bo_play_random_deck', w = bw, scale = z.t and 0.44 or 0.4},
+    top > 1 and UIK.button{label = L("Random stake"), button = 'bo_play_random_stake', colour = UIK.C.purple, id = 'bo_play_random_stake', w = bw, scale = z.t and 0.44 or 0.4} or nil,
+    UIK.button{label = L("START"), button = 'bo_play_new_run', colour = UIK.C.ok, id = 'bo_play_start', w = bw},
+  }}
+end
+
+function PM.cheats_on()
+  return not (G.SETTINGS and G.SETTINGS.mod_menu_disabled)
+end
+
+local function challenges_unlocked()
+  local p = profile()
+  if p.all_unlocked or p.debug_unlocked then p.challenges_unlocked = #G.CHALLENGES end
+  return p.challenges_unlocked
+end
+
+local function challenge_open(k)
+  local u = challenges_unlocked()
+  return (u and u >= k) or k > 20
+end
+
+local function challenge_rules(ch, w)
+  local rows = {}
+  local function add(nodes) if type(nodes) == 'table' and #nodes > 0 then rows[#rows + 1] = R({align = 'cl', maxw = w - 0.2}, nodes) end end
+  local rules = ch.rules or {}
+  for _, v in ipairs(rules.modifiers or {}) do
+    local ok, n = pcall(localize, {type = 'text', key = 'ch_m_' .. v.id, vars = {v.value}})
+    if ok then add(n) end
+  end
+  for _, v in ipairs(rules.custom or {}) do
+    local ok, n = pcall(localize, {type = 'text', key = 'ch_c_' .. v.id, vars = {v.value}})
+    if ok then add(n) end
+  end
+  local max = touch() and 6 or 7
+  if #rows > max then
+    local more = #rows - max + 1
+    for i = #rows, max, -1 do rows[i] = nil end
+    rows[#rows + 1] = R({align = 'cl'}, {T(L("and") .. " " .. more .. " " .. L("more"), 0.3, G.C.UI.TEXT_INACTIVE, false)})
+  end
+  if #rows == 0 then
+    local ok, n = pcall(localize, {type = 'text', key = 'ch_c_none', vars = {}})
+    if ok then add(n) end
+  end
+  return rows
+end
+
+function PM.challenges_panel(z)
+  if not challenges_unlocked() then
+    local p = profile()
+    local wins = 0
+    for _, v in pairs(p.deck_usage or {}) do if v.wins and v.wins[1] then wins = wins + 1 end end
+    local nodes = {}
+    pcall(localize, {type = 'descriptions', key = 'challenge_locked', set = 'Other', nodes = nodes, vars = {G.CHALLENGE_WINS, wins}, default_col = G.C.WHITE})
+    local rows = {}
+    for _, v in ipairs(nodes) do rows[#rows + 1] = R({maxw = z.iw - 0.4}, v) end
+    return {rows = {R({}, {C({padding = 0.2, r = 0.1, colour = G.C.BLACK}, rows)})}}
+  end
+  local n = #G.CHALLENGES
+  local per = z.t and 5 or 6
+  local pages = math.max(1, math.ceil(n / per))
+  local sel = math.max(1, math.min(PM.sel.challenge or 1, n))
+  PM.sel.challenge = sel
+  local page = math.max(1, math.min(PM.page.ch or math.ceil(sel / per), pages))
+  PM.page.ch = page
+  local done = profile().challenge_progress and profile().challenge_progress.completed or {}
+  local comp = 0
+  for _, v in ipairs(G.CHALLENGES) do if v.id and done[v.id] then comp = comp + 1 end end
+  local lw = 3.7
+  local eh = z.t and 0.62 or 0.52
+  local list = {}
+  for k = (page - 1) * per + 1, math.min(n, page * per) do
+    local v = G.CHALLENGES[k]
+    local open = challenge_open(k)
+    local chosen = k == sel
+    local tick = done[v.id or ''] and Sprite(0, 0, 0.32, 0.32, G.ASSET_ATLAS.icons, {x = 1, y = 0}) or nil
+    list[#list + 1] = R({padding = 0.03}, {C({id = 'bo_play_ch_' .. k, minw = lw, minh = eh, r = 0.1, padding = 0.04, hover = true, shadow = true, emboss = 0.04,
+      colour = chosen and G.C.L_BLACK or (open and G.C.RED or G.C.UI.BACKGROUND_INACTIVE), outline = chosen and 1.2 or nil, outline_colour = chosen and G.C.GOLD or nil,
+      button = 'bo_play_ch_pick', ref_table = {k = k}, focus_args = {snap_to = chosen}}, {
+      C({minw = 0.45}, {T(tostring(k), z.small, chosen and G.C.GOLD or G.C.UI.TEXT_LIGHT)}),
+      C({minw = lw - 1.0, maxw = lw - 1.0}, {T(open and localize(v.id, 'challenge_names') or localize('k_locked'), z.small + 0.02, chosen and G.C.GOLD or G.C.UI.TEXT_LIGHT)}),
+      C({minw = 0.4}, {tick and O(tick) or nil}),
+    })})
+  end
+  for _ = #list + 1, per do list[#list + 1] = R({minh = eh + 0.06, minw = lw}) end
+  local left = C({minw = lw + 0.1}, {
+    R({}, {C({}, list)}),
+    vgap(0.04),
+    UIK.pager{prev = 'bo_play_ch_page', next = 'bo_play_ch_page', prev_ref = {d = -1}, next_ref = {d = 1}, text = page .. " / " .. pages, text_w = 1.2, arrow_w = 0.8, w = lw, id = 'bo_play_ch_pager',
+      prev_disabled = pages < 2, next_disabled = pages < 2},
+    line(localize{type = 'variable', key = 'challenges_completed', vars = {comp, n}}, z.small, UIK.C.muted, lw),
+  })
+  local ch = G.CHALLENGES[sel]
+  local rw = z.iw - lw - 0.4
+  local right
+  if challenge_open(sel) then
+    local dk = ch.deck and ch.deck.type and back_center(ch.deck.type) or G.P_CENTERS.b_red
+    local jk, eds = {}, {}
+    for _, v in ipairs(ch.jokers or {}) do jk[#jk + 1] = v.id eds[#jk] = v.edition and {[v.edition] = true} or nil end
+    local banned = 0
+    for _, list2 in pairs(ch.restrictions or {}) do if type(list2) == 'table' then banned = banned + #list2 end end
+    right = C({minw = rw}, pack(
+      line(localize(ch.id, 'challenge_names'), z.big + 0.04, G.C.GOLD, rw),
+      vgap(0.12),
+      line(name_of('Back', dk.key, dk.name) .. (banned > 0 and ("   " .. L("Banned") .. ": " .. banned) or ""), z.small, UIK.C.muted, rw),
+      vgap(0.06),
+      R({}, {C({minw = rw - 0.1, minh = #jk > 0 and 2.1 or 3.3, r = 0.1, colour = G.C.WHITE, padding = 0.1, align = 'tl'}, challenge_rules(ch, rw - 0.1))}),
+      #jk > 0 and vgap(0.08) or nil,
+      #jk > 0 and R({}, {strip(localize('k_jokers_cap'), jk, math.max(1, #jk), 0.42, rw - 0.6, eds)}) or nil))
+  else
+    right = C({minw = rw, minh = 3}, {line(localize('k_locked'), z.big, G.C.UI.TEXT_INACTIVE, rw)})
+  end
+  return {rows = {R({}, {left, hgap(0.3), right})},
+    bar = {UIK.button{label = localize('b_play_cap'), button = 'bo_play_challenge', colour = UIK.C.ok, id = 'bo_play_start', w = 4, disabled = not challenge_open(sel)}}}
+end
+
+local function daily_status(e)
+  if not e then return L("Not played"), G.C.UI.TEXT_LIGHT end
+  if e.won then return L("Won"), G.C.GREEN end
+  return L("Best: Ante") .. " " .. tostring(e.best_ante or 0), G.C.ORANGE
+end
+
+function PM.daily_panel(z)
+  local DY = daily()
+  local today = DY.today()
+  local Rr = DY.build(today)
+  DY.preview = Rr
+  local pd = (DY.profile_data and DY.profile_data()) or {history = {}, best_streak = 0}
+  local entry = pd.history and pd.history[today]
+  local streak = DY.streak and DY.streak(today) or 0
+  local status, scol = daily_status(entry)
+  local DB = rawget(_G, 'BO_DAILY_BOARD')
+  local used = DB and DB.used and DB.used(today)
+  local center = G.P_CENTERS[Rr.deck] or G.P_CENTERS.b_red
+  local chip = stake_chip(Rr.stake or 1, 0.4)
+  local deck_col = C({minw = 2.7}, {
+    R({}, {O(coated(deck_sprite(center, 1.2)))}),
+    vgap(0.06),
+    line(name_of('Back', center.key, center.name), z.s, G.C.UI.TEXT_LIGHT, 2.7),
+    R({padding = 0.02}, pack(chip and O(chip) or nil, hgap(0.06), C({maxw = 2.1}, {T(stake_label(Rr.stake or 1), z.small, UIK.C.muted, false)}))),
+  })
+  local rw = z.iw - 2.7 - 3.0 - 0.5
+  local rules = {}
+  local function add(ids, get, title, colour)
+    rules[#rules + 1] = R({align = 'cl', padding = 0.02}, {T(title, z.small + 0.04, colour)})
+    local any = false
+    for _, id in ipairs(ids or {}) do
+      local r = get and get(id)
+      if r then
+        any = true
+        rules[#rules + 1] = R({align = 'cl', padding = 0.01}, {
+          C({minw = 0.12, minh = 0.12, r = 0.06, colour = colour}), hgap(0.1),
+          C({align = 'cl', maxw = rw - 0.5}, {
+            R({align = 'cl'}, {T(L(r.name), 0.32, colour, false)}),
+            R({align = 'cl'}, {T(L(r.desc), 0.27, G.C.UI.TEXT_DARK, false)}),
+          }),
+        })
+      end
+    end
+    if not any then rules[#rules + 1] = R({align = 'cl'}, {T(L("None"), 0.28, G.C.UI.TEXT_INACTIVE, false)}) end
+  end
+  add(Rr.twists, DY.twist, L("Twists"), G.C.RED)
+  rules[#rules + 1] = vgap(0.06)
+  add(Rr.boons, DY.boon, L("Boon"), G.C.GREEN)
+  local tiles = C({minw = 3.0}, {
+    R({}, {tile(L("Today"), status, 2.9, scol, z)}), vgap(0.1),
+    R({}, {tile(L("Streak"), tostring(streak), 2.9, G.C.GOLD, z)}), vgap(0.1),
+    R({}, {tile(L("Best streak"), tostring(math.max(pd.best_streak or 0, streak)), 2.9, nil, z)}),
+  })
+  local jk, vk = Rr.jokers or {}, Rr.vouchers or {}
+  local rows = {
+    line(today .. "    " .. L("New daily in") .. " " .. (DY.countdown and DY.countdown() or ""), z.small, UIK.C.muted, z.iw),
+    vgap(0.06),
+    R({}, {deck_col, hgap(0.25), C({minw = rw, minh = 2.6, r = 0.1, colour = G.C.WHITE, padding = 0.1, align = 'tl'}, rules), hgap(0.25), tiles}),
+  }
+  if #jk + #vk > 0 then
+    rows[#rows + 1] = vgap(0.1)
+    rows[#rows + 1] = R({}, pack(
+      #jk > 0 and strip(localize('k_jokers_cap'), jk, #jk, 0.4, math.max(2, #jk) * G.CARD_W * 0.44) or nil,
+      #jk > 0 and #vk > 0 and hgap(0.15) or nil,
+      #vk > 0 and strip(localize('k_vouchers_cap'), vk, #vk, 0.4, math.max(1, #vk) * G.CARD_W * 0.44) or nil))
+  end
+  local bar = {}
+  if DB and DB.open then bar[#bar + 1] = UIK.button{label = L("BOARD"), button = 'bo_play_daily_board', colour = UIK.C.money, id = 'bo_play_board', w = 3} end
+  bar[#bar + 1] = UIK.button{label = used and L("PRACTICE") or ((entry and entry.won) and L("PLAY AGAIN") or localize('b_play_cap')), button = 'bo_play_daily', colour = UIK.C.ok, id = 'bo_play_start', w = 4}
+  return {rows = rows, bar = bar, note = used and L("Your scored try is used. More tries today are practice.") or nil}
+end
+
+function PM.custom_panel(z)
+  pcall(G.UIDEF.custom_run_tab)
+  local RR = rawget(_G, 'RunRules')
+  local v = G.CUSTOM_RUN and (G.CUSTOM_RUN.target or G.CUSTOM_RUN.values) or {}
+  local ok, lines = pcall(RR.describe, v)
+  if not ok or type(lines) ~= 'table' then lines = {} end
+  local half = (z.iw - 0.5) / 2
+  local cols = {{}, {}}
+  local max = 12
+  if #lines == 0 then
+    cols = nil
+  else
+    local shown = math.min(#lines, max)
+    if #lines > max then shown = max - 1 end
+    for i = 1, shown do
+      local c = i <= math.ceil(math.min(#lines, max) / 2) and 1 or 2
+      cols[c][#cols[c] + 1] = R({align = 'cl', minw = half, minh = 0.4}, {
+        C({minw = 0.12, minh = 0.12, r = 0.06, colour = G.C.GOLD}), hgap(0.12),
+        C({align = 'cl', maxw = half - 0.3}, {T(lines[i], z.small + 0.03, G.C.UI.TEXT_LIGHT, false)}),
+      })
+    end
+    if #lines > max then
+      cols[2][#cols[2] + 1] = R({align = 'cl', minw = half, minh = 0.4}, {T(L("and") .. " " .. (#lines - shown) .. " " .. L("more"), z.small, UIK.C.muted, false)})
+    end
+  end
+  return {rows = {
+    line(L("Your own rules, deck, shop and jokers"), z.s, UIK.C.muted, z.iw),
+    vgap(0.15),
+    R({}, {C({minw = z.iw - 0.2, minh = cols and 3.2 or 2.2, r = 0.1, colour = G.C.BLACK, padding = 0.15}, {
+      line(#lines == 0 and L("Current rules") or L("Changes from a normal run"), z.s + 0.02, G.C.GOLD, z.iw - 0.4),
+      vgap(0.08),
+      cols and R({align = 'tm'}, {C({align = 'tl', minw = half}, cols[1]), hgap(0.2), C({align = 'tl', minw = half}, cols[2])})
+        or line(L("Same rules as a normal run"), z.s + 0.02, G.C.UI.TEXT_LIGHT, z.iw - 0.4),
+    })}),
+  }, bar = {
+    UIK.button{label = L("Configure"), button = 'cr_open_config', colour = UIK.C.accent, id = 'bo_play_configure', w = 3.4},
+    UIK.button{label = L("START"), button = 'start_custom_run', colour = UIK.C.ok, id = 'bo_play_start', w = 4},
+  }}
+end
+
+function PM.random_panel(z)
+  local half = (z.iw - 0.4) / 2
+  local function choice(title, art, lines, button, id)
+    local body = {}
+    for _, l in ipairs(lines) do body[#body + 1] = line(l, z.small + 0.02, UIK.C.muted, half - 0.3) end
+    return C({minw = half, r = 0.12, colour = G.C.BLACK, padding = 0.15, emboss = 0.05}, {
+      line(title, z.big + 0.04, G.C.GOLD, half - 0.3),
+      vgap(0.1),
+      R({}, {O(art)}),
+      vgap(0.1),
+      R({}, {C({}, body)}),
+      vgap(0.12),
+      R({}, {UIK.button{label = L("ROLL"), button = button, colour = UIK.C.purple, id = id, w = 3}}),
+    })
+  end
+  return {rows = {R({}, {
+    choice(L("Random run"), card_sprite('j_misprint', 1.15), {L("A random deck and stake"), L("Normal rules")}, 'bo_play_random_plain', 'bo_play_roll_plain'),
+    hgap(0.4),
+    choice(L("Custom random"), card_sprite('j_chaos', 1.15), {L("A random deck, stake and rules"), L("Rules you can read before you start")}, 'bo_play_random_custom', 'bo_play_roll_custom'),
+  })}}
+end
+
+function PM.speedrun_panel(z)
+  local SR = speedrun()
+  local cfg = SR.get_cfg()
+  local list = SR.decks()
+  local names, di = {}, 1
+  for i, d in ipairs(list) do
+    names[i] = name_of('Back', d.key, d.name)
+    if d.key == cfg.deck then di = i end
+  end
+  local top = SR.max_stake(cfg.deck)
+  local stakes = {}
+  for i = 1, top do stakes[i] = stake_label(i) end
+  local c1, c3 = 3.1, 3.9
+  local colh = z.bh - 0.45
+  local c2 = z.iw - c1 - c3 - 0.5
+  if z.port then
+    c3 = z.iw - 0.1
+    c2 = z.iw - c1 - 0.25
+    colh = 0
+  end
+  local cards = {}
+  local ch = z.t and 0.98 or 0.9
+  local cat
+  for _, c in ipairs(SR.CATS) do
+    local chosen = c.key == cfg.cat
+    if chosen then cat = c end
+    local goal = c.target >= 8 and L("Win the run") or L("Beat its boss")
+    cards[#cards + 1] = R({padding = 0.04}, {C({id = 'bo_play_sr_' .. c.key, minw = c1 - 0.1, minh = ch, r = 0.1, padding = 0.05, hover = true, shadow = true, emboss = 0.05,
+      colour = chosen and G.C.L_BLACK or G.C.BLACK, outline = chosen and 1.2 or nil, outline_colour = chosen and G.C.GOLD or nil,
+      button = 'bo_play_sr_cat', ref_table = {key = c.key}, focus_args = {snap_to = chosen}}, {
+      R({maxw = c1 - 0.3}, {T(L(c.label), z.big, chosen and G.C.GOLD or G.C.UI.TEXT_LIGHT)}),
+      R({maxw = c1 - 0.3}, {T(goal, z.small, UIK.C.muted, false)}),
+    })})
+  end
+  cat = cat or SR.CATS[1]
+  local pb = SR.best(cat.key, cfg.deck, cfg.stake, cfg.seed)
+  local data = SR.load and SR.load() or {}
+  local tries = data.attempts and data.attempts[SR.key(cat.key, cfg.deck, cfg.stake, cfg.seed)] or 0
+  local fmt = SR.fmt or function(t) return string.format("%d:%05.2f", math.floor((t or 0) / 60), (t or 0) % 60) end
+  local col1 = C({align = 'tm', minw = c1, minh = colh}, {
+    line(L("Category"), z.s + 0.02, G.C.GOLD, c1),
+    R({}, {C({}, cards)}),
+    vgap(0.08),
+    R({}, {tile(L("Personal best") .. "  (" .. L("Attempts") .. " " .. tries .. ")", pb and fmt(pb.time) or L("No time yet"), c1 - 0.1, pb and G.C.GOLD or UIK.C.muted, z)}),
+  })
+  local weekly = cfg.seed == 'weekly'
+  local function changed()
+    pcall(function() G:save_settings() end)
+    UIK.refresh()
+  end
+  local setup = {
+    UIK.cycle{id = 'bo_play_sr_deck', label = localize('k_deck'), options = names, current = di, w = c2, no_pips = true, cw = 2.6,
+      callback = function(i) cfg.deck = list[i].key changed() end},
+    top > 1 and UIK.cycle{id = 'bo_play_sr_stake', label = localize('k_stake'), options = stakes, current = math.min(cfg.stake or 1, top), w = c2, no_pips = true, cw = 2.6,
+      callback = function(i) cfg.stake = i changed() end}
+      or UIK.value{label = localize('k_stake'), value = stakes[1], w = c2, vw = 2.6},
+    UIK.toggle{label = L("Weekly seed"), ref_table = {on = weekly}, ref_value = 'on', w = c2,
+      info = weekly and L("Same seed for everyone this week") or L("A new seed every run"),
+      callback = function(v) cfg.seed = v and 'weekly' or 'random' changed() end},
+  }
+  local col2 = C({align = 'tm', minw = c2, minh = colh}, {line(L("Setup"), z.s + 0.02, G.C.GOLD, c2), UIK.stack(setup, {w = c2})})
+  local rl = SR.rule_lines and SR.rule_lines() or {}
+  local rrows = {}
+  for _, l in ipairs(rl) do
+    local parts = {}
+    for _, w in ipairs(wrap(l, z.small, c3 - 0.5)) do parts[#parts + 1] = R({align = 'cl'}, {T(w, z.small, G.C.UI.TEXT_LIGHT, false)}) end
+    rrows[#rrows + 1] = R({align = 'cl', minw = c3 - 0.2, padding = 0.02}, {C({align = 'tm', minw = 0.1, minh = z.small}, {R({minw = 0.1, minh = 0.1, r = 0.05, colour = G.C.GOLD})}), hgap(0.08), C({align = 'cl', maxw = c3 - 0.45}, parts)})
+  end
+  local col3 = C({align = 'tm', minw = c3, minh = colh}, {
+    line(L("Rules"), z.s + 0.02, G.C.GOLD, c3),
+    R({}, {C({minw = c3, minh = 3.0, r = 0.1, colour = G.C.BLACK, padding = 0.1}, rrows)}),
+  })
+  local blocked = SR.blocked and SR.blocked() or nil
+  local rows = {R({align = 'tm'}, {col1, hgap(0.25), col2, hgap(0.25), col3})}
+  if z.port then rows = {R({align = 'tm'}, {col1, hgap(0.25), col2}), vgap(0.15), R({align = 'tm'}, {col3})} end
+  return {rows = rows,
+    note = blocked and (L("Speedruns are off") .. ": " .. blocked) or nil, note_colour = G.C.RED,
+    bar = {UIK.button{label = L("START SPEEDRUN"), button = 'speedrun_start', colour = UIK.C.ok, disabled = blocked ~= nil, id = 'bo_play_start', w = 4.4}}}
+end
+
+local function cap(s)
+  s = tostring(s or '')
+  return L(s:sub(1, 1):upper() .. s:sub(2))
+end
+
+function PM.botlatro_panel(z)
+  local B = bot()
+  local U = B.ui
+  local v = B.config.values or B.config.load()
+  local diff = B.difficulty and B.difficulty.level and B.difficulty.level() or v.difficulty
+  local brain = U.brain_label and U.brain_label() or ""
+  local tw = 3.0
+  local right = C({}, {
+    line(L("Watch an AI play Balatro"), z.big, G.C.UI.TEXT_LIGHT, z.port and z.iw or z.iw - 3.2),
+    vgap(0.15),
+    R({padding = 0.05}, {tile(L("Brain"), brain, tw * 2 + 0.12, G.C.GOLD, z)}),
+    R({padding = 0.05}, {tile(L("Level"), cap(diff), tw, G.C.ORANGE, z), hgap(0.12), tile(L("Personality"), cap(v.personality), tw, G.C.ORANGE, z)}),
+  })
+  local in_run = G.STAGE == G.STAGES.RUN and G.GAME
+  local over = in_run and (G.STATE == G.STATES.GAME_OVER or (G.GAME.won and not G.GAME.bot_endless))
+  local three = in_run and not over
+  local function bw(w) return (z.port and three) and math.min(w, (z.iw - 0.5) / 3) or w end
+  local bar = {UIK.button{label = L("Settings"), button = 'bo_play_bot_settings', colour = UIK.C.accent, id = 'bo_play_bot_settings', w = bw(3)}}
+  if in_run and U.solo and not over then
+    bar[#bar + 1] = UIK.button{label = L("Stop Bot-latro"), button = 'bot_panel_stop', colour = UIK.C.danger, w = bw(3.4)}
+    bar[#bar + 1] = UIK.button{label = L("New Bot-latro run"), button = 'botlatro_start', colour = UIK.C.ok, id = 'bo_play_start', w = bw(3.6)}
+  elseif in_run and not over then
+    bar[#bar + 1] = UIK.button{label = L("Bot-latro plays this run"), button = 'bot_take_over', colour = UIK.C.ok, w = bw(3.8)}
+    bar[#bar + 1] = UIK.button{label = L("New Bot-latro run"), button = 'botlatro_start', colour = UIK.C.accent, id = 'bo_play_start', w = bw(3.6)}
+  else
+    bar[#bar + 1] = UIK.button{label = L("START"), button = 'botlatro_start', colour = UIK.C.ok, id = 'bo_play_start', w = 4}
+  end
+  if z.port then return {rows = {R({}, {O(card_sprite('j_joker', 1.6))}), vgap(0.2), R({}, {right})}, bar = bar} end
+  return {rows = {R({}, {C({minw = 2.8}, {O(card_sprite('j_joker', 1.6))}), hgap(0.3), right})}, bar = bar}
+end
+
+local BUILD = {
+  continue = function(z) return PM.continue_panel(z) end,
+  new_run = function(z) return PM.new_run_panel(z) end,
+  challenges = function(z) return PM.challenges_panel(z) end,
+  daily = function(z) return PM.daily_panel(z) end,
+  custom = function(z) return PM.custom_panel(z) end,
+  random = function(z) return PM.random_panel(z) end,
+  speedrun = function(z) return PM.speedrun_panel(z) end,
+  botlatro = function(z) return PM.botlatro_panel(z) end,
+}
+
+function PM.panel(z)
+  local key = PM.current()
+  local m = mode(key)
+  local ok, p = xpcall(BUILD[key], debug.traceback, z)
+  if not ok or type(p) ~= 'table' then
+    print("[PlayMenu] " .. key .. ": " .. tostring(p))
+    p = {rows = {UIK.note({L("Not available")}, {w = z.iw})}}
+  end
+  local nodes = {
+    R({minw = z.iw, minh = z.th}, {C({maxw = z.iw - 0.2}, {T(m and PM.title(m) or "", z.t and 0.52 or 0.48, UIK.C.title)})}),
+  }
+  local body = {}
+  for _, r in ipairs(p.rows or {}) do body[#body + 1] = r end
+  nodes[#nodes + 1] = R({minw = z.iw, minh = z.bh - (p.note and 0.36 or 0) - (p.bar2 and z.bar or 0)}, {C({}, body)})
+  if p.note then nodes[#nodes + 1] = line(p.note, z.small, p.note_colour or G.C.ORANGE, z.iw) end
+  nodes[#nodes + 1] = p.bar and #p.bar > 0 and UIK.button_bar(p.bar, {w = z.iw}) or R({minh = z.bar})
+  if p.bar2 then nodes[#nodes + 1] = UIK.button_bar(p.bar2, {w = z.iw}) end
+  return C({align = 'tm', minw = z.pw, minh = z.ph, r = 0.12, colour = UIK.C.section, padding = 0.1}, nodes)
+end
+
+function PM.build()
+  local z = PM.sizes()
+  if z.port then return R({minw = UIK.W, minh = UIK.H, padding = 0}, {C({}, {rail(z), vgap(0.2), R({padding = 0}, {PM.panel(z)})})}) end
+  return R({minw = UIK.W, minh = UIK.H, padding = 0}, {rail(z), hgap(0.2), PM.panel(z)})
+end
+
+function PM.def(from_game_over)
+  PM.from_game_over = from_game_over
+  return UIK.window{id = 'bo_play', title = L("PLAY"), tabs = {{key = 'play', label = L("PLAY"), build = PM.build}},
+    no_back = from_game_over and true or nil}
+end
+
+function PM.open(key)
+  if key then PM.sel.mode = key end
+r 4 1381 %20%20 -
+l 41
+  G.FUNCS.overlay_menu{definition = PM.def()}
+end
+
+local function refocus(id)
+  local c = G.CONTROLLER
+  if not (c and c.HID and c.HID.controller and G.OVERLAY_MENU) then return end
+  local e = G.OVERLAY_MENU:get_UIE_by_ID(id)
+  if e then c:snap_to{node = e} end
+end
+
+function PM.refresh(focus)
+  UIK.refresh()
+  if focus then refocus(focus) end
+end
+
+G.FUNCS.bo_play_mode = function(e)
+  local k = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not (k and available(mode(k))) or PM.current() == k then return end
+  PM.sel.mode = k
+  PM.refresh('bo_play_mode_' .. k)
+end
+
+G.FUNCS.bo_play_step = function(e)
+  local r = e and e.config and e.config.ref_table
+  if not r then return end
+  if r.what == 'deck' then
+    local list = decks()
+    local cur = new_run_deck().key
+    local i = 1
+    for j, d in ipairs(list) do if d.key == cur then i = j end end
+    i = (i - 1 + r.d) % #list + 1
+    PM.sel.deck = list[i].key
+  elseif r.what == 'stake' then
+    local top = max_stake(new_run_deck().key)
+    PM.sel.stake = ((PM.sel.stake or 1) - 1 + r.d) % top + 1
+  end
+  PM.refresh('bo_play_' .. r.what .. (r.d < 0 and '_prev' or '_next'))
+end
+
+G.FUNCS.bo_play_continue = function()
+  if not saved() then return end
+r 4 1825 %20%20 -
+e 4 1842 %20%20 - =35,+%63%6F%70%79%5F%74%61%62%6C%65%28,=12,+%29,=2
+l 14
+end
+
+G.FUNCS.bo_play_new_run = function()
+  local center = new_run_deck()
+  if not (center and center.unlocked ~= false) then return end
+  local stake = math.max(1, math.min(PM.sel.stake or 1, max_stake(center.key)))
+  local seed = PM.sel.seeded and PM.sel.seed and PM.sel.seed ~= '' and PM.sel.seed or nil
+  local p = profile()
+  if G.SAVED_GAME ~= nil and G.SAVED_GAME.GAME and not G.SAVED_GAME.GAME.won and p.high_scores then
+    p.high_scores.current_streak.amt = 0
+  end
+  p.MEMORY = p.MEMORY or {}
+  p.MEMORY.deck, p.MEMORY.stake = center.name, stake
+  pcall(function() G:save_settings() end)
+r 4 1825 %20%20 -
+l 109
+  local RR = rawget(_G, 'RunRules')
+  if RR then RR.disarm() end
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
+  if G.GAME.viewed_back then G.GAME.viewed_back:change_to(center) else G.GAME.viewed_back = Back(center) end
+  G.FUNCS.start_run(nil, {stake = stake, seed = seed, back = center, cheats = (PM.sel.cheats and PM.cheats_on()) or nil})
+end
+
+G.FUNCS.bo_play_random_deck = function()
+  local list = decks()
+  PM.sel.deck = list[math.random(#list)].key
+  PM.refresh('bo_play_random_deck')
+end
+
+G.FUNCS.bo_play_random_stake = function()
+  PM.sel.stake = math.random(max_stake(new_run_deck().key))
+  PM.refresh('bo_play_random_stake')
+end
+
+G.FUNCS.bo_play_random_plain = function()
+  local PR = rawget(_G, 'PlayRandom')
+  if PR and PR.open then PR.open('plain') end
+end
+
+G.FUNCS.bo_play_random_custom = function()
+  local PR = rawget(_G, 'PlayRandom')
+  if PR and PR.open then PR.open('custom') end
+end
+
+G.FUNCS.bo_play_ch_pick = function(e)
+  local k = e and e.config and e.config.ref_table and e.config.ref_table.k
+  if not k or PM.sel.challenge == k then return end
+  PM.sel.challenge = k
+  PM.refresh('bo_play_ch_' .. k)
+end
+
+G.FUNCS.bo_play_ch_page = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  local per = touch() and 5 or 6
+  local pages = math.max(1, math.ceil(#G.CHALLENGES / per))
+  PM.page.ch = ((PM.page.ch or 1) - 1 + d) % pages + 1
+  PM.sel.challenge = (PM.page.ch - 1) * per + 1
+  PM.refresh(d < 0 and 'bo_play_ch_pager_prev' or 'bo_play_ch_pager_next')
+end
+
+G.FUNCS.bo_play_challenge = function()
+  local k = PM.sel.challenge
+  if not (k and G.CHALLENGES[k] and challenge_open(k)) then return end
+  G.FUNCS.start_challenge_run({config = {id = k}})
+end
+
+G.FUNCS.bo_play_daily = function()
+  local DY = daily()
+  if not DY then return end
+  play_sound('button')
+  DY.start(DY.today())
+end
+
+G.FUNCS.bo_play_daily_board = function()
+  local DB = rawget(_G, 'BO_DAILY_BOARD')
+  if DB and DB.open then DB.open('daily_tab') end
+end
+
+G.FUNCS.bo_play_sr_cat = function(e)
+  local SR = speedrun()
+  local k = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not (SR and k) then return end
+  local cfg = SR.get_cfg()
+  if cfg.cat == k then return end
+  cfg.cat = k
+  pcall(function() G:save_settings() end)
+  PM.refresh('bo_play_sr_' .. k)
+end
+
+G.FUNCS.bo_play_bot_settings = function()
+  local B = bot()
+  if not (B and B.ui and B.ui.open_settings) then return end
+  PM._bot_back = true
+  B.ui.open_settings()
+end
+
+if G.FUNCS.bot_close_settings and not PM._bot_wrapped then
+  PM._bot_wrapped = true
+  local base = G.FUNCS.bot_close_settings
+  G.FUNCS.bot_close_settings = function(...)
+    local back = PM._bot_back
+    PM._bot_back = nil
+    local r = base(...)
+    if back and PM.ENABLED and G.FUNCS.setup_run then
+      PM.sel.mode = 'botlatro'
+      G.FUNCS.setup_run({config = {id = PM.from_game_over}})
+    end
+    return r
+  end
+end
+
+if G.FUNCS.setup_run and not PM._setup_wrapped then
+  PM._setup_wrapped = true
+  local base = G.FUNCS.setup_run
+  G.FUNCS.setup_run = function(e, ...)
+    if e and e.config and e.config.id == 'main_menu_play' then PM.sel.mode = nil end
+    return base(e, ...)
+  end
+end
+
+local function prepare(from_game_over)
+  pcall(G.UIDEF.custom_run_tab)
+  local RR = rawget(_G, 'RunRules')
+  if RR and RR.disarm then RR.disarm() end
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
+r 15 5225 %20%20 -
+l 43
+  if G._cr_select_custom_tab then PM.sel.mode = 'custom' end
+  G._cr_select_custom_tab = nil
+  local B = bot()
+  if B and B.ui and B.ui.select_tab then PM.sel.mode = 'botlatro' B.ui.select_tab = nil end
+  if from_game_over == 'challenge_list' then PM.sel.mode = 'challenges' end
+end
+
+if G.UIDEF.run_setup and not PM._wrapped then
+  PM._wrapped = true
+  local base = G.UIDEF.run_setup
+  G.UIDEF.run_setup = function(from_game_over, ...)
+    if PM.ENABLED and not (G.GAME and G.GAME.multiplayer) then
+      local ok, def = pcall(function()
+        prepare(from_game_over)
+        return PM.def((from_game_over == 'from_game_over' or from_game_over == 'from_game_won') and from_game_over or nil)
+      end)
+      if ok and def then return def end
+      print("[PlayMenu] " .. tostring(def))
+    end
+    return base(from_game_over, ...)
+  end
+end
+
+mod_loc_register{
+  fr = {
+    ["No saved run"] = "Aucune partie sauvegardée",
+    ["Cheats"] = "Triches", ["Cheats on: this run counts like a seeded run"] = "Triches activées : la partie compte comme une partie avec seed",
+    ["Random deck"] = "Jeu au hasard", ["Random stake"] = "Mise au hasard", ["ROLL"] = "TIRER",
+    ["A random deck and stake"] = "Un jeu et une mise au hasard", ["A random deck, stake and rules"] = "Un jeu, une mise et des règles au hasard",
+    ["Normal rules"] = "Règles normales", ["Rules you can read before you start"] = "Des règles à lire avant de lancer",
+    ["Win the run"] = "Gagner la partie", ["Beat its boss"] = "Battre son boss", ["Setup"] = "Réglages",
+  },
+  es = {
+    ["No saved run"] = "No hay partida guardada",
+    ["Cheats"] = "Trucos", ["Cheats on: this run counts like a seeded run"] = "Trucos activados: la partida cuenta como una partida con código",
+    ["Random deck"] = "Baraja al azar", ["Random stake"] = "Apuesta al azar", ["ROLL"] = "TIRAR",
+    ["A random deck and stake"] = "Una baraja y una apuesta al azar", ["A random deck, stake and rules"] = "Una baraja, una apuesta y reglas al azar",
+    ["Normal rules"] = "Reglas normales", ["Rules you can read before you start"] = "Reglas que puedes leer antes de empezar",
+    ["Win the run"] = "Gana la partida", ["Beat its boss"] = "Vence a su jefe", ["Setup"] = "Ajustes",
+  },
+}
+
+return PM
+end

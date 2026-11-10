@@ -1,0 +1,110 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 15
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -10
+
+#========================================================#
+# Choose any rank for custom deck and use provided atlas #
+#========================================================#
+
+[[patches]]
+[patches.regex]
+target = "functions/UI_definitions.lua"
+pattern = '''function create_UIBox_customize_deck()([\s\S]*?)end'''
+position = "at"
+payload = '''
+r 15 2513 - -
+l 7
+  local suitTabs = {}
+
+  local index = 1
+  for i, suit in ipairs(SMODS.Suit:obj_list(true)) do
+    if G.COLLABS.options[suit.key] then
+        suitTabs[index] = {
+                    label = localize(suit.key, 'suits_plural'),
+r 15 2521 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 10
+                    tab_definition_function_args = suit.key
+                }
+        index = index + 1
+    end
+  end
+
+  if suitTabs[1] then
+    suitTabs[1].chosen = true
+  end
+
+r 15 2514 %20%20 -
+r 15 629 %20%20%20%20 -
+l 13
+      create_tabs(
+        {tabs = suitTabs, snap_to_nav = true, no_shoulders = true}
+    )}}}
+  })
+
+  return t
+end
+'''
+
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+r 13 2580 - -
+r 13 2581 %20%20%20%20 -
+l 1
+end
+r 13 2583 - -
+r 13 2584 %20%20%20%20 -
+l 7
+end
+'''
+position = "at"
+payload = '''
+if card and card.area == G.cdds_cards and card.generate_ds_card_ui and type(card.generate_ds_card_ui) == 'function' and card.deckskin and card.palette then
+    card.generate_ds_card_ui(card, card.deckskin, card.palette, info_queue, desc_nodes, specific_vars, full_UI_table)
+else
+r 13 2580 %20%20%20%20 -
+r 13 2581 %20%20%20%20%20%20%20%20 -
+l 1
+    end
+r 13 2583 %20%20%20%20 -
+r 13 2584 %20%20%20%20%20%20%20%20 -
+l 12
+    end
+end
+'''
+match_indent = true
+
+#=======================#
+# DeckSkin Crediting UI #
+#=======================#
+[[patches]]
+[patches.pattern]
+target = "functions/UI_definitions.lua"
+pattern = '''
+r 15 4335 - -
+l 4
+chosen = true,
+'''
+position = "at"
+payload = '''
+r 15 4335 - -
+l 11
+chosen = not SMODS.init_collab_credits,
+'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/UI_definitions.lua"
+pattern = '''label = "Collabs",'''
+position = "after"
+payload = '''chosen = SMODS.init_collab_credits,'''
+match_indent = true
+end

@@ -1,0 +1,228 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 98
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+
+local min, max, floor, ceil = math.min, math.max, math.floor, math.ceil
+
+local Game = {}
+Game.__index = Game
+
+local TIME, FLIP, PEEK, CLEAR, BONUS, REVEAL = 60, 0.16, 0.65, 0.7, 5, 1.1
+local SHOW = 1
+local COLS, ROWS = 8, 2
+local N = COLS * ROWS
+
+function Game:start()
+    self.pool = K.jokers()
+    self.cards = {}
+    for i = 1, N do self.cards[i] = {key = nil, f = 1, up = false, done = false} end
+    self.left = TIME
+    self.score = 0
+    self.pops = K.pops(4)
+    local s = min((self.W - 0.4) / (COLS * K.card_w() * 1.12), (self.H - 0.95) / (ROWS * K.card_h() * 1.1))
+    self.s = s
+    self.gx = K.card_w() * s * 1.12
+    self.gy = K.card_h() * s * 1.1
+    self.x0 = self.W / 2 - (COLS - 1) * self.gx / 2
+    self.y0 = (self.H - 0.6) / 2 - (ROWS - 1) * self.gy / 2
+    self.bar = {x = 0.5, y = self.H - 0.42, w = self.W - 2.2, h = 0.2}
+    self.tsec, self.ttext = -1, ""
+    self.tries, self.boards = 0, 0
+    self.end_sound = "whoosh1"
+    self:deal()
+    self.show_t = N * 0.03 + 0.3 + SHOW
+    for i = 1, N do self.cards[i].up = true end
+end
+
+function Game:deal()
+    local pool, rng, c = self.pool, self.rng, self.cards
+    local pairs_n = min(N / 2, #pool)
+    for i = 1, pairs_n do
+        local j = rng:random(i, #pool)
+        pool[i], pool[j] = pool[j], pool[i]
+    end
+    for i = 1, N do
+        local card = c[i]
+        card.key = pool[(ceil(i / 2) - 1) % pairs_n + 1]
+        card.f, card.up, card.done = 1, false, false
+    end
+    for i = N, 2, -1 do
+        local j = rng:random(1, i)
+        c[i].key, c[j].key = c[j].key, c[i].key
+    end
+    self.open1, self.open2 = nil, nil
+    self.check_t, self.hide_t, self.clear_t = nil, nil, nil
+    self.found = 0
+    self.deal_t = K.now()
+    K.sound("cardSlide1", 1.05, 0.5)
+end
+
+function Game:pos(i)
+    local col, row = (i - 1) % COLS, floor((i - 1) / COLS)
+    return self.x0 + col * self.gx, self.y0 + row * self.gy
+end
+
+function Game:hide()
+    local c = self.cards
+    if self.open1 then c[self.open1].up = false end
+    if self.open2 then c[self.open2].up = false end
+    self.open1, self.open2, self.hide_t = nil, nil, nil
+end
+
+function Game:flip(i)
+    local card = self.cards[i]
+    if card.done or card.up or self.show_t or self.clear_t or self.check_t or self.ending then return end
+    if self.hide_t then self:hide() end
+    card.up = true
+    K.juice(card, 0.2)
+    K.sound("card1", 0.95 + self.rng:random() * 0.1, 0.55)
+    if not self.open1 then
+        self.open1 = i
+    else
+        self.open2 = i
+        self.tries = self.tries + 1
+        self.check_t = FLIP + 0.05
+    end
+end
+
+function Game:press(x, y)
+    local hw, hh = K.card_w() * self.s / 2 + 0.05, K.card_h() * self.s / 2 + 0.05
+    for i = 1, N do
+        local cx, cy = self:pos(i)
+        if x >= cx - hw and x <= cx + hw and y >= cy - hh and y <= cy + hh then
+            self:flip(i)
+            return
+        end
+    end
+end
+
+r 10 2449 - -
+l 122
+    local c = self.cards
+    local step = dt / FLIP
+    for i = 1, N do
+        local card = c[i]
+        if card.up then card.f = max(0, card.f - step) else card.f = min(1, card.f + step) end
+    end
+    if self.show_t then
+        self.show_t = self.show_t - dt
+        if self.show_t > 0 then return end
+        self.show_t = nil
+        for i = 1, N do c[i].up = false end
+        K.sound("cardFan2", 1.1, 0.5)
+    end
+    if self.check_t then
+        self.check_t = self.check_t - dt
+        if self.check_t <= 0 then
+            self.check_t = nil
+            local a, b = c[self.open1], c[self.open2]
+            if a.key == b.key then
+                a.done, b.done = true, true
+                K.juice(a, 0.4)
+                K.juice(b, 0.4)
+                self.score = self.score + 1
+                self.found = self.found + 1
+                local ax, ay = self:pos(self.open1)
+                local bx, by = self:pos(self.open2)
+                K.pop(self.pops, "+1", (ax + bx) / 2, min(ay, by) - K.card_h() * self.s / 2, G.C.GOLD, 0.7)
+                K.sound("multhit1", 1 + min(self.found, 8) * 0.04, 0.55)
+                self.open1, self.open2 = nil, nil
+                if self.found >= N / 2 then
+                    self.clear_t = CLEAR
+                    self.left = self.left + BONUS
+                    self.boards = self.boards + 1
+                    K.pop(self.pops, "+" .. BONUS .. "s", self.bar.x + self.bar.w / 2, self.bar.y - 0.3, G.C.GREEN, 0.7)
+                    K.sound("multhit2", 1, 0.6)
+                    K.flash(G.C.GREEN, 0.15)
+                    K.juice(self.bar, 0.4)
+                end
+            else
+                self.hide_t = PEEK
+                K.juice(a, 0.25)
+                K.juice(b, 0.25)
+                K.sound("cancel", 1.15, 0.3)
+            end
+        end
+    elseif self.hide_t then
+        self.hide_t = self.hide_t - dt
+        if self.hide_t <= 0 then self:hide() end
+    elseif self.clear_t then
+        self.clear_t = self.clear_t - dt
+        if self.clear_t <= 0 then self:deal() end
+    end
+    if self.ending then
+        self.ending = self.ending - dt
+        if self.ending <= 0 then
+            self.result = "Time!"
+            self.result_col = G.C.GOLD
+            self.summary = string.format(L("Tries: %d   Boards cleared: %d"), self.tries, self.boards)
+            self.over = true
+        end
+        return
+    end
+    local before = self.left
+    self.left = self.left - dt
+    if self.left < 5 and floor(before) ~= floor(self.left) and self.left > 0 then K.sound("button", 0.8, 0.35) K.juice(self.bar, 0.2) end
+    if self.left <= 0 then
+        self.left = 0
+        self.ending = REVEAL
+        self.check_t, self.hide_t, self.clear_t = nil, nil, nil
+        for i = 1, N do if not c[i].done then c[i].up = true end end
+        K.sound("cardFan2", 1, 0.6)
+    end
+end
+
+function Game:draw(ox, oy)
+    local s, now = self.s, K.now()
+    local hw, hh = K.card_w() * s / 2, K.card_h() * s / 2
+    local live = not (self.show_t or self.ending or self.clear_t or self.check_t)
+    for i = 1, N do
+        local card = self.cards[i]
+        local x, y = self:pos(i)
+        local u = K.out_back(min(1, max(0, (now - self.deal_t - i * 0.03) / 0.3)))
+        if u > 0 then
+            local a = 1
+            if self.clear_t then a = min(1, self.clear_t / (CLEAR * 0.6)) end
+            if live and not card.done and not card.up then K.hover(card, ox + x - hw, oy + y - hh, hw * 2, hh * 2) end
+            local dk = card.done and 0.9 or 1
+            local bob = card.done and math.sin(now * 2 + i) * 0.03 or 0
+            K.center(card.key, ox + x, oy + y + bob, s * u * K.jk(card) * dk, {flip = card.f, r = K.jr(card), a = a, back = "b_red", shadow = not card.done})
+        end
+    end
+    local b = self.bar
+    local left = self.left
+    local bj = K.jk(b)
+    K.bar(ox + b.x, oy + b.y - (bj - 1) * b.h, b.w, b.h * bj, min(1, left / TIME), left < 10 and G.C.RED or G.C.GREEN)
+    local sec = ceil(left)
+    if sec ~= self.tsec then self.tsec = sec self.ttext = sec .. "s" end
+    K.text(self.ttext, ox + b.x + b.w + 0.35, oy + b.y + b.h / 2, 0.42, left < 10 and G.C.RED or G.C.UI.TEXT_LIGHT, "l")
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "joker_memory",
+    name = "Joker Memory",
+    desc = "Flip two cards at a time and match the jokers",
+    how = "Find pairs of jokers. 60 seconds, a cleared board gives +5s.",
+    score = "Pairs",
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Joker Memory"] = "Mémo Joker", ["Flip two cards at a time and match the jokers"] = "Retournez deux cartes à la fois et associez les jokers",
+            ["Find pairs of jokers. 60 seconds, a cleared board gives +5s."] = "Trouvez les paires de jokers. 60 secondes, un plateau vidé donne +5 s.",
+            ["Pairs"] = "Paires", ["Time!"] = "Temps écoulé !", ["Tries: %d   Boards cleared: %d"] = "Essais : %d   Plateaux vidés : %d"},
+        es = {["Joker Memory"] = "Memoria de comodines", ["Flip two cards at a time and match the jokers"] = "Voltea dos cartas a la vez y empareja los comodines",
+            ["Find pairs of jokers. 60 seconds, a cleared board gives +5s."] = "Encuentra parejas de comodines. 60 segundos, limpiar el tablero da +5 s.",
+            ["Pairs"] = "Parejas", ["Time!"] = "¡Tiempo!", ["Tries: %d   Boards cleared: %d"] = "Intentos: %d   Tableros completados: %d"},
+    }
+end
+
+return Game
+end

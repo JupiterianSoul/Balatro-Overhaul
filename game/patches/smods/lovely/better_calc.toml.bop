@@ -1,0 +1,2485 @@
+BOP 1
+eol lf
+final 0
+base 0
+l 27
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -10
+
+## G.FUNCS.evaluate_play()
+# evaluate main scoring
+
+[[patches]]
+[patches.regex]
+target = 'functions/state_events.lua'
+pattern = '''(?<indent>[\t ]*)(?<handtext>if modded then update_hand_text\(\{sound = 'chips2', modded = modded\}, \{chips = hand_chips, mult = mult\}\) end)(.*\n)*?\s+(?<delimiter>--\++--)'''
+position = 'at'
+line_prepend = '$indent'
+payload = '''$handtext
+SMODS.calculate_context({initial_scoring_step = true, full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands})
+for _, v in ipairs(SMODS.get_card_areas('playing_cards')) do
+    SMODS.calculate_main_scoring({cardarea = v, full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands}, v == G.play and scoring_hand or nil)
+end
+score_delay(0.3)
+$delimiter'''
+## eval_card()
+# handle debuffed playing cards
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+r 13 580 - -
+r 13 581 %20%20%20%20 -
+l 5
+    local ret = {}
+'''
+position = 'at'
+match_indent = true
+payload = '''
+r 13 580 - -
+r 13 581 %20%20%20%20 -
+l 19
+    if not card:can_calculate(context.ignore_debuff, context.remove_playing_cards or context.joker_type_destroyed) and not context.debuffed_calculation then
+        if card.ability.rental then
+            local ret = {}
+            ret[SMODS.Stickers.rental] = card:calculate_sticker(context, 'rental')
+            return ret, {}
+        end
+        return {}, {}
+    end
+	local vanilla_debuff_handling
+    for _, key in ipairs(SMODS.custom_debuff_handling) do if card.config.center_key == key then vanilla_debuff_handling = true; break end end
+    if context.other_card and context.other_card.can_calculate and not context.other_card:can_calculate(context.ignore_other_debuff or context.ignore_debuff) and not vanilla_debuff_handling and not context.debuffed_calculation then return {}, {} end
+    local ret = {}
+'''
+
+# built in config values
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+r 3 3066 - -
+r 13 593 %20%20%20%20 -
+l 4
+    if chips > 0 then
+        ret.chips = chips
+    end
+
+r 13 598 %20%20%20%20 -
+l 4
+    if mult > 0 then
+        ret.mult = mult
+    end
+
+r 13 603 %20%20%20%20 -
+l 4
+    if x_mult > 0 then
+        ret.x_mult = x_mult
+    end
+
+r 13 608 %20%20%20%20 -
+r 13 609 %20%20%20%20 -
+r 13 610 %20%20%20%20%20%20%20%20 -
+l 2
+    end
+
+r 13 613 %20%20%20%20 -
+l 4
+    if jokers then
+        ret.jokers = jokers
+    end
+
+r 13 618 %20%20%20%20 -
+l 1
+    if edition then
+r 13 620 %20%20%20%20%20%20%20%20 -
+l 8
+    end
+end
+'''
+match_indent = true
+position = "at"
+payload = """
+if context.cardarea == G.play and context.main_scoring then
+    ret.playing_card = {}
+r 13 593 %20%20%20%20 -
+l 4
+    if chips ~= 0 then
+        ret.playing_card.chips = chips
+    end
+
+r 13 598 %20%20%20%20 -
+l 4
+    if mult ~= 0 then
+        ret.playing_card.mult = mult
+    end
+
+r 13 603 %20%20%20%20 -
+l 4
+    if x_mult > 0 then
+        ret.playing_card.x_mult = x_mult
+    end
+
+r 13 608 %20%20%20%20 -
+l 40
+    if p_dollars ~= 0 then
+        ret.playing_card.p_dollars = p_dollars
+    end
+
+    local x_chips = card:get_chip_x_bonus()
+    if x_chips > 0 then
+        ret.playing_card.x_chips = x_chips
+    end
+
+    local score = card:get_bonus_score()
+    if score ~= 0 then
+        ret.playing_card.score = score
+    end
+    local x_score = card:get_bonus_x_score()
+    if x_score > 0 then
+        ret.playing_card.x_score = x_score
+    end
+
+	local blind_size = card:get_bonus_blind_size()
+    if blind_size ~= 0 then
+        ret.playing_card.blind_size = blind_size
+    end
+    local x_blind_size = card:get_bonus_x_blind_size()
+    if x_blind_size > 0 then
+        ret.playing_card.x_blind_size = x_blind_size
+    end
+    
+    -- TARGET: main scoring on played cards
+end
+if context.end_of_round and context.cardarea == G.hand and context.playing_card_end_of_round then
+    local end_of_round = card:get_end_of_round_effect(context)
+    if end_of_round then
+        ret.end_of_round = end_of_round
+    end
+end
+"""
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+r 3 2878 - -
+r 13 625 %20%20%20%20 -
+l 4
+    if h_mult > 0 then
+        ret.h_mult = h_mult
+    end
+
+r 13 630 %20%20%20%20 -
+l 1
+    if h_x_mult > 0 then
+r 13 632 %20%20%20%20%20%20%20%20 -
+l 2
+    end
+
+r 13 613 %20%20%20%20 -
+l 9
+    if jokers then
+        ret.jokers = jokers
+    end
+'''
+match_indent = true
+position = "at"
+payload = """
+if context.cardarea == G.hand and context.main_scoring then
+    ret.playing_card = {}
+r 13 625 %20%20%20%20 -
+l 4
+    if h_mult ~= 0 then
+        ret.playing_card.h_mult = h_mult
+    end
+
+r 13 630 %20%20%20%20 -
+l 38
+    if h_x_mult > 0 then
+        ret.playing_card.x_mult = h_x_mult
+    end
+
+    local h_chips = card:get_chip_h_bonus()
+    if h_chips ~= 0 then
+        ret.playing_card.h_chips = h_chips
+    end
+
+    local h_x_chips = card:get_chip_h_x_bonus()
+    if h_x_chips > 0 then
+        ret.playing_card.x_chips = h_x_chips
+    end
+
+    local h_score = card:get_bonus_h_score()
+    if h_score ~= 0 then
+        ret.playing_card.h_score = h_score
+    end
+    local h_x_score = card:get_bonus_h_x_score()
+    if h_x_score > 0 then
+        ret.playing_card.h_x_score = h_x_score
+    end
+	local h_blind_size = card:get_bonus_h_blind_size()
+    if h_blind_size ~= 0 then
+        ret.playing_card.blind_size = h_blind_size
+    end
+    local h_x_blind_size = card:get_bonus_h_x_blind_size()
+    if h_x_blind_size > 0 then
+        ret.playing_card.x_blind_size = h_x_blind_size
+    end
+
+    -- TARGET: main scoring on held cards
+"""
+
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+r 13 585 - -
+l 17
+if seals then
+    ret.seals = seals
+end
+'''
+match_indent = true
+position = "at"
+payload = """
+if card.ability.set == 'Enhanced' then
+    local enhancement = card:calculate_enhancement(context)
+    if enhancement then
+        ret.enhancement = enhancement
+    end
+end
+if context.extra_enhancement then return ret end
+if card.edition then
+    local edition = card:calculate_edition(context)
+    if edition then
+r 13 620 %20%20%20%20%20%20%20%20 -
+l 3
+    end
+end
+if card.seal then
+r 13 585 %20%20%20%20 -
+l 39
+    if seals then
+        ret.seals = seals
+    end
+end
+for _,k in ipairs(SMODS.Sticker.obj_buffer) do
+    local v = SMODS.Stickers[k]
+    local sticker = card:calculate_sticker(context, k)
+    if sticker then
+        ret[v] = sticker
+    end
+end
+
+-- TARGET: evaluate your own repetition effects
+if card.ability.repetitions and card.ability.repetitions > 0 then
+    ret.seals = ret.seals or { card = card, message = localize('k_again_ex') }
+    ret.seals.repetitions = (ret.seals.repetitions and ret.seals.repetitions + card.ability.repetitions) or card.ability.repetitions
+end
+if card.ability.perma_repetitions and card.ability.perma_repetitions > 0 then
+    ret.seals = ret.seals or { card = card, message = localize('k_again_ex') }
+    ret.seals.repetitions = (ret.seals.repetitions and ret.seals.repetitions + card.ability.perma_repetitions) or card.ability.perma_repetitions
+end
+"""
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = "if context.cardarea == G.jokers or context.card == G.consumeables then"
+match_indent = true
+position = "before"
+payload = """
+if card.ability.set == 'Enhanced' then
+    local enhancement = card:calculate_enhancement(context)
+    if enhancement then
+        ret.enhancement = enhancement
+    end
+end
+if context.extra_enhancement then return ret end
+if card.edition then
+    local edition = card:calculate_edition(context)
+    if edition then
+r 13 620 %20%20%20%20%20%20%20%20 -
+l 3
+    end
+end
+if card.seal then
+r 13 585 %20%20%20%20 -
+l 18
+    if seals then
+        ret.seals = seals
+    end
+end
+for _,k in ipairs(SMODS.Sticker.obj_buffer) do
+    local v = SMODS.Stickers[k]
+    local sticker = card:calculate_sticker(context, k)
+    if sticker then
+        ret[v] = sticker
+    end
+end
+
+-- TARGET: evaluate your own general effects
+"""
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+r 13 641 - -
+l 1
+    local jokers = nil
+r 13 643 %20%20%20%20 -
+r 13 644 %20%20%20%20%20%20%20%20 -
+r 3 3396 %20%20%20%20 -
+r 13 646 %20%20%20%20%20%20%20%20 -
+l 1
+    else
+r 13 648 %20%20%20%20%20%20%20%20 -
+l 54
+    end
+    if jokers then
+        ret.jokers = jokers
+    end
+end
+
+return ret'''
+match_indent = true
+position = "at"
+payload = """
+local post_trig = {}
+local areas = SMODS.get_card_areas('jokers')
+local area_set = {}
+for _,v in ipairs(areas) do area_set[v] = true end
+if card.area and area_set[card.area] then
+    local jokers, triggered = card:calculate_joker(context)
+    if jokers == true then jokers = { remove = true } end
+    if type(jokers) ~= 'table' then jokers = nil end
+    if jokers or triggered then
+        ret.jokers = jokers
+        if not (jokers and jokers.no_retrigger) then
+            local retriggers = SMODS.calculate_retriggers(card, context, ret)
+            if next(retriggers) then
+                ret.retriggers = retriggers
+            end
+        end
+        if SMODS.optional_features.post_trigger and SMODS.can_context_post_trigger(context) then
+            SMODS.calculate_context({blueprint_card = context.blueprint_card, post_trigger = true, other_card = card, other_context = context, other_ret = ret}, post_trig)
+        end
+    end
+end
+
+return ret, post_trig
+"""
+# patch card_eval_status_text to allow G.deck usage
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+elseif card.area == G.hand then'''
+match_indent = true
+position = "at"
+payload = """
+elseif card.area == G.hand or card.area == G.deck then
+"""
+
+# card_eval_status_text alignment patches
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''elseif card.area == G.hand or card.area == G.deck then'''
+payload = '''elseif card == G.deck then
+r 13 795 %20%20%20%20 -
+l 17
+    card_aligned = 'tm'
+elseif card.area == G.discard or card.area == G.vouchers then
+    y_off = card.area == G.discard and -0.35*G.CARD_H or -0.65*G.CARD_H
+    card = G.deck.cards[1] or G.deck
+    card_aligned = 'tm'
+'''
+
+# G.FUNCS.evaluate_play()
+
+
+# Add deck/discard individual contexts
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+position = 'before'
+match_indent = true
+pattern = '''
+r 16 873 - -
+l 12
+--Joker Effects
+--+++++++++++++++++++++++++++++++++++++++++++++++++++++++++--'''
+payload = '''
+
+'''
+
+# Joker Effects
+# Edition effects
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 16 879 - -
+l 1
+local edition_effects = eval_card(_card, {cardarea = G.jokers, full_hand = play_cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, edition = true})
+r 16 881 - -
+r 16 882 %20%20%20%20 -
+r 16 883 %20%20%20%20 -
+r 16 884 %20%20%20%20%20%20%20%20 -
+r 16 707 %20%20%20%20%20%20%20%20 -
+r 16 886 %20%20%20%20%20%20%20%20 -
+r 16 887 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 888 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 889 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+            edition = true})
+    end
+r 16 892 %20%20%20%20 -
+r 16 893 %20%20%20%20%20%20%20%20 -
+r 16 715 %20%20%20%20%20%20%20%20 -
+r 16 886 %20%20%20%20%20%20%20%20 -
+r 16 896 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 897 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 774 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+            edition = true})
+    end
+r 16 901 %20%20%20%20 -
+l 16
+end'''
+match_indent = true
+position = "at"
+payload = '''
+local effects = {}
+-- remove base game joker edition calc
+local eval = eval_card(_card, {cardarea = G.jokers, full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, edition = true, pre_joker = true})
+if eval.edition then effects[#effects+1] = eval end
+
+'''
+# Edition mult effects
+## extra end to fix syntax from adding joker-like areas
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 16 881 %20%20%20%20 -
+r 16 933 %20%20%20%20%20%20%20%20 -
+r 16 934 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 715 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 886 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 937 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 938 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 889 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                edition = true})
+        end
+r 16 901 %20%20%20%20%20%20%20%20 -
+l 30
+    end
+end'''
+match_indent = false
+position = "at"
+payload = '''
+            -- calculate edition multipliers
+            local eval = eval_card(_card, {cardarea = G.jokers, full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, edition = true, post_joker = true})
+            if eval.edition then effects[#effects+1] = eval end
+
+            SMODS.trigger_effects(effects, _card)
+        end end
+'''
+# Joker effects
+
+# allows adding other areas (syntax is fixed further down)
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''local n_consumeables = #G.consumeables.cards*
+for i=1, n_jokers + n_consumeables do
+    local _card = joker_cards[i] or G.consumeables.cards[i - n_jokers]'''
+payload = '''for _, area in ipairs(SMODS.get_card_areas('jokers')) do for _, _card in ipairs(area.cards) do'''
+
+## I am NOT converting this to regex (yet)
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 16 201 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+            local effects = eval_card(_card, {cardarea = G.jokers, full_hand = play_cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, joker_main = true})
+
+            --Any Joker effects
+r 16 631 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 736 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 910 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 911 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 912 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                if effects.jokers.Xchip_mod then hand_chips = mod_chips(hand_chips * effects.jokers.Xchip_mod);extras.hand_chips = true end
+r 16 746 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 914 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 901 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 26
+            end'''
+match_indent = true
+position = "at"
+payload = '''
+-- Calculate context.joker_main
+local joker_eval, post = eval_card(_card, {cardarea = G.jokers, full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, joker_main = true})
+if next(joker_eval) then
+    if joker_eval.edition then joker_eval.edition = {} end
+    table.insert(effects, joker_eval)
+    for _, v in ipairs(post) do effects[#effects+1] = v end
+    if joker_eval.retriggers then
+        for rt = 1, #joker_eval.retriggers do
+            local rt_eval, rt_post = eval_card(_card, {cardarea = G.jokers, full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, joker_main = true, retrigger_joker = true})
+            if next(rt_eval) then
+                table.insert(effects, {retriggers = joker_eval.retriggers[rt]})
+                table.insert(effects, rt_eval)
+                for _, v in ipairs(rt_post) do effects[#effects+1] = v end
+            end
+        end
+    end
+end'''
+# Joker on Joker effects
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 16 918 - -
+l 3
+for _, v in ipairs(joker_cards) do
+    local effect = v:calculate_joker{full_hand = play_cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, other_joker = _card}
+    if effect then
+r 16 736 %20%20%20%20%20%20%20%20 -
+r 16 923 %20%20%20%20%20%20%20%20 -
+r 16 924 %20%20%20%20%20%20%20%20 -
+r 16 925 %20%20%20%20%20%20%20%20 -
+r 16 926 %20%20%20%20%20%20%20%20 -
+r 16 927 %20%20%20%20%20%20%20%20 -
+r 16 901 %20%20%20%20%20%20%20%20 -
+l 63
+    end
+end'''
+match_indent = true
+position = "at"
+payload = '''
+-- Calculate context.other_joker effects
+for _, _area in ipairs(SMODS.get_card_areas('jokers')) do
+    for _, _joker in ipairs(_area.cards) do
+        local other_key = 'other_unknown'
+        if _card.ability.set == 'Joker' then other_key = 'other_joker' end
+        if _card.ability.consumeable then other_key = 'other_consumeable' end
+        if _card.ability.set == 'Voucher' then other_key = 'other_voucher' end
+        -- TARGET: add context.other_something identifier to your cards
+        local joker_eval,post = eval_card(_joker, {full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, [other_key] = _card, other_main = _card })
+        if next(joker_eval) then
+            if joker_eval.edition then joker_eval.edition = {} end
+            joker_eval.jokers.juice_card = _joker
+            table.insert(effects, joker_eval)
+            for _, v in ipairs(post) do effects[#effects+1] = v end
+            if joker_eval.retriggers then
+                for rt = 1, #joker_eval.retriggers do
+                    local rt_eval, rt_post = eval_card(_joker, {full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, [other_key] = _card, retrigger_joker = true})
+                    if next(rt_eval) then
+                        table.insert(effects, {retriggers = joker_eval.retriggers[rt]})
+                        table.insert(effects, rt_eval)
+                        for _, v in ipairs(rt_post) do effects[#effects+1] = v end
+                    end
+                end
+            end
+        end
+    end
+end
+for _, _area in ipairs(SMODS.get_card_areas('individual')) do
+    local other_key = 'other_unknown'
+    if _card.ability.set == 'Joker' then other_key = 'other_joker' end
+    if _card.ability.consumeable then other_key = 'other_consumeable' end
+    if _card.ability.set == 'Voucher' then other_key = 'other_voucher' end
+    -- TARGET: add context.other_something identifier to your cards
+    local _eval,post = SMODS.eval_individual(_area, {full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, [other_key] = _card, other_main = _card })
+    if next(_eval) then
+        _eval.individual.juice_card = _area.scored_card
+        table.insert(effects, _eval)
+        for _, v in ipairs(post) do effects[#effects+1] = v end
+        if _eval.retriggers then
+            for rt = 1, #_eval.retriggers do
+                local rt_eval, rt_post = SMODS.eval_individual(_area, {full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, [other_key] = _card, retrigger_joker = true})
+                if next(rt_eval) then
+                    table.insert(effects, {_eval.retriggers[rt]})
+                    table.insert(effects, rt_eval)
+                    for _, v in ipairs(rt_post) do effects[#effects+1] = v end
+                end
+            end
+        end
+    end
+end
+'''
+
+## Fix other evaluations
+# Discarding cards
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 16 394 - -
+l 1
+    local eval = nil
+r 16 404 %20%20%20%20 -
+l 1
+    if eval then
+r 16 406 %20%20%20%20%20%20%20%20 -
+r 16 407 %20%20%20%20%20%20%20%20 -
+l 21
+    end
+end'''
+match_indent = true
+position = "at"
+payload = '''
+local effects = {}
+SMODS.calculate_context({discard = true, other_card =  G.hand.highlighted[i], full_hand = G.hand.highlighted, ignore_other_debuff = true}, effects)
+SMODS.trigger_effects(effects)
+for _, eval in pairs(effects) do
+    if type(eval) == 'table' then
+        for key, eval2 in pairs(eval) do
+            if key == 'remove' or (type(eval2) == 'table' and eval2.remove) then removed = true end
+        end
+    end
+end'''
+
+# context.before
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 3 2375 - -
+r 16 201 %20%20%20%20 -
+r 16 630 %20%20%20%20 -
+r 16 631 %20%20%20%20 -
+r 16 632 %20%20%20%20%20%20%20%20 -
+r 16 633 %20%20%20%20%20%20%20%20 -
+r 16 634 %20%20%20%20%20%20%20%20 -
+r 16 635 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 67
+        end
+    end
+end'''
+match_indent = true
+position = "at"
+payload = '''
+-- context.before calculations
+if SMODS.last_hand then
+    for _, v in ipairs({'scoring_hand', 'full_hand'}) do
+        for _, _c in ipairs(SMODS.last_hand[v]) do
+            _c.ability['SMODS_'..v] = nil
+        end
+    end
+end
+SMODS.last_hand = {scoring_hand = scoring_hand, scoring_name = text, full_hand = G.play.cards}
+SMODS.calculate_context({full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, before = true})
+
+-- TARGET: effects before scoring starts
+
+SMODS.displayed_hand = nil'''
+
+# context.main_scoring for individual areas and context.final_scoring_step
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''local nu_chip, nu_mult = G.GAME.selected_back:trigger_effect{context = 'final_scoring_step', chips = hand_chips, mult = mult}'''
+match_indent = true
+position = "before"
+payload = '''
+--- context.main_scoring for individual area calculations
+for _, _area in ipairs(SMODS.get_card_areas('individual')) do
+    local effects = {}
+    -- Calculate context.main_scoring for individual areas
+    local _eval, post = SMODS.eval_individual(_area, { full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, main_scoring = true })
+    if next(_eval) then
+        table.insert(effects, _eval)
+        _eval.individual.juice_card = _area.scored_card
+        for _, v in ipairs(post) do effects[#effects + 1] = v end
+        if _eval.retriggers then
+            for rt = 1, #_eval.retriggers do
+                local rt_eval, rt_post = SMODS.eval_individual(_area, {full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, main_scoring = true, retrigger_joker = true})
+                if next(rt_eval) then
+                    table.insert(effects, {_eval.retriggers[rt]})
+                    table.insert(effects, rt_eval)
+                    for _, v in ipairs(rt_post) do effects[#effects+1] = v end
+                end
+            end
+        end
+    end
+
+    SMODS.trigger_effects(effects, _area.scored_card)
+end
+
+
+-- context.final_scoring_step calculations
+SMODS.calculate_context({full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, final_scoring_step = true})
+
+-- TARGET: effects before deck final_scoring_step
+'''
+
+# context.destroying_card
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+for j = 1, #joker_cards do
+    destroyed = joker_cards[j]:calculate_joker({destroying_card = scoring_hand[i], full_hand = play_cards})
+r 16 958 %20%20%20%20 -
+l 2
+end
+
+r 16 961 - -
+l 6
+    destroyed = true
+end'''
+match_indent = true
+position = "at"
+payload = '''
+-- context.destroying_card calculations
+r 16 394 - -
+l 29
+    local eval, post = eval_card(G.jokers.cards[j], {destroying_card = scoring_hand[i], full_hand = G.play.cards})
+    SMODS.trigger_effects({eval, post}, scoring_hand[i])
+    if eval.jokers then destroyed = true end
+
+end
+
+if SMODS.has_enhancement(scoring_hand[i], 'm_glass') and scoring_hand[i]:can_calculate() and SMODS.pseudorandom_probability(scoring_hand[i], 'glass', 1, scoring_hand[i].ability.name == 'Glass Card' and scoring_hand[i].ability.extra or G.P_CENTERS.m_glass.config.extra) then
+    destroyed = true
+end
+
+local eval, post = eval_card(scoring_hand[i], {destroying_card = scoring_hand[i], full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, cardarea = G.play})
+local self_destroy = false
+for key, effect in pairs(eval) do
+    self_destroy = SMODS.calculate_effect(effect, scoring_hand[i])
+end
+SMODS.trigger_effects({post}, scoring_hand[i])
+if self_destroy then destroyed = true end
+
+-- TARGET: card destroyed when played
+'''
+
+# context.remove_playing_cards
+[[patches]]
+[patches.regex]
+target = "functions/state_events.lua"
+pattern = '''(?<indent>[\t ]*)local cards_destroyed = \{\}\n(.*\n)*?\s+for j=1, #joker_cards do\n\s+eval_card\(joker_cards\[j\], \{cardarea = G\.jokers, remove_playing_cards = true, removed = cards_destroyed\}\)\n\s+end'''
+line_prepend = '$indent'
+position = "at"
+payload = '''
+r 16 950 - -
+l 13
+for _,v in ipairs(SMODS.get_card_areas('playing_cards', 'destroying_cards')) do
+    SMODS.calculate_destroying_cards({ full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, cardarea = v }, cards_destroyed, v == G.play and scoring_hand or nil)
+end
+
+SMODS.destroy_cards(cards_destroyed)
+
+-- TARGET: effects when cards are removed
+'''
+
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''        local glass_shattered = {}
+r 16 979 %20%20%20%20%20%20%20%20 -
+r 16 980 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+        end
+
+r 16 983 %20%20%20%20%20%20%20%20 -
+l 1
+        
+r 16 985 %20%20%20%20%20%20%20%20 -
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                func = function()
+r 16 988 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 %20
+r 16 989 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    else
+r 16 991 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 22
+                    end
+                  return true
+                end
+              }))
+        end'''
+position = "at"
+payload = ''
+match_indent = true
+
+[[patches]]
+[patches.regex]
+target = 'card.lua'
+line_prepend = '$indent'
+position = 'at'
+pattern = '(?<indent>[\t ]*)for i = 1, #G.jokers.cards do[\n\s]*G.jokers.cards\[i\]:calculate_joker\(\{remove_playing_cards = true, removed = destroyed_cards\}\)[\s\n]*end'
+payload = '''SMODS.calculate_context({ remove_playing_cards = true, removed = destroyed_cards })'''
+
+# context.remove_playing_cards from discard
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 16 424 - -
+r 16 200 %20%20%20%20 -
+r 16 426 %20%20%20%20%20%20%20%20 -
+l 7
+    end
+end
+'''
+position = "at"
+match_indent = true
+payload = '''
+-- context.remove_playing_cards from discard
+r 16 424 - -
+l 11
+    SMODS.calculate_context({remove_playing_cards = true, removed = destroyed_cards})
+end
+
+-- TARGET: effects after cards destroyed in discard'''
+
+
+# context.debuffed_hand
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 3 2375 - -
+l 1
+
+r 16 201 %20%20%20%20 -
+r 16 1020 %20%20%20%20 -
+l 2
+
+    --Any Joker effects
+r 16 631 %20%20%20%20 -
+r 16 632 %20%20%20%20%20%20%20%20 -
+r 16 901 %20%20%20%20%20%20%20%20 -
+l 15
+    end
+end'''
+match_indent = true
+position = "at"
+payload = '''
+-- context.debuffed_hand calculations
+SMODS.calculate_context({full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, debuffed_hand = true})
+
+-- TARGET: effects after hand debuffed by blind'''
+
+# context.after
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 3 2375 - -
+r 16 1069 %20%20%20%20 -
+r 16 1070 %20%20%20%20 -
+r 16 631 %20%20%20%20 -
+r 16 632 %20%20%20%20%20%20%20%20 -
+r 16 633 %20%20%20%20%20%20%20%20 -
+l 10
+    end
+end'''
+match_indent = true
+position = "at"
+payload = '''
+-- context.after calculations
+SMODS.calculate_context({full_hand = G.play.cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, after = true})
+
+-- set `ability.played_this_ante` on played cards
+for _,v in ipairs(G.play.cards) do
+r 1 112 %20%20%20%20 -
+l 14
+        func = function()
+            v.ability.played_this_ante = true
+            return true
+        end,
+    }))
+end
+
+-- TARGET: effects after hand evaluation'''
+
+# calc_dollar_bonus call through other objects
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = '''
+r 2 590 - -
+r 16 1176 %20%20%20%20 -
+l 1
+    if ret then
+r 16 1178 %20%20%20%20%20%20%20%20 -
+l 1
+        pitch = pitch + 0.06
+r 16 1180 %20%20%20%20%20%20%20%20 -
+l 19
+    end
+end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+local i = 0
+for _, area in ipairs(SMODS.get_card_areas('jokers')) do
+    for _, _card in ipairs(area.cards) do
+        local ret, ret_opts = _card:calculate_dollar_bonus()
+        ret_opts = ret_opts or {}
+
+        -- TARGET: calc_dollar_bonus per card
+        if ret then
+            if not ret_opts.no_eval_row then
+                i = i+1
+                add_round_eval_row({dollars = ret, bonus = true, name='joker'..i, pitch = pitch, card = _card, loc_opts = ret_opts})
+                pitch = pitch + 0.06
+            end
+r 16 1180 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 28
+        end
+    end
+end
+i = 0
+for _, target in ipairs(SMODS.get_card_areas('individual', 'calc_dollar_bonus')) do
+    if type(target.object.calc_dollar_bonus) == 'function' then
+        local ret, ret_opts = target.object:calc_dollar_bonus()
+        ret_opts = ret_opts or {}
+        local name
+        
+        -- TARGET: calc_dollar_bonus per individual object
+        if ret then
+            if not ret_opts.no_eval_row then
+                if ret_opts.text then
+                    name = ret_opts.text
+                elseif (ret_opts.set or target.set) and (ret_opts.key or target.key) then
+                    if ret_opts.set == "Challenge" or (not ret_opts.set and target.set == "Challenge") then
+                        name = localize(ret_opts.key or target.key, 'challenge_names')
+                    elseif (ret_opts.set == "Mod" or (not ret_opts.set and target.set == "Mod")) and not (G.localization.descriptions.Mod or {})[ret_opts.key or target.key] then
+                        name = (SMODS.Mods[ret_opts.key or target.key] or {}).name
+                    else
+                        name = localize{type = 'name_text', set = ret_opts.set or target.set, key = ret_opts.key or target.key}
+                    end
+                end
+                i = i+1
+                add_round_eval_row({dollars = ret, bonus = true, name='custom_individual'..i, pitch = pitch, text_colour = ret_opts.text_colour or G.C.FILTER, text = name or 'ERROR', text_scale = ret_opts.scale or 0.6})
+                pitch = pitch + 0.06
+            end
+r 16 1180 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 10
+        end
+    end
+end
+'''
+
+# context.round_eval
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = '''
+r 16 1163 - -
+l 14
+'''
+position = 'before'
+match_indent = true
+payload = '''
+SMODS.calculate_context{round_eval = true}
+'''
+
+# Add better `add_round_eval_row` support   
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 13 1000 - -
+l 13
+'''
+payload = '''
+elseif string.find(config.name, 'custom') then
+    if config.number then table.insert(left_text, {n=G.UIT.T, config={text = config.number, scale = config.number_scale or 0.8*scale, colour = config.number_colour or G.C.FILTER, shadow = true, juice = true}}) end
+    table.insert(left_text, {n=G.UIT.O, config={object = DynaText({string = {""..config.text}, colours = {config.text_colour or G.C.UI.TEXT_LIGHT}, shadow = true, pop_in = 0, scale = config.text_scale or 0.4*scale, silent = true})}})
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 1001 - -
+l 17
+'''
+payload = '''
+local loc_opts = config.loc_opts or {}
+local vars = loc_opts.vars
+if not vars and type(config.card.config.center.loc_vars) == "function" then
+    local res = config.card.config.center:loc_vars({}, config.card)
+    vars = res.name_vars or res.vars or {}
+end
+table.insert(left_text, {n=G.UIT.O, config={object = DynaText({string = loc_opts.text or localize{type = 'name_text', set = loc_opts.set or config.card.config.center.set, key = loc_opts.key or config.card.config.center.key, vars = vars}, colours = {loc_opts.text_colour or G.C.FILTER}, shadow = true, pop_in = 0, scale = (loc_opts.scale or 0.6)*scale, silent = true})}})
+'''
+
+
+# context.end_of_round
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = '''
+r 2 590 - -
+l 1
+    local eval = nil
+r 16 101 %20%20%20%20 -
+l 4
+    if eval then
+        if eval.saved then
+            game_over = false
+        end
+r 16 106 %20%20%20%20%20%20%20%20 -
+l 1
+    end
+r 16 108 %20%20%20%20 -
+r 16 109 %20%20%20%20 -
+l 33
+end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+-- context.end_of_round calculations
+SMODS.saved = false
+G.GAME.saved_text = nil
+SMODS.last_hand = SMODS.last_hand or {scoring_hand = {}, full_hand = {}}
+SMODS.calculate_context({end_of_round = true, game_over = game_over, beat_boss = G.GAME.blind.boss, scoring_hand = SMODS.last_hand.scoring_hand, scoring_name = SMODS.last_hand.scoring_name, full_hand = SMODS.last_hand.full_hand })
+if SMODS.saved then game_over = false end
+-- TARGET: main end_of_round evaluation
+'''
+
+# context.end_of_round individual effects
+[[patches]]
+[patches.regex]
+target = 'functions/state_events.lua'
+position = 'at'
+pattern = '''(?<indent>[\t ]*)for i=1, #G\.hand\.cards do\n\s+--Check for hand doubling\n(.*\n)*?\s+delay\(0\.3\)'''
+line_prepend = '$indent'
+payload = '''for _,v in ipairs(SMODS.get_card_areas('playing_cards', 'end_of_round')) do
+    SMODS.calculate_end_of_round_effects({ cardarea = v, end_of_round = true, beat_boss = G.GAME.blind.boss })
+end
+'''
+
+# store associated blind tag as a global object
+[[patches]]
+[patches.pattern]
+target = "functions/button_callbacks.lua"
+pattern = "G.GAME.round_resets.blind = e.config.ref_table"
+position = "before"
+payload = '''
+r 4 2754 - -
+l 9
+G.GAME.round_resets.blind_tag = _tag and _tag.config and _tag.config.ref_table or nil
+'''
+match_indent = true
+
+# context.setting_blind
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = '''
+r 2 590 - -
+r 16 336 %20%20%20%20 -
+l 15
+end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({setting_blind = true, blind = G.GAME.round_resets.blind})
+
+-- TARGET: setting_blind effects
+'''
+
+# context.pre_discard
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = '''
+r 16 394 - -
+r 16 395 %20%20%20%20 -
+l 15
+end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({pre_discard = true, full_hand = G.hand.highlighted, hook = hook})
+
+-- TARGET: pre_discard
+'''
+
+# context.selling_self in cards
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+pattern = '''
+r 3 1599 - -
+l 25
+'''
+position = 'at'
+match_indent = true
+payload = '''
+local eval, post = eval_card(self, {selling_self = true})
+local effects = {eval}
+for _,v in ipairs(post) do effects[#effects+1] = v end
+if eval.retriggers then
+    for rt = 1, #eval.retriggers do
+        local rt_eval, rt_post = eval_card(self, { selling_self = true, retrigger_joker = true})
+        if next(rt_eval) then
+            table.insert(effects, {eval.retriggers[rt]})
+            table.insert(effects, rt_eval)
+            for _, v in ipairs(rt_post) do effects[#effects+1] = v end
+        end
+    end
+end
+SMODS.trigger_effects(effects, self)
+'''
+
+# context.open_booster
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+pattern = '''
+r 2 590 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 1797 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 13
+            end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({open_booster = true, card = self, booster = booster_obj})
+'''
+
+# context.buying_card
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+pattern = '''
+r 2 590 %20%20%20%20%20%20%20%20 -
+r 3 1856 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 13
+        end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({buying_card = true, card = self})
+'''
+
+# context.first_hand_drawn
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = '''
+r 10 3226 - -
+r 10 3227 %20%20%20%20 -
+r 2 590 %20%20%20%20 -
+r 10 3229 %20%20%20%20%20%20%20%20 -
+l 15
+    end
+end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+-- removed first hand drawn context
+'''
+# Hand Drawn Contexts
+[[patches]]
+[patches.pattern]
+target = 'cardarea.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 7 606 - -
+l 3
+return true
+'''
+payload = '''
+r 7 606 - -
+l 8
+return card
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 410 - -
+l 3
+'''
+payload = '''
+card = to:draw_card_from(from, stay_flipped, discarded_only)
+r 13 401 - -
+l 21
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+if sort then
+    to:sort()
+end
+'''
+payload = '''
+SMODS.drawn_cards = SMODS.drawn_cards or {}
+if card and card.playing_card then SMODS.drawn_cards[#SMODS.drawn_cards+1] = card end
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 16 370 - -
+r 16 371 %20%20%20%20 -
+r 16 372 %20%20%20%20%20%20%20%20 -
+l 1
+    else
+r 16 372 %20%20%20%20%20%20%20%20 -
+l 13
+    end
+end
+'''
+payload = '''
+SMODS.cards_to_draw = (SMODS.cards_to_draw or 0) + hand_space
+SMODS.drawn_cards = {}
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 16 370 - -
+r 16 371 %20%20%20%20 -
+r 16 372 %20%20%20%20%20%20%20%20 -
+l 1
+    else
+r 16 372 %20%20%20%20%20%20%20%20 -
+l 4
+    end
+end
+'''
+payload = '''
+r 1 112 - -
+r 2 398 %20%20%20%20 -
+l 6
+    func = function()                
+        SMODS.cards_to_draw = SMODS.cards_to_draw - hand_space
+        SMODS.cards_to_draw = math.min(SMODS.cards_to_draw, #G.deck.cards)
+        return true
+    end
+}))
+r 1 112 - -
+r 2 398 %20%20%20%20 -
+l 18
+    func = function()
+        if #SMODS.drawn_cards > 0 then
+            SMODS.calculate_context({first_hand_drawn = not G.GAME.current_round.any_hand_drawn and G.GAME.facing_blind,
+                                    hand_drawn = G.GAME.facing_blind and SMODS.drawn_cards,
+                                    other_drawn = not G.GAME.facing_blind and SMODS.drawn_cards})
+            SMODS.drawn_cards = {}
+            if G.GAME.facing_blind then G.GAME.current_round.any_hand_drawn = true end
+        end
+        return true
+    end
+}))
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 16 372 - -
+l 4
+'''
+payload = '''
+if cards_to_draw[i] and cards_to_draw[i].ability and (cards_to_draw[i].ability.extra_slots_used or cards_to_draw[i].ability.card_limit) then
+    SMODS.cards_to_draw = SMODS.cards_to_draw + (SMODS.cards_to_draw < #G.deck.cards and (cards_to_draw[i].ability.extra_slots_used or 0) - (cards_to_draw[i].ability.card_limit or 0) or 0)
+r 1 112 %20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20 -
+l 28
+        func = function()                
+            SMODS.cards_to_draw = SMODS.cards_to_draw - (cards_to_draw[i].ability.extra_slots_used or 0) + (cards_to_draw[i].ability.card_limit or 0)
+            return true
+        end
+    }))
+end
+draw_card(G.deck,G.hand, i*100/hand_space,'up', true, cards_to_draw[i])
+'''
+
+
+# Used to identify first hand of round
+# new_round
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'after'
+pattern = 'G.GAME.current_round.discards_used = 0'
+payload = '''
+G.GAME.current_round.any_hand_drawn = nil
+'''
+
+
+# context.using_consumeable
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 2 590 %20%20%20%20%20%20 -
+r 4 2220 %20%20%20%20%20%20%20%20 -
+l 14
+      end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({using_consumeable = true, consumeable = card, area = card.from_area})
+'''
+# save area of used card
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 4 2417 - -
+l 10
+'''
+payload = '''
+c1.from_area = c1.area
+'''
+
+# context.selling_card
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 2 590 %20%20%20%20 -
+r 4 2322 %20%20%20%20%20%20 -
+r 4 2323 %20%20%20%20%20%20%20%20 -
+l 15
+      end
+    end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({selling_card = true, card = card})
+'''
+
+
+# context.buying_card
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 4 2437 - -
+l 4
+'''
+position = 'at'
+match_indent = true
+payload = '''
+r 3 617 - -
+l 11
+    local eval, post = eval_card(c1, {buying_card = true, buying_self = true, card = c1}) -- buying_card left for back compat, buying_self recommended to use
+    SMODS.trigger_effects({eval, post}, c1)
+    return true
+    end}))
+'''
+
+# context.buying_card
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 2 590 %20%20%20%20%20%20%20%20%20%20 -
+r 4 2452 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+          end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({buying_card = true, card = c1})
+'''
+# context.starting_shop
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = '''
+r 4 2303 - -
+l 11
+'''
+position = 'before'
+match_indent = true
+payload = '''
+if not nosave_shop then SMODS.calculate_context({starting_shop = true}) end
+'''
+# context.ending_shop
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 2 590 %20%20%20%20%20%20 -
+r 4 2486 %20%20%20%20%20%20%20%20 -
+l 13
+      end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({ending_shop = true})
+'''
+
+# context.skipping_booster
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 2 590 %20%20%20%20 -
+r 4 2560 %20%20%20%20%20%20 -
+l 12
+    end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({skipping_booster = true, booster = booster_obj})
+'''
+# context.skip_blind
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 2 590 %20%20%20%20%20%20%20%20%20%20 -
+r 4 2769 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 13
+          end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({skip_blind = true, skipped_blind = G.GAME.round_resets.blind_choices[skipped], skip_to = G.GAME.round_resets.blind_choices[skip_to]})
+'''
+
+# context.reroll_shop
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = '''
+r 2 590 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 4 2901 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 14
+            end
+'''
+position = 'at'
+match_indent = true
+payload = '''
+SMODS.calculate_context({reroll_shop = true, cost = reroll_cost})
+'''
+# reroll_cost for context
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 4 2859 - -
+l 11
+'''
+payload = '''
+local reroll_cost = G.GAME.current_round.reroll_cost
+'''
+
+
+# Fix purple seal calc
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+pattern = '''
+r 3 2253 - -
+l 15
+    if self.seal == 'Purple' and #G.consumeables.cards + G.GAME.consumeable_buffer < G.consumeables.config.card_limit then'''
+position = 'at'
+match_indent = true
+payload = '''
+if context.discard and context.other_card == self then
+    if self.seal == 'Purple' and #G.consumeables.cards + G.GAME.consumeable_buffer < G.consumeables.config.card_limit then'''
+
+
+# Auto deal with negative chips card_eval_status_text()
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 819 - -
+l 12
+'''
+payload = '''
+text = localize{type='variable',key='a_chips'..(amt<0 and '_minus' or ''),vars={math.abs(amt)}}
+'''
+
+# Auto deal with negative mult card_eval_status_text()
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 824 - -
+l 12
+'''
+payload = '''
+text = localize{type='variable',key='a_mult'..(amt<0 and '_minus' or ''),vars={math.abs(amt)}}
+'''
+
+# Auto deal with negative xmult card_eval_status_text()
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 832 - -
+l 11
+'''
+payload = '''
+text = localize{type='variable',key='a_xmult'..(amt<0 and '_minus' or ''),vars={math.abs(amt)}}
+'''
+# Make percent and percent_delta globals
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''local percent = 0.3
+r 16 608 - -
+l 31
+'''
+payload = '''percent = 0.3
+percent_delta = 0.08
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''local percent = (i-0.999)/(#G.hand.cards-0.998) + (j-1)*0.1'''
+payload = '''percent = (i-0.999)/(#G.hand.cards-0.998) + (j-1)*0.1'''
+
+# Add support for pitch and volume returns in effects
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'after'
+pattern = 'local volume = 1'
+payload = '''
+local trigger = 'before'
+local blocking = nil
+local blockable = nil
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 13 858 - -
+l 43
+'''
+payload = '''
+sound = extra.sound or sound
+percent = extra.pitch or percent
+volume = extra.volume or volume
+trigger = extra.trigger or 'before'
+blocking = extra.blocking
+blockable = extra.blockable
+'''
+
+# Voucher cardarea
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+match_indent = true
+position = 'before'
+pattern = 'self.deck = CardArea('
+payload = '''self.vouchers = CardArea(
+    G.discard.T.x, G.discard.T.y,
+    G.discard.T.w, G.discard.T.h,
+    { type = "discard", card_limit = 1e308 }
+)
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'after'
+pattern = 'function Card:apply_to_run(center)'
+payload = '''
+    local card_to_save = self and copy_card(self) or Card(0, 0, G.CARD_W, G.CARD_H, G.P_CARDS.empty, center)
+    card_to_save.VT.x, card_to_save.VT.y = G.vouchers.T.x, G.vouchers.T.y
+    G.vouchers:emplace(card_to_save)
+    SMODS.enh_cache:clear()
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+position = 'at'
+match_indent = false
+pattern = '''if self.ability.set == "Planet" and not self.debuff then
+r 3 2294 %20%20%20%20 -
+r 3 2295 %20%20%20%20%20%20%20%20 -
+l 1
+            return {
+r 3 2297 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 2298 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 26
+            }
+        end
+    end
+end'''
+payload = ''
+
+[[patches]]
+[patches.regex]
+target = 'back.lua'
+position = 'at'
+line_prepend = '$indent'
+pattern = '(?<indent>[\t ]*)(?<line>Card.apply_to_run\(nil, G\.P_CENTERS\[.*?\]\))'
+payload = '''G.E_MANAGER:add_event(Event({
+    func = function()
+        $line
+        return true
+    end
+}))'''
+
+#wtf
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''self.discard_pos = {
+r 3 47 %20%20%20%20 -
+l 17
+    x = math.random(),
+    y = math.random()
+}'''
+payload = '''self.discard_pos = {
+    r = 0,
+    x = 0,
+    y = 0,
+}
+'''
+
+# xchip support
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 13 828 - -
+l 17
+'''
+payload = '''
+elseif eval_type == 'x_chips' then
+        sound = 'xchips'
+        volume = 0.7
+        amt = amt
+        text = localize{type='variable',key='a_xchips'..(amt<0 and '_minus' or ''),vars={math.abs(amt)}}
+        colour = G.C.BLUE
+        config.type = 'fade'
+        config.scale = 0.7
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 865 - -
+l 12
+'''
+payload = '''
+if extra.chip_mod or extra.Xchip_mod then
+'''
+
+# Modify scoring hand context
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 16 580 - -
+l 2
+local pures = {}
+local has_splash = next(find_joker('Splash'))*
+r 16 582 - -
+l 1
+    if has_splash then
+r 16 584 %20%20%20%20%20%20%20%20 -
+l 1
+    else
+r 16 586 %20%20%20%20%20%20%20%20 -
+l 1
+            local inside = false
+r 16 588 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 16 589 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                    inside = true
+                end
+            end
+r 16 593 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+        end
+    end
+end
+for i=1, #pures do
+r 16 598 %20%20%20%20 -
+l 1
+end
+r 16 600 - -
+l 3
+'''
+payload = '''
+local final_scoring_hand = {}
+r 16 582 - -
+l 25
+    local splashed = SMODS.always_scores(G.play.cards[i]) or next(find_joker('Splash'))
+    local unsplashed = SMODS.never_scores(G.play.cards[i])
+    if not splashed then
+        for _, card in pairs(scoring_hand) do
+            if card == G.play.cards[i] then splashed = true end
+        end
+    end
+    local effects = {}
+    SMODS.calculate_context({modify_scoring_hand = true, other_card =  G.play.cards[i], full_hand = G.play.cards, scoring_hand = scoring_hand, in_scoring = true, ignore_other_debuff = true}, effects)
+    local flags = SMODS.trigger_effects(effects, G.play.cards[i])
+    if flags.add_to_hand then splashed = true end
+	if flags.remove_from_hand then unsplashed = true end
+    if splashed and not unsplashed then table.insert(final_scoring_hand, G.play.cards[i]) end
+end
+-- TARGET: adding to hand effects
+scoring_hand = final_scoring_hand
+'''
+
+# Add ending_booster calculation context
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 15 1266 - -
+r 4 2618 %20%20%20%20 -
+l 2
+end
+
+r 4 2590 - -
+l 16
+          func = function()
+            save_run()
+            return true
+      end}))
+'''
+payload = '''
+SMODS.calculate_context({ending_booster = true, booster = booster_obj})
+'''
+
+# Fix Certificate to use SMODS.poll_seal and use playing_card_added context correctly
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 1 112 - -
+l 1
+    func = function()
+r 3 2466 %20%20%20%20%20%20%20%20 -
+r 3 2467 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 2468 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 2469 %20%20%20%20%20%20%20%20 -
+r 3 2470 %20%20%20%20%20%20%20%20 -
+r 3 2471 %20%20%20%20%20%20%20%20 -
+r 3 2472 %20%20%20%20%20%20%20%20 -
+r 3 2473 %20%20%20%20%20%20%20%20 -
+l 1
+        end
+r 3 2475 %20%20%20%20%20%20%20%20 -
+l 1
+        G.hand:sort()
+r 3 2477 %20%20%20%20%20%20%20%20 -
+l 3
+        return true
+    end}))
+
+r 3 2481 - -
+l 2
+'''
+payload = '''
+r 1 112 - -
+l 1
+    func = function()
+r 3 2466 %20%20%20%20%20%20%20%20 -
+r 3 2467 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 2468 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        _card:set_seal(SMODS.poll_seal({type_key = 'certsl', guaranteed = true}), nil, true)
+r 3 2475 %20%20%20%20%20%20%20%20 -
+l 1
+        G.hand:sort()
+r 3 2477 %20%20%20%20%20%20%20%20 -
+l 13
+        playing_card_joker_effects({_card})
+        save_run()
+        return true
+    end}))
+
+'''
+# create_playing_card
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 1927 - -
+l 10
+'''
+payload = '''
+function create_playing_card(card_init, area, skip_materialize, silent, colours, skip_emplace)
+'''
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 1938 - -
+l 13
+'''
+payload = '''
+if area and not skip_emplace then area:emplace(card) end
+'''
+
+## Fix Marble Joker to send the created card to playing_card_added correctly
+# Marble Joker
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 1 112 - -
+l 1
+    func = function()
+r 3 2583 %20%20%20%20%20%20%20%20 -
+r 3 1207 %20%20%20%20%20%20%20%20 -
+r 3 2585 %20%20%20%20%20%20%20%20 -
+r 3 2586 %20%20%20%20%20%20%20%20 -
+l 1
+        G.play:emplace(card)
+r 3 2588 %20%20%20%20%20%20%20%20 -
+l 2
+        return true
+    end}))
+r 3 2591 - -
+l 1
+
+r 1 112 - -
+l 1
+    func = function()
+r 3 1210 %20%20%20%20%20%20%20%20 -
+l 2
+        return true
+    end}))
+r 3 2598 %20%20%20%20 -
+l 1
+
+r 3 2481 - -
+l 3
+'''
+payload = '''
+local context_blueprint_card = context.blueprint_card
+r 3 2583 - -
+r 3 1207 - -
+r 3 2585 - -
+l 1
+card.states.visible = nil
+r 1 112 - -
+l 1
+    func = function()
+r 3 2586 %20%20%20%20%20%20%20%20 -
+l 2
+        card:add_to_deck()
+        G.play:emplace(card)
+r 3 2588 %20%20%20%20%20%20%20%20 -
+l 3
+        return true
+    end}))
+SMODS.calculate_effect({message = localize('k_plus_stone'), colour = G.C.SECONDARY_SET.Enhanced}, context_blueprint_card or self)
+r 3 2598 - -
+r 4 2228 - -
+l 35
+'''
+# DNA
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = 'playing_cards_created = {true}'
+payload = 'playing_cards_created = {_card}'
+
+## Remove unneeded area check
+# Card:calculate_joker
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = 'if context.cardarea == G.jokers then'
+payload = 'do'
+
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+position = 'at'
+pattern = '{n=G.UIT.O, config={object = DynaText({scale = 0.6, string = G.GAME.blind:get_loc_debuff_text(), maxw = 9, colours = {G.C.WHITE},float = true, shadow = true, silent = true, pop_in = 0, pop_in_rate = 6})}},'
+payload = '{n=G.UIT.O, config={func = "update_blind_debuff_text", object = DynaText({scale = 0.6, string = SMODS.debuff_text or G.GAME.blind:get_loc_debuff_text(), maxw = 9, colours = {G.C.WHITE},float = true, shadow = true, silent = true, pop_in = 0, pop_in_rate = 6})}},'
+match_indent = true
+
+# Custom saved message
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 13 973 - -
+l 12
+'''
+payload = '''
+{n=G.UIT.O, config={object = DynaText({string = {' '..(type(G.GAME.saved_text) == 'string' and (G.localization.misc.dictionary[G.GAME.saved_text] and localize(G.GAME.saved_text) or G.GAME.saved_text) or localize('ph_mr_bones'))..' '}, colours = {G.C.FILTER}, shadow = true, pop_in = 0, scale = 0.5*scale, silent = true})}}
+'''
+
+# Customise dissolve colours from calculate
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 3 2131 - -
+l 34
+'''
+payload = '''
+dissolve_colours = dissolve_colours or (type(self.destroyed) == 'table' and self.destroyed.colours) or nil
+dissolve_time_fac = dissolve_time_fac or (type(self.destroyed) == 'table' and self.destroyed.time) or nil
+'''
+
+# Smart level up functionality
+# G.FUNCS.evaluate_play()
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = false
+position = 'after'
+pattern = '''delay = G.GAME.current_round.current_hand.handname ~= disp_text and score_time(0.4) or 0}, {handname=disp_text, level=G.GAME.hands[text].level, mult = G.GAME.hands[text].mult, chips = G.GAME.hands[text].chips})'''
+payload = '''    
+for name, parameter in pairs(SMODS.Scoring_Parameters) do
+    if name ~= 'chips' and name ~= 'mult' then update_hand_text({immediate = true}, {[name] = parameter.current}) end
+end
+SMODS.displayed_hand = text
+SMODS.displaying_scoring = true'''
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+position = 'after'
+pattern = '''hand_chips = mod_chips(0)'''
+payload = '''SMODS.displayed_hand = nil'''
+times = 1
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = false
+position = 'after'
+pattern = '''
+r 16 1064 %20%20 -
+l 11
+}))
+score_delay(0.3)'''
+payload = '''    SMODS.displaying_scoring = nil'''
+
+# Adjust food jokers
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 1 112 - -
+l 3
+    func = function()
+        play_sound('tarot1')
+        self.T.r = -0.2
+r 3 1603 %20%20%20%20%20%20%20%20 -
+r 3 2764 %20%20%20%20%20%20%20%20 -
+r 3 2765 %20%20%20%20%20%20%20%20 -
+r 3 2766 %20%20%20%20%20%20%20%20 -
+l 1
+            func = function()
+r 3 2768 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 18
+                    self:remove()
+                    self = nil
+                return true; end})) 
+        return true
+    end
+})) 
+'''
+payload = '''
+SMODS.destroy_cards(self, nil, nil, true)
+'''
+
+# Adjust Mr. Bones
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 1 112 - -
+l 1
+    func = function()
+r 3 3051 %20%20%20%20%20%20%20%20 -
+r 3 3052 %20%20%20%20%20%20%20%20 -
+l 1
+        play_sound('tarot1')
+r 3 3054 %20%20%20%20%20%20%20%20 -
+l 5
+        return true
+    end
+}))
+'''
+payload = '''
+r 1 112 - -
+l 1
+    func = function()
+r 3 3051 %20%20%20%20%20%20%20%20 -
+r 3 3052 %20%20%20%20%20%20%20%20 -
+l 13
+        return true
+    end
+}))
+SMODS.destroy_cards(self, nil, nil, nil)
+'''
+
+# Joker-type removed context added
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 3 2130 - -
+l 13
+'''
+payload = '''
+    if self.getting_sliced and not SMODS.is_playing_card(self) and not SMODS.skip_destroy_calc then
+        local flags = SMODS.calculate_context({joker_type_destroyed = true, card = self})
+        if flags.no_destroy then self.getting_sliced = nil; return false end
+    end
+'''
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 3 2079 - -
+l 15
+'''
+payload = '''
+    if self.getting_sliced and not SMODS.is_playing_card(self) and not args.skip_calc then
+        local flags = SMODS.calculate_context({joker_type_destroyed = true, card = self, shatters = true})
+        if flags.no_destroy then self.getting_sliced = nil; return false end
+    end
+'''
+
+# card.lua : Card:shatter() : Add args support
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2079 - -
+l 11
+'''
+payload = '''
+function Card:shatter(args)
+    args = args or {}
+'''
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2083 - -
+l 3
+self:juice_up()
+'''
+payload = '''
+r 3 2083 - -
+l 8
+if not args.no_juice then self:juice_up() end
+'''
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2104 - -
+r 3 2105 - -
+l 3
+'''
+payload = '''
+if not args.silent then
+r 3 2104 %20%20%20%20 -
+r 3 2105 %20%20%20%20 -
+l 11
+end
+'''
+
+## Change eternal checks
+# Ceremonial Dagger
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2566 - %20
+l 11
+'''
+payload = '''
+if my_pos and G.jokers.cards[my_pos+1] and not self.getting_sliced and not SMODS.is_eternal(G.jokers.cards[my_pos+1], self) and not G.jokers.cards[my_pos+1].getting_sliced then
+'''
+# Madness
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2507 - -
+l 11
+'''
+payload = '''
+if G.jokers.cards[i] ~= self and not SMODS.is_eternal(G.jokers.cards[i], self) and not G.jokers.cards[i].getting_sliced then destructable_jokers[#destructable_jokers+1] = G.jokers.cards[i] end
+'''
+# Ankh
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 1432 - -
+l 11
+'''
+payload = '''
+if not SMODS.is_eternal(v, self) then deletable_jokers[#deletable_jokers + 1] = v end
+'''
+# Hex SMODS.is_eternal and card.getting_sliced
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 1491 - -
+l 11
+'''
+payload = '''
+if v ~= eligible_card and (not SMODS.is_eternal(v, self)) then v.getting_sliced = true; v:start_dissolve(nil, _first_dissolve);_first_dissolve = true end
+'''
+# Card:can_sell(), Add can_sell API method
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 1649 - -
+l 17
+'''
+payload = '''
+not SMODS.is_eternal(self, {from_sell = true}) then
+
+local obj = self.config.center
+if self.ability.set ~= "Enhanced" and obj.can_sell and type(obj.can_sell) == 'function' then
+	return obj:can_sell(self, context)
+end
+'''
+
+# Adds tag_added context
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 15 1270 - -
+l 13
+'''
+payload = '''
+if not _tag.from_load then SMODS.calculate_context({tag_added = _tag}) end
+_tag.from_load = nil
+'''
+
+# Prevent tag added context on reloading
+[[patches]]
+[patches.pattern]
+target = 'tag.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 5 486 - -
+l 12
+'''
+payload = '''
+self.from_load = true
+'''
+
+# Fix Campfire 'upgrading' when it is sold
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2396 - -
+l 25
+'''
+payload = '''
+if self.ability.name == 'Campfire' and not context.blueprint and self ~= context.card then
+'''
+
+# Support for ante contexts
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+match_indent = true
+pattern = '''
+delay(0.4); ease_ante(1); delay(0.4);
+'''
+position = 'at'
+payload = '''
+delay(0.4); SMODS.ante_end = true; ease_ante(1); SMODS.ante_end = nil; delay(0.4);
+'''
+
+# Sixth Sense only triggers once with multiple copies
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2604 - -
+l 13
+'''
+payload = '''
+if self.ability.name == 'Sixth Sense' and #context.full_hand == 1 and context.full_hand[1]:get_id() == 6 and not context.full_hand[1].sixth_sense and G.GAME.current_round.hands_played == 0 then
+    context.full_hand[1].sixth_sense = true
+'''
+
+# Blueprint uses SMODS.blueprint_effect
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2309 - -
+r 3 2310 %20%20%20%20 -
+r 3 2311 %20%20%20%20 -
+r 3 2312 %20%20%20%20 -
+r 3 2313 %20%20%20%20 -
+r 3 2314 %20%20%20%20 %20
+r 3 2315 %20%20%20%20%20%20%20%20 -
+r 3 2316 %20%20%20%20%20%20%20%20 -
+r 3 2317 %20%20%20%20%20%20%20%20 -
+l 18
+    end
+end
+'''
+payload = '''
+local ret = SMODS.blueprint_effect(self, other_joker, context)
+if ret then
+    ret.colour = G.C.BLUE
+    return ret
+end
+'''
+
+# Brainstorm uses SMODS.blueprint_effect
+[[patches]]
+[patches.pattern]
+target = 'card.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 3 2309 - -
+r 3 2310 %20%20%20%20 -
+r 3 2311 %20%20%20%20 -
+r 3 2312 %20%20%20%20 -
+r 3 2313 %20%20%20%20 -
+r 3 2314 %20%20%20%20 %20
+r 3 2315 %20%20%20%20%20%20%20%20 -
+r 3 2330 %20%20%20%20%20%20%20%20 -
+r 3 2317 %20%20%20%20%20%20%20%20 -
+l 18
+    end
+end
+'''
+payload = '''
+local ret = SMODS.blueprint_effect(self, other_joker, context)
+if ret then
+    ret.colour = G.C.RED
+    return ret
+end
+'''
+
+# Prep from_cashout field for context.money_altered
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 4 2938 - -
+l 3
+'''
+payload = '''
+SMODS.money_from_cashout = true
+r 4 2938 - -
+l 8
+SMODS.money_from_cashout = nil
+'''
+
+# Add context.modify_final_cashout
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = '''
+r 16 1202 %20%20%20%20 -
+l 19
+end
+'''
+position = "after"
+payload = '''
+
+    SMODS.cashout_pitch = pitch; SMODS.cashout_index = i; SMODS.cashout_dollars = dollars
+    SMODS.calculate_context({modify_final_cashout = true, amount = dollars})
+    dollars = SMODS.cashout_dollars
+    SMODS.cashout_pitch = nil; SMODS.cashout_index = nil; SMODS.cashout_dollars = nil
+'''
+match_indent = false
+
+# Reload SMODS.last_hand
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 10 2326 - -
+l 24
+'''
+payload = '''
+if saveTable then
+    if saveTable.SMODS then
+        SMODS.last_hand = {scoring_hand = {}, full_hand = {}, scoring_name = saveTable.SMODS.last_hand.scoring_name}
+        for _, v in ipairs({'scoring_hand','full_hand'}) do
+            for _, card in ipairs(G.playing_cards) do
+                if card.ability['SMODS_'..v] then
+                    SMODS.last_hand[v][card.ability['SMODS_'..v]] = card
+                end
+            end
+        end
+	end
+end
+'''
+
+# Draw to play area context
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = "table.sort(G.hand.highlighted, function(a,b) return a.T.x < b.T.x end)"
+position = 'before'
+match_indent = true
+payload = '''
+r 3 1227 - -
+l 23
+    local effects = {}
+    SMODS.calculate_context({drawing_to_play_area = true, other_card = G.hand.cards[i], cardarea = G.hand, full_hand = G.hand.highlighted, ignore_other_debuff = true}, effects)
+    local flags = SMODS.trigger_effects(effects, G.hand.cards[i])
+    if flags.remove_from_hand then
+        G.hand:remove_from_highlighted(G.hand.cards[i])
+    elseif flags.add_to_hand then
+        G.hand:add_to_highlighted(G.hand.cards[i])
+    end
+    if flags.return_to_hand and G.hand.cards[i].highlighted then
+        G.hand.cards[i].ability.return_to_hand = true
+    end
+end
+'''
+
+[[patches]]
+[patches.pattern]
+target = "functions/state_events.lua"
+pattern = "v.ability.forced_selection = nil"
+position = 'after'
+match_indent = true
+payload = '''
+v.ability.return_to_hand = nil
+'''
+end

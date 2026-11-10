@@ -1,0 +1,528 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 234
+BO_PRACTICE = BO_PRACTICE or {}
+local BP = BO_PRACTICE
+
+BP.sel = BP.sel or {page = 1}
+pcall(require, "functions/new/practice_loadout")
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() or false end
+
+local function profile()
+  return G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile] or nil
+end
+
+function BP.active()
+  return G and G.GAME and G.GAME.bo_practice ~= nil
+end
+
+local function is_boss(k)
+  local v = type(k) == "string" and G.P_BLINDS and G.P_BLINDS[k] or nil
+  return type(v) == "table" and type(v.boss) == "table" and not v.no_collection and not k:find("^bl_mp") and not v.rr_plain
+end
+
+function BP.bosses()
+  local out = {}
+  for k, v in pairs(G.P_BLINDS or {}) do
+    if is_boss(k) and v.discovered then out[#out + 1] = k end
+  end
+  table.sort(out, function(a, b)
+    local A, B = G.P_BLINDS[a], G.P_BLINDS[b]
+    local sa, sb = A.boss.showdown and 1 or 0, B.boss.showdown and 1 or 0
+    if sa ~= sb then return sa < sb end
+    local oa, ob = tonumber(A.order) or 0, tonumber(B.order) or 0
+    if oa ~= ob then return oa < ob end
+    return a < b
+  end)
+  return out
+end
+
+function BP.decks()
+  local out = {}
+  for _, v in ipairs(G.P_CENTER_POOLS and G.P_CENTER_POOLS.Back or {}) do
+    if type(v) == "table" and v.key and v.unlocked ~= false and not v.omit and not v.no_collection and G.P_CENTERS[v.key] == v then out[#out + 1] = v.key end
+  end
+  return out
+end
+
+local function last()
+  local p = profile()
+  if not p then return {} end
+  if type(p.bo_practice_last) ~= "table" then p.bo_practice_last = {} end
+  return p.bo_practice_last
+end
+
+function BP.choice()
+  local bosses, decks = BP.bosses(), BP.decks()
+  local l = last()
+  local boss = BP.sel.boss or l.boss
+  local found = false
+  for _, k in ipairs(bosses) do if k == boss then found = true end end
+  if not found then boss = bosses[1] end
+  local deck = BP.sel.deck or l.deck
+  found = false
+  for _, k in ipairs(decks) do if k == deck then found = true end end
+  if not found then deck = decks[1] end
+  BP.sel.boss, BP.sel.deck = boss, deck
+  return boss, deck, bosses, decks
+end
+
+local function blind_name(k)
+  local ok, s = pcall(localize, {type = "name_text", key = k, set = "Blind"})
+  if ok and type(s) == "string" and s ~= "" and s ~= "ERROR" then return s end
+  local v = G.P_BLINDS[k]
+  return v and (v.loc_name or v.name) or k
+end
+
+local function blind_lines(k)
+  local v = G.P_BLINDS[k]
+  local ok, lines = pcall(localize, {type = "raw_descriptions", key = k, set = "Blind", vars = v and v.vars or {}})
+  if not ok or type(lines) ~= "table" then return {} end
+  local out = {}
+  for i, s in ipairs(lines) do
+    if type(s) == "string" then out[#out + 1] = (i == 1 and v and v.name == "The Wheel" and "1" or "") .. s end
+  end
+  return out
+end
+
+local function deck_name(k)
+  local ok, s = pcall(localize, {type = "name_text", key = k, set = "Back"})
+  if ok and type(s) == "string" and s ~= "" and s ~= "ERROR" then return s end
+  local c = G.P_CENTERS[k]
+  return c and c.name or k
+end
+
+function BP.target(boss, deck, ante)
+  local v = G.P_BLINDS[boss]
+  local c = G.P_CENTERS[deck]
+  local base = type(get_blind_amount) == "function" and get_blind_amount(math.max(1, math.min(8, tonumber(ante) or 1))) or 300
+  local scaling = c and c.config and tonumber(c.config.ante_scaling) or 1
+  return math.floor(base * (tonumber(v and v.mult) or 2) * scaling)
+end
+
+local function fmt(n)
+  if type(number_format) == "function" then
+    local ok, s = pcall(number_format, n)
+    if ok and s then return tostring(s) end
+  end
+  return tostring(n)
+end
+
+local function text(str, scale, colour)
+  return {n = G.UIT.T, config = {text = tostring(str or ""), scale = scale, colour = colour or G.C.WHITE, shadow = true}}
+end
+
+local function fit_text(str, w, scale, colour)
+  local K = rawget(_G, "bom_kit")
+  local s, sc = tostring(str or ""), scale
+  if K and K.fit then s, sc = K.fit(s, w, scale, scale * 0.6) end
+  return text(s, sc, colour)
+end
+
+local function chip(k, size)
+  local v = G.P_BLINDS[k]
+  local atlas = (v.atlas and G.ANIMATION_ATLAS[v.atlas]) or G.ANIMATION_ATLAS.blind_chips
+  local s = AnimatedSprite(0, 0, size, size, atlas, v.pos or {x = 0, y = 0})
+  s:define_draw_steps({{shader = "dissolve", shadow_height = 0.05}, {shader = "dissolve"}})
+  return s
+end
+
+local function dims()
+  if touch() then return {chip = 1.0, per = 5, rows = 3, big = 1.3, line = 0.34, name = 0.5} end
+  return {chip = 0.9, per = 6, rows = 3, big = 1.2, line = 0.32, name = 0.46} end
+
+local function build_tab()
+  local d = dims()
+  local boss, deck, bosses, decks = BP.choice()
+  local h = UIK.H - UIK.TOP
+  if not boss or not deck then
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = h}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {text(L("No boss blinds seen yet."), 0.42)}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {text(L("Meet a boss in a run to practice against it here."), 0.34, G.C.UI.TEXT_LIGHT)}},
+      }},
+    }}
+  end
+  local per_page = d.per * d.rows
+  local pages = math.max(1, math.ceil(#bosses / per_page))
+  if not BP.sel.page_set then
+    for i, k in ipairs(bosses) do if k == boss then BP.sel.page = math.ceil(i / per_page) end end
+    BP.sel.page_set = true
+  end
+  BP.sel.page = math.max(1, math.min(BP.sel.page or 1, pages))
+  local cw = UIK.col_w(2) - 0.3
+  local cell = d.chip + 0.22
+  local grid = {}
+  local first = (BP.sel.page - 1) * per_page
+  for r = 1, d.rows do
+    local cells = {}
+    for c = 1, d.per do
+      local k = bosses[first + (r - 1) * d.per + c]
+      if k then
+        local on = k == boss
+        cells[#cells + 1] = {n = G.UIT.C, config = {align = "cm", minw = cell, minh = cell, padding = 0.06, r = 0.12, hover = true, shadow = true,
+          colour = on and G.C.GOLD or {0, 0, 0, 0.25}, button = "bo_bp_pick", ref_table = {key = k}, id = "bo_bp_boss_" .. k}, nodes = {
+          {n = G.UIT.O, config = {object = chip(k, d.chip)}},
+        }}
+      else
+        cells[#cells + 1] = {n = G.UIT.C, config = {minw = cell, minh = cell}, nodes = {}}
+      end
+      if c < d.per then cells[#cells + 1] = {n = G.UIT.C, config = {minw = 0.08}, nodes = {}} end
+    end
+    grid[#grid + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = cells}
+  end
+  local left_rows = {{n = G.UIT.R, config = {align = "cm", minw = cw - 0.4}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = grid}}}}
+  if pages > 1 then
+    left_rows[#left_rows + 1] = UIK.pager{prev = "bo_bp_prev", next = "bo_bp_next", text = tostring(BP.sel.page) .. " / " .. tostring(pages),
+      prev_disabled = BP.sel.page <= 1, next_disabled = BP.sel.page >= pages}
+  end
+  local left = UIK.section(L("Bosses you have seen"), left_rows, {w = cw, h = h - 0.2})
+  local inner = cw - 0.6
+  local v = G.P_BLINDS[boss]
+  local info = {
+    {n = G.UIT.R, config = {align = "cm", minw = inner}, nodes = {
+      {n = G.UIT.C, config = {align = "cm", padding = 0.04}, nodes = {{n = G.UIT.O, config = {object = chip(boss, d.big)}}}},
+      {n = G.UIT.C, config = {minw = 0.15}, nodes = {}},
+      {n = G.UIT.C, config = {align = "cl"}, nodes = {
+        {n = G.UIT.R, config = {align = "cl"}, nodes = {fit_text(blind_name(boss), inner - d.big - 0.4, d.name, v.boss_colour and mix_colours and mix_colours(v.boss_colour, G.C.WHITE, 0.6) or G.C.WHITE)}},
+        {n = G.UIT.R, config = {align = "cl"}, nodes = {text(L("Score at least") .. " " .. fmt(BP.target(boss, deck, BP.sel.ante)), d.line, G.C.UI.TEXT_LIGHT)}},
+      }},
+    }},
+  }
+  local desc = {}
+  for _, s in ipairs(blind_lines(boss)) do
+    desc[#desc + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {fit_text(s, inner - 0.2, d.line, G.C.WHITE)}}
+  end
+  info[#info + 1] = {n = G.UIT.R, config = {align = "cm", minw = inner, minh = touch() and 0.6 or 0.9, r = 0.1, padding = touch() and 0.05 or 0.08, colour = {0, 0, 0, 0.2}}, nodes = {
+    {n = G.UIT.C, config = {align = "cm"}, nodes = desc},
+  }}
+  local opts, cur = {}, 1
+  for i, k in ipairs(decks) do
+    opts[i] = deck_name(k)
+    if k == deck then cur = i end
+  end
+  local half = (inner - 0.2) / 2
+  BP.sel.ante = math.max(1, math.min(8, tonumber(BP.sel.ante) or 1))
+  local pair = function(a, b) return {n = G.UIT.R, config = {align = "cm", minw = inner}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", minw = half}, nodes = {a}}, {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+    {n = G.UIT.C, config = {align = "cm", minw = half}, nodes = {b}}}} end
+  info[#info + 1] = pair(
+    UIK.stepper{label = localize("k_ante"), ref_table = BP.sel, ref_value = "ante", min = 1, max = 8, w = half, cw = 1.6, id = "bo_bp_ante", callback = function() UIK.refresh() end},
+    UIK.cycle{label = L("Deck"), options = opts, current = cur, w = half, cw = 2.2, no_pips = true, id = "bo_bp_deck", callback = function(idx)
+      BP.sel.deck = decks[idx]
+      UIK.refresh()
+    end})
+  local LO = BP.LO
+  if LO then
+    local kinds, kc = {}, 1
+    for i, k in ipairs(LO.KINDS) do
+      kinds[i] = L(k.label)
+      if k.key == BP.sel.kind then kc = i end
+    end
+    BP.sel.kind = LO.KINDS[kc].key
+    info[#info + 1] = UIK.cycle{label = L("Loadout"), options = kinds, current = kc, w = inner, cw = 3.2, no_pips = true, id = "bo_bp_kind", callback = function(idx)
+      BP.sel.kind = LO.KINDS[idx].key
+      UIK.refresh()
+    end}
+  end
+  if not touch() then info[#info + 1] = UIK.note({L("No rewards, nothing saved to your stats.")}, {w = inner}) end
+  local right = UIK.section(L("Practice"), info, {w = cw, h = h - 0.2})
+  return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = h, padding = 0}, nodes = {UIK.columns({{left}, {right}}, {h = h})}}
+end
+
+function BP.open(from)
+  if from ~= nil then BP.from = from end
+  BP.sel.page_set = nil
+r 4 1381 %20%20 -
+l 36
+  G.FUNCS.overlay_menu{definition = UIK.window{id = "bo_bp", title = L("BOSS PRACTICE"),
+    tabs = {{key = "practice", label = L("Fight"), build = build_tab}, BP.LO and BP.loadout_tab and {key = "loadout", label = L("Loadout"), build = BP.loadout_tab} or nil},
+    footer = {UIK.button{label = L("PLAY"), button = "bo_bp_play", colour = UIK.C.ok, id = "bo_bp_play"}},
+    back_func = "bo_bp_back"}}
+end
+
+local function hidden_inventory(fn)
+  local BM = rawget(_G, "BoosterManager")
+  local inv = BM and BM.get_inventory
+  if inv then BM.get_inventory = function() return {} end end
+  local ok, err = pcall(fn)
+  if inv then BM.get_inventory = inv end
+  if not ok then error(err, 0) end
+end
+
+function BP.start(boss, deck, ante, lo, kind)
+  if not is_boss(boss) or not G.P_CENTERS[deck] then return end
+  local l = last()
+  l.boss, l.deck = boss, deck
+  pcall(function() G:save_progress() end)
+  BP.launch = {boss = boss, deck = deck, ante = math.max(1, math.min(8, tonumber(ante) or 1)), lo = lo, kind = kind}
+  if G.FUNCS.exit_overlay_menu and G.OVERLAY_MENU then G.FUNCS.exit_overlay_menu() end
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
+  local back = G.P_CENTERS[deck]
+  if G.GAME.viewed_back then G.GAME.viewed_back:change_to(back) else G.GAME.viewed_back = Back(back) end
+  local seed = type(generate_starting_seed) == "function" and generate_starting_seed() or nil
+  hidden_inventory(function() G.FUNCS.start_run(nil, {stake = 1, seed = seed, back = back}) end)
+end
+
+local function finish_menu()
+  BP.launch = nil
+end
+
+function BP.result_overlay()
+  local P = G.GAME and G.GAME.bo_practice
+  if not P then return end
+r 4 1381 %20%20 -
+l 53
+  local won = P.won == true
+  local boss = P.boss
+  local w = touch() and 7.6 or 7.0
+  local rows = {
+    {n = G.UIT.R, config = {align = "cm", minw = w - 0.4, padding = 0.06}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = {{n = G.UIT.O, config = {object = chip(boss, 1.2)}}}},
+      {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+      {n = G.UIT.C, config = {align = "cl"}, nodes = {
+        {n = G.UIT.R, config = {align = "cl"}, nodes = {fit_text(blind_name(boss), w - 2.2, 0.5, G.C.WHITE)}},
+        {n = G.UIT.R, config = {align = "cl"}, nodes = {text(won and L("Beaten") or L("Not beaten"), 0.42, won and G.C.GREEN or G.C.RED)}},
+      }},
+    }},
+    UIK.value{label = L("Your score"), value = fmt(P.score or 0), w = w - 0.4},
+    UIK.value{label = L("Target"), value = fmt(P.target or 0), w = w - 0.4},
+    UIK.value{label = L("Hands played"), value = tostring(P.hands or 0), w = w - 0.4},
+  }
+  G.FUNCS.overlay_menu{definition = UIK.window{id = "bo_bp_result", compact = true, w = w, title = won and L("PRACTICE WON") or L("PRACTICE LOST"),
+    title_colour = won and G.C.GREEN or G.C.RED,
+    tabs = {{key = "result", label = L("Result"), build = function() return UIK.stack(rows, {w = w - 0.4}) end}},
+    footer = {
+      UIK.button{label = L("TRY AGAIN"), button = "bo_bp_retry", colour = UIK.C.ok, id = "bo_bp_retry"},
+      UIK.button{label = L("OTHER BOSS"), button = "bo_bp_other", colour = UIK.C.accent, id = "bo_bp_other"},
+    },
+    back_label = L("Main Menu"), back_func = "bo_bp_menu"}}
+end
+
+G.FUNCS.open_boss_practice = function(e)
+  local from = e and e.config and e.config.ref_table and e.config.ref_table.from or nil
+  BP.open(from or false)
+end
+G.FUNCS.bo_bp_pick = function(e)
+  local k = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if is_boss(k) then BP.sel.boss = k; UIK.refresh() end
+end
+G.FUNCS.bo_bp_prev = function() BP.sel.page = (BP.sel.page or 1) - 1; UIK.refresh() end
+G.FUNCS.bo_bp_next = function() BP.sel.page = (BP.sel.page or 1) + 1; UIK.refresh() end
+function BP.restart(p)
+  if type(p) ~= "table" or not p.boss then return false end
+  BP.start(p.boss, p.deck, p.ante, p.lo, p.kind)
+  return true
+end
+
+G.FUNCS.bo_bp_play = function()
+  local boss, deck = BP.choice()
+  if not (boss and deck) then return end
+  local ante = math.max(1, math.min(8, tonumber(BP.sel.ante) or 1))
+  local lo = BP.LO and BP.LO.resolve(BP.sel.kind, ante) or nil
+  BP.start(boss, deck, ante, lo, BP.sel.kind)
+end
+G.FUNCS.bo_bp_back = function()
+  if BP.active() then return BP.result_overlay() end
+  local from = BP.from
+  if from and G.FUNCS[from] then return G.FUNCS[from]() end
+r 4 1375 %20%20 -
+l 11
+end
+G.FUNCS.bo_bp_retry = function()
+  local P = G.GAME and G.GAME.bo_practice
+  if P then BP.restart(P) end
+end
+G.FUNCS.bo_bp_other = function()
+  local P = G.GAME and G.GAME.bo_practice
+  if P then BP.sel.boss, BP.sel.deck, BP.sel.ante = P.boss, P.deck, P.ante end
+  BP.open()
+end
+G.FUNCS.bo_bp_menu = function()
+r 4 1825 %20%20 -
+l 180
+  G.FUNCS.go_to_menu()
+end
+
+if Game and Game.init_game_object and not BP._init_wrapped then
+  BP._init_wrapped = true
+  local orig = Game.init_game_object
+  Game.init_game_object = function(self, ...)
+    local g = orig(self, ...)
+    if BP.launch and type(g) == "table" then
+      g.bo_practice = {boss = BP.launch.boss, deck = BP.launch.deck, ante = BP.launch.ante or 1, lo = BP.launch.lo, kind = BP.launch.kind}
+      g.modded_run = true
+      BP.launch = nil
+    end
+    return g
+  end
+end
+
+if Game and Game.start_run and not BP._run_wrapped then
+  BP._run_wrapped = true
+  local orig = Game.start_run
+  Game.start_run = function(self, args)
+    local r = {orig(self, args)}
+    local P = G.GAME and G.GAME.bo_practice
+    if P and not P.set then
+      P.set = true
+      local rr = G.GAME.round_resets
+      local ante = math.max(1, math.min(8, tonumber(P.ante) or 1))
+      if ante > 1 then
+        rr.ante, rr.blind_ante = ante, ante
+      end
+      if P.lo and BP.LO and BP.LO.apply then
+        local ok, err = pcall(BP.LO.apply, P.lo)
+        if not ok then print("[BossPractice] loadout: " .. tostring(err)) end
+      end
+      rr.blind_choices.Boss = P.boss
+      rr.blind_states.Small = "Skipped"
+      rr.blind_states.Big = "Skipped"
+      rr.blind_states.Boss = "Select"
+      G.GAME.blind_on_deck = "Boss"
+      G.E_MANAGER:add_event(Event({blocking = false, blockable = false, func = function()
+        if not (G.GAME and G.GAME.bo_practice == P) then return true end
+        if G.STATE ~= G.STATES.BLIND_SELECT or not (G.blind_select_opts and G.blind_select_opts.boss) then return false end
+        local b = G.blind_select_opts.boss:get_UIE_by_ID("select_blind_button")
+        if not b then return false end
+        G.FUNCS.select_blind(b)
+        return true
+      end}))
+    end
+    return unpack(r)
+  end
+end
+
+if type(end_round) == "function" and not BP._end_wrapped then
+  BP._end_wrapped = true
+  local orig = end_round
+  end_round = function(...)
+    local P = G.GAME and G.GAME.bo_practice
+    if not P then return orig(...) end
+    if P.done then return end
+    P.done = true
+    local chips, need = G.GAME.chips or 0, G.GAME.blind and G.GAME.blind.chips or 0
+    P.won = chips >= need
+    P.score, P.target = chips, need
+    P.hands = G.GAME.current_round and G.GAME.current_round.hands_played or 0
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.8, func = function()
+      if G.GAME and G.GAME.bo_practice == P then BP.result_overlay() end
+      return true
+    end}))
+  end
+end
+
+if G.FUNCS.tutorial_controller and not BP._tut_wrapped then
+  BP._tut_wrapped = true
+  local orig = G.FUNCS.tutorial_controller
+  G.FUNCS.tutorial_controller = function(...)
+    if BP.active() then return end
+    return orig(...)
+  end
+end
+
+for _, name in ipairs({"save_run", "set_hand_usage", "set_consumeable_usage", "set_voucher_usage", "check_and_set_high_score", "create_modded_indicator", "apply_mod_settings_to_run"}) do
+  local orig = rawget(_G, name)
+  if type(orig) == "function" and not BP["_g_" .. name] then
+    BP["_g_" .. name] = true
+    _G[name] = function(...)
+      if BP.active() then return end
+      return orig(...)
+    end
+  end
+end
+
+if G.FUNCS.go_to_menu and not BP._menu_wrapped then
+  BP._menu_wrapped = true
+  local orig = G.FUNCS.go_to_menu
+  G.FUNCS.go_to_menu = function(...)
+    local was = BP.active()
+    local r = {orig(...)}
+    if was then finish_menu() end
+    return unpack(r)
+  end
+end
+
+local function find_parent(node, button)
+  if type(node) ~= "table" or type(node.nodes) ~= "table" then return nil end
+  for i, child in ipairs(node.nodes) do
+    if type(child) == "table" and child.nodes then
+      for _, gc in ipairs(child.nodes) do
+        if type(gc) == "table" and gc.config and gc.config.button == button then return node, i end
+        if type(gc) == "table" and gc.nodes then
+          for _, ggc in ipairs(gc.nodes) do
+            if type(ggc) == "table" and ggc.config and ggc.config.button == button then return node, i end
+          end
+        end
+      end
+    end
+    local p, idx = find_parent(child, button)
+    if p then return p, idx end
+  end
+end
+
+function BP.fit_hub(parent)
+  local buttons = {}
+  local function walk(n)
+    if type(n) ~= "table" then return end
+    local m = n.config and tonumber(n.config.minh)
+    if n.config and n.config.button and m and m >= 0.6 and m <= 1 then buttons[#buttons + 1] = n end
+    for _, c in ipairs(n.nodes or {}) do walk(c) end
+  end
+  walk(parent)
+  if #buttons < 6 then return end
+  local h = math.max(0.7, 4.8 / #buttons)
+  for _, b in ipairs(buttons) do b.config.minh = h end
+  for _, r in ipairs(parent.nodes) do
+    if r.config and r.config.padding == 0.08 then r.config.padding = 0.06 end
+  end
+end
+
+if type(create_UIBox_tavern_hub) == "function" and not BP._hub_wrapped then
+  BP._hub_wrapped = true
+  local orig = create_UIBox_tavern_hub
+  function create_UIBox_tavern_hub(...)
+    local def = orig(...)
+    pcall(function()
+      local parent, idx = find_parent(def, "open_run_history")
+      if not parent then parent, idx = find_parent(def, "open_seed_library") end
+      if parent then
+        table.insert(parent.nodes, idx + 1, {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+          UIBox_button({label = {L("BOSS PRACTICE")}, button = "open_boss_practice", ref_table = {from = "open_tavern_hub"}, minw = 5, minh = 1, colour = G.C.RED}),
+        }})
+        BP.fit_hub(parent)
+      end
+    end)
+    return def
+  end
+end
+
+mod_loc_register{
+  fr = {
+    ["BOSS PRACTICE"] = "ENTRAÎNEMENT BOSS", ["Practice"] = "Entraînement", ["Bosses you have seen"] = "Boss déjà rencontrés",
+    ["Score at least"] = "Marquez au moins", ["One round at ante 1, White Stake."] = "Une manche en mise initiale 1, mise blanche.",
+    ["No rewards, nothing saved to your stats."] = "Aucune récompense, rien n'entre dans vos stats.",
+    ["No boss blinds seen yet."] = "Aucune blinde boss rencontrée pour l'instant.",
+    ["Meet a boss in a run to practice against it here."] = "Affrontez un boss en partie pour vous entraîner contre lui ici.",
+    ["PRACTICE WON"] = "ENTRAÎNEMENT GAGNÉ", ["PRACTICE LOST"] = "ENTRAÎNEMENT PERDU", ["Beaten"] = "Battu", ["Not beaten"] = "Pas battu",
+    ["Your score"] = "Votre score", ["Target"] = "Objectif", ["Hands played"] = "Mains jouées", ["Result"] = "Résultat",
+    ["TRY AGAIN"] = "RÉESSAYER", ["OTHER BOSS"] = "AUTRE BOSS", ["Main Menu"] = "Menu principal",
+  },
+  es = {
+    ["BOSS PRACTICE"] = "PRÁCTICA DE JEFES", ["Practice"] = "Práctica", ["Bosses you have seen"] = "Jefes que has visto",
+    ["Score at least"] = "Consigue al menos", ["One round at ante 1, White Stake."] = "Una ronda en la apuesta inicial 1, pozo blanco.",
+    ["No rewards, nothing saved to your stats."] = "Sin recompensas, nada se guarda en tus estadísticas.",
+    ["No boss blinds seen yet."] = "Aún no has visto ciegas jefe.",
+    ["Meet a boss in a run to practice against it here."] = "Enfréntate a un jefe en una partida para practicar aquí.",
+    ["PRACTICE WON"] = "PRÁCTICA GANADA", ["PRACTICE LOST"] = "PRÁCTICA PERDIDA", ["Beaten"] = "Vencido", ["Not beaten"] = "No vencido",
+    ["Your score"] = "Tu puntuación", ["Target"] = "Objetivo", ["Hands played"] = "Manos jugadas", ["Result"] = "Resultado",
+    ["TRY AGAIN"] = "REINTENTAR", ["OTHER BOSS"] = "OTRO JEFE", ["Main Menu"] = "Menú principal",
+  },
+}
+
+return BP
+end

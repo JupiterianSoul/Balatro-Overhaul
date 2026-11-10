@@ -1,0 +1,334 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 272
+local SG = rawget(_G, "social_gifts") or {}
+social_gifts = SG
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function now() return love.timer.getTime() end
+local function state() return require("multiplayer.mps_state") end
+local function friends() return require("multiplayer.mps_friends") end
+local function toasts() return rawget(_G, "social_toasts") end
+
+SG.page = SG.page or 1
+SG.CLAIMED_MAX = 200
+SG.PENDING_SECS = 15
+
+local function store()
+    local ok, S = pcall(require, "functions/shop/tavern_store")
+    return ok and type(S) == "table" and S or nil
+end
+
+local function save() pcall(function() if G and G.save_progress then G:save_progress() end end) end
+
+local function profile()
+    local p = G and G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    if p then p.progression = p.progression or {} end
+    return p
+end
+
+local function spend(n)
+    if n <= 0 then return true end
+    if ShopManager and ShopManager.spend_balacoin then return ShopManager.spend_balacoin(n) end
+    local p = profile()
+    if not p or (p.progression.balacoin or 0) < n then return false end
+    p.progression.balacoin = p.progression.balacoin - n
+    return true
+end
+
+local function credit(n)
+    local p = profile()
+    if not p or n <= 0 then return end
+    p.progression.balacoin = (p.progression.balacoin or 0) + n
+    p.progression.total_balacoin_earned = (p.progression.total_balacoin_earned or 0) + n
+end
+
+local function spares()
+    local TS = store()
+    local st = TS and TS.state()
+    if not st then return nil end
+    if type(st.spares) ~= "table" then st.spares = {} end
+    return st.spares
+end
+
+function SG.install()
+    local TS = store()
+    if not TS or TS._gift_wrapped or type(TS.open) ~= "function" then return end
+    TS._gift_wrapped = true
+    local open = TS.open
+    TS.open = function(...)
+        local r, err = open(...)
+        if type(r) == "table" and type(r.cards) == "table" then
+            local sp = spares()
+            if sp then
+                local any = false
+                for _, c in ipairs(r.cards) do
+                    if c.dupe and c.item and c.item.id then
+                        sp[c.item.id] = (sp[c.item.id] or 0) + 1
+                        any = true
+                    end
+                end
+                if any then save() end
+            end
+        end
+        return r, err
+    end
+end
+
+local function rarity_index(r)
+    local TS = store()
+    local C = TS and TS.catalog
+    return C and C.RARITY_INDEX and C.RARITY_INDEX[r] or 1
+end
+
+local function rarity_colour(r)
+    local TS = store()
+    local C = TS and TS.catalog
+    local def = C and C.RARITIES and C.RARITIES[rarity_index(r)]
+    return def and G.C[def.colour] or G.C.WHITE
+end
+
+local function refund_of(r)
+    local TS = store()
+    local C = TS and TS.catalog
+    return C and C.refund and C.refund(r) or 0
+end
+
+function SG.list()
+    local TS = store()
+    local sp = spares()
+    local out = {}
+    if not (TS and sp) then return out end
+    for id, n in pairs(sp) do
+        local it = TS.get(id)
+        if it and (tonumber(n) or 0) > 0 then out[#out + 1] = {id = id, item = it, n = n, refund = refund_of(it.rarity)} end
+    end
+    table.sort(out, function(a, b)
+        local ra, rb = rarity_index(a.item.rarity), rarity_index(b.item.rarity)
+        if ra ~= rb then return ra > rb end
+        return tostring(a.item.name) < tostring(b.item.name)
+    end)
+    return out
+end
+
+function SG.balance()
+    local TS = store()
+    return TS and TS.balance and TS.balance() or 0
+end
+
+local function info(name, text)
+    local ST = toasts()
+    if ST and ST.info then ST.info(name, text) end
+end
+
+function SG.send(i)
+    local e = SG.list()[i]
+    if not (e and SG.code) then return end
+    if SG.pending and now() - SG.pending.at < SG.PENDING_SECS then return end
+    local T = state()
+    if SG.balance() < e.refund then
+        T.note(L("Not enough Balacoin."), true)
+        if SG.is_open() then UIK.refresh() end
+        return
+    end
+    SG.pending = {id = e.id, code = SG.code, refund = e.refund, name = L(e.item.name), at = now()}
+    if not T.send({type = "social_gift", code = SG.code, item = e.id, item_name = tostring(e.item.name), rarity = e.item.rarity}) then SG.pending = nil end
+end
+
+local REASONS = {
+    gift_limit = "You sent 10 gifts today. Try again tomorrow.",
+    not_friend = "Not on your friends list.",
+    bad_item = "This item cannot be sent.",
+}
+
+function SG.on_result(d)
+    if type(d) ~= "table" or d.action ~= "social_gift" then return end
+    local p = SG.pending
+    SG.pending = nil
+    if not p then return end
+    local f = state().friend(p.code)
+    local who = f and f.name ~= "" and f.name or "?"
+    if not d.ok then
+        info(who, L(REASONS[d.reason] or "Could not connect."))
+        return
+    end
+    local sp = spares()
+    if sp and (sp[p.id] or 0) > 0 then
+        spend(p.refund)
+        sp[p.id] = sp[p.id] - 1
+        if sp[p.id] <= 0 then sp[p.id] = nil end
+        save()
+    end
+    info(who, state().fill("Gift sent: {item}.", {item = p.name}))
+    if SG.is_open() then UIK.refresh() end
+end
+
+function SG.on_new(d)
+    local it = type(d) == "table" and d.item
+    if type(it) ~= "table" or it.kind ~= "gift" then return end
+    local data = type(it.data) == "table" and it.data or {}
+    local f = state().friend(data.from)
+    info(f and f.name ~= "" and f.name or tostring(data.name or "?"), L("sent you a gift. Open it in the Inbox."))
+end
+
+function SG.text(d)
+    local T = state()
+    local f = T.friend(d.from)
+    local TS = store()
+    local it = TS and type(d.item) == "string" and TS.get(d.item)
+    local name = it and L(it.name) or (d.item_name ~= nil and d.item_name ~= "" and tostring(d.item_name) or "?")
+    return T.fill("{name} sent you a gift: {item}.", {name = f and f.name ~= "" and f.name or tostring(d.name or "?"), item = name})
+end
+
+function SG.claim(it)
+    local d = type(it) == "table" and type(it.data) == "table" and it.data or {}
+    local TS = store()
+    local st = TS and TS.state()
+    local T = state()
+    if not st then return false end
+    if type(st.gifts_claimed) ~= "table" then st.gifts_claimed = {} end
+    T.send({type = "notify_clear", id = it.id})
+    if st.gifts_claimed[it.id] then return true end
+    local item = type(d.item) == "string" and TS.get(d.item) or nil
+    local f = T.friend(d.from)
+    local who = f and f.name ~= "" and f.name or tostring(d.name or "?")
+    if not item then
+        info(who, L("This gift is not in your game version yet."))
+        return true
+    end
+    local n = 0
+    for _ in pairs(st.gifts_claimed) do n = n + 1 end
+    if n >= SG.CLAIMED_MAX then st.gifts_claimed = {} end
+    st.gifts_claimed[it.id] = true
+    if TS.owns(item) then
+        local r = refund_of(item.rarity)
+        credit(r)
+        info(L(item.name), T.fill("You already had it: +{n} Balacoin.", {n = tostring(r)}))
+    else
+        TS.grant(item)
+        if TS.invalidate then TS.invalidate() end
+        info(L(item.name), L("is yours. Equip it in The Casino > Tailor."))
+    end
+    save()
+    return true
+end
+
+local function win_w() return touch() and 9.6 or 8.4 end
+local function per_page() return touch() and 4 or 5 end
+
+function SG.is_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "social_gift" and true or false
+end
+
+local function body()
+    local w = win_w()
+    local inner = w - 0.4
+    local t = touch()
+    local rh = t and 0.78 or 0.62
+    local bw = t and 1.8 or 1.6
+    local d = bom_kit.dims()
+    local T = state()
+    local f = SG.code and T.friend(SG.code)
+    local list = SG.list()
+    local n = math.max(1, math.ceil(#list / per_page()))
+    SG.page = math.max(1, math.min(SG.page, n))
+    local bal = SG.balance()
+    local rows = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+            UIK.text(T.fill("To {name}", {name = f and f.name ~= "" and f.name or "?"}), {scale = d.small, colour = UIK.C.muted}),
+            {n = G.UIT.C, config = {minw = 0.4}, nodes = {}},
+            UIK.text(T.fill("Balacoin: {n}", {n = tostring(bal)}), {scale = d.small, colour = G.C.MONEY}),
+        }},
+    }
+    local list_h = per_page() * (rh + 0.12)
+    local items = {}
+    if #list == 0 then
+        items[1] = {n = G.UIT.R, config = {align = "cm", minw = inner, minh = list_h, padding = 0}, nodes = {
+            UIK.note({L("No spare cosmetics yet."), L("Duplicates from Market packs land here.")}, {w = inner}),
+        }}
+    else
+        for i = (SG.page - 1) * per_page() + 1, math.min(#list, SG.page * per_page()) do
+            local e = list[i]
+            local tw = inner - bw - 0.3
+            local label = L(e.item.name) .. (e.n > 1 and ("  x" .. tostring(e.n)) or "")
+            items[#items + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {
+                {n = G.UIT.C, config = {align = "cl", minw = tw, maxw = tw, minh = rh, r = 0.1, colour = {0, 0, 0, 0.18}, padding = 0.04}, nodes = {
+                    {n = G.UIT.R, config = {align = "cl", padding = 0}, nodes = {bom_kit.text(bom_kit.fit(label, tw - 0.2, d.small), {scale = d.small, colour = rarity_colour(e.item.rarity)})}},
+                    {n = G.UIT.R, config = {align = "cl", padding = 0}, nodes = {bom_kit.text(bom_kit.fit(T.fill("Costs {n} Balacoin (its refund)", {n = tostring(e.refund)}), tw - 0.2, d.small * 0.85), {scale = d.small * 0.85, colour = UIK.C.muted})}},
+                }},
+                {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+                UIK.button{label = L("Send"), button = "social_gift_send", ref_table = {i = i}, colour = G.C.GREEN, w = bw, h = rh, col = true, disabled = bal < e.refund},
+            }}
+        end
+    end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "tm", minw = inner, minh = list_h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = items}}}
+    if n > 1 then
+        rows[#rows + 1] = UIK.pager{prev = "social_gift_page", next = "social_gift_page", prev_ref = {d = -1}, next_ref = {d = 1},
+            text = tostring(SG.page) .. " / " .. tostring(n), prev_disabled = SG.page <= 1, next_disabled = SG.page >= n, w = inner}
+    end
+    return UIK.stack(rows, {w = w})
+end
+
+function SG.open(code)
+    SG.code, SG.page = code, 1
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+r 4 1381 %20%20%20%20 -
+l 54
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "social_gift", compact = true, w = win_w() + 0.2,
+        title = L("GIFT"),
+        tabs = {{key = "main", label = L("Spare cosmetics"), build = body}},
+        back_func = "social_gift_back",
+    }}
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+function SG.init()
+    SG.install()
+    G.FUNCS.social_gift_open = function(e) if ref(e).code then SG.open(ref(e).code) end end
+    G.FUNCS.social_gift_send = function(e) SG.send(ref(e).i) end
+    G.FUNCS.social_gift_page = function(e)
+        SG.page = SG.page + (ref(e).d or 0)
+        UIK.refresh()
+    end
+    G.FUNCS.social_gift_back = function()
+        local sx = rawget(_G, "social_more")
+        if sx and sx.back_to_card then sx.back_to_card(SG.code) else friends().open("friends") end
+    end
+    if bom_events and bom_events.register then
+        bom_events.register("social_result", function(d) pcall(SG.on_result, d) return false end)
+        bom_events.register("notify_new", function(d) pcall(SG.on_new, d) return false end)
+    end
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["Not enough Balacoin."] = "Pas assez de Balacoin.", ["You sent 10 gifts today. Try again tomorrow."] = "Vous avez envoyé 10 cadeaux aujourd'hui. Réessayez demain.",
+            ["This item cannot be sent."] = "Cet objet ne peut pas être envoyé.", ["Gift sent: {item}."] = "Cadeau envoyé : {item}.",
+            ["sent you a gift. Open it in the Inbox."] = "vous a envoyé un cadeau. Ouvrez-le dans la Boîte.",
+            ["{name} sent you a gift: {item}."] = "{name} vous a envoyé un cadeau : {item}.",
+            ["This gift is not in your game version yet."] = "Ce cadeau n'existe pas encore dans votre version du jeu.",
+            ["You already had it: +{n} Balacoin."] = "Vous l'aviez déjà : +{n} Balacoin.", ["is yours. Equip it in The Casino > Tailor."] = "est à vous. Équipez-le dans Le Casino > Tailleur.",
+            ["Balacoin: {n}"] = "Balacoin : {n}", ["No spare cosmetics yet."] = "Pas encore de cosmétique en double.",
+            ["Duplicates from Market packs land here."] = "Les doublons des paquets du Marché arrivent ici.",
+            ["Costs {n} Balacoin (its refund)"] = "Coûte {n} Balacoin (son remboursement)", ["GIFT"] = "CADEAU", ["Spare cosmetics"] = "Cosmétiques en double", ["Gift"] = "Offrir",
+        },
+        es = {
+            ["Not enough Balacoin."] = "No tienes suficientes Balacoin.", ["You sent 10 gifts today. Try again tomorrow."] = "Has enviado 10 regalos hoy. Vuelve a intentarlo mañana.",
+            ["This item cannot be sent."] = "Este objeto no se puede enviar.", ["Gift sent: {item}."] = "Regalo enviado: {item}.",
+            ["sent you a gift. Open it in the Inbox."] = "te ha enviado un regalo. Ábrelo en la Bandeja.",
+            ["{name} sent you a gift: {item}."] = "{name} te ha enviado un regalo: {item}.",
+            ["This gift is not in your game version yet."] = "Este regalo aún no existe en tu versión del juego.",
+            ["You already had it: +{n} Balacoin."] = "Ya lo tenías: +{n} Balacoin.", ["is yours. Equip it in The Casino > Tailor."] = "es tuyo. Equípalo en El Casino > Sastre.",
+            ["Balacoin: {n}"] = "Balacoin: {n}", ["No spare cosmetics yet."] = "Aún no tienes cosméticos repetidos.",
+            ["Duplicates from Market packs land here."] = "Los repetidos de los sobres del Mercado llegan aquí.",
+            ["Costs {n} Balacoin (its refund)"] = "Cuesta {n} Balacoin (su reembolso)", ["GIFT"] = "REGALO", ["Spare cosmetics"] = "Cosméticos repetidos", ["Gift"] = "Regalar",
+        },
+    }
+end
+
+return SG
+end

@@ -1,0 +1,858 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 36
+-- ============================================
+-- ACHIEVEMENT HOOKS for Balatro v9.0
+-- Safe integration with game events
+-- PROTOCOL: Deferred hooks, full null-safety
+-- ============================================
+
+-- ============================================
+-- DEFERRED HOOK SYSTEM
+-- ============================================
+
+-- Store original functions to hook later
+local HOOKS_INSTALLED = false
+local HOOKS_ATTEMPTED = false
+
+-- Safe event trigger helper
+local function safe_trigger_event(event_func, ...)
+    if not event_func then return end
+    if type(event_func) ~= "function" then return end
+
+    local args = {...}
+    local success, err = pcall(function()
+        event_func(table.unpack(args))
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] Event error: " .. tostring(err))
+    end
+end
+
+-- Safe delayed event helper
+local function safe_delayed_event(delay, callback)
+    if not G then return end
+    if not G.E_MANAGER then return end
+    if not Event then return end
+
+    local success, err = pcall(function()
+r 1 112 %20%20%20%20%20%20%20%20 -
+l 814
+            trigger = 'after',
+            delay = delay or 0.1,
+            func = function()
+                pcall(callback)
+                return true
+            end
+        }))
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] Delayed event error: " .. tostring(err))
+    end
+end
+
+-- ============================================
+-- INSTALL HOOKS (Called when G is ready)
+-- ============================================
+
+local function install_hooks()
+    if HOOKS_INSTALLED then return true end
+    if not G then return false end
+
+    HOOKS_ATTEMPTED = true
+
+    local success, err = pcall(function()
+
+        -- ============================================
+        -- HOOK: End Round
+        -- ============================================
+        if type(end_round) == "function" then
+            local original_end_round = end_round
+            end_round = function(...)
+                local result = original_end_round(...)
+
+                safe_delayed_event(0.5, function()
+                    if AchievementManager and AchievementManager.on_blind_complete then
+                        AchievementManager.on_blind_complete()
+                    end
+                    -- QUEST TRACKING: rounds completed
+                    if QuestManager and QuestManager.process_event then
+                        QuestManager.process_event("rounds_completed", nil, 1)
+
+                        -- Track current ante for ante_reached quests
+                        -- (boss_defeated is tracked canonically in state_events.lua)
+                        if G and G.GAME and G.GAME.round_resets then
+                            local ante = G.GAME.round_resets.ante or 1
+                            QuestManager.process_event("ante_reached", ante, 1)
+                            -- Special tracking for ante 8+
+                            if ante >= 8 then
+                                QuestManager.process_event("ante_8_reached", nil, 1)
+                            end
+                        end
+                    end
+                end)
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Win Game
+        -- ============================================
+        if type(win_game) == "function" then
+            local original_win_game = win_game
+            win_game = function(...)
+                local result = original_win_game(...)
+                -- FIX: Capture modded flag BEFORE delay — G.GAME may be nil by then
+                local was_modded = G and G.GAME and G.GAME.modded_run
+
+                safe_delayed_event(1, function()
+                    -- FIX: Skip achievement award if run was modded
+                    if was_modded then return end
+                    if AchievementManager and AchievementManager.on_run_end then
+                        local run_time = 0
+                        local deck_key = nil
+                        local chips = 0
+
+                        if G and G.GAME then
+                            chips = G.GAME.chips or 0
+                            if G.GAME.round_resets then
+                                run_time = Overhaul and Overhaul.stats and Overhaul.stats.run_time() or 0
+                            end
+                            if G.GAME.selected_back and G.GAME.selected_back.effect and
+                               G.GAME.selected_back.effect.center then
+                                deck_key = G.GAME.selected_back.effect.center.key
+                            end
+                        end
+
+                        AchievementManager.on_run_end(true, chips, run_time, deck_key)
+                    end
+                    -- Quest tracking for wins is canonical in state_events.lua
+                    -- QuestManager.on_run_won() handles all win events (wins, runs_completed,
+                    -- stake_win, unique_deck_wins, unique_stake_wins, consecutive_wins).
+                end)
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: New Round
+        -- ============================================
+        if type(new_round) == "function" then
+            local original_new_round = new_round
+            new_round = function(...)
+                -- Check boss status before call
+                local was_boss = false
+                if G and G.GAME and G.GAME.round_resets and G.GAME.round_resets.blind_states then
+                    was_boss = G.GAME.round_resets.blind_states.Boss == 'Defeated'
+                end
+
+                local result = original_new_round(...)
+
+                if was_boss then
+                    safe_delayed_event(0.3, function()
+                        if AchievementManager and AchievementManager.on_ante_complete then
+                            local ante = 1
+                            if G and G.GAME and G.GAME.round_resets then
+                                ante = G.GAME.round_resets.ante or 1
+                            end
+                            AchievementManager.on_ante_complete(ante)
+                        end
+                    end)
+                end
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Ease Dollars
+        -- ============================================
+        if type(ease_dollars) == "function" then
+            local original_ease_dollars = ease_dollars
+            ease_dollars = function(mod, instant, ...)
+                local result = original_ease_dollars(mod, instant, ...)
+
+                safe_delayed_event(0.1, function()
+                    if AchievementManager and AchievementManager.on_money_change then
+                        AchievementManager.on_money_change(mod)
+                    end
+                    -- money_earned tracked canonically by on_money_earned() inside
+                    -- the ease_dollars Event in common_events.lua (inc_career_stat path removed).
+                end)
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Card Add to Deck (Joker tracking)
+        -- ============================================
+        if Card and type(Card.add_to_deck) == "function" then
+            local original_card_add = Card.add_to_deck
+            Card.add_to_deck = function(self, from_debuff, ...)
+                local result = original_card_add(self, from_debuff, ...)
+
+                -- Check if joker
+                if self and self.ability and self.ability.set == 'Joker' then
+                    safe_delayed_event(0.1, function()
+                        if AchievementManager and AchievementManager.on_joker_added then
+                            AchievementManager.on_joker_added(self)
+                        end
+                        -- QUEST TRACKING: jokers bought
+                        if QuestManager and QuestManager.process_event then
+                            -- jokers_bought tracked canonically by button_callbacks.lua
+                            -- buy_from_shop handler -> QuestManager.on_joker_bought().
+                            -- Only track jokers_owned count and legendary here.
+                            if G and G.jokers and G.jokers.cards then
+                                local joker_count = #G.jokers.cards
+                                QuestManager.process_event("jokers_owned", joker_count, 1)
+                            end
+                            -- Track legendary joker acquisition (rarity 4 = Legendary)
+                            if self.config and self.config.center and self.config.center.rarity == 4 then
+                                QuestManager.process_event("legendary_obtained", nil, 1)
+                            end
+                        end
+                    end)
+                end
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Card Sell (quest tracking + achievements)
+        -- ============================================
+        if Card and type(Card.sell_card) == "function" then
+            local original_sell_card = Card.sell_card
+            Card.sell_card = function(self, ...)
+                local is_joker = self and self.ability and self.ability.set == 'Joker'
+                local result = original_sell_card(self, ...)
+
+                pcall(function()
+                    if QuestManager and QuestManager.process_event then
+                        QuestManager.process_event("cards_sold", nil, 1)
+                    end
+                end)
+                pcall(function()
+                    if AchievementManager then
+                        if AchievementManager.on_card_sold then
+                            AchievementManager.on_card_sold()
+                        end
+                        if is_joker and AchievementManager.on_joker_sold then
+                            AchievementManager.on_joker_sold()
+                        end
+                    end
+                end)
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Shop Reroll
+        -- ============================================
+        if G.FUNCS and type(G.FUNCS.reroll_shop) == "function" then
+            local original_reroll = G.FUNCS.reroll_shop
+            G.FUNCS.reroll_shop = function(e, ...)
+                local result = original_reroll(e, ...)
+
+                pcall(function()
+                    if QuestManager and QuestManager.process_event then
+                        QuestManager.process_event("shop_rerolls", nil, 1)
+                    end
+                end)
+
+                -- FIX: Achievement tracking consolidated here (was double-hooked before)
+                pcall(function()
+                    if AchievementManager and AchievementManager.on_shop_reroll then
+                        AchievementManager.on_shop_reroll()
+                    end
+                end)
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Game Start Run
+        -- ============================================
+        if Game and type(Game.start_run) == "function" then
+            local original_start_run = Game.start_run
+            Game.start_run = function(self, args, ...)
+                local result = original_start_run(self, args, ...)
+
+                safe_delayed_event(1, function()
+                    if AchievementManager and AchievementManager.on_run_start then
+                        AchievementManager.on_run_start()
+                    end
+                end)
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Voucher/Consumable Use
+        -- ============================================
+        if Card and type(Card.use_consumeable) == "function" then
+            local original_use_consumeable = Card.use_consumeable
+            Card.use_consumeable = function(self, area, copier, ...)
+                local result = original_use_consumeable(self, area, copier, ...)
+
+                -- Check if voucher
+                if self and self.ability and self.ability.set == 'Voucher' then
+                    pcall(function()
+                        if AchievementManager and AchievementManager.on_voucher_used then
+                            local key = self.config and self.config.center and self.config.center.key
+                            AchievementManager.on_voucher_used(key)
+                        end
+                        -- Quest hook: voucher used
+                        if QuestManager and QuestManager.process_event then
+                            QuestManager.process_event("vouchers_used", nil, 1)
+                        end
+                    end)
+                end
+
+                -- Quest hook: consumable used (Tarot, Planet, Spectral)
+                if self and self.ability and self.ability.consumeable then
+                    pcall(function()
+                        local consumable_type = self.config and self.config.center and self.config.center.set
+                        local consumable_key = self.config and self.config.center and self.config.center.key
+
+                        -- Achievement hook: pass type and key
+                        if AchievementManager and AchievementManager.on_consumable_used then
+                            AchievementManager.on_consumable_used(consumable_type, consumable_key)
+                        end
+
+                        if QuestManager and QuestManager.process_event then
+                            -- Track general consumable use
+                            QuestManager.process_event("consumables_used", nil, 1)
+                            -- Track specific consumable types
+                            if consumable_type == "Tarot" then
+                                QuestManager.process_event("tarot_used", nil, 1)
+                            elseif consumable_type == "Planet" then
+                                QuestManager.process_event("planet_used", nil, 1)
+                            elseif consumable_type == "Spectral" then
+                                QuestManager.process_event("spectral_used", nil, 1)
+                            end
+                        end
+                    end)
+                end
+
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Card Enhancement (set_ability) for enhance_50/200
+        -- ============================================
+        if Card and type(Card.set_ability) == "function" then
+            local original_set_ability = Card.set_ability
+            Card.set_ability = function(self, center, initial, delay_sprites, ...)
+                local old_name = self and self.ability and self.ability.name
+                local result = original_set_ability(self, center, initial, delay_sprites, ...)
+                pcall(function()
+                    if not initial and AchievementManager then
+                        local new_name = self and self.ability and self.ability.name
+                        -- Detect enhancement change on playing cards
+                        if old_name ~= new_name and self.ability and self.ability.type == "Enhanced" then
+                            if AchievementManager.on_card_enhanced then
+                                AchievementManager.on_card_enhanced()
+                            end
+                            -- FIX: wire QuestManager.on_card_enhanced (was unhooked, blocked cards_enhanced quest tracks)
+                            if QuestManager and QuestManager.on_card_enhanced then
+                                local _qok, _qerr = pcall(QuestManager.on_card_enhanced)
+                                if not _qok then print("[QUEST ERROR] on_card_enhanced: " .. tostring(_qerr)) end
+                            end
+                        end
+                    end
+                end)
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: Edition Set for editions_10/50
+        -- ============================================
+        if Card and type(Card.set_edition) == "function" then
+            local original_set_edition = Card.set_edition
+            Card.set_edition = function(self, edition, immediate, silent, ...)
+                local result = original_set_edition(self, edition, immediate, silent, ...)
+                pcall(function()
+                    if edition and AchievementManager and AchievementManager.on_edition_obtained then
+                        AchievementManager.on_edition_obtained()
+                    end
+                    -- FIX: wire QuestManager.on_edition_obtained (was unhooked, blocked editions_obtained quest tracks)
+                    if edition and QuestManager and QuestManager.on_edition_obtained then
+                        local _qok, _qerr = pcall(QuestManager.on_edition_obtained)
+                        if not _qok then print("[QUEST ERROR] on_edition_obtained: " .. tostring(_qerr)) end
+                    end
+                end)
+                return result
+            end
+        end
+
+        -- ============================================
+        -- HOOK: G.FUNCS (Deferred)
+        -- ============================================
+        if G.FUNCS then
+            -- Evaluate play hook
+            if type(G.FUNCS.evaluate_play) == "function" then
+                local original_evaluate_play = G.FUNCS.evaluate_play
+                G.FUNCS.evaluate_play = function(e, ...)
+                    local result = original_evaluate_play(e, ...)
+
+                    safe_delayed_event(0.1, function()
+                        if AchievementManager and AchievementManager.on_hand_played then
+                            local hand_data = {
+                                chips = (G and G.GAME and G.GAME.chips) or 0,
+                                hand_name = (G and G.GAME and G.GAME.last_hand_played) or ""
+                            }
+                            AchievementManager.on_hand_played(hand_data)
+                        end
+                        -- Quest hand_type/score tracking is handled canonically
+                        -- by QuestManager.on_hand_scored() inside evaluate_play()
+                        -- which uses the correct final calculated chip*mult value.
+                    end)
+
+                    return result
+                end
+            end
+
+            -- Discard hook
+            if type(G.FUNCS.discard_cards_from_highlighted) == "function" then
+                local original_discard = G.FUNCS.discard_cards_from_highlighted
+                G.FUNCS.discard_cards_from_highlighted = function(e, hook, ...)
+                    local result = original_discard(e, hook, ...)
+
+                    safe_delayed_event(0.1, function()
+                        if AchievementManager and AchievementManager.on_discard then
+                            AchievementManager.on_discard()
+                        end
+                        -- cards_discarded tracked canonically via inc_career_stat in state_events.lua
+                    end)
+
+                    return result
+                end
+            end
+
+            -- Skip blind hook (first_skip, skip_50)
+            if type(G.FUNCS.skip_blind) == "function" then
+                local original_skip_blind = G.FUNCS.skip_blind
+                G.FUNCS.skip_blind = function(e, ...)
+                    local result = original_skip_blind(e, ...)
+                    pcall(function()
+                        if AchievementManager and AchievementManager.on_blind_skipped then
+                            AchievementManager.on_blind_skipped()
+                        end
+                    end)
+                    return result
+                end
+            end
+
+            -- FIX: Shop reroll achievement hook consolidated into quest hook above (was double-hooked)
+
+            -- Quest claim hook (quests_10/50/100/250)
+            if type(G.FUNCS.claim_quest_reward) == "function" then
+                local original_claim_quest = G.FUNCS.claim_quest_reward
+                G.FUNCS.claim_quest_reward = function(e, ...)
+                    local result = original_claim_quest(e, ...)
+                    pcall(function()
+                        if AchievementManager and AchievementManager.on_quest_claimed then
+                            AchievementManager.on_quest_claimed()
+                        end
+                    end)
+                    return result
+                end
+            end
+
+            -- open_achievements_menu is defined in button_callbacks.lua
+            -- Do NOT override it here — it correctly calls create_UIBox_achievements_main()
+
+            -- Pagination functions (no longer needed - handled by option_cycle)
+            G.FUNCS.achievement_prev_page = function(e)
+                pcall(function()
+                    if AchievementManager and AchievementManager.current_page and AchievementManager.current_page > 1 then
+                        AchievementManager.current_page = AchievementManager.current_page - 1
+                        if G.FUNCS.open_achievements_menu then
+                            G.FUNCS.open_achievements_menu()
+                        end
+                    end
+                end)
+            end
+
+            G.FUNCS.achievement_next_page = function(e)
+                pcall(function()
+                    if AchievementManager then
+                        local achievements = {}
+                        if AchievementManager.get_filtered_achievements then
+                            achievements = AchievementManager.get_filtered_achievements() or {}
+                        end
+                        local total_pages = math.max(1, math.ceil(#achievements / 4))
+                        if (AchievementManager.current_page or 1) < total_pages then
+                            AchievementManager.current_page = (AchievementManager.current_page or 1) + 1
+                            if G.FUNCS.open_achievements_menu then
+                                G.FUNCS.open_achievements_menu()
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+
+        local traps = rawget(_G, "bom_traps")
+        if traps and type(traps.arm) == "function" and not traps._ach_wrapped then
+            traps._ach_wrapped = true
+            local original_arm = traps.arm
+            traps.arm = function(key, ...)
+                local result = original_arm(key, ...)
+                pcall(function()
+                    if G and G.GAME and G.GAME.multiplayer then
+                        G.GAME.ach_traps_sent = (G.GAME.ach_traps_sent or 0) + 1
+                        if AchievementManager and AchievementManager.update_progress then
+                            AchievementManager.update_progress("mp_saboteur", G.GAME.ach_traps_sent)
+                        end
+                    end
+                    local pb = rawget(_G, "bom_playback")
+                    if pb and pb.active and pb.active() then return end
+                    if Overhaul and Overhaul.stats then Overhaul.stats.on("trap_sent", {key = key}) end
+                end)
+                return result
+            end
+        end
+
+        HOOKS_INSTALLED = true
+        print("[ACHIEVEMENTS] Hooks installed successfully")
+
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] Hook installation error: " .. tostring(err))
+        return false
+    end
+
+    return true
+end
+
+-- ============================================
+-- MAIN MENU HOOK
+-- Primary: wrap set_main_menu_UI if it exists.
+-- Fallback: polled via G.update() override so hooks install
+-- even when set_main_menu_UI is obfuscated/renamed.
+-- ============================================
+
+local LATE = {}
+
+local function bump(event, data)
+    if Overhaul and Overhaul.stats and Overhaul.stats.on then Overhaul.stats.on(event, data) end
+end
+
+local function after_call(after, a, b, ...)
+    pcall(after, a, b)
+    return ...
+end
+
+local function wrap_field(tbl, key, tag, after)
+    if type(tbl) ~= "table" then return end
+    local f = rawget(tbl, key)
+    if type(f) ~= "function" or LATE[tag] == f then return end
+    local wrapped = function(a, b, ...)
+        local before = nil
+        if type(after) == "table" then before = after.before and after.before(a, b) end
+        local fn = type(after) == "table" and function(x, y) after.after(x, y, before) end or after
+        return after_call(fn, a, b, f(a, b, ...))
+    end
+    LATE[tag] = wrapped
+    tbl[key] = wrapped
+end
+
+local function wrap_funcs(names, after)
+    for _, name in ipairs(names) do wrap_field(G.FUNCS, name, "F:" .. name, after) end
+end
+
+local function install_late_hooks()
+    if not (G and G.FUNCS) then return end
+    wrap_funcs({"open_mod_menu_fullscreen", "open_mod_menu_inrun", "open_mod_menu", "open_cheats_menu", "open_cheats"}, function() bump("cheats_opened") end)
+    local guides = {}
+    for name in pairs(G.FUNCS) do
+        if type(name) == "string" and name:find("^open_guide_") then guides[#guides + 1] = name end
+    end
+    wrap_funcs(guides, function() bump("guide_opened") end)
+    wrap_funcs({"open_jukebox", "jukebox_mini_open"}, function() bump("jukebox_opened") end)
+    wrap_funcs({"bo_bp_play"}, function() bump("boss_practice") end)
+    wrap_funcs({"mg_play"}, function() bump("arcade_play") end)
+    wrap_funcs({"seed_lib_save_current"}, function() bump("seed_saved") end)
+    wrap_funcs({"open_run_history"}, function() bump("history_opened") end)
+    local town = rawget(_G, "Town")
+    wrap_field(town, "open", "Town.open", function() bump("casino_visit") end)
+    wrap_field(town, "go", "Town.go", function(key) if key then bump("casino_place", {key = key, no_count = true}) end end)
+    wrap_field(rawget(_G, "BO_SPREPLAY"), "watch", "SR.watch", function() bump("replay_watched") end)
+    wrap_field(rawget(_G, "bom_replay"), "watch", "RP.watch", function() bump("replay_watched") end)
+    local cm = rawget(_G, "CosmeticsManager")
+    wrap_field(cm, "equip", "CM.equip", {
+        before = function(kind, id)
+            local ok, cur = pcall(cm.get_equipped, kind)
+            return ok and cur or nil
+        end,
+        after = function(kind, id, before)
+            if G.OVERLAY_MENU and id ~= nil and id ~= before then bump("tailor_change") end
+        end,
+    })
+    local ok, store = pcall(require, "functions/forge/forge_store")
+    if ok and type(store) == "table" then
+        local function was_new(getter)
+            return function(c)
+                local had = false
+                if type(c) == "table" and c.id ~= nil then
+                    local ok2, cur = pcall(store[getter], c.id)
+                    had = ok2 and cur ~= nil
+                end
+                return had
+            end
+        end
+        local function created(c, _, had) if type(c) == "table" and not had then bump("forge_created") end end
+        wrap_field(store, "put", "Forge.put", {before = was_new("get"), after = created})
+        wrap_field(store, "put_item", "Forge.put_item", {before = was_new("get_item"), after = created})
+    end
+end
+
+local last_state = nil
+
+local function watch_state()
+    if not (G and G.STATES) then return end
+    local cur = G.STATE
+    if cur == last_state then return end
+    if cur == G.STATES.SHOP and last_state == G.STATES.ROUND_EVAL then
+        if AchievementManager and AchievementManager.on_shop_visit then AchievementManager.on_shop_visit() end
+        if QuestManager and QuestManager.process_event then QuestManager.process_event("shop_visited", nil, 1) end
+    end
+    last_state = cur
+end
+
+AchievementHooks = AchievementHooks or {}
+AchievementHooks.install_late = install_late_hooks
+AchievementHooks.watch_state = watch_state
+
+local HOOKS_TRIGGER_ATTEMPTED = false
+
+local function try_install_all()
+    pcall(install_late_hooks)
+    if HOOKS_INSTALLED then return end
+    if HOOKS_TRIGGER_ATTEMPTED then return end
+    HOOKS_TRIGGER_ATTEMPTED = true
+    pcall(function()
+        if AchievementManager and AchievementManager.init then
+            AchievementManager.init()
+        end
+    end)
+    install_hooks()
+end
+
+local function hook_main_menu()
+    if not G then return false end
+    if type(set_main_menu_UI) ~= "function" then
+        print("[ACHIEVEMENTS] set_main_menu_UI not found - will use G.update fallback")
+        return false
+    end
+
+    local success, err = pcall(function()
+        local original_set_main_menu_UI = set_main_menu_UI
+        set_main_menu_UI = function(...)
+            local result = original_set_main_menu_UI(...)
+            pcall(try_install_all)
+            return result
+        end
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] Main menu hook error: " .. tostring(err))
+        return false
+    end
+
+    return true
+end
+
+-- Fallback: a single G.update wrapper that handles both:
+--   1. Installing hooks once G and G.FUNCS are ready (replaces set_main_menu_UI hook)
+--   2. Detecting GAME_OVER state transition (replaces create_UIBox_game_over hook)
+-- Only installed when the named-function hooks didn't work.
+local UPDATE_FALLBACK_INSTALLED = false
+local prev_state_for_game_over  = nil
+local _periodic_check_timer = 0
+
+local function install_update_fallback(needs_hooks, needs_gameover)
+    if UPDATE_FALLBACK_INSTALLED then return end
+    if not G then return end
+    if type(G.update) ~= "function" then return end
+
+    UPDATE_FALLBACK_INSTALLED = true
+    local original_update = rawget(G, "update")
+    G.update = function(self, dt, ...)
+        local result
+        if original_update then result = original_update(self, dt, ...) else result = Game.update(self, dt, ...) end
+
+        -- Hook installation fallback
+        if needs_hooks and not HOOKS_INSTALLED and G.STAGE and G.STAGE ~= G.STAGES.SPLASH then
+            pcall(try_install_all)
+        end
+
+        pcall(watch_state)
+
+        -- Game-over state detection fallback
+        if needs_gameover and not GAME_OVER_HOOK_INSTALLED and G.STATE then
+            local cur = G.STATE
+            if prev_state_for_game_over ~= cur and cur == G.STATES.GAME_OVER then
+                pcall(fire_game_over_events)
+            end
+            prev_state_for_game_over = cur
+        end
+
+        -- Periodic achievement checks (every 30 seconds)
+        _periodic_check_timer = _periodic_check_timer + (dt or 0)
+        if _periodic_check_timer >= 30 then
+            _periodic_check_timer = 0
+            pcall(install_late_hooks)
+            pcall(function()
+                -- Track play time
+                if AchievementManager and AchievementManager.player_data and AchievementManager.player_data.stats then
+                    AchievementManager.player_data.stats.total_play_time =
+                        (AchievementManager.player_data.stats.total_play_time or 0) + 30
+                end
+                if AchievementManager and AchievementManager.check_periodic then
+                    AchievementManager.check_periodic()
+                end
+            end)
+        end
+
+        return result
+    end
+    print("[ACHIEVEMENTS] G.update fallback installed (hooks=" .. tostring(needs_hooks) ..
+          " gameover=" .. tostring(needs_gameover) .. ")")
+end
+
+-- ============================================
+-- GAME OVER HOOK
+-- Wraps create_UIBox_game_over if it exists.
+-- Falls back to G.STATE transition detection when obfuscated.
+-- ============================================
+
+local GAME_OVER_HOOK_INSTALLED = false
+
+local function fire_game_over_events()
+    pcall(function()
+        if AchievementManager and AchievementManager.on_run_end then
+            local chips    = (G and G.GAME and G.GAME.chips) or 0
+            local run_time = Overhaul and Overhaul.stats and Overhaul.stats.run_time() or 0
+            local deck_key = nil
+            if G and G.GAME and G.GAME.selected_back and G.GAME.selected_back.effect and
+               G.GAME.selected_back.effect.center then
+                deck_key = G.GAME.selected_back.effect.center.key
+            end
+            AchievementManager.on_run_end(false, chips, run_time, deck_key)
+        end
+    end)
+    pcall(function()
+        if QuestManager and QuestManager.on_run_lost then
+            QuestManager.on_run_lost()
+        end
+    end)
+end
+
+local function hook_game_over()
+    if not G then return false end
+    if type(create_UIBox_game_over) ~= "function" then
+        print("[ACHIEVEMENTS] create_UIBox_game_over not found - will use GAME_OVER state fallback")
+        GAME_OVER_HOOK_INSTALLED = false
+        return false
+    end
+
+    local success, err = pcall(function()
+        local original_game_over = create_UIBox_game_over
+        create_UIBox_game_over = function(...)
+            fire_game_over_events()
+            -- FIX: In multiplayer, show MP game over screen so loser gets Match Results
+            if G and G.GAME and G.GAME.multiplayer then
+                if bom_ui and bom_ui.create_mp_game_over then
+                    local ok, def = pcall(bom_ui.create_mp_game_over)
+                    if ok and def then return def end
+                end
+            end
+            return original_game_over(...)
+        end
+        GAME_OVER_HOOK_INSTALLED = true
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] Game over hook error: " .. tostring(err))
+        return false
+    end
+
+    return true
+end
+
+-- install_game_over_state_fallback: merged into install_update_fallback above.
+-- Kept as a no-op stub so existing call sites don't error.
+local function install_game_over_state_fallback() end
+
+-- ============================================
+-- EXTERNAL TRIGGER FUNCTIONS
+-- ============================================
+
+-- Can be called from other mods
+function trigger_custom_run_achievement()
+    pcall(function()
+        if AchievementManager and AchievementManager.check_achievement then
+            AchievementManager.update_progress("secret_custom_run", 1)
+        end
+    end)
+end
+
+function trigger_daily_complete_achievement(score, streak)
+    pcall(function()
+        if AchievementManager and AchievementManager.on_daily_complete then
+            AchievementManager.on_daily_complete(score, streak)
+        end
+    end)
+end
+
+-- ============================================
+-- INITIALIZATION
+-- ============================================
+
+local function init_hooks()
+    local mm_ok = hook_main_menu()
+    local go_ok = hook_game_over()
+
+    -- If either named hook failed, install a single G.update fallback that handles both.
+    -- Always install for periodic achievement checks (play time, enhancement scans, etc.)
+    pcall(function()
+        install_update_fallback(not mm_ok, not go_ok)
+    end)
+
+    -- Try to install hooks if G is already ready
+    if G and G.FUNCS then
+        install_hooks()
+    end
+end
+
+-- Run init
+local init_success, init_err = pcall(init_hooks)
+if not init_success then
+    print("[ACHIEVEMENTS] Hooks init error: " .. tostring(init_err))
+end
+
+-- Export for manual installation
+AchievementHooks = AchievementHooks or {}
+AchievementHooks.install = install_hooks
+AchievementHooks.trigger_custom_run = trigger_custom_run_achievement
+AchievementHooks.trigger_daily_complete = trigger_daily_complete_achievement
+
+print("[ACHIEVEMENTS] Hooks module loaded (safe, deferred)")
+return AchievementHooks
+end

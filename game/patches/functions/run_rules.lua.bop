@@ -1,0 +1,804 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 263
+RunRules = RunRules or {}
+local R = RunRules
+
+R.CATEGORIES = {
+  {key = 'basics',  label = "Basics"},
+  {key = 'economy', label = "Economy"},
+  {key = 'blinds',  label = "Blinds"},
+  {key = 'shop',    label = "Shop"},
+  {key = 'deck',    label = "Deck"},
+  {key = 'items',   label = "Items"},
+  {key = 'bans',    label = "Bans"},
+  {key = 'fun',     label = "Fun"},
+}
+
+R.registry = {}
+R.by_key = {}
+
+local function rule(def)
+  def.kind = def.kind or 'stepper'
+  R.registry[#R.registry + 1] = def
+  R.by_key[def.key] = def
+  return def
+end
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function fmt_money(v) return "$" .. tostring(v) end
+local function fmt_pct(v) return tostring(v) .. "%" end
+local function fmt_x(v) return "x" .. tostring(v) end
+
+local function sp_shift(key, v, def, lo)
+  local sp = G.GAME.starting_params
+  sp[key] = math.max(lo or 0, (sp[key] or def) + (v - def))
+end
+
+local function bans_for(list, extra)
+  G.GAME.banned_keys = G.GAME.banned_keys or {}
+  for _, k in ipairs(list or {}) do
+    if type(k) == 'string' then G.GAME.banned_keys[k] = true end
+  end
+  if extra then extra() end
+end
+
+local function ban_pack_kind(kind)
+  if not (G.P_CENTER_POOLS and G.P_CENTER_POOLS.Booster) then return end
+  G.GAME.banned_keys = G.GAME.banned_keys or {}
+  for _, v in ipairs(G.P_CENTER_POOLS.Booster) do
+    if v.kind == kind then G.GAME.banned_keys[v.key] = true end
+  end
+end
+
+local function emplace_new(set, area, key, seed)
+  if not area or #area.cards >= area.config.card_limit then return nil end
+  local was = key and G.GAME.banned_keys[key]
+  if key then G.GAME.banned_keys[key] = nil end
+  local card = create_card(set, area, nil, nil, nil, nil, key, seed)
+  if was then G.GAME.banned_keys[key] = true end
+  if card then
+    card:add_to_deck()
+    area:emplace(card)
+  end
+  return card
+end
+
+local function each_card(fn)
+  for _, c in ipairs(G.playing_cards or {}) do fn(c) end
+end
+
+local function pick(list, seed)
+  return pseudorandom_element(list, pseudoseed(seed))
+end
+
+local ENH = {'m_bonus', 'm_mult', 'm_wild', 'm_glass', 'm_steel', 'm_stone', 'm_gold', 'm_lucky'}
+local SEALS = {'Red', 'Blue', 'Gold', 'Purple'}
+
+local function back_options()
+  local out = {}
+  for _, v in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Back) or {}) do
+    if not v.omit then
+      out[#out + 1] = {value = v.key, label = v.name or v.key, raw = true}
+    end
+  end
+  if #out == 0 then out[1] = {value = 'b_red', label = "Red Deck", raw = true} end
+  return out
+end
+
+local function stake_options()
+  local out = {}
+  for i, v in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake) or {}) do
+    if i > 8 then break end
+    out[#out + 1] = {value = i, label = v.name or ("Stake " .. i), raw = true}
+  end
+  if #out == 0 then out[1] = {value = 1, label = "White Stake", raw = true} end
+  return out
+end
+
+rule{key = 'stake', category = 'basics', kind = 'cycle', label = "Stake", info = "Stake rules and their difficulty", default = 1, options = stake_options, pre = true}
+rule{key = 'hands', category = 'basics', label = "Hands", info = "Hands per round (deck bonuses still apply)", default = 4, min = 1, max = 25,
+  apply = function(v) sp_shift('hands', v, 4, 1) end}
+rule{key = 'discards', category = 'basics', label = "Discards", info = "Discards per round", default = 3, min = 0, max = 25,
+  apply = function(v) sp_shift('discards', v, 3, 0) end}
+rule{key = 'hand_size', category = 'basics', label = "Hand size", info = "Cards held in hand", default = 8, min = 1, max = 20,
+  apply = function(v) sp_shift('hand_size', v, 8, 1) end}
+rule{key = 'joker_slots', category = 'basics', label = "Joker slots", default = 5, min = 0, max = 15,
+  apply = function(v) sp_shift('joker_slots', v, 5, 0) end}
+rule{key = 'consumable_slots', category = 'basics', label = "Consumable slots", default = 2, min = 0, max = 10,
+  apply = function(v) sp_shift('consumable_slots', v, 2, 0) end}
+rule{key = 'win_ante', category = 'basics', label = "Winning ante", info = "Beat this ante's boss to win", default = 8, min = 1, max = 39,
+  apply = function(v) G.GAME.win_ante = v end}
+rule{key = 'endless', category = 'basics', kind = 'toggle', label = "Endless", info = "No win screen, play until you lose", default = false,
+  apply = function(v) if v then G.GAME.win_ante = 999 end end}
+rule{key = 'start_ante', category = 'basics', label = "Starting ante", default = 1, min = 1, max = 8,
+  apply = function(v)
+    G.GAME.round_resets.ante = v
+    G.GAME.round_resets.blind_ante = v
+  end}
+
+rule{key = 'dollars', category = 'economy', label = "Starting money", default = 4, min = 0, max = 200, big_step = 10, format = fmt_money,
+  apply = function(v) sp_shift('dollars', v, 4, 0) end}
+rule{key = 'interest_amount', category = 'economy', label = "Interest per $5", default = 1, min = 0, max = 5, format = fmt_money,
+  apply = function(v) G.GAME.interest_amount = v end}
+rule{key = 'interest_cap', category = 'economy', label = "Interest counts up to", info = "Money above this earns no interest", default = 25, min = 0, max = 200, step = 5, big_step = 25, format = fmt_money,
+  apply = function(v) G.GAME.interest_cap = v end}
+rule{key = 'money_per_hand', category = 'economy', label = "$ per hand left", default = 1, min = 0, max = 5, format = fmt_money,
+  apply = function(v)
+    if v == 0 then G.GAME.modifiers.no_extra_hand_money = true else G.GAME.modifiers.money_per_hand = v end
+  end}
+rule{key = 'money_per_discard', category = 'economy', label = "$ per discard left", default = 0, min = 0, max = 5, format = fmt_money,
+  apply = function(v) if v > 0 then G.GAME.modifiers.money_per_discard = v end end}
+rule{key = 'discard_cost', category = 'economy', label = "Discard cost", info = "Pay this much for every discard", default = 0, min = 0, max = 5, format = fmt_money,
+  apply = function(v) if v > 0 then G.GAME.modifiers.discard_cost = v end end}
+rule{key = 'blind_reward', category = 'economy', kind = 'cycle', label = "Blind rewards", default = 'normal',
+  options = {{value = 'normal', label = "Normal"}, {value = 'no_small', label = "No Small"}, {value = 'boss_only', label = "Boss only"}, {value = 'none', label = "None"}},
+  apply = function(v)
+    if v == 'normal' then return end
+    local t = G.GAME.modifiers.no_blind_reward or {}
+    t.Small = true
+    if v == 'boss_only' or v == 'none' then t.Big = true end
+    if v == 'none' then t.Boss = true end
+    G.GAME.modifiers.no_blind_reward = t
+  end}
+rule{key = 'reroll_cost', category = 'economy', label = "Reroll base cost", default = 5, min = 0, max = 20, format = fmt_money,
+  apply = function(v) sp_shift('reroll_cost', v, 5, 0) end}
+rule{key = 'reroll_step', category = 'economy', label = "Reroll cost increase", info = "Added after every reroll", default = 1, min = 0, max = 5, format = fmt_money}
+rule{key = 'price_pct', category = 'economy', label = "Shop prices", default = 100, min = 25, max = 300, step = 25, format = fmt_pct}
+rule{key = 'inflation', category = 'economy', kind = 'toggle', label = "Inflation", info = "Every purchase raises all prices by $1", default = false,
+  apply = function(v) if v then G.GAME.modifiers.inflation = true end end}
+
+rule{key = 'blind_pct', category = 'blinds', label = "Blind size", info = "Score needed, in % of normal", default = 100, min = 25, max = 500, step = 25, big_step = 100, format = fmt_pct,
+  apply = function(v) G.GAME.starting_params.ante_scaling = (G.GAME.starting_params.ante_scaling or 1) * v / 100 end}
+rule{key = 'blind_growth', category = 'blinds', kind = 'cycle', label = "Ante growth", info = "How fast blinds grow each ante", default = 'stake',
+  options = {{value = 'stake', label = "From stake"}, {value = 1, label = "Normal"}, {value = 2, label = "Steep"}, {value = 3, label = "Brutal"}},
+  apply = function(v) if v ~= 'stake' then G.GAME.modifiers.scaling = v end end}
+rule{key = 'showdown_bosses', category = 'blinds', kind = 'toggle', label = "Showdown bosses only", info = "Every boss is a final boss", default = false,
+  apply = function(v) if v then G.GAME.modifiers.boss_always_finisher = true end end}
+rule{key = 'boss_extra', category = 'blinds', kind = 'toggle', label = "Bosses get a second effect", default = false,
+  apply = function(v) if v then G.GAME.modifiers.boss_additional_effect = true end end}
+rule{key = 'no_bosses', category = 'blinds', kind = 'toggle', label = "No boss blinds", info = "Bosses become plain blinds with no effect", default = false,
+  apply = function(v) if v then R.ensure_plain_blind() end end}
+rule{key = 'joker_disable', category = 'blinds', kind = 'toggle', label = "Random joker disabled", info = "One joker is debuffed each blind", default = false,
+  apply = function(v) if v then G.GAME.modifiers.random_joker_disable = true end end}
+
+rule{key = 'shop_slots', category = 'shop', label = "Shop card slots", default = 2, min = 0, max = 6,
+  apply = function(v) G.GAME.shop = G.GAME.shop or {}; G.GAME.shop.joker_max = v end}
+rule{key = 'pack_slots', category = 'shop', label = "Booster pack slots", default = 2, min = 0, max = 4}
+rule{key = 'voucher_slots', category = 'shop', label = "Voucher slots", default = 1, min = 0, max = 3,
+  apply = function(v) if v == 0 then G.GAME.shop_vouchers_disabled = true end end}
+rule{key = 'rarity_common', category = 'shop', label = "Common joker weight", info = "Chance weight of Common jokers", default = 70, min = 0, max = 100, step = 5, big_step = 25}
+rule{key = 'rarity_uncommon', category = 'shop', label = "Uncommon joker weight", info = "Chance weight of Uncommon jokers", default = 25, min = 0, max = 100, step = 5, big_step = 25}
+rule{key = 'rarity_rare', category = 'shop', label = "Rare joker weight", info = "Chance weight of Rare jokers", default = 5, min = 0, max = 100, step = 5, big_step = 25}
+rule{key = 'shop_jokers', category = 'shop', kind = 'toggle', label = "Jokers in shop", info = "Off also removes Buffoon packs", default = true,
+  apply = function(v) if not v then G.GAME.shop_jokers_disabled = true; ban_pack_kind('Buffoon') end end}
+rule{key = 'shop_tarots', category = 'shop', kind = 'toggle', label = "Tarots in shop", info = "Off also removes Arcana packs", default = true,
+  apply = function(v) if not v then G.GAME.shop_tarots_disabled = true; ban_pack_kind('Arcana') end end}
+rule{key = 'shop_planets', category = 'shop', kind = 'toggle', label = "Planets in shop", info = "Off also removes Celestial packs", default = true,
+  apply = function(v) if not v then G.GAME.shop_planets_disabled = true; ban_pack_kind('Celestial') end end}
+rule{key = 'shop_spectrals', category = 'shop', kind = 'cycle', label = "Spectral cards", default = 'normal',
+  options = {{value = 'normal', label = "Packs only"}, {value = 'shop', label = "Also in shop"}, {value = 'never', label = "Never"}},
+  apply = function(v)
+    if v == 'shop' then G.GAME.spectral_rate = 2 end
+    if v == 'never' then G.GAME.shop_spectrals_disabled = true; ban_pack_kind('Spectral') end
+  end}
+rule{key = 'shop_playing_cards', category = 'shop', kind = 'toggle', label = "Playing cards in shop", default = false,
+  apply = function(v) if v then G.GAME.playing_card_rate = 4 end end}
+rule{key = 'shop_vouchers', category = 'shop', kind = 'toggle', label = "Vouchers in shop", default = true,
+  apply = function(v) if not v then G.GAME.shop_vouchers_disabled = true end end}
+rule{key = 'edition_rate', category = 'shop', kind = 'cycle', label = "Edition chance", default = 1,
+  options = {{value = 1, label = "x1", raw = true}, {value = 2, label = "x2", raw = true}, {value = 4, label = "x4", raw = true}, {value = 10, label = "x10", raw = true}},
+  apply = function(v) G.GAME.edition_rate = v end}
+rule{key = 'eternal_stickers', category = 'shop', kind = 'toggle', label = "Eternal jokers in shop", default = false,
+  apply = function(v) if v then G.GAME.modifiers.enable_eternals_in_shop = true end end}
+rule{key = 'perishable_stickers', category = 'shop', kind = 'toggle', label = "Perishable jokers in shop", default = false,
+  apply = function(v) if v then G.GAME.modifiers.enable_perishables_in_shop = true end end}
+rule{key = 'rental_stickers', category = 'shop', kind = 'toggle', label = "Rental jokers in shop", default = false,
+  apply = function(v) if v then G.GAME.modifiers.enable_rentals_in_shop = true end end}
+
+rule{key = 'back', category = 'deck', kind = 'cycle', label = "Deck", info = "Its own bonus applies too", default = 'b_red', options = back_options, pre = true}
+rule{key = 'no_faces', category = 'deck', kind = 'toggle', label = "No face cards", default = false,
+  apply = function(v) if v then G.GAME.starting_params.no_faces = true end end}
+rule{key = 'erratic', category = 'deck', kind = 'toggle', label = "Random ranks and suits", default = false,
+  apply = function(v) if v then G.GAME.starting_params.erratic_suits_and_ranks = true end end}
+rule{key = 'remove_suit', category = 'deck', kind = 'cycle', label = "Remove a suit", default = 'none', order = 1,
+  options = {{value = 'none', label = "None"}, {value = 'Spades', label = "Spades"}, {value = 'Hearts', label = "Hearts"}, {value = 'Clubs', label = "Clubs"}, {value = 'Diamonds', label = "Diamonds"}},
+  late = function(v)
+    if v == 'none' then return end
+    for i = #(G.playing_cards or {}), 1, -1 do
+      local c = G.playing_cards[i]
+      if c and c.base and c.base.suit == v then c:remove() end
+    end
+  end}
+rule{key = 'deck_size', category = 'deck', label = "Deck size", info = "Cards are copied or removed to fit", default = 52, min = 1, max = 208, big_step = 13, order = 2,
+  late = function(v)
+    local cur = #(G.playing_cards or {})
+    if v > cur and cur > 0 then
+      local fronts = {}
+      for _, c in ipairs(G.playing_cards) do fronts[#fronts + 1] = c.config.card end
+      for i = 1, v - cur do
+        create_playing_card({front = fronts[(i - 1) % #fronts + 1]}, G.deck, true, true)
+      end
+    elseif v < cur then
+      for _ = 1, cur - v do
+        local c = G.deck and G.deck.cards[#G.deck.cards]
+        if not c then break end
+        c:remove()
+      end
+    end
+  end}
+rule{key = 'enhancement', category = 'deck', kind = 'cycle', label = "Enhancement", default = 'none', order = 3,
+  options = {{value = 'none', label = "None"}, {value = 'random', label = "Random"}, {value = 'm_bonus', label = "Bonus"}, {value = 'm_mult', label = "Mult"},
+    {value = 'm_wild', label = "Wild"}, {value = 'm_glass', label = "Glass"}, {value = 'm_steel', label = "Steel"}, {value = 'm_stone', label = "Stone"},
+    {value = 'm_gold', label = "Gold"}, {value = 'm_lucky', label = "Lucky"}},
+  late = function(v)
+    if v == 'none' then return end
+    each_card(function(c)
+      local k = v == 'random' and pick(ENH, 'rr_enh') or v
+      if G.P_CENTERS[k] then c:set_ability(G.P_CENTERS[k]) end
+    end)
+  end}
+rule{key = 'edition', category = 'deck', kind = 'cycle', label = "Edition", default = 'none', order = 4,
+  options = {{value = 'none', label = "None"}, {value = 'random', label = "Random"}, {value = 'foil', label = "Foil"}, {value = 'holo', label = "Holographic"}, {value = 'polychrome', label = "Polychrome"}},
+  late = function(v)
+    if v == 'none' then return end
+    each_card(function(c)
+      local k = v
+      if v == 'random' then k = pick({'none', 'foil', 'holo', 'polychrome'}, 'rr_ed') end
+      if k ~= 'none' then c:set_edition({[k] = true}, true, true) end
+    end)
+  end}
+rule{key = 'seal', category = 'deck', kind = 'cycle', label = "Seal", default = 'none', order = 5,
+  options = {{value = 'none', label = "None"}, {value = 'random', label = "Random"}, {value = 'Red', label = "Red"}, {value = 'Blue', label = "Blue"}, {value = 'Gold', label = "Gold"}, {value = 'Purple', label = "Purple"}},
+  late = function(v)
+    if v == 'none' then return end
+    each_card(function(c) c:set_seal(v == 'random' and pick(SEALS, 'rr_seal') or v, true, true) end)
+  end}
+
+rule{key = 'starting_jokers', category = 'items', kind = 'list', label = "Starting jokers", default = {}, pool = 'Joker', order = 10,
+  late = function(v) for _, k in ipairs(v) do if G.P_CENTERS[k] then emplace_new('Joker', G.jokers, k) end end end}
+rule{key = 'random_jokers', category = 'items', label = "Random starting jokers", default = 0, min = 0, max = 5, order = 11,
+  late = function(v) for _ = 1, v do emplace_new('Joker', G.jokers, nil, 'rr_jok') end end}
+rule{key = 'starting_vouchers', category = 'items', kind = 'list', label = "Starting vouchers", default = {}, pool = 'Voucher', order = 12,
+  late = function(v)
+    for _, k in ipairs(v) do
+      if G.P_CENTERS[k] and not G.GAME.used_vouchers[k] then
+        G.GAME.used_vouchers[k] = true
+r 1 178 %20%20%20%20%20%20%20%20 -
+l 194
+        Card.apply_to_run(nil, G.P_CENTERS[k])
+      end
+    end
+  end}
+rule{key = 'random_tarots', category = 'items', label = "Random starting tarots", default = 0, min = 0, max = 5, order = 13,
+  late = function(v) for _ = 1, v do emplace_new('Tarot', G.consumeables, nil, 'rr_tar') end end}
+rule{key = 'random_spectrals', category = 'items', label = "Random starting spectrals", default = 0, min = 0, max = 5, order = 14,
+  late = function(v) for _ = 1, v do emplace_new('Spectral', G.consumeables, nil, 'rr_spe') end end}
+rule{key = 'random_tags', category = 'items', label = "Random starting tags", default = 0, min = 0, max = 5, order = 15,
+  late = function(v)
+    local keys = {}
+    for i = 1, v do
+      local k
+      for t = 1, 20 do
+        k = get_next_tag_key('rr_tag')
+        local p = G.P_TAGS[k]
+        if not (p and p.config and p.config.type == 'immediate') then break end
+      end
+      add_tag(Tag(k))
+      keys[i] = k
+    end
+    print("[RUN RULES] starting tags " .. table.concat(keys, ","))
+  end}
+rule{key = 'hand_level', category = 'items', label = "Poker hand levels", info = "Every poker hand starts at this level", default = 1, min = 1, max = 10, order = 16,
+  late = function(v)
+    if v <= 1 then return end
+    for k, _ in pairs(G.GAME.hands or {}) do level_up_hand(nil, k, true, v - 1) end
+  end}
+
+local BAN_LISTS = {
+  {key = 'ban_jokers', label = "Banned jokers", pool = 'Joker'},
+  {key = 'ban_tarots', label = "Banned tarots", pool = 'Tarot'},
+  {key = 'ban_planets', label = "Banned planets", pool = 'Planet'},
+  {key = 'ban_spectrals', label = "Banned spectrals", pool = 'Spectral'},
+  {key = 'ban_vouchers', label = "Banned vouchers", pool = 'Voucher'},
+  {key = 'ban_boosters', label = "Banned packs", pool = 'Booster'},
+  {key = 'ban_tags', label = "Banned tags", pool = 'Tag'},
+  {key = 'ban_blinds', label = "Banned bosses", pool = 'Blind'},
+}
+R.BAN_LISTS = BAN_LISTS
+for _, b in ipairs(BAN_LISTS) do
+  rule{key = b.key, category = 'bans', kind = 'list', label = b.label, default = {}, pool = b.pool, ban = true,
+    apply = function(v)
+      local list = v
+      if b.pool == 'Booster' and G.P_CENTER_POOLS.Booster and #v >= #G.P_CENTER_POOLS.Booster then
+        list = {}
+        for i = 1, #v - 1 do list[i] = v[i] end
+      end
+      bans_for(list)
+    end}
+end
+
+rule{key = 'number_randomizer', category = 'fun', kind = 'toggle', label = "Number randomizer", info = "Random hands, prices, cards and packs", default = false,
+  apply = function(v)
+    if not v then return end
+    G.GAME.number_randomizer = true
+    if mark_run_as_modded then mark_run_as_modded("Number Randomizer") end
+  end}
+rule{key = 'random_chaos', category = 'fun', kind = 'slider', label = "Randomizer chaos", info = "0 stays near normal, 100 goes wild", default = 50, min = 0, max = 100,
+  apply = function(v) G.GAME.rnd_chaos = v end}
+rule{key = 'flipped_cards', category = 'fun', kind = 'cycle', label = "Face down cards", info = "Chance a drawn card comes face down", default = 0,
+  options = {{value = 0, label = "Off"}, {value = 8, label = "1 in 8", raw = true}, {value = 4, label = "1 in 4", raw = true}, {value = 2, label = "1 in 2", raw = true}},
+  apply = function(v) if v > 0 then G.GAME.modifiers.flipped_cards = v end end}
+rule{key = 'all_eternal', category = 'fun', kind = 'toggle', label = "All jokers eternal", default = false,
+  apply = function(v) if v then G.GAME.modifiers.all_eternal = true end end}
+rule{key = 'debuff_played', category = 'fun', kind = 'toggle', label = "Played cards get debuffed", info = "A card you play is debuffed afterwards", default = false,
+  apply = function(v) if v then G.GAME.modifiers.debuff_played_cards = true end end}
+rule{key = 'chips_cap', category = 'fun', kind = 'toggle', label = "Score capped by money", info = "Chips can never be higher than your $", default = false,
+  apply = function(v) if v then G.GAME.modifiers.chips_dollar_cap = true end end}
+rule{key = 'hand_per_dollar', category = 'fun', kind = 'cycle', label = "Money shrinks your hand", info = "-1 hand size for every $X you hold", default = 0,
+  options = {{value = 0, label = "Off"}, {value = 5, label = "$5", raw = true}, {value = 10, label = "$10", raw = true}, {value = 20, label = "$20", raw = true}},
+  apply = function(v) if v > 0 then G.GAME.modifiers.minus_hand_size_per_X_dollar = v end end}
+rule{key = 'tag_every_ante', category = 'fun', kind = 'toggle', label = "Free tag every ante", default = false}
+rule{key = 'random_prices', category = 'fun', kind = 'toggle', label = "Mystery prices", info = "Every price is 50% to 200%", default = false}
+
+local function copy(v)
+  if type(v) ~= 'table' then return v end
+  local t = {}
+  for i, x in ipairs(v) do t[i] = x end
+  return t
+end
+
+local function opts_of(def)
+  local o = def.options
+  if type(o) == 'function' then o = o() end
+  return o or {}
+end
+
+local function valid(def, v)
+  if def.kind == 'toggle' then return type(v) == 'boolean' end
+  if def.kind == 'list' then return type(v) == 'table' end
+  if def.kind == 'stepper' or def.kind == 'slider' then return type(v) == 'number' end
+  if def.kind == 'cycle' then
+    if type(def.options) == 'function' then return v ~= nil end
+    for _, o in ipairs(def.options) do if o.value == v then return true end end
+    return false
+  end
+  return false
+end
+
+local function clamp(def, v)
+  if def.kind == 'stepper' or def.kind == 'slider' then
+    v = math.floor(v + 0.5)
+    if def.min then v = math.max(def.min, v) end
+    if def.max then v = math.min(def.max, v) end
+  end
+  return v
+end
+
+function R.list(category)
+  if not category then return R.registry end
+  local out = {}
+  for _, d in ipairs(R.registry) do if d.category == category then out[#out + 1] = d end end
+  return out
+end
+
+function R.defaults()
+  local t = {}
+  for _, d in ipairs(R.registry) do t[d.key] = copy(d.default) end
+  return t
+end
+
+function R.normalize(values)
+  local t = R.defaults()
+  for k, v in pairs(values or {}) do
+    local d = R.by_key[k]
+    if d and valid(d, v) then t[k] = clamp(d, copy(v)) end
+  end
+  return t
+end
+
+local function same(d, v)
+  if d.kind == 'list' then return #v == 0 end
+  return v == d.default
+end
+
+function R.diff(values)
+  local t = {}
+  for _, d in ipairs(R.registry) do
+    local v = values and values[d.key]
+    if v ~= nil and valid(d, v) and not same(d, v) then t[d.key] = copy(v) end
+  end
+  return t
+end
+
+function R.value_label(key, v)
+  local d = R.by_key[key]
+  if not d then return tostring(v) end
+  if d.kind == 'toggle' then return v and L("On") or L("Off") end
+  if d.kind == 'list' then return tostring(#v) end
+  if d.kind == 'cycle' then
+    for _, o in ipairs(opts_of(d)) do
+      if o.value == v then return o.raw and o.label or L(o.label) end
+    end
+    return tostring(v)
+  end
+  return d.format and d.format(v) or tostring(v)
+end
+
+function R.describe(values)
+  local lines = {}
+  local diff = R.diff(values)
+  for _, d in ipairs(R.registry) do
+    local v = diff[d.key]
+    if v ~= nil then lines[#lines + 1] = L(d.label) .. ": " .. R.value_label(d.key, v) end
+  end
+  return lines
+end
+
+function R.active(key)
+  local t = G.GAME and G.GAME.run_rules
+  return t and t[key]
+end
+
+function R.apply(values)
+  if not (G.GAME and G.GAME.starting_params) then return end
+  local v = R.normalize(values)
+  local diff = R.diff(v)
+  G.GAME.run_rules = diff
+  G.GAME.modifiers = G.GAME.modifiers or {}
+  G.GAME.banned_keys = G.GAME.banned_keys or {}
+  if next(diff) and mark_run_as_modded then pcall(mark_run_as_modded, "Custom run") end
+  for _, d in ipairs(R.registry) do
+    if d.apply and diff[d.key] ~= nil then
+      local ok, err = pcall(d.apply, v[d.key])
+      if not ok then print("[RUN RULES] apply " .. d.key .. ": " .. tostring(err)) end
+    end
+  end
+  local late = {}
+  for _, d in ipairs(R.registry) do
+    if d.late and diff[d.key] ~= nil then late[#late + 1] = d end
+  end
+  table.sort(late, function(a, b) return (a.order or 0) < (b.order or 0) end)
+  if #late > 0 then
+r 3 617 %20%20%20%20 -
+l 101
+      for _, d in ipairs(late) do
+        local ok, err = pcall(d.late, v[d.key])
+        if not ok then print("[RUN RULES] late " .. d.key .. ": " .. tostring(err)) end
+      end
+      G.GAME.starting_deck_size = #(G.playing_cards or {})
+      if G.deck then G.deck:shuffle('rr_shuffle') end
+      R.applied_at = G.TIMERS and G.TIMERS.REAL
+      return true
+    end}))
+  else
+    R.applied_at = G.TIMERS and G.TIMERS.REAL
+  end
+  print("[RUN RULES] applied " .. #R.describe(v) .. " rules")
+end
+
+function R.arm(values, source)
+  R._pending = R.normalize(values)
+  R._pending_source = source
+end
+
+function R.disarm()
+  R._pending = nil
+  R._pending_source = nil
+end
+
+function R.start(values, args)
+  local v = R.normalize(values)
+  args = args or {}
+  args.stake = args.stake or v.stake
+  if not args.back and G.P_CENTERS[v.back] then args.back = G.P_CENTERS[v.back] end
+  if args.back then
+    if G.GAME.viewed_back then G.GAME.viewed_back:change_to(args.back) else G.GAME.viewed_back = Back(args.back) end
+  end
+  R.arm(v, args.rules_source)
+  G.FUNCS.start_run(nil, args)
+end
+
+local _rr_back_apply = Back.apply_to_run
+function Back:apply_to_run(...)
+  local r = _rr_back_apply(self, ...)
+  local p, src = R._pending, R._pending_source
+  R.disarm()
+  if p and G.GAME and G.GAME.starting_params then
+    R.apply(p)
+    G.GAME.run_rules_source = src
+  end
+  return r
+end
+
+function R.ensure_plain_blind()
+  if not G.P_BLINDS or G.P_BLINDS.bl_rr_plain then return end
+  local base = G.P_BLINDS.bl_big or {}
+  G.P_BLINDS.bl_rr_plain = {key = 'bl_rr_plain', name = 'Ante Blind', rr_plain = true, dollars = 5, mult = 2, debuff = {}, vars = {},
+    atlas = base.atlas, pos = base.pos or {x = 0, y = 1}, discovered = true, order = 1001, boss_colour = G.C and G.C.BLUE}
+  pcall(function()
+    local entry = {name = L("Ante Blind"), text = {L("No boss effect")}}
+    if loc_parse_string then
+      entry.text_parsed = {loc_parse_string(entry.text[1])}
+      entry.name_parsed = {loc_parse_string(entry.name)}
+    end
+    G.localization.descriptions.Blind.bl_rr_plain = entry
+  end)
+end
+
+local _rr_new_boss = get_new_boss
+function get_new_boss(...)
+  if R.active('no_bosses') then
+    R.ensure_plain_blind()
+    G.GAME.bosses_used = G.GAME.bosses_used or {}
+    G.GAME.bosses_used.bl_rr_plain = (G.GAME.bosses_used.bl_rr_plain or 0) + 1
+    return 'bl_rr_plain'
+  end
+  return _rr_new_boss(...)
+end
+
+local _rr_start_run = Game.start_run
+function Game:start_run(args, ...)
+  local st = args and args.savetext
+  local rr = type(st) == 'table' and st.GAME and st.GAME.run_rules
+  if rr and rr.no_bosses then R.ensure_plain_blind() end
+  return _rr_start_run(self, args, ...)
+end
+
+function R.rarity_of(roll)
+  local c, u, r = R.active('rarity_common'), R.active('rarity_uncommon'), R.active('rarity_rare')
+  if c == nil and u == nil and r == nil then return nil end
+  c, u, r = c or 70, u or 25, r or 5
+  local total = c + u + r
+  if total <= 0 then return nil end
+  local x = roll * total
+  if x < c then return 1 end
+  if x < c + u then return 2 end
+  return 3
+end
+
+function R.extra_shop_vouchers()
+  local n = R.active('voucher_slots')
+  if not n or n <= 1 or G.GAME.shop_vouchers_disabled or not G.shop_vouchers then return end
+  for _ = 2, n do
+    local key = get_next_voucher_key()
+    local center = key and G.P_CENTERS[key]
+r 4 614 %20%20%20%20 -
+l 3
+    for _, c in ipairs(G.shop_vouchers.cards) do if c.config.center.key == key then center = nil end end
+    if center then
+      local card = Card(G.shop_vouchers.T.x + G.shop_vouchers.T.w / 2, G.shop_vouchers.T.y, G.CARD_W, G.CARD_H, G.P_CARDS.empty, center, {bypass_discovery_center = true, bypass_discovery_ui = true})
+r 10 3129 %20%20%20%20%20%20 -
+r 3 1446 %20%20%20%20%20%20 -
+r 10 3131 %20%20%20%20%20%20 -
+l 16
+    end
+  end
+end
+
+local _rr_set_cost = Card.set_cost
+function Card:set_cost(...)
+  local r = _rr_set_cost(self, ...)
+  local pct = R.active('price_pct')
+  local mystery = R.active('random_prices')
+  if (pct or mystery) and self.ability and self.cost and self.cost > 0 then
+    local m = (pct or 100) / 100
+    if mystery then
+      self.ability.rr_price = self.ability.rr_price or (0.5 + 1.5 * pseudorandom(pseudoseed('rr_price')))
+      m = m * self.ability.rr_price
+    end
+    self.cost = math.max(1, math.floor(self.cost * m + 0.5))
+r 3 381 %20%20%20%20 -
+l 1
+    self.sell_cost = math.max(1, math.floor(self.cost / 2)) + (self.ability.extra_value or 0)
+r 3 384 %20%20%20%20 -
+l 5
+  end
+  return r
+end
+
+local _rr_reroll = calculate_reroll_cost
+r 13 2263 - -
+l 11
+  _rr_reroll(skip_increment)
+  local step = R.active('reroll_step')
+  if step and G.GAME.current_round.reroll_cost > 0 then
+    G.GAME.current_round.reroll_cost = (G.GAME.round_resets.temp_reroll_cost or G.GAME.round_resets.reroll_cost) + (G.GAME.current_round.reroll_cost_increase or 0) * step
+  end
+end
+
+local _rr_ease_ante = ease_ante
+function ease_ante(mod, ...)
+  local r = _rr_ease_ante(mod, ...)
+  if (mod or 0) > 0 and R.active('tag_every_ante') then
+r 3 617 %20%20%20%20 -
+l 186
+      add_tag(Tag(get_next_tag_key('rr_ante')))
+      return true
+    end}))
+  end
+  return r
+end
+
+function R.rows(values, category, opts)
+  opts = opts or {}
+  local rows = {}
+  local function changed(key, v)
+    if opts.on_change then opts.on_change(key, v) end
+  end
+  for _, d in ipairs(R.list(category)) do
+    if d.kind ~= 'list' and not (opts.skip and opts.skip[d.key]) then
+      local base = {label = L(d.label), info = d.info and L(d.info) or nil, disabled = opts.disabled, id = 'rr_' .. d.key, w = opts.w}
+      if d.kind == 'toggle' then
+        base.ref_table = values
+        base.ref_value = d.key
+        base.callback = function(v) changed(d.key, v) end
+        rows[#rows + 1] = UIK.toggle(base)
+      elseif d.kind == 'stepper' then
+        base.ref_table = values
+        base.ref_value = d.key
+        base.min, base.max, base.step, base.big_step, base.format = d.min, d.max, d.step or 1, d.big_step, d.format
+        base.callback = function(v) changed(d.key, v) end
+        rows[#rows + 1] = UIK.stepper(base)
+      elseif d.kind == 'slider' then
+        base.ref_table = values
+        base.ref_value = d.key
+        base.min, base.max = d.min, d.max
+        base.callback = function(v)
+          R._slider_token = (R._slider_token or 0) + 1
+          local tok = R._slider_token
+          G.E_MANAGER:add_event(Event({trigger = 'after', delay = 0.4, timer = 'REAL', blockable = false, blocking = false, func = function()
+            if tok == R._slider_token then changed(d.key, values[d.key]) end
+            return true
+          end}))
+        end
+        rows[#rows + 1] = UIK.slider(base)
+      elseif d.kind == 'cycle' then
+        local o = opts_of(d)
+        local labels, cur = {}, 1
+        for i, x in ipairs(o) do
+          labels[i] = x.raw and x.label or L(x.label)
+          if x.value == values[d.key] then cur = i end
+        end
+        base.options = labels
+        base.current = cur
+        base.callback = function(i)
+          if o[i] then
+            values[d.key] = o[i].value
+            changed(d.key, o[i].value)
+          end
+        end
+        rows[#rows + 1] = UIK.cycle(base)
+      end
+    end
+  end
+  return rows
+end
+
+mod_loc_register{
+  fr = {
+    ["No boss blinds"] = "Sans blindes boss",
+    ["Bosses become plain blinds with no effect"] = "Les boss deviennent des blindes sans effet",
+    ["Ante Blind"] = "Blinde de mise initiale",
+    ["No boss effect"] = "Aucun effet de boss",
+    ["Booster pack slots"] = "Paquets en boutique",
+    ["Voucher slots"] = "Coupons en boutique (places)",
+    ["Common joker weight"] = "Poids jokers communs",
+    ["Uncommon joker weight"] = "Poids jokers peu communs",
+    ["Rare joker weight"] = "Poids jokers rares",
+    ["Chance weight of Common jokers"] = "Poids de chance des communs",
+    ["Chance weight of Uncommon jokers"] = "Poids de chance des peu communs",
+    ["Chance weight of Rare jokers"] = "Poids de chance des rares",
+    ["Basics"] = "Bases", ["Economy"] = "Économie", ["Blinds"] = "Blindes", ["Shop"] = "Boutique", ["Deck"] = "Jeu", ["Items"] = "Objets", ["Bans"] = "Interdits", ["Fun"] = "Fantaisie",
+    ["Stake"] = "Mise", ["Stake rules and their difficulty"] = "Règles et difficulté de la mise",
+    ["Hands"] = "Mains", ["Hands per round (deck bonuses still apply)"] = "Mains par manche (bonus du jeu inclus)",
+    ["Discards"] = "Défausses", ["Discards per round"] = "Défausses par manche",
+    ["Hand size"] = "Taille de main", ["Cards held in hand"] = "Cartes tenues en main",
+    ["Joker slots"] = "Emplacements de jokers", ["Consumable slots"] = "Emplacements consommables",
+    ["Winning ante"] = "Mise initiale gagnante", ["Beat this ante's boss to win"] = "Battez le boss de cette mise initiale pour gagner",
+    ["Endless"] = "Sans fin", ["No win screen, play until you lose"] = "Pas de victoire, jouez jusqu'à perdre",
+    ["Starting ante"] = "Mise initiale de départ",
+    ["Starting money"] = "Argent de départ", ["Interest per $5"] = "Intérêts par 5 $",
+    ["Interest counts up to"] = "Intérêts comptés jusqu'à", ["Money above this earns no interest"] = "Au-delà, pas d'intérêts",
+    ["$ per hand left"] = "$ par main restante", ["$ per discard left"] = "$ par défausse restante",
+    ["Discard cost"] = "Coût de défausse", ["Pay this much for every discard"] = "Payez ceci à chaque défausse",
+    ["Blind rewards"] = "Gains des blindes", ["Normal"] = "Normal", ["No Small"] = "Sans petite", ["Boss only"] = "Boss seul", ["None"] = "Aucun",
+    ["Reroll base cost"] = "Coût de relance", ["Reroll cost increase"] = "Hausse de la relance", ["Added after every reroll"] = "Ajouté après chaque relance",
+    ["Shop prices"] = "Prix en boutique", ["Inflation"] = "Inflation", ["Every purchase raises all prices by $1"] = "Chaque achat monte les prix de 1 $",
+    ["Blind size"] = "Taille des blindes", ["Score needed, in % of normal"] = "Score requis, en % du normal",
+    ["Ante growth"] = "Croissance", ["How fast blinds grow each ante"] = "Vitesse de hausse des blindes",
+    ["From stake"] = "Selon la mise", ["Steep"] = "Raide", ["Brutal"] = "Brutale",
+    ["Showdown bosses only"] = "Boss finaux seulement", ["Every boss is a final boss"] = "Chaque boss est un boss final",
+    ["Bosses get a second effect"] = "Les boss ont un 2e effet",
+    ["Random joker disabled"] = "Joker désactivé au hasard", ["One joker is debuffed each blind"] = "Un joker affaibli à chaque blinde",
+    ["Shop card slots"] = "Cartes en boutique", ["Jokers in shop"] = "Jokers en boutique", ["Off also removes Buffoon packs"] = "Retire aussi les paquets Bouffon",
+    ["Tarots in shop"] = "Tarots en boutique", ["Off also removes Arcana packs"] = "Retire aussi les paquets Arcane",
+    ["Planets in shop"] = "Planètes en boutique", ["Off also removes Celestial packs"] = "Retire aussi les paquets Céleste",
+    ["Spectral cards"] = "Cartes spectrales", ["Packs only"] = "Paquets seuls", ["Also in shop"] = "Aussi en boutique", ["Never"] = "Jamais",
+    ["Playing cards in shop"] = "Cartes à jouer en boutique", ["Vouchers in shop"] = "Coupons en boutique", ["Edition chance"] = "Chance d'édition",
+    ["Eternal jokers in shop"] = "Jokers éternels en boutique", ["Perishable jokers in shop"] = "Jokers périssables en boutique", ["Rental jokers in shop"] = "Jokers en location en boutique",
+    ["Its own bonus applies too"] = "Son bonus s'applique aussi",
+    ["No face cards"] = "Sans figures", ["Random ranks and suits"] = "Rangs et couleurs au hasard",
+    ["Remove a suit"] = "Retirer une couleur", ["Spades"] = "Piques", ["Hearts"] = "Cœurs", ["Clubs"] = "Trèfles", ["Diamonds"] = "Carreaux",
+    ["Deck size"] = "Taille du jeu", ["Cards are copied or removed to fit"] = "Cartes copiées ou retirées",
+    ["Enhancement"] = "Amélioration", ["Random"] = "Aléatoire", ["Bonus"] = "Bonus", ["Mult"] = "Multi", ["Wild"] = "Sauvage", ["Glass"] = "Verre",
+    ["Steel"] = "Acier", ["Stone"] = "Pierre", ["Gold"] = "Or", ["Lucky"] = "Chance",
+    ["Edition"] = "Édition", ["Foil"] = "Brillante", ["Holographic"] = "Holographique", ["Polychrome"] = "Polychrome",
+    ["Seal"] = "Sceau", ["Red"] = "Rouge", ["Blue"] = "Bleu", ["Purple"] = "Violet",
+    ["Starting jokers"] = "Jokers de départ", ["Random starting jokers"] = "Jokers de départ au hasard", ["Starting vouchers"] = "Coupons de départ",
+    ["Random starting tarots"] = "Tarots de départ au hasard", ["Random starting spectrals"] = "Spectrales de départ au hasard",
+    ["Random starting tags"] = "Badges de départ au hasard", ["Poker hand levels"] = "Niveau des mains", ["Every poker hand starts at this level"] = "Chaque main commence à ce niveau",
+    ["Banned jokers"] = "Jokers interdits", ["Banned tarots"] = "Tarots interdits", ["Banned planets"] = "Planètes interdites", ["Banned spectrals"] = "Spectrales interdites",
+    ["Banned vouchers"] = "Coupons interdits", ["Banned packs"] = "Paquets interdits", ["Banned tags"] = "Badges interdits", ["Banned bosses"] = "Boss interdits",
+    ["Number randomizer"] = "Nombres aléatoires", ["Random hands, prices, cards and packs"] = "Mains, prix, cartes, paquets au hasard", ["Randomizer chaos"] = "Chaos du hasard", ["0 stays near normal, 100 goes wild"] = "0 reste presque normal, 100 : extrême",
+    ["Face down cards"] = "Cartes face cachée", ["Chance a drawn card comes face down"] = "Chance qu'une carte arrive face cachée", ["Off"] = "Non", ["On"] = "Oui",
+    ["All jokers eternal"] = "Tous les jokers éternels", ["Played cards get debuffed"] = "Cartes jouées affaiblies", ["A card you play is debuffed afterwards"] = "Une carte jouée est affaiblie ensuite",
+    ["Score capped by money"] = "Score limité par l'argent", ["Chips can never be higher than your $"] = "Les jetons ne dépassent jamais vos $",
+    ["Money shrinks your hand"] = "L'argent réduit la main", ["-1 hand size for every $X you hold"] = "-1 taille de main par X $ détenus",
+    ["Free tag every ante"] = "Badge offert à chaque mise initiale", ["Mystery prices"] = "Prix mystères", ["Every price is 50% to 200%"] = "Chaque prix entre 50 % et 200 %",
+  },
+  es = {
+    ["No boss blinds"] = "Sin ciegas jefe",
+    ["Bosses become plain blinds with no effect"] = "Los jefes pasan a ser ciegas sin efecto",
+    ["Ante Blind"] = "Ciega de apuesta inicial",
+    ["No boss effect"] = "Sin efecto de jefe",
+    ["Booster pack slots"] = "Paquetes en tienda",
+    ["Voucher slots"] = "Vales en tienda (espacios)",
+    ["Common joker weight"] = "Peso comodines comunes",
+    ["Uncommon joker weight"] = "Peso comodines poco comunes",
+    ["Rare joker weight"] = "Peso comodines raros",
+    ["Chance weight of Common jokers"] = "Peso de prob. de los comunes",
+    ["Chance weight of Uncommon jokers"] = "Peso de prob. de los poco comunes",
+    ["Chance weight of Rare jokers"] = "Peso de prob. de los raros",
+    ["Basics"] = "Básico", ["Economy"] = "Economía", ["Blinds"] = "Ciegas", ["Shop"] = "Tienda", ["Deck"] = "Baraja", ["Items"] = "Objetos", ["Bans"] = "Vetos", ["Fun"] = "Diversión",
+    ["Stake"] = "Pozo", ["Stake rules and their difficulty"] = "Reglas y dificultad del pozo",
+    ["Hands"] = "Manos", ["Hands per round (deck bonuses still apply)"] = "Manos por ronda (con bonus de baraja)",
+    ["Discards"] = "Descartes", ["Discards per round"] = "Descartes por ronda",
+    ["Hand size"] = "Tamaño de mano", ["Cards held in hand"] = "Cartas en la mano",
+    ["Joker slots"] = "Espacios de comodín", ["Consumable slots"] = "Espacios de consumibles",
+    ["Winning ante"] = "Apuesta inicial final", ["Beat this ante's boss to win"] = "Vence al jefe de esta apuesta inicial para ganar",
+    ["Endless"] = "Sin fin", ["No win screen, play until you lose"] = "Sin victoria, juega hasta perder",
+    ["Starting ante"] = "Apuesta inicial",
+    ["Starting money"] = "Dinero inicial", ["Interest per $5"] = "Interés por cada $5",
+    ["Interest counts up to"] = "Interés hasta", ["Money above this earns no interest"] = "Más allá no hay interés",
+    ["$ per hand left"] = "$ por mano restante", ["$ per discard left"] = "$ por descarte restante",
+    ["Discard cost"] = "Coste de descarte", ["Pay this much for every discard"] = "Paga esto por cada descarte",
+    ["Blind rewards"] = "Premios de ciegas", ["Normal"] = "Normal", ["No Small"] = "Sin pequeña", ["Boss only"] = "Solo jefe", ["None"] = "Ninguno",
+    ["Reroll base cost"] = "Coste de cambio", ["Reroll cost increase"] = "Subida del cambio", ["Added after every reroll"] = "Se suma tras cada cambio",
+    ["Shop prices"] = "Precios de tienda", ["Inflation"] = "Inflación", ["Every purchase raises all prices by $1"] = "Cada compra sube los precios $1",
+    ["Blind size"] = "Tamaño de ciegas", ["Score needed, in % of normal"] = "Puntos necesarios, en % de lo normal",
+    ["Ante growth"] = "Crecimiento", ["How fast blinds grow each ante"] = "Cuánto crecen las ciegas",
+    ["From stake"] = "Según pozo", ["Steep"] = "Fuerte", ["Brutal"] = "Brutal",
+    ["Showdown bosses only"] = "Solo jefes finales", ["Every boss is a final boss"] = "Cada jefe es un jefe final",
+    ["Bosses get a second effect"] = "Jefes con segundo efecto",
+    ["Random joker disabled"] = "Comodín desactivado al azar", ["One joker is debuffed each blind"] = "Un comodín debilitado por ciega",
+    ["Shop card slots"] = "Cartas en tienda", ["Jokers in shop"] = "Comodines en tienda", ["Off also removes Buffoon packs"] = "Quita también paquetes Bufón",
+    ["Tarots in shop"] = "Tarots en tienda", ["Off also removes Arcana packs"] = "Quita también paquetes Arcano",
+    ["Planets in shop"] = "Planetas en tienda", ["Off also removes Celestial packs"] = "Quita también paquetes Celestial",
+    ["Spectral cards"] = "Cartas espectrales", ["Packs only"] = "Solo paquetes", ["Also in shop"] = "También en tienda", ["Never"] = "Nunca",
+    ["Playing cards in shop"] = "Cartas de juego en tienda", ["Vouchers in shop"] = "Vales en tienda", ["Edition chance"] = "Prob. de edición",
+    ["Eternal jokers in shop"] = "Comodines eternos en tienda", ["Perishable jokers in shop"] = "Comodines perecederos en tienda", ["Rental jokers in shop"] = "Comodines de alquiler en tienda",
+    ["Its own bonus applies too"] = "Su bonus también se aplica",
+    ["No face cards"] = "Sin figuras", ["Random ranks and suits"] = "Valores y palos al azar",
+    ["Remove a suit"] = "Quitar un palo", ["Spades"] = "Picas", ["Hearts"] = "Corazones", ["Clubs"] = "Tréboles", ["Diamonds"] = "Diamantes",
+    ["Deck size"] = "Tamaño de baraja", ["Cards are copied or removed to fit"] = "Se copian o quitan cartas",
+    ["Enhancement"] = "Mejora", ["Random"] = "Aleatorio", ["Bonus"] = "Bonus", ["Mult"] = "Multi", ["Wild"] = "Versátil", ["Glass"] = "Cristal",
+    ["Steel"] = "Acero", ["Stone"] = "Piedra", ["Gold"] = "Oro", ["Lucky"] = "Suerte",
+    ["Edition"] = "Edición", ["Foil"] = "Laminada", ["Holographic"] = "Holográfica", ["Polychrome"] = "Polícroma",
+    ["Seal"] = "Sello", ["Red"] = "Rojo", ["Blue"] = "Azul", ["Purple"] = "Morado",
+    ["Starting jokers"] = "Comodines iniciales", ["Random starting jokers"] = "Comodines iniciales al azar", ["Starting vouchers"] = "Vales iniciales",
+    ["Random starting tarots"] = "Tarots iniciales al azar", ["Random starting spectrals"] = "Espectrales iniciales al azar",
+    ["Random starting tags"] = "Etiquetas iniciales al azar", ["Poker hand levels"] = "Nivel de manos", ["Every poker hand starts at this level"] = "Cada mano empieza en este nivel",
+    ["Banned jokers"] = "Comodines vetados", ["Banned tarots"] = "Tarots vetados", ["Banned planets"] = "Planetas vetados", ["Banned spectrals"] = "Espectrales vetadas",
+    ["Banned vouchers"] = "Vales vetados", ["Banned packs"] = "Paquetes vetados", ["Banned tags"] = "Etiquetas vetadas", ["Banned bosses"] = "Jefes vetados",
+    ["Number randomizer"] = "Números aleatorios", ["Random hands, prices, cards and packs"] = "Manos, precios, cartas y sobres al azar", ["Randomizer chaos"] = "Caos del azar", ["0 stays near normal, 100 goes wild"] = "0 casi normal, 100 al extremo",
+    ["Face down cards"] = "Cartas boca abajo", ["Chance a drawn card comes face down"] = "Prob. de robar boca abajo", ["Off"] = "No", ["On"] = "Sí",
+    ["All jokers eternal"] = "Todos los comodines eternos", ["Played cards get debuffed"] = "Cartas jugadas debilitadas", ["A card you play is debuffed afterwards"] = "La carta jugada queda debilitada",
+    ["Score capped by money"] = "Puntos limitados por dinero", ["Chips can never be higher than your $"] = "Las fichas nunca superan tus $",
+    ["Money shrinks your hand"] = "El dinero reduce la mano", ["-1 hand size for every $X you hold"] = "-1 de mano por cada $X que tengas",
+    ["Free tag every ante"] = "Etiqueta gratis en cada apuesta inicial", ["Mystery prices"] = "Precios misteriosos", ["Every price is 50% to 200%"] = "Cada precio entre 50% y 200%",
+  },
+}
+end

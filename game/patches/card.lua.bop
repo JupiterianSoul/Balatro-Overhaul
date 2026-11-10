@@ -1,0 +1,1246 @@
+BOP 2
+eol lf
+final 1
+base 3
+c 50
+s 1
+l 1
+
+c 22
+s 1
+r 3 74 %20%20%20%20 -
+c 5
+s 1
+r 3 80 %20%20%20%20 -
+c 6
+s 1
+r 3 87 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+l 7
+    end
+    -- Seal alert handling in collection
+    if self.seal and self.area and self.area.config and self.area.config.collection then
+        pcall(function()
+            for _, v in ipairs(G.P_CENTER_POOLS['Seal'] or {}) do
+                if v.key == self.seal then
+                    if v.alerted and self.children.alert then
+r 3 83 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 84 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    elseif not v.alerted and not self.children.alert and v.discovered then
+r 3 86 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 87 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 7
+                            config = {align="tri", offset = {x = -0.1, y = 0.1}, parent = self}
+                        }
+                    end
+                    break
+                end
+            end
+        end)
+c 10
+s 1
+l 1
+
+c 33
+s 4
+r 3 138 %20%20%20%20 -
+r 3 139 %20%20%20%20 -
+r 3 140 %20%20%20%20 -
+r 3 141 %20%20%20%20 -
+c 6
+s 1
+l 1
+    if _front then
+c 13
+s 1
+l 1
+    if _center then
+c 5
+s 1
+r 3 168 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 3 170 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 3 172 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 8
+r 3 174 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 175 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 176 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 177 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 178 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 179 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 180 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 181 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 2
+                    -- FIX: Use _center.atlas first so custom forge/mod atlases render correctly
+                    self.children.center = Sprite(self.T.x, self.T.y, self.T.w, self.T.h, G.ASSET_ATLAS[_center.atlas or _center.set] or G.ASSET_ATLAS[_center.set], self.config.center.pos)
+c 9
+s 1
+r 3 194 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 3 197 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 3 200 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 3 205 %20%20%20%20%20%20%20%20 -
+c 7
+s 1
+l 10
+            -- FIX: Support custom atlas for Cryptid deck backs (atlasdeck vs vanilla centers atlas)
+            local _back_atlas = G.ASSET_ATLAS["centers"]
+            local _back_pos = self.params.bypass_back or (self.playing_card and G.GAME[self.back].pos or G.P_CENTERS['b_red'].pos)
+            if self.playing_card and G.GAME and G.GAME[self.back] and G.GAME[self.back].effect then
+                local _bc = G.GAME[self.back].effect.center
+                if _bc and _bc.atlas and _bc.atlas ~= "centers" and G.ASSET_ATLAS[_bc.atlas] then
+                    _back_atlas = G.ASSET_ATLAS[_bc.atlas]
+                end
+            end
+            self.children.back = Sprite(self.T.x, self.T.y, self.T.w, self.T.h, _back_atlas, _back_pos)
+c 24
+s 1
+r 3 238 %20%20%20%20 -
+c 4
+s 1
+r 3 243 %20%20%20%20 -
+c 4
+s 1
+r 3 248 %20%20%20%20 -
+c 4
+s 1
+r 3 253 %20%20%20%20 -
+c 6
+s 1
+r 3 260 %20%20%20%20 -
+c 7
+s 1
+l 1
+        }))
+c 7
+s 1
+l 1
+
+c 24
+s 1
+r 3 301 %20%20%20%20 -
+c 3
+s 1
+r 3 305 %20%20%20%20 -
+c 2
+s 1
+r 3 308 %20%20%20%20 -
+c 7
+l 1
+        table.sort(_poker_hands)
+c 8
+s 1
+r 3 324 %20%20%20%20 -
+c 2
+s 1
+r 3 327 %20%20%20%20 -
+c 2
+s 1
+r 3 330 %20%20%20%20 -
+c 18
+s 1
+r 3 349 %20%20%20%20 -
+c 7
+s 1
+r 3 357 %20%20%20%20 -
+c 3
+s 1
+r 3 361 %20%20%20%20 -
+c 1
+l 9
+    end
+
+    -- Quest hook: track card enhancements (Steel, Gold, Glass, etc.)
+    if not initial and self.playing_card and center and center.set == "Enhanced" then
+        if QuestManager and QuestManager.on_card_enhanced then
+            pcall(function()
+                QuestManager.on_card_enhanced()
+            end)
+        end
+c 7
+s 1
+l 2
+    if not G.GAME then self.cost = self.base_cost or 1; self.sell_cost = 1; self.sell_cost_label = 1; self.extra_cost = 0; return end
+    self.extra_cost = 0 + (G.GAME.inflation or 0)
+c 1
+s 1
+r 3 372 %20%20%20%20%20%20%20%20 -
+c 2
+s 2
+l 6
+    -- Multiplayer sabotage: shop tax increases all shop prices
+    if G.GAME.multiplayer and (self.area == G.shop_jokers or self.area == G.shop_booster or self.area == G.shop_vouchers) then
+        self.extra_cost = self.extra_cost + (G.GAME.mp_shop_tax or 0)
+    end
+    self.cost = math.max(1, math.floor((self.base_cost + self.extra_cost + 0.5)*(100-(G.GAME.discount_percent or 0))/100))
+    if self.ability.set == 'Booster' and G.GAME.modifiers and G.GAME.modifiers.booster_ante_scaling then self.cost = self.cost + (G.GAME.round_resets and G.GAME.round_resets.ante or 1) - 1 end
+c 6
+l 3
+    if G.GAME.modifiers and G.GAME.modifiers.ante_shop_tax and self.cost > 0 and not self.ability.rental then
+        self.cost = self.cost + 1
+    end
+c 37
+s 1
+r 3 420 %20%20%20%20 -
+c 1
+s 1
+r 3 422 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 3 426 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 30
+s 1
+r 3 357 %20%20%20%20 -
+c 1
+l 7
+    end
+
+    -- Quest hook: track edition obtained
+    if self.edition and QuestManager and QuestManager.on_edition_obtained then
+        pcall(function()
+            QuestManager.on_edition_obtained(self.edition.type)
+        end)
+c 9
+s 1
+l 1
+        if not silent then
+c 1
+s 1
+l 1
+            if immediate then
+c 24
+s 1
+r 3 305 %20%20%20%20 -
+c 17
+s 1
+r 3 513 - -
+c 1
+s 1
+r 3 515 %20%20%20%20 -
+c 11
+s 1
+r 3 527 %20%20%20%20 -
+c 28
+s 1
+r 3 556 %20%20%20%20 -
+c 13
+s 2
+r 3 570 %20%20%20%20%20%20%20%20 -
+r 3 305 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 1
+            return
+c 3
+s 1
+r 3 422 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 3 426 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 26
+s 1
+r 3 609 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 616 %20%20%20%20%20%20%20%20 -
+c 13
+s 2
+r 3 630 %20%20%20%20%20%20%20%20 -
+l 1
+            if from_debuff then
+c 34
+s 1
+r 3 609 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 616 %20%20%20%20%20%20%20%20 -
+c 15
+s 1
+r 3 689 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+l 1
+                end
+c 17
+s 1
+l 1
+
+c 2
+s 1
+r 3 716 %20%20%20%20 -
+c 2
+s 1
+l 1
+    end
+c 15
+s 2
+r 3 735 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 736 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 2
+r 3 739 %20%20%20%20%20%20%20%20 -
+r 3 740 %20%20%20%20%20%20%20%20 -
+c 16
+s 1
+r 3 757 %20%20%20%20%20%20%20%20 -
+c 9
+l 1
+            local text_scale = (G.F_MOBILE and 1.45) or 1
+c 6
+s 2
+e 3 773 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =28,+%20,=36,+%2A%74%65%78%74%5F%73%63%61%6C%65,=3
+e 3 774 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =167,+%2A%74%65%78%74%5F%73%63%61%6C%65,=25
+c 3
+s 1
+e 3 778 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =122,+%2A%74%65%78%74%5F%73%63%61%6C%65,=25
+c 42
+s 1
+l 1
+
+c 24
+s 1
+l 1
+
+c 140
+s 1
+r 3 987 %20%20%20%20 -
+c 6
+s 1
+l 1
+    else
+c 25
+s 1
+r 3 1020 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 3 1023 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 3 1026 %20%20%20%20%20%20%20%20 -
+c 48
+s 1
+r 3 987 %20%20%20%20%20%20%20%20 -
+c 4
+s 1
+l 1
+        else
+c 3
+s 1
+l 1
+    if ret > 0 then
+c 35
+s 1
+l 1
+            end
+c 15
+s 1
+l 1
+            end
+c 3
+s 1
+l 1
+            end
+c 3
+s 1
+l 1
+            end
+c 34
+s 1
+l 2
+        local conv_cards = {}
+        for i = 1, #G.hand.highlighted do conv_cards[i] = G.hand.highlighted[i] end
+c 4
+s 1
+l 1
+
+c 1
+s 1
+l 1
+            for _, conv_card in ipairs(conv_cards) do conv_card:set_seal(self.ability.extra, nil, true) end
+c 1
+s 1
+l 1
+
+c 3
+s 1
+r 3 1192 %20%20%20%20 -
+c 13
+s 1
+l 3
+                local sources = {}
+                for _, h in ipairs(G.hand.highlighted) do sources[#sources + 1] = h end
+                for _, src in ipairs(sources) do for i = 1, math.max(1, math.floor(self.ability.extra)) do
+c 1
+s 1
+l 1
+                    local _card = copy_card(src, nil, nil, G.playing_card)
+c 7
+s 1
+l 1
+                end end
+c 3
+s 1
+l 1
+        }))
+c 23
+s 1
+l 1
+            end
+c 10
+s 1
+l 1
+            end
+c 26
+s 1
+l 1
+                func = function()
+c 2
+s 1
+r 3 1285 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 15
+s 1
+l 1
+                func = function()
+c 2
+s 1
+r 3 1285 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+l 1
+                func = function()
+c 17
+s 1
+r 3 1332 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 22
+s 1
+l 1
+                func = function()
+c 2
+s 1
+r 3 1285 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 67
+s 1
+r 3 1426 %20%20%20%20 -
+c 11
+s 1
+r 3 1438 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 29
+s 1
+r 3 1468 %20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 3 1470 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 3 1474 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 13
+s 1
+r 3 1488 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 3 1479 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 10
+s 1
+l 1
+                    scale = 1.3,
+c 18
+e 3 409 %20%20%20%20 - =2,+%20%6E%6F%74,=30,+%20%72%65%74%75%72%6E%20%66%61%6C%73%65%20%65%6E%64
+c 9
+s 1
+r 3 1533 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 3 1539 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 3 1192 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 3 1547 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 3 1550 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 3 1554 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 11
+s 1
+l 3
+                local hi = math.max(1, math.floor(self.ability.consumeable.mod_num or self.ability.consumeable.max_highlighted))
+                local lo = math.min(hi, math.max(1, math.ceil(self.ability.consumeable.min_highlighted or 1)))
+                if hi >= #G.hand.highlighted and #G.hand.highlighted >= lo then
+c 15
+s 2
+r 3 1426 %20%20%20%20 -
+r 3 1583 %20%20%20%20%20%20%20%20 -
+c 14
+s 1
+l 1
+
+c 14
+s 1
+r 3 1613 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 3 1616 %20%20%20%20%20%20%20%20 -
+c 25
+s 3
+r 3 1525 %20%20%20%20%20%20%20%20 -
+r 3 1643 %20%20%20%20%20%20%20%20 -
+r 3 1644 %20%20%20%20%20%20%20%20 -
+c 22
+s 1
+r 3 1667 %20%20%20%20%20%20%20%20 -
+c 16
+s 1
+r 2 402 %20%20%20%20%20%20%20%20 -
+c 7
+s 1
+r 3 1692 %20%20%20%20%20%20%20%20 -
+c 18
+s 1
+l 2
+        -- Chaos Stake (9+): Booster packs offer 1 fewer choice
+        if G.GAME.modifiers and G.GAME.modifiers.booster_minus_choice and G.GAME.pack_choices > 1 then
+r 4 2278 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+        end
+
+r 3 1711 %20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 3 1716 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+l 2
+            -- Haptic: booster pack opened (heavy)
+            pcall(function() haptic_buzz(3) end)
+c 4
+s 1
+l 1
+
+c 2
+s 1
+r 3 1692 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 55
+s 2
+l 5
+                if G.pack_cards and (G.pack_cards.REMOVED or not G.pack_cards.cards) then
+                    for _, v in ipairs(pack_cards) do v:remove() end
+                    return true
+                end
+                if G.pack_cards then
+r 3 1787 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+r 3 1800 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+s 1
+r 3 1819 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+l 1
+
+c 32
+s 1
+r 3 1800 %20%20%20%20%20%20%20%20 -
+c 11
+s 1
+l 1
+
+c 56
+l 1
+            if not (self and self.ability) then return true end
+c 14
+s 1
+l 1
+        G.hand:change_size(math.max(1, math.floor(tonumber(center_table.extra) or 1)))
+c 10
+s 1
+l 1
+            if G.jokers then
+c 33
+s 1
+r 3 1986 %20%20%20%20%20%20%20%20 -
+c 18
+s 1
+l 1
+                if self.juice then
+c 44
+l 1
+            haptic_buzz(3)
+c 11
+s 1
+l 1
+                blockable = false,
+c 90
+s 1
+l 1
+    if not silent then
+c 41
+s 1
+r 3 2194 %20%20%20%20 -
+c 12
+s 1
+l 1
+    if not silent then
+c 106
+s 1
+r 3 2314 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 13
+s 1
+r 3 2314 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 24
+s 1
+l 1
+
+c 2
+s 1
+r 3 2356 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+s 1
+r 3 2375 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 2
+l 1
+                if #jokers > 0 then
+r 3 2381 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 34
+s 1
+l 1
+                        func = function()
+c 3
+s 1
+r 1 191 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 10
+s 1
+l 1
+                    func = function()
+c 4
+s 1
+l 1
+                        })
+c 8
+s 1
+l 1
+                    func = function()
+c 3
+s 1
+l 1
+                            delay = 0.45,
+c 1
+s 1
+l 1
+                        })
+c 13
+s 1
+l 1
+                    func = function()
+c 1
+s 1
+r 3 2467 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 43
+s 1
+r 3 2511 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+s 1
+l 1
+                local jokers_to_create = math.min(math.max(1, math.floor(tonumber(self.ability.extra) or 2)), G.jokers.config.card_limit - (#G.jokers.cards + G.GAME.joker_buffer))
+c 2
+s 1
+l 1
+                    func = function()
+c 8
+s 2
+l 1
+                    end}))
+r 3 2543 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+l 1
+                            func = function()
+c 5
+s 2
+l 1
+                            end}))
+r 3 2557 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 8
+s 1
+r 3 2566 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 15
+s 1
+l 1
+                    func = function()
+c 11
+s 1
+l 1
+                    func = function()
+c 3
+s 1
+r 3 2598 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 72
+s 1
+l 1
+
+c 20
+s 1
+r 3 2692 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 42
+s 12
+r 3 2735 %20%20%20%20%20%20%20%20 -
+r 3 2748 %20%20%20%20%20%20%20%20 -
+l 1
+            if self.ability.name == 'Matador' and not context.hook and G.GAME.blind and G.GAME.blind.boss then
+r 3 2738 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                card_eval_status_text(context.blueprint_card or self, 'dollars', self.ability.extra)
+c 1
+s 1
+c 9
+s 1
+r 3 2758 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+                                    return true; end}))
+c 2
+s 1
+l 1
+                    }))
+c 27
+s 1
+r 3 2802 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+l 1
+                    delay = 0.45,
+c 4
+s 1
+l 1
+
+c 4
+s 1
+l 1
+
+c 23
+s 1
+l 1
+                        delay = 0.45,
+c 6
+s 1
+r 3 2849 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 7
+s 1
+l 1
+
+c 46
+s 1
+r 3 2904 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+                                        return true; end}))
+c 2
+s 1
+l 1
+                        }))
+c 15
+s 1
+r 3 2936 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+r 3 2946 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+                                        return true; end}))
+c 2
+s 1
+l 1
+                        }))
+c 17
+l 1
+                    table.sort(_poker_hands)
+c 15
+s 1
+l 1
+                        if v.set_cost then
+c 5
+s 1
+l 1
+                        if v.set_cost then
+c 16
+s 1
+l 1
+
+c 1
+s 1
+r 3 3020 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+                                        return true; end}))
+c 2
+s 1
+l 1
+                        }))
+c 10
+s 2
+r 3 3047 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                G.GAME.chips/G.GAME.blind.chips >= 0.25 and
+                not G.GAME.multiplayer then  -- FIX: Mr. Bones disabled in multiplayer per spec
+c 8
+s 1
+l 1
+                    }))
+c 28
+s 1
+l 1
+
+c 41
+s 1
+r 3 3128 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 57
+s 4
+r 3 3186 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 3187 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 3188 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 3189 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 7
+s 1
+r 3 3197 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+r 3 3207 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 40
+s 1
+r 3 3248 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 77
+s 1
+r 3 3326 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 48
+s 3
+r 3 3186 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 3187 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 3377 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 25
+s 1
+l 1
+                }))
+c 42
+s 1
+l 1
+                            if v:is_face() then
+c 7
+s 1
+l 1
+                                }))
+c 2
+s 1
+l 1
+                        if #faces > 0 then
+c 10
+s 1
+l 2
+                            local plain = not v.config.center or v.config.center.name == "Default Base"
+                            if not plain and not v.debuff and not v.vampired then
+c 9
+s 1
+l 1
+                                }))
+c 3
+s 1
+r 3 3482 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 33
+s 1
+l 1
+                            }))
+c 16
+s 1
+r 3 3533 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 38
+s 1
+r 3 3572 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+                                            return true; end}))
+c 2
+s 1
+l 1
+                            }))
+c 13
+s 1
+r 3 3602 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+                                            return true; end}))
+c 2
+s 1
+l 1
+                            }))
+c 99
+s 12
+c 146
+s 1
+r 3 3876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3890 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3897 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3925 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3932 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 3939 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 3 3944 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 14
+s 1
+r 3 3959 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 86
+s 1
+r 3 4046 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 3 4052 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 50
+s 2
+r 3 4103 - -
+r 3 4104 %20%20%20%20 -
+c 9
+s 1
+r 3 4114 %20%20%20%20 -
+c 12
+l 1
+    if not self.ability then return end
+c 23
+s 1
+r 3 4150 %20%20%20%20 -
+c 4
+s 1
+l 1
+        self.ability.consumeable.mod_num = math.max(1, math.floor(math.min((G.hand and G.hand.config.highlighted_limit) or 5, self.ability.consumeable.max_highlighted)))
+c 23
+s 1
+r 3 3943 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+e 3 4182 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =19,+%61%6E%64%20%28%76%2E%63%6F%6E%66%69%67%2E%63%65%6E%74%65%72%2E%6E%61%6D%65%20,=3,-15,+%22%44%65%66%61%75%6C%74%20%42,=3,+%22%29,=65
+c 2
+s 1
+r 3 4185 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+e 3 4188 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =19,+%61%6E%64%20%28%76%2E%63%6F%6E%66%69%67%2E%63%65%6E%74%65%72%2E%6E%61%6D%65%20,=3,-10,+%22,=1,-4,=4,+%20%43%61%72%64%22%29,=63
+c 2
+s 1
+r 3 4191 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 3 4197 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+e 3 4200 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =19,+%61%6E%64%20%28%76%2E%63%6F%6E%66%69%67%2E%63%65%6E%74%65%72%2E%6E%61%6D%65%20,=3,-10,+%22,=1,-4,=4,+%20%43%61%72%64%22%29,=63
+c 2
+s 1
+r 3 3966 %20%20%20%20%20%20%20%20 -
+c 73
+s 2
+r 3 4277 %20%20%20%20%20%20%20%20 -
+e 3 4278 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =21,-1,+%31,=1,-1,+%34,=13
+c 21
+s 1
+l 1
+            },
+c 14
+s 1
+r 3 4315 %20%20%20%20 -
+c 3
+l 9
+        end
+        -- Also mark seal as alerted when hovering seal cards in collection
+        if self.seal and self.area and self.area.config and self.area.config.collection then
+            pcall(function()
+                local seal_key = self.seal
+                for _, v in ipairs(G.P_CENTER_POOLS['Seal'] or {}) do
+                    if v.key == seal_key and v.discovered and not v.alerted then
+                        v.alerted = true
+                        if self.children.alert then
+r 3 83 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 84 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 5
+                        end
+                        G:save_progress()
+                    end
+                end
+            end)
+c 14
+s 1
+e 3 369 - - =15,+%69%6D%70%6C,=1,+%5F,=1,-1,+%6F%75,=1,-3,+%68,=2
+l 3
+    return false
+end
+
+e 3 4333 - - =40,+%2C%20%64%69%73%61%62%6C%65%5F%72%75%6D%62%6C%65,=1
+c 1
+l 1
+    if disable_rumble then G.HAPTIC_LEVEL = 0 else haptic_buzz(1) end
+c 9
+s 1
+l 1
+
+c 1
+s 1
+l 1
+
+c 18
+s 1
+r 3 4365 %20%20%20%20 -
+c 2
+s 1
+l 1
+
+c 25
+s 1
+r 3 4394 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+r 3 4404 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 3 150 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 3 4414 %20%20%20%20%20%20%20%20 -
+c 30
+s 1
+l 1
+
+c 51
+l 4
+                    if self.sticker == 'Chaos' then G.shared_stickers[self.sticker]:draw_shader('foil', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+                    if self.sticker == 'Apocalypse' then G.shared_stickers[self.sticker]:draw_shader('holo', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+                    if self.sticker == 'Oblivion' then G.shared_stickers[self.sticker]:draw_shader('negative', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+                    if self.sticker == 'Transcendent' then G.shared_stickers[self.sticker]:draw_shader('polychrome', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+c 4
+l 4
+                    if self.sticker_run == 'Chaos' then G.shared_stickers[self.sticker_run]:draw_shader('foil', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+                    if self.sticker_run == 'Apocalypse' then G.shared_stickers[self.sticker_run]:draw_shader('holo', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+                    if self.sticker_run == 'Oblivion' then G.shared_stickers[self.sticker_run]:draw_shader('negative', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+                    if self.sticker_run == 'Transcendent' then G.shared_stickers[self.sticker_run]:draw_shader('polychrome', nil, self.ARGS.send_to_shader, nil, self.children.center) end
+c 5
+s 1
+l 1
+
+c 8
+s 1
+l 1
+
+c 8
+s 1
+l 1
+
+c 13
+s 1
+l 2
+            end
+            if bom_ranked then bom_ranked.draw_frame(self) end
+c 16
+l 2
+            if bom_ranked then bom_ranked.draw_back(self) end
+            if TavernApply then TavernApply.draw_back(self) end
+c 5
+l 4
+                if self.sticker == 'Chaos' then G.shared_stickers[self.sticker]:draw_shader('foil', nil, self.ARGS.send_to_shader, true, self.children.center) end
+                if self.sticker == 'Apocalypse' then G.shared_stickers[self.sticker]:draw_shader('holo', nil, self.ARGS.send_to_shader, true, self.children.center) end
+                if self.sticker == 'Oblivion' then G.shared_stickers[self.sticker]:draw_shader('negative', nil, self.ARGS.send_to_shader, true, self.children.center) end
+                if self.sticker == 'Transcendent' then G.shared_stickers[self.sticker]:draw_shader('polychrome', nil, self.ARGS.send_to_shader, true, self.children.center) end
+c 7
+s 1
+r 3 4567 %20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+end
+c 7
+s 1
+r 3 4588 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 3
+s 1
+l 1
+                    , offset =
+c 17
+s 1
+r 3 4610 - -
+c 2
+s 1
+r 3 4613 %20%20%20%20%20%20%20%20 -
+c 6
+s 1
+r 3 4620 %20%20%20%20 -
+c 4
+e 3 957 - - =14,+%73%69%6E,=1,+%6C,=1,+%5F,=1,-3,+%61%70,=2
+e 3 4611 %20%20%20%20 - =47,+%61%6E%64%20%73%65%6C%66%2E%61%72%65%61%20%3D%3D%20%47%2E%68%61%6E%64%20,=4
+r 3 4612 %20%20%20%20%20%20%20%20 -
+r 3 4613 %20%20%20%20%20%20%20%20 -
+r 3 4614 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        else
+r 3 4616 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4617 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+        end
+    end
+r 3 4620 %20%20%20%20 -
+l 6
+        G.FUNCS.deck_info()
+    end
+    haptic_buzz(1)
+end
+
+Card.can_long_press = function(self)
+r 3 1593 %20%20%20%20 -
+l 3
+    return area ~= nil and (area == G.hand or (area == G.deck and area.cards[1] == self))
+end
+
+e 3 4306 - - =14,+%63%61%6E%5F,=5,+%5F%6F%6E%5F%64%72%61%67,=2
+l 4
+    return false
+end
+
+local function swipe_use(card)
+r 5 216 %20%20%20%20 -
+l 6
+end
+
+local function swipe_affordable(card)
+    return card.cost <= 0 or card.cost <= G.GAME.dollars - G.GAME.bankrupt_at
+end
+
+e 3 1681 - - =14,-1,+%73%77%69,=2,-1,+%5F%75%70,=2
+l 1
+    haptic_buzz(2)
+r 3 1593 %20%20%20%20 -
+l 25
+    if not area then return end
+    if area == G.hand and area:can_highlight(self) then
+        if G.STATE == G.STATES.HAND_PLAYED then return end
+        if self.highlighted ~= true then area:add_to_highlighted(self) end
+    end
+    if area == G.pack_cards and not self.ability.consumeable and G.FUNCS.can_select_card(self) then
+        swipe_use(self)
+        return
+    end
+    if area == G.shop_jokers or area == G.shop_booster or area == G.shop_vouchers then
+        local set = self.ability.set
+        if (set == 'Booster' or set == 'Voucher') and swipe_affordable(self) then
+            swipe_use(self)
+            return
+        end
+        if area == G.shop_jokers and G.FUNCS.card_can_buy(self) then
+            G.FUNCS.buy_from_shop({config = {ref_table = self, id = 'buy'}})
+            return
+        end
+    end
+    if self.ability.consumeable and (area == G.consumeables or area == G.pack_cards) and self:can_use_consumeable() then
+        swipe_use(self)
+    end
+end
+
+e 3 1681 - - =14,-1,+%73%77%69,=2,+%5F%64%6F%77,=3
+l 1
+    haptic_buzz(3)
+r 3 4611 %20%20%20%20 -
+r 3 4612 %20%20%20%20%20%20%20%20 -
+e 3 4613 %20%20%20%20%20%20%20%20 - =20,-1,+%3D,=11
+r 3 4616 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 4617 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+        end
+    end
+    if G.FUNCS.card_can_buy_and_use(self) then
+        G.FUNCS.buy_from_shop({config = {ref_table = self, id = 'buy_and_use'}})
+        return
+    end
+e 3 4160 %20%20%20%20 - =17,-1,=22,-1,=4,-1,=28,-1,=5
+l 4
+        self:sell_card()
+    end
+end
+
+c 1
+s 1
+l 1
+    local cardTable = {
+c 14
+s 1
+l 1
+        highlighted = self.highlighted,
+c 27
+s 1
+r 3 4669 %20%20%20%20 -
+c 2
+s 1
+r 3 4672 %20%20%20%20 -
+c 2
+s 1
+r 3 4675 %20%20%20%20 -
+c 3
+s 1
+l 1
+        H = W
+c 2
+s 1
+r 3 4682 %20%20%20%20 -
+c 50
+s 1
+r 3 4733 %20%20%20%20 -
+c 4
+s 1
+l 1
+        end
+c 5
+s 1
+r 3 4744 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 20
+s 4
+l 3
+    local cards = G.I.CARD
+    for i = #cards, 1, -1 do
+        if cards[i] == self then table.remove(cards, i) end
+c 3
+end

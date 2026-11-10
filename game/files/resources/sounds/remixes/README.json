@@ -1,0 +1,25 @@
+{
+  "info": "Custom Remix Folder",
+  "instructions": [
+    "Place custom remix folders here",
+    "Each folder should contain:",
+    "  - main_theme.ogg (required)",
+    "  - shop_theme.ogg (optional)", 
+    "  - arcana_theme.ogg (optional)",
+    "  - celestial_theme.ogg (optional)",
+    "  - boss_theme.ogg (optional)",
+    "  - spectral_theme.ogg (optional)",
+    "  - game_over.ogg (optional)",
+    "  - metadata.json (optional)",
+    "",
+    "metadata.json format:",
+    "{",
+    "  \"name\": \"My Remix\",",
+    "  \"artist\": \"Your Name\",", 
+    "  \"description\": \"Description of remix\",",
+    "  \"version\": \"1.0\",",
+    "  \"crossfade_duration\": 0.5",
+    "}"
+  ],
+  "supported_formats": [".ogg", ".mp3", ".wav"]
+}

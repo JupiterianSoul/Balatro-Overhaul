@@ -1,0 +1,315 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 100
+Randomizer = Randomizer or {}
+local RZ = Randomizer
+
+RZ.DECK_CHAOS = 65
+RZ.VALUE_SPAN = 1.6
+RZ.PRICE_SPAN = 1.0
+RZ.HAND = {
+    s_chips = {22.4, 2.16},
+    s_mult = {2.83, 1.5},
+    l_chips = {22.4, 1.16},
+    l_mult = {2, 1},
+}
+RZ.MAX_PACK = 12
+RZ.MAX_SELECT = 5
+
+RZ.XMULT_EXTRA = {
+    ['Baron'] = true, ['Photograph'] = true, ['Baseball Card'] = true, ['Ancient Joker'] = true, ['Acrobat'] = true,
+    ['Blackboard'] = true, ['Flower Pot'] = true, ['Seeing Double'] = true, ['The Idol'] = true,
+    ["Driver's License"] = true, ['Triboulet'] = true,
+}
+RZ.XKEYS = {x_mult = true, Xmult = true, x_chips = true, Xchips = true, h_x_mult = true}
+RZ.JOKER_FIELDS = {'mult', 'h_mult', 'h_x_mult', 'h_dollars', 'p_dollars', 't_mult', 't_chips', 'x_mult', 'h_size', 'd_size'}
+RZ.CONS_FIELDS = {'max_highlighted', 'min_highlighted', 'tarots', 'planets'}
+RZ.VOUCHERS = {
+    ['Clearance Sale'] = 90, ['Liquidation'] = 90, ['Hone'] = true, ['Glow Up'] = true, ['Reroll Surplus'] = true, ['Reroll Glut'] = true,
+    ['Tarot Merchant'] = true, ['Planet Merchant'] = true, ['Tarot Tycoon'] = true, ['Planet Tycoon'] = true,
+    ['Seed Money'] = true, ['Money Tree'] = true, ['Grabber'] = true, ['Nacho Tong'] = true, ['Wasteful'] = true,
+    ['Recyclomancy'] = true, ['Paint Brush'] = true, ['Palette'] = true, ['Hieroglyph'] = 2, ['Petroglyph'] = 2,
+}
+RZ.CAPS = {max_highlighted = RZ.MAX_SELECT, min_highlighted = RZ.MAX_SELECT}
+
+function RZ.active()
+    local g = G and G.GAME
+    if not g then return false end
+    return (g.modifiers and g.modifiers.mp_random) and true or g.number_randomizer == true
+end
+
+function RZ.chaos()
+    local g = G and G.GAME or {}
+    if g.modifiers and g.modifiers.mp_random then return RZ.DECK_CHAOS end
+    if g.number_randomizer == true and g.rnd_chaos ~= nil then
+        return math.max(0, math.min(100, tonumber(g.rnd_chaos) or RZ.DECK_CHAOS))
+    end
+    return RZ.DECK_CHAOS
+end
+
+function RZ.spread(chaos)
+    return 0.25 + 1.75 * (chaos or RZ.chaos()) / 100
+end
+
+function RZ.swing(u)
+    local t = u * 2 - 1
+    return (t < 0 and -1 or 1) * math.abs(t) ^ 0.5
+end
+
+function RZ.seed()
+    local g = G and G.GAME
+    return tostring(g and g.pseudorandom and g.pseudorandom.seed or '')
+end
+
+function RZ.u(tag)
+    math.randomseed(pseudoseed('rnd_' .. tag, RZ.seed() .. '_rnd'))
+    return math.random()
+end
+
+function RZ.factor(tag, span)
+    return 2 ^ (RZ.swing(RZ.u(tag)) * span * RZ.spread())
+end
+
+function RZ.int(tag, lo, hi)
+    if hi <= lo then return lo end
+    return math.min(hi, lo + math.floor(RZ.u(tag) * (hi - lo + 1)))
+end
+
+local function ante()
+    return (G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante) or 1
+end
+
+function RZ.roll(v, tag, kind, cap)
+    if type(v) ~= 'number' or v == 0 then return v end
+    local f = RZ.factor(tag, RZ.VALUE_SPAN)
+    if kind == 'x' then
+        if v <= 1 then return v end
+        local r = math.floor((1 + (v - 1) * f) * 20 + 0.5) / 20
+        return math.max(1.05, r)
+    end
+    local sign = v < 0 and -1 or 1
+    local a = math.abs(v)
+    local r
+    if a == math.floor(a) then
+        r = math.max(1, math.floor(a * f + 0.5))
+    else
+        r = tonumber(string.format('%.2g', a * f)) or a
+        if r <= 0 then r = a end
+    end
+    if cap then r = math.min(cap, r) end
+    return sign * r
+end
+
+local function roll_table(t, tag, xnames)
+r 12 131 %20%20%20%20 -
+l 135
+        if type(v) == 'number' and v ~= 0 then
+            t[k] = RZ.roll(v, tag .. '_' .. tostring(k), (RZ.XKEYS[k] or (xnames and xnames[k])) and 'x' or nil, RZ.CAPS[k])
+        end
+    end
+end
+
+function RZ.roll_joker(card, center, tag)
+    local ab = card.ability
+    for _, k in ipairs(RZ.JOKER_FIELDS) do
+        if type(ab[k]) == 'number' then ab[k] = RZ.roll(ab[k], tag .. '_' .. k, RZ.XKEYS[k] and 'x' or nil) end
+    end
+    if type(ab.extra) == 'number' then
+        ab.extra = RZ.roll(ab.extra, tag .. '_extra', RZ.XMULT_EXTRA[ab.name] and 'x' or nil)
+    elseif type(ab.extra) == 'table' then
+        roll_table(ab.extra, tag .. '_extra')
+    end
+    if ab.name == 'Loyalty Card' and type(ab.extra) == 'table' then ab.loyalty_remaining = ab.extra.every end
+    if ab.name == 'Yorick' and type(ab.extra) == 'table' then ab.yorick_discards = ab.extra.discards end
+end
+
+function RZ.roll_consumable(card, center, tag)
+    local ab = card.ability
+    local base = center.config or {}
+    local c = copy_table(base)
+    for _, k in ipairs(RZ.CONS_FIELDS) do
+        if type(c[k]) == 'number' then c[k] = RZ.roll(c[k], tag .. '_' .. k, nil, RZ.CAPS[k]) end
+    end
+    if c.max_highlighted and c.min_highlighted then
+        if base.min_highlighted == base.max_highlighted then c.min_highlighted = c.max_highlighted
+        else c.min_highlighted = math.min(c.min_highlighted, c.max_highlighted) end
+    end
+    if type(c.extra) == 'number' then
+        c.extra = RZ.roll(c.extra, tag .. '_extra')
+    elseif type(c.extra) == 'table' then
+        roll_table(c.extra, tag .. '_extra')
+    end
+    ab.consumeable = c
+    if c.extra ~= nil then ab.extra = copy_table(c.extra) end
+    ab.rnd_cfg = c
+end
+
+function RZ.roll_voucher(card, center, tag)
+    local ab = card.ability
+    local rule = RZ.VOUCHERS[ab.name]
+    if not rule or type(ab.extra) ~= 'number' then return end
+    local base = center.config or {}
+    local cfg = copy_table(base)
+    if base.extra_disp then
+        cfg.extra_disp = RZ.roll(base.extra_disp, tag .. '_disp')
+        cfg.extra = base.extra * cfg.extra_disp / base.extra_disp
+    else
+        cfg.extra = RZ.roll(base.extra, tag .. '_extra', nil, type(rule) == 'number' and rule or nil)
+    end
+    ab.extra = cfg.extra
+    ab.rnd_cfg = cfg
+end
+
+function RZ.pack_roll(size, choose, chaos, tag)
+    local k = RZ.spread(chaos)
+    local lo = math.max(1, size - math.floor(1.5 * k + 0.5))
+    local hi = math.min(RZ.MAX_PACK, size + math.floor(5 * k + 0.5))
+    local s = RZ.int(tag .. '_size', lo, hi)
+    local chi = math.max(1, math.min(s, choose + math.floor(2 * k + 0.5)))
+    local c = RZ.int(tag .. '_choose', 1, chi)
+    return s, c
+end
+
+function RZ.roll_booster(card, center, tag)
+    local base = center.config or {}
+    if type(base.extra) ~= 'number' then return end
+    local s, c = RZ.pack_roll(base.extra, base.choose or 1, RZ.chaos(), tag)
+    local cfg = copy_table(base)
+    cfg.extra, cfg.choose = s, c
+    card.ability.extra = s
+    card.ability.rnd_cfg = cfg
+end
+
+function RZ.roll_card(card)
+    if not (card and card.ability and card.config and card.config.center) then return end
+    local center = card.config.center
+    local set = center.set
+    local tag = tostring(center.key or card.ability.name) .. '_' .. ante()
+    if G.GAME then
+        G.GAME.rnd_n = G.GAME.rnd_n or {}
+        local n = (G.GAME.rnd_n[tag] or 0) + 1
+        G.GAME.rnd_n[tag] = n
+        tag = tag .. '_' .. n
+    end
+    card.ability.rnd_tag = tag
+    if set == 'Joker' then RZ.roll_joker(card, center, tag)
+    elseif center.consumeable then RZ.roll_consumable(card, center, tag)
+    elseif set == 'Voucher' then RZ.roll_voucher(card, center, tag)
+    elseif set == 'Booster' then RZ.roll_booster(card, center, tag)
+    else return end
+    card.ability.rnd = true
+end
+
+function RZ.roll_cost(card)
+    local ab = card.ability
+    if ab.rnd_base_cost then return ab.rnd_base_cost end
+    local base = card.base_cost or 1
+    local key = card.config and card.config.center and card.config.center.key or ab.name or 'x'
+    local f = 2 ^ (RZ.swing(RZ.u('cost_' .. tostring(ab.rnd_tag or (tostring(key) .. '_' .. ante())))) * RZ.PRICE_SPAN * RZ.spread())
+    ab.rnd_base_cost = math.max(1, math.floor(base * f + 0.5))
+    return ab.rnd_base_cost
+end
+
+function RZ.hand_values(name, level, chaos)
+    local k = RZ.spread(chaos)
+    local out = {}
+    for field, p in pairs(RZ.HAND) do
+        local x = p[1] * 2 ^ (RZ.swing(RZ.u('hand_' .. name .. '_' .. field)) * p[2] * k)
+        out[field] = math.max(1, math.floor(x + 0.5))
+    end
+    level = level or 1
+    out.chips = out.s_chips + out.l_chips * (level - 1)
+    out.mult = out.s_mult + out.l_mult * (level - 1)
+    return out
+end
+
+function RZ.roll_hands()
+    if not (G.GAME and G.GAME.hands) then return end
+    local chaos = RZ.chaos()
+    for name, h in pairs(G.GAME.hands) do
+        local v = RZ.hand_values(name, h.level, chaos)
+        for k, x in pairs(v) do h[k] = x end
+    end
+    G.GAME.rnd_hands = true
+end
+
+local function eligible(card)
+    return RZ.active() and G.STAGE == G.STAGES.RUN
+end
+
+local orig_set_ability = Card.set_ability
+r 3 223 - -
+l 9
+    local r = orig_set_ability(self, center, initial, delay_sprites)
+    if eligible(self) and self.ability and not self.playing_card then
+        local ok, err = pcall(RZ.roll_card, self)
+        if not ok then print('[RANDOMIZER] ' .. tostring(err)) end
+    end
+    return r
+end
+
+local orig_set_cost = Card.set_cost
+r 3 369 - -
+l 59
+    if not (RZ.active() and self.ability and self.config and self.config.center and G.GAME) then return orig_set_cost(self) end
+    local base = self.base_cost
+    local ok, rolled = pcall(RZ.roll_cost, self)
+    if ok and rolled then self.base_cost = rolled end
+    local r = orig_set_cost(self)
+    self.base_cost = base
+    return r
+end
+
+local orig_ui = Card.generate_UIBox_ability_table
+function Card:generate_UIBox_ability_table(...)
+    local cfg = self.ability and self.ability.rnd and self.ability.rnd_cfg
+    if not cfg then return orig_ui(self, ...) end
+    local real = self.config.center
+    self.config.center = setmetatable({config = cfg}, {__index = real})
+    local ok, r = pcall(orig_ui, self, ...)
+    self.config.center = real
+    if not ok then error(r) end
+    return r
+end
+
+local orig_open = Card.open
+function Card:open(...)
+    local cfg = self.ability and self.ability.set == 'Booster' and self.ability.rnd and self.ability.rnd_cfg
+    local r = orig_open(self, ...)
+    if cfg and G.GAME and G.GAME.pack_choices then
+        local base = self.config.center.config.choose or 1
+        G.GAME.pack_choices = math.max(1, G.GAME.pack_choices - base + (cfg.choose or base))
+    end
+    return r
+end
+
+for _, name in ipairs({'create_UIBox_arcana_pack', 'create_UIBox_spectral_pack', 'create_UIBox_standard_pack', 'create_UIBox_buffoon_pack', 'create_UIBox_celestial_pack'}) do
+    local orig = _G[name]
+    if orig then
+        _G[name] = function(...)
+            local r = orig(...)
+            local size = G.GAME and G.GAME.pack_size or 0
+            if size > 5 and G.pack_cards and G.pack_cards.T then
+                local w = math.min(G.pack_cards.T.w, ((UIK and UIK.portrait and UIK.portrait()) and 4.4 or 5.5) * G.CARD_W)
+                G.pack_cards.T.w = w
+                if G.pack_cards.VT then G.pack_cards.VT.w = w end
+            end
+            return r
+        end
+    end
+end
+
+local orig_start = Game.start_run
+function Game:start_run(args, ...)
+    local r = orig_start(self, args, ...)
+    if not (args and args.savetext) and RZ.active() and G.GAME and not G.GAME.rnd_hands then
+        local ok, err = pcall(RZ.roll_hands)
+        if not ok then print('[RANDOMIZER] hands: ' .. tostring(err)) end
+    end
+    return r
+end
+
+return RZ
+end

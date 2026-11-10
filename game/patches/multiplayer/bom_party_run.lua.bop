@@ -1,0 +1,569 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 317
+local R = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+R.KEY = {raid = "bl_mp_raid", br = "bl_mp_royale", teams = "bl_mp_clash"}
+R.ART = {raid = "bl_final_vessel", br = "bl_final_bell", teams = "bl_final_leaf"}
+R.NAME = {raid = "Raid Boss", br = "Royale Blind", teams = "Team Clash"}
+R.DESC = {
+    raid = {"Beat the raid boss", "together: the team total", "must reach the target"},
+    br = {"Don't finish last:", "the lowest score", "loses a life"},
+    teams = {"Your team total", "must beat the best", "enemy team"},
+}
+R.HUD_DESC = {
+    raid = {"Beat the boss together:", "team total must reach target"},
+    br = {"Don't finish last: the", "lowest score loses a life"},
+    teams = {"Your team total must", "beat the best enemy team"},
+}
+R.EXTRAS = {
+    raid = {"ALL", "for", "ONE"},
+    br = {"DON'T", "finish", "LAST"},
+    teams = {"TEAM", "versus", "TEAM"},
+}
+R.TOP = {raid = "Raid target", br = "Score to beat", teams = "Enemy team"}
+R.TOP_LEAD = "Closest rival"
+R.BOTTOM = {raid = "Team total", br = "Your rank", teams = "Your team"}
+
+local V = {view = nil}
+R.V = V
+
+local BASE_CHIPS = {300, 800, 2000, 5000, 11000, 20000, 35000, 50000}
+
+function R.boss_chips(ante)
+    local a = math.max(1, math.floor(tonumber(ante) or 1))
+    if a <= 8 then return BASE_CHIPS[a] * 2 end
+    return math.floor(BASE_CHIPS[8] * 2 * (1.6 ^ (a - 8)) + 0.5)
+end
+
+local function clamp(v, lo, hi, d)
+    v = tonumber(v)
+    if not v then return d end
+    return math.min(hi, math.max(lo, math.floor(v + 0.5)))
+end
+
+R.CURVE = {3.0, 2.8, 2.3, 1.65, 1.25, 1.05, 1.0, 1.0}
+
+function R.raid_curve(settings, ante)
+    if tonumber(settings and settings.raid_curve) ~= 2 then return 1 end
+    local a = math.min(#R.CURVE, math.max(1, math.floor(tonumber(ante) or 1)))
+    return R.CURVE[a]
+end
+
+function R.raid_target(settings, players, ante, blind)
+    settings = settings or {}
+    local curve2 = tonumber(settings.raid_curve) == 2
+    local n = math.max(1, tonumber(players) or 1)
+    local per = clamp(settings.raid_per_player, 50, 800, curve2 and 100 or 250)
+    local scaling = clamp(settings.raid_scaling, 0, 100, curve2 and 0 or 25)
+    local part = blind == "S" and 0.5 or (blind == "B" and 0.75 or 1)
+    local a = math.max(1, math.floor(tonumber(ante) or 1))
+    local scale = 1 + (scaling / 100) * math.max(0, a - 1)
+    return math.max(1, math.floor(R.boss_chips(a) * part * n * (per / 100) * scale * R.raid_curve(settings, a) + 0.5))
+end
+
+local function settings()
+    local s = {}
+    pcall(function() s = bom_match.get_settings() or {} end)
+    return s
+end
+
+local function ps()
+    return bom_party and bom_party.S and bom_party.S.ps or nil
+end
+
+function R.kind()
+    if not (bom_party and bom_party.active and bom_party.active()) then return nil end
+    local k = bom_party.kind()
+    if R.KEY[k] then return k end
+    return nil
+end
+
+function R.view()
+    local p = ps()
+    return V.view or (p and p.view) or {}
+end
+
+function R.name(k)
+    k = k or R.kind()
+    return L(R.NAME[k] or "Rivals")
+end
+
+function R.desc(k)
+    k = k or R.kind()
+    local out = {}
+    for i, line in ipairs(R.DESC[k] or {}) do out[i] = L(line) end
+    return out
+end
+
+function R.hud_desc(k)
+    k = k or R.kind()
+    local out = {}
+    for i, line in ipairs(R.HUD_DESC[k] or {}) do out[i] = L(line) end
+    return out
+end
+
+function R.extras(k)
+    k = k or R.kind()
+    local e = R.EXTRAS[k]
+    if not e then return nil end
+    return L(e[1]), L(e[2]), L(e[3])
+end
+
+function R.blind_key(k)
+    k = k or R.kind()
+    return R.KEY[k]
+end
+
+function R.own_art(key)
+    local kit = rawget(_G, "bom_kit")
+    local art = kit and kit.BLIND_ART and kit.BLIND_ART[key]
+    if art and G and G.ANIMATION_ATLAS and G.ANIMATION_ATLAS[art.atlas] then return art end
+    return nil
+end
+
+function R.art_key(k)
+    k = k or R.kind()
+    local own = R.KEY[k]
+    if own and R.own_art(own) and G and G.P_BLINDS and G.P_BLINDS[own] then return own end
+    local key = R.ART[k]
+    if key and G and G.P_BLINDS and G.P_BLINDS[key] then return key end
+    return nil
+end
+
+local function fmt(v)
+    local n = tonumber(v)
+    if not n then return v ~= nil and tostring(v) or "-" end
+    local ok, out = pcall(number_format, n)
+    return ok and out or tostring(n)
+end
+R.fmt = fmt
+
+local function team_name(t)
+    if t == nil or tonumber(t) == nil or tonumber(t) < 0 then return "-" end
+    if bom_party and bom_party.team_name then return bom_party.team_name(t) end
+    return "Team " .. string.char(65 + tonumber(t))
+end
+
+function R.top_label(k)
+    k = k or R.kind()
+    if k == "teams" then
+        local v = R.view()
+        if v.enemyTeam ~= nil and tonumber(v.enemyTeam) and tonumber(v.enemyTeam) >= 0 then return team_name(v.enemyTeam) end
+    end
+    if k == "br" and R.view().leader == true then return L(R.TOP_LEAD) end
+    return L(R.TOP[k] or "Enemy Score")
+end
+
+function R.bottom_label(k)
+    k = k or R.kind()
+    if k == "teams" then
+        local v = R.view()
+        if v.team ~= nil then return team_name(v.team) .. " (" .. L("you") .. ")" end
+    end
+    return L(R.BOTTOM[k] or "Enemy Hands")
+end
+
+function R.bottom_colour(k)
+    k = k or R.kind()
+    if k == "teams" then
+        local v = R.view()
+        if v.team ~= nil and bom_party and bom_party.team_colour then return bom_party.team_colour(v.team) end
+    end
+    return nil
+end
+
+function R.top_value(k)
+    k = k or R.kind()
+    local v = R.view()
+    if k == "raid" then return tonumber(v.target) or 0 end
+    if k == "teams" then return tonumber(v.enemyTotal) or 0 end
+    return tonumber(v.best) or tonumber(v.value) or 0
+end
+
+function R.bottom_text(k)
+    k = k or R.kind()
+    local v = R.view()
+    if k == "raid" then return fmt(v.total or 0) end
+    if k == "teams" then return fmt(v.teamTotal or 0) end
+    local alive = tonumber(v.ranked) or tonumber(v.alive) or 0
+    if v.rank == nil then return "- / " .. tostring(alive) end
+    return tostring(v.rank) .. " / " .. tostring(alive)
+end
+
+local function slot_code(slot)
+    return (slot == "Small" and "S") or (slot == "Big" and "B") or "L"
+end
+
+function R.select_amount(slot, ante)
+    local k = R.kind()
+    if k ~= "raid" then return nil end
+    local code = slot_code(slot)
+    local p = ps() or {}
+    local v = R.view()
+    if p.pvpAnte ~= nil and tonumber(p.pvpAnte) == tonumber(ante) and p.pvpBlind == code and tonumber(v.target) then
+        return tonumber(v.target)
+    end
+    local n = tonumber(v.n)
+    if not n then
+        n = 0
+        for _, pl in ipairs(p.players or {}) do if pl.alive ~= false then n = n + 1 end end
+        if n == 0 then n = 1 end
+    end
+    return R.raid_target(settings(), n, ante, code)
+end
+
+function R.apply_panel()
+    local k = R.kind()
+    if not k or not G or not G.GAME then return end
+    local panel = G.GAME.mp_opponent_panel
+    if not panel then return end
+    panel.score = R.top_value(k)
+    panel.hands_left = R.bottom_text(k)
+    panel.name = R.name(k)
+    local node = bom_pvp_hud and bom_pvp_hud.state and bom_pvp_hud.state.top_label_node
+    if node and node.config then
+        local label = R.top_label(k)
+        if node.config.text ~= label then
+            node.config.text = label
+            pcall(function() G.HUD_blind:recalculate() end)
+        end
+    end
+    if G.GAME.blind and G.GAME.blind.pvp and bom_nemesis and bom_nemesis.fill_debuff_lines then
+        pcall(bom_nemesis.fill_debuff_lines, G.GAME.blind)
+    end
+end
+
+function R.waiting_text()
+    local k = R.kind()
+    local v = R.view()
+    local n = tonumber(v.waiting) or 0
+    local wait
+    if n <= 0 then wait = L("Resolving the blind...")
+    elseif n == 1 then wait = L("Waiting for 1 player")
+    else wait = string.format(L("Waiting for %d players"), n) end
+    if k == "raid" then
+        return L("Your part") .. ": " .. fmt(v.mine or 0) .. "   " .. L("Team") .. ": " .. fmt(v.total or 0) .. " / " .. fmt(v.target or 0) .. "\n" .. wait
+    end
+    if k == "teams" then
+        return team_name(v.team) .. ": " .. fmt(v.teamTotal or 0) .. "   " .. team_name(v.enemyTeam) .. ": " .. fmt(v.enemyTotal or 0) .. "\n" .. wait
+    end
+    if k == "br" then
+        return L("Your rank") .. ": " .. R.bottom_text(k) .. "\n" .. wait
+    end
+    return wait
+end
+
+function R.refresh_waiting()
+    if not (G and G.BOM_PVP_WAITING_OVERLAY and R.kind()) then return end
+    pcall(function() bom_ui.show_pvp_waiting(R.waiting_text()) end)
+end
+
+local function hlog(fmt_s, ...)
+    if mp_log and mp_log.info then pcall(mp_log.info, "PARTY_RUN", fmt_s, ...) end
+end
+
+R.NOTICE = {left = "%s left the party", dropped = "%s lost connection", menu = "%s went back to the menu", rejoined = "%s is back"}
+
+function R.notice_text(d)
+    local f = R.NOTICE[d.event or ""]
+    if not f then return nil end
+    return string.format(L(f), tostring(d.name or "?"))
+end
+
+function R.toast(text)
+    if not (G and G.ROOM_ATTACH and text) then return end
+    pcall(function()
+        attention_text({text = text, scale = 0.55, hold = 3.5, major = G.ROOM_ATTACH, align = "cm", offset = {x = 0, y = -3.2},
+            backdrop_colour = G.C.BLACK, silent = true})
+    end)
+    pcall(function() play_sound("cancel", 0.8, 0.6) end)
+end
+
+function R.on_message(d)
+    if not d or not d.type then return false end
+    if d.type == "party_notice" then
+        local text = R.notice_text(d)
+        hlog("notice %s", tostring(text))
+        R.toast(text)
+        pcall(function() bom_party.refresh_standings() end)
+        return true
+    end
+    if d.type == "party_state" then
+        V.view = type(d.view) == "table" and d.view or nil
+        R.apply_panel()
+        R.refresh_waiting()
+        return false
+    end
+    if d.type == "match_start" and d.party then
+        V.view = nil
+        R._last_rank = nil
+        return false
+    end
+    if d.type == "enemy_info" and d.party then
+        if type(d.view) == "table" then V.view = d.view end
+        if not R.kind() then return false end
+        R.apply_panel()
+        pcall(function() bom_pvp_hud.juice_up_pvp_hud() end)
+        R.refresh_waiting()
+        local v = R.view()
+        hlog("view kind=%s value=%s total=%s target=%s rank=%s team=%s/%s waiting=%s",
+            tostring(v.kind), tostring(v.value), tostring(v.total), tostring(v.target), tostring(v.rank),
+            tostring(v.teamTotal), tostring(v.enemyTotal), tostring(v.waiting))
+        return true
+    end
+    return false
+end
+
+local function banner(lines, panel_col, header_col)
+r 1 112 %20%20%20%20 -
+l 244
+        trigger = "immediate", blocking = false, blockable = false,
+        func = function()
+            local rows = {
+                {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+                    {n = G.UIT.T, config = {text = lines[1], scale = 0.6, colour = header_col, shadow = true}},
+                }},
+                {n = G.UIT.R, config = {align = "cm", minh = 0.012, minw = 5.2, colour = {1, 1, 1, 0.12}}, nodes = {}},
+            }
+            for i = 2, #lines do
+                rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+                    {n = G.UIT.T, config = {text = lines[i], scale = 0.35, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+                }}
+            end
+            local box
+            box = UIBox({
+                definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0.2}, nodes = {
+                    {n = G.UIT.C, config = {align = "cm", colour = panel_col, r = 0.1, padding = 0.15, minw = 5.8, minh = 1.96}, nodes = rows},
+                }},
+                config = {align = "cm", offset = {x = 0, y = 0}, major = G.ROOM_ATTACH, type = "cm"},
+            })
+            R.last_banner = box
+            G.E_MANAGER:add_event(Event({trigger = "after", delay = (mp_config and mp_config.PVP_DISMISS_DELAY or 4.5) + 1,
+                func = function() pcall(function() box:remove() end) return true end}))
+            return true
+        end,
+    }))
+end
+
+local WIN = {0.0, 0.3, 0.0, 0.9}
+local LOSE = {0.35, 0.0, 0.0, 0.9}
+local DRAW = {0.25, 0.25, 0.1, 0.9}
+
+function R.result_lines(d)
+    local k = d.kind or R.kind()
+    local res = d.result or "draw"
+    if k == "raid" then
+        local cleared = res == "win"
+        return {
+            cleared and L("RAID CLEARED") or L("RAID FAILED"),
+            L("Team total") .. ": " .. fmt(d.raidTotal or 0) .. " / " .. fmt(d.raidTarget or 0),
+            L("Your part") .. ": " .. fmt(d.myScore or 0)
+                .. ((d.mvpName and (tonumber(d.mvpBonus) or 0) > 0) and ("   " .. L("Top damage") .. ": " .. tostring(d.mvpName) .. " +$" .. tostring(d.mvpBonus)) or ""),
+            cleared and (L("Raid lives") .. ": " .. tostring(d.raidLives or d.myLives or 0))
+                or (L("The raid loses a shared life") .. ", " .. L("Raid lives") .. ": " .. tostring(d.raidLives or d.myLives or 0)),
+        }, cleared and WIN or LOSE, cleared and G.C.GOLD or G.C.RED
+    end
+    if k == "teams" then
+        local mine = d.myTeam
+        local scores = d.teamScores or {}
+        local my_total = scores[tostring(mine)] or scores[mine] or 0
+        local best_t, best = nil, nil
+        for t, sc in pairs(scores) do
+            if tonumber(t) ~= tonumber(mine) and (best == nil or sc > best) then best_t, best = t, sc end
+        end
+        local head = res == "win" and L("YOUR TEAM WON THE CLASH") or (res == "lose" and L("YOUR TEAM LOST THE CLASH") or L("THE CLASH IS A DRAW"))
+        local lives = d.teamLives and (d.teamLives[tostring(mine)] or d.teamLives[mine]) or d.myLives
+        return {
+            head,
+            team_name(mine) .. " " .. fmt(my_total) .. "   " .. L("vs") .. "   " .. team_name(best_t) .. " " .. fmt(best or 0),
+            res == "lose" and (L("Your team loses a life") .. ", " .. L("Team lives") .. ": " .. tostring(lives or 0))
+                or (L("Team lives") .. ": " .. tostring(lives or 0)),
+        }, res == "win" and WIN or (res == "lose" and LOSE or DRAW), res == "win" and G.C.GOLD or (res == "lose" and G.C.RED or G.C.UI.TEXT_LIGHT)
+    end
+    local head, line
+    if res == "lose" then
+        head = L("YOU WERE LOWEST")
+        line = L("-1 life") .. ", " .. L("Lives") .. ": " .. tostring(d.myLives or 0)
+    elseif res == "win" then
+        head = L("SAFE")
+        line = L("Lives") .. ": " .. tostring(d.myLives or 0)
+    else
+        head = L("NO ONE LOSES")
+        line = L("Lives") .. ": " .. tostring(d.myLives or 0)
+    end
+    local rank = d.rank and (L("Your rank") .. ": " .. tostring(d.rank) .. " / " .. tostring(d.ranked or "?")) or nil
+    local low = d.lowestName and (L("Lowest") .. ": " .. tostring(d.lowestName) .. " " .. fmt(d.lowestScore or 0)) or nil
+    local out = {head, L("Your score") .. ": " .. fmt(d.myScore or 0) .. (rank and ("   " .. rank) or "")}
+    if low then out[#out + 1] = low end
+    out[#out + 1] = line
+    return out, res == "win" and WIN or (res == "lose" and LOSE or DRAW), res == "win" and G.C.GOLD or (res == "lose" and G.C.RED or G.C.UI.TEXT_LIGHT)
+end
+
+function R.apply_rewards(d)
+    if not (d and d.party and d.kind == "raid" and d.mvp == true and not d.solo) then return false end
+    local bonus = math.max(0, math.min(10, math.floor(tonumber(d.mvpBonus) or 0)))
+    if bonus <= 0 then return false end
+    pcall(ease_dollars, bonus)
+    hlog("mvp bonus $%d", bonus)
+    return true
+end
+
+function R.show_result(d)
+    if not d or not d.party or d.solo or not R.KEY[d.kind or R.kind() or ""] then return false end
+    local lines, panel_col, head_col, outcome = R.result_lines(d)
+    hlog("result kind=%s result=%s my=%s total=%s target=%s rank=%s lives=%s", tostring(d.kind), tostring(d.result),
+        tostring(d.myScore), tostring(d.raidTotal), tostring(d.raidTarget), tostring(d.rank), tostring(d.myLives))
+    local prev = R._last_rank
+    if d.rank ~= nil then R._last_rank = tonumber(d.rank) end
+    if bom_ui and bom_ui.pvp_result_popup then
+        local rest = {}
+        for i = 2, #lines do rest[#rest + 1] = lines[i] end
+        local ok, box = pcall(bom_ui.pvp_result_popup, {result = outcome or d.result, title = lines[1], lines = rest, place_before = prev, place_after = tonumber(d.rank)})
+        if ok and box then return true end
+    end
+    banner(lines, panel_col, head_col)
+    return true
+end
+
+function R.rules_lines(s)
+    s = s or settings()
+    local k = s.party_kind or (R.kind()) or "br"
+    local out = {}
+    local function add(a) out[#out + 1] = a end
+    local every = s.party_every_blind == true or (k == "raid" and s.raid_every_blind == true)
+    add(L("Party fights") .. ": " .. (every and L("every blind") or L("boss blinds")) .. ", " .. L("from ante") .. " " .. tostring(s.pvp_start_round or 1))
+    if k == "raid" then
+        add(L("Raid lives") .. ": " .. tostring(clamp(s.raid_lives, 1, 20, 3)) .. " (" .. L("shared") .. ")")
+        local curve2 = tonumber(s.raid_curve) == 2
+        add(L("Target") .. " = " .. L("boss chips") .. " x " .. L("players") .. " x " .. tostring(clamp(s.raid_per_player, 50, 800, curve2 and 100 or 250)) .. "%")
+        local sc = clamp(s.raid_scaling, 0, 100, curve2 and 0 or 25)
+        if sc > 0 then add("+" .. tostring(sc) .. "% " .. L("per ante after the first")) end
+        add(L("Small blind 50%, Big blind 75% of the boss target"))
+        add(L("Team total below the target: the raid loses a life"))
+        add(L("Top damage bonus") .. ": $" .. tostring(clamp(s.raid_mvp_bonus, 0, 10, 3)))
+    elseif k == "teams" then
+        add(L("Team size") .. ": " .. tostring(clamp(s.team_size, 2, 4, 2)))
+        add(L("Team lives") .. ": " .. tostring(clamp(s.starting_lives, 1, 20, 4)) .. " (" .. L("shared") .. ")")
+        add(L("Teammate share") .. ": " .. tostring(clamp(s.team_share, 0, 100, 100)) .. "%")
+        add(L("Lowest team total loses a team life"))
+    else
+        add(L("Lives each") .. ": " .. tostring(clamp(s.starting_lives, 1, 20, 4)))
+        add(L("Lives lost per blind") .. ": " .. tostring(clamp(s.br_losers, 1, 3, 1)))
+        add(L("Ties at the cut") .. ": " .. (s.br_ties == "spare" and L("Ties are spared") or L("Everyone tied loses")))
+        if s.br_sudden_death == true then add(L("Final two sudden death")) end
+        if s.party_swap == true then add(L("Switcheroo") .. ": " .. L("Runs pass to the next player after each boss")) end
+    end
+    add(L("PvP blind time") .. ": " .. tostring(clamp(s.party_blind_seconds, 60, 600, 180)) .. "s")
+    return out
+end
+
+local function loc_entry(name, text)
+    local e = {name = name, text = text}
+    if loc_parse_string then
+        e.text_parsed = {}
+        for _, line in ipairs(text) do e.text_parsed[#e.text_parsed + 1] = loc_parse_string(line) end
+        e.name_parsed = {loc_parse_string(name)}
+    end
+    return e
+end
+
+function R.ensure_registered()
+    if not (G and G.P_BLINDS) then return end
+    for k, key in pairs(R.KEY) do
+        if not G.P_BLINDS[key] then
+            local art = G.P_BLINDS[R.ART[k]] or G.P_BLINDS.bl_big or {}
+            local own = R.own_art(key)
+            G.P_BLINDS[key] = {
+                key = key, name = key, loc_name = R.NAME[k], dollars = 5, mult = 1, boss = {min = 1, max = 10}, blind_types = {"boss"},
+                boss_colour = own and own.colour and HEX(own.colour) or art.boss_colour or G.C.RED, atlas = own and own.atlas or art.atlas or "blind_chips", pos = own and own.pos or art.pos or {x = 0, y = 0},
+                discovered = true, order = 1001, no_collection = true, debuff = {}, loc_debuff_text = R.HUD_DESC[k], in_pool = false,
+            }
+        end
+        pcall(function()
+            local d = G.localization and G.localization.descriptions and G.localization.descriptions.Blind
+            if d then d[key] = loc_entry(R.name(k), R.desc(k)) end
+        end)
+        if G.GAME then
+            G.GAME.banned_keys = G.GAME.banned_keys or {}
+            G.GAME.banned_keys[key] = true
+            G.GAME.bosses_used = G.GAME.bosses_used or {}
+            G.GAME.bosses_used[key] = G.GAME.bosses_used[key] or 0
+        end
+    end
+end
+
+local function register_strings()
+    if not mod_loc_register then return end
+    mod_loc_register{
+    fr = {
+        ["Raid Boss"] = "Boss du raid", ["Royale Blind"] = "Blinde royale", ["Team Clash"] = "Choc d'équipes",
+        ["Beat the raid boss"] = "Battez le boss du raid", ["together: the team total"] = "ensemble : le total d'équipe", ["must reach the target"] = "doit atteindre l'objectif",
+        ["Don't finish last:"] = "Ne finissez pas dernier :", ["the lowest score"] = "le plus petit score", ["loses a life"] = "perd une vie",
+        ["Your team total"] = "Le total de votre équipe", ["must beat the best"] = "doit battre la meilleure", ["enemy team"] = "équipe adverse",
+        ["Beat the boss together:"] = "Battez le boss ensemble :", ["team total must reach target"] = "le total doit atteindre l'objectif",
+        ["Don't finish last: the"] = "Ne finissez pas dernier :", ["lowest score loses a life"] = "le plus petit score perd une vie",
+        ["Your team total must"] = "Votre équipe doit battre", ["beat the best enemy team"] = "la meilleure équipe adverse",
+        ["ALL"] = "TOUS", ["for"] = "pour", ["ONE"] = "UN", ["DON'T"] = "NE FINISSEZ", ["finish"] = "pas", ["LAST"] = "DERNIER",
+        ["TEAM"] = "ÉQUIPE", ["versus"] = "contre",
+        ["Raid target"] = "Objectif du raid", ["Score to beat"] = "Score à battre", ["Closest rival"] = "Rival le plus proche", ["Enemy team"] = "Équipe adverse",
+        ["Team total"] = "Total de l'équipe", ["Your rank"] = "Votre rang", ["Your team"] = "Votre équipe", ["you"] = "vous",
+        ["Resolving the blind..."] = "Résolution de la blinde...", ["Waiting for 1 player"] = "En attente d'1 joueur",
+        ["Waiting for %d players"] = "En attente de %d joueurs", ["Your part"] = "Votre part",
+        ["RAID CLEARED"] = "RAID RÉUSSI", ["RAID FAILED"] = "RAID ÉCHOUÉ", ["The raid loses a shared life"] = "Le raid perd une vie partagée",
+        ["YOUR TEAM WON THE CLASH"] = "VOTRE ÉQUIPE A GAGNÉ LE CHOC", ["YOUR TEAM LOST THE CLASH"] = "VOTRE ÉQUIPE A PERDU LE CHOC",
+        ["THE CLASH IS A DRAW"] = "LE CHOC EST NUL", ["vs"] = "contre", ["Your team loses a life"] = "Votre équipe perd une vie",
+        ["life"] = "vie", ["lives"] = "vies", ["Your lives"] = "Vos vies",
+        ["YOU WERE LOWEST"] = "PLUS PETIT SCORE", ["SAFE"] = "SAUVÉ", ["NO ONE LOSES"] = "PERSONNE NE PERD", ["-1 life"] = "-1 vie",
+        ["Your score"] = "Votre score", ["Party fights"] = "Combats de groupe", ["every blind"] = "chaque blinde", ["boss blinds"] = "blindes Boss",
+        ["from ante"] = "dès la mise initiale", ["shared"] = "partagées", ["Target"] = "Objectif", ["boss chips"] = "jetons du boss", ["players"] = "joueurs",
+        ["per ante after the first"] = "par mise initiale après la première", ["Small blind 50%, Big blind 75% of the boss target"] = "Petite blinde 50 %, grosse blinde 75 % de l'objectif du boss",
+        ["Team total below the target: the raid loses a life"] = "Total sous l'objectif : le raid perd une vie",
+        ["Lowest team total loses a team life"] = "Le plus petit total d'équipe perd une vie d'équipe",
+        ["%s left the party"] = "%s a quitté le groupe", ["%s lost connection"] = "%s a perdu la connexion", ["%s went back to the menu"] = "%s est retourné au menu", ["%s is back"] = "%s est de retour",
+        ["Top damage"] = "Meilleurs dégâts", ["Top damage bonus"] = "Bonus meilleurs dégâts", ["Money for the best score each raid"] = "Argent pour le meilleur score de chaque raid",
+    },
+    es = {
+        ["Raid Boss"] = "Jefe del raid", ["Royale Blind"] = "Ciega royale", ["Team Clash"] = "Choque de equipos",
+        ["Beat the raid boss"] = "Venced al jefe del raid", ["together: the team total"] = "juntos: el total del equipo", ["must reach the target"] = "debe llegar al objetivo",
+        ["Don't finish last:"] = "No acabes último:", ["the lowest score"] = "la puntuación más baja", ["loses a life"] = "pierde una vida",
+        ["Your team total"] = "El total de tu equipo", ["must beat the best"] = "debe superar al mejor", ["enemy team"] = "equipo rival",
+        ["Beat the boss together:"] = "Venced juntos al jefe:", ["team total must reach target"] = "el total debe llegar al objetivo",
+        ["Don't finish last: the"] = "No acabes último: la", ["lowest score loses a life"] = "puntuación más baja pierde vida",
+        ["Your team total must"] = "Tu equipo debe superar", ["beat the best enemy team"] = "al mejor equipo rival",
+        ["ALL"] = "TODOS", ["for"] = "para", ["ONE"] = "UNO", ["DON'T"] = "NO", ["finish"] = "acabes", ["LAST"] = "ÚLTIMO",
+        ["TEAM"] = "EQUIPO", ["versus"] = "contra",
+        ["Raid target"] = "Objetivo del raid", ["Score to beat"] = "Puntos a superar", ["Closest rival"] = "Rival más cercano", ["Enemy team"] = "Equipo rival",
+        ["Team total"] = "Total del equipo", ["Your rank"] = "Tu puesto", ["Your team"] = "Tu equipo", ["you"] = "tú",
+        ["Resolving the blind..."] = "Resolviendo la ciega...", ["Waiting for 1 player"] = "Esperando a 1 jugador",
+        ["Waiting for %d players"] = "Esperando a %d jugadores", ["Your part"] = "Tu parte",
+        ["RAID CLEARED"] = "RAID SUPERADO", ["RAID FAILED"] = "RAID FALLIDO", ["The raid loses a shared life"] = "El raid pierde una vida compartida",
+        ["YOUR TEAM WON THE CLASH"] = "TU EQUIPO GANÓ EL CHOQUE", ["YOUR TEAM LOST THE CLASH"] = "TU EQUIPO PERDIÓ EL CHOQUE",
+        ["THE CLASH IS A DRAW"] = "EL CHOQUE ES UN EMPATE", ["vs"] = "contra", ["Your team loses a life"] = "Tu equipo pierde una vida",
+        ["life"] = "vida", ["lives"] = "vidas", ["Your lives"] = "Tus vidas",
+        ["YOU WERE LOWEST"] = "PUNTUACIÓN MÁS BAJA", ["SAFE"] = "A SALVO", ["NO ONE LOSES"] = "NADIE PIERDE", ["-1 life"] = "-1 vida",
+        ["Your score"] = "Tu puntuación", ["Party fights"] = "Combates de grupo", ["every blind"] = "cada ciega", ["boss blinds"] = "ciegas jefe",
+        ["from ante"] = "desde la apuesta inicial", ["shared"] = "compartidas", ["Target"] = "Objetivo", ["boss chips"] = "fichas del jefe", ["players"] = "jugadores",
+        ["per ante after the first"] = "por apuesta inicial tras la primera", ["Small blind 50%, Big blind 75% of the boss target"] = "Ciega pequeña 50 %, ciega grande 75 % del objetivo del jefe",
+        ["Team total below the target: the raid loses a life"] = "Total bajo el objetivo: el raid pierde una vida",
+        ["Lowest team total loses a team life"] = "El total de equipo más bajo pierde una vida de equipo",
+        ["%s left the party"] = "%s salió del grupo", ["%s lost connection"] = "%s perdió la conexión", ["%s went back to the menu"] = "%s volvió al menú", ["%s is back"] = "%s ha vuelto",
+        ["Top damage"] = "Más daño", ["Top damage bonus"] = "Bonus de más daño", ["Money for the best score each raid"] = "Dinero para la mejor puntuación de cada raid",
+    },
+    }
+end
+
+local ready = false
+function R.init()
+    if ready then return end
+    ready = true
+    pcall(register_strings)
+    pcall(R.ensure_registered)
+end
+
+return R
+end

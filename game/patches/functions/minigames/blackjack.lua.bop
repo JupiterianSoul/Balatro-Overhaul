@@ -1,0 +1,323 @@
+BOP 2
+eol lf
+final 1
+base 0
+l 88
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+
+local min, max, sin = math.min, math.max, math.sin
+
+local Game = {}
+Game.__index = Game
+
+local START, BET, HANDS, DEAL, DEALER, SETTLE = 100, 20, 5, 0.28, 0.55, 1.4
+
+function Game:start()
+    self.score = START
+    self.hand_no = 0
+    self.deck = K.deck(self.rng)
+    self.di = 0
+    self.ph, self.dh = {}, {}
+    self.pops = K.pops(3)
+    local touch = UIK.touch()
+    local bw, bh, gap = touch and 2.5 or 2.2, touch and 0.85 or 0.72, 0.2
+    local by = self.H - bh - 0.12
+    local mid = self.W * 0.42
+    self.hit = {x = mid - 1.5 * bw - gap, y = by, w = bw, h = bh, label = L("Hit"), colour = G.C.BLUE, scale = touch and 0.5 or 0.45}
+    self.stand = {x = mid - 0.5 * bw, y = by, w = bw, h = bh, label = L("Stand"), colour = G.C.RED, scale = touch and 0.5 or 0.45}
+    self.double = {x = mid + 0.5 * bw + gap, y = by, w = bw, h = bh, label = L("Double"), colour = G.C.ORANGE, scale = touch and 0.5 or 0.45}
+    self.s = min(0.56, (by - 1.25) / (2 * K.card_h()))
+    self.mid = mid
+    self.dy = 0.2 + K.card_h() * self.s / 2
+    self.py = by - 0.3 - K.card_h() * self.s / 2
+    self.deck_x = self.W - 1.35
+    self.deck_y = self.dy + 0.15
+    self.box = {}
+    self.pj, self.dj = {}, {}
+    self.won, self.lost, self.pushes = 0, 0, 0
+    self.sv = START
+    self.end_sound = "whoosh1"
+    self.msg, self.msg_col = "", G.C.WHITE
+    self.ptext, self.dtext = "", ""
+    self.stack_text = tostring(START)
+    self:new_hand()
+end
+
+function Game:draw_card()
+    self.di = self.di + 1
+    if self.di > #self.deck then
+        self.deck = K.deck(self.rng)
+        self.di = 1
+    end
+    return self.deck[self.di]
+end
+
+function Game:give(hand, up)
+    local c = self:draw_card()
+    c.dt, c.up, c.f, c.landed = 0, up, 1, nil
+    hand[#hand + 1] = c
+    K.sound("cardSlide1", 1 + self.rng:random() * 0.15, 0.45)
+    return c
+end
+
+local function value(hand)
+    local v, aces = 0, 0
+    for i = 1, #hand do
+        local c = hand[i]
+        if c.up ~= false then
+            if c.rank == 14 then v, aces = v + 11, aces + 1 elseif c.rank >= 10 then v = v + 10 else v = v + c.rank end
+        end
+    end
+    while v > 21 and aces > 0 do v, aces = v - 10, aces - 1 end
+    return v
+end
+Game.value = value
+
+function Game:new_hand()
+    for i = #self.ph, 1, -1 do self.ph[i] = nil end
+    for i = #self.dh, 1, -1 do self.dh[i] = nil end
+    if self.di > #self.deck - 15 then
+        self.deck = K.deck(self.rng)
+        self.di = 0
+    end
+    self.hand_no = self.hand_no + 1
+    self.bet = BET
+    self.msg = ""
+    self.state = "deal"
+    self.step = 0
+    self.t = 0
+    self.hand_text = string.format(L("Hand %d/%d"), self.hand_no, HANDS)
+end
+
+e 10 2732 - - =14,-1,=1,-2,+%65%66%72%65%73%68,=2
+l 97
+    local pt = tostring(value(self.ph))
+    local dt = #self.dh > 0 and tostring(value(self.dh)) or ""
+    if pt ~= self.ptext then self.ptext = pt K.juice(self.pj, 0.4) end
+    if dt ~= self.dtext then self.dtext = dt K.juice(self.dj, 0.4) end
+end
+
+function Game:can_play()
+    return self.state == "player"
+end
+
+function Game:do_hit()
+    if not self:can_play() then return end
+    K.press(self.hit)
+    self:give(self.ph, true)
+    self.t = 0
+    self.state = "hitting"
+end
+
+function Game:do_stand()
+    if not self:can_play() then return end
+    K.press(self.stand)
+    self:dealer_turn()
+end
+
+function Game:do_double()
+    if not self:can_play() or #self.ph ~= 2 or self.score < 2 * BET then return end
+    K.press(self.double)
+    self.bet = 2 * BET
+    self:give(self.ph, true)
+    self.t = 0
+    self.state = "doubling"
+end
+
+function Game:dealer_turn()
+    for i = 1, #self.dh do
+        if not self.dh[i].up then self.dh[i].up = true K.sound("card1", 1, 0.6) end
+    end
+    self:refresh()
+    self.state = "dealer"
+    self.t = 0
+end
+
+function Game:settle(delta, msg, col)
+    self:refresh()
+    self.score = max(0, self.score + delta)
+    self.msg, self.msg_col = msg, col
+    self.state = "settle"
+    self.t = 0
+    K.juice(self.box, 0.5)
+    if delta > 0 then
+        self.won = self.won + 1
+        K.pop(self.pops, "+" .. delta, 1.4, (self.dy + self.py) / 2 + 0.2, G.C.GOLD, 0.75)
+        if msg == "Blackjack!" then
+            K.sound("multhit2", 1, 0.65)
+            K.flash(G.C.GOLD, 0.22)
+            K.shake(0.07)
+        else
+            K.sound("chips1", 1, 0.7)
+            K.flash(G.C.GREEN, 0.12)
+        end
+        for i = 1, #self.ph do K.juice(self.ph[i], 0.35) end
+    elseif delta < 0 then
+        self.lost = self.lost + 1
+        K.pop(self.pops, tostring(delta), 1.4, (self.dy + self.py) / 2 + 0.2, G.C.RED, 0.75)
+        K.sound("cancel", 0.9, 0.6)
+        K.shake(0.1)
+        K.flash(G.C.RED, 0.15)
+    else
+        self.pushes = self.pushes + 1
+        K.sound("paper1", 1, 0.6)
+    end
+end
+
+function Game:finish()
+    local p, d = value(self.ph), value(self.dh)
+    local bet = self.bet
+    if p > 21 then return self:settle(-bet, "Bust!", G.C.RED) end
+    local pbj = p == 21 and #self.ph == 2
+    local dbj = d == 21 and #self.dh == 2
+    if pbj and not dbj then return self:settle(bet * 3 / 2, "Blackjack!", G.C.GOLD) end
+    if dbj and not pbj then return self:settle(-bet, "Dealer wins", G.C.RED) end
+    if d > 21 then return self:settle(bet, "Dealer busts!", G.C.GREEN) end
+    if p > d then return self:settle(bet, "You win!", G.C.GREEN) end
+    if p < d then return self:settle(-bet, "Dealer wins", G.C.RED) end
+    self:settle(0, "Push", G.C.UI.TEXT_LIGHT)
+end
+
+function Game:press(x, y)
+    if K.hit(self.hit, x, y, 0.06) then self:do_hit()
+    elseif K.hit(self.stand, x, y, 0.06) then self:do_stand()
+    elseif K.hit(self.double, x, y, 0.06) then self:do_double() end
+end
+
+function Game:key(k)
+    if k == "h" or k == "up" then self:do_hit() elseif k == "s" or k == "down" then self:do_stand() elseif k == "d" then self:do_double() end
+end
+
+r 10 2449 - -
+l 128
+    self.t = self.t + dt
+    if self.sv ~= self.score then
+        local d = self.sv + (self.score - self.sv) * min(1, dt * 8)
+        if math.abs(self.score - d) < 0.5 then d = self.score end
+        if math.floor(d + 0.5) ~= math.floor(self.sv + 0.5) then self.stack_text = tostring(math.floor(d + 0.5)) end
+        self.sv = d
+    end
+    for i = 1, #self.ph do local c = self.ph[i] c.dt = c.dt + dt c.f = c.up and max(0, c.f - dt / 0.2) or 1 end
+    for i = 1, #self.dh do local c = self.dh[i] c.dt = c.dt + dt c.f = c.up and max(0, c.f - dt / 0.2) or 1 end
+    local st = self.state
+    if st == "deal" and self.t >= DEAL then
+        self.t = 0
+        self:refresh()
+        self.step = self.step + 1
+        if self.step == 1 or self.step == 3 then self:give(self.ph, true)
+        elseif self.step == 2 then self:give(self.dh, true)
+        elseif self.step == 4 then self:give(self.dh, false) end
+        if self.step >= 4 then
+            if value(self.ph) == 21 then self:dealer_turn() else self.state = "player" end
+        end
+    elseif st == "hitting" and self.t >= DEAL then
+        self:refresh()
+        local v = value(self.ph)
+        if v > 21 then
+            for i = 1, #self.dh do self.dh[i].up = true end
+            self:refresh()
+            self:finish()
+        elseif v == 21 then self:dealer_turn()
+        else self.state = "player" end
+    elseif st == "doubling" and self.t >= DEAL then
+        self:refresh()
+        if value(self.ph) > 21 then
+            for i = 1, #self.dh do self.dh[i].up = true end
+            self:refresh()
+            self:finish()
+        else
+            self:dealer_turn()
+        end
+    elseif st == "dealer" and self.t >= DEALER then
+        self.t = 0
+        self:refresh()
+        if value(self.dh) < 17 then
+            self:give(self.dh, true)
+        else
+            self:finish()
+        end
+    elseif st == "settle" and self.t >= SETTLE then
+        if self.hand_no >= HANDS or self.score < BET then
+            self.result = self.score < BET and "Out of chips" or "Table closed"
+            if self.score >= START then self.result_col = G.C.GOLD end
+            self.summary = string.format(L("Won: %d   Lost: %d   Pushes: %d"), self.won, self.lost, self.pushes)
+            self.over = true
+        else
+            self:new_hand()
+        end
+    end
+end
+
+function Game:draw_hand(hand, y, ox, oy)
+    local s = self.s
+    local gx = K.card_w() * s * 0.62
+    local n = #hand
+    local x0 = self.mid - (n - 1) * gx / 2
+    for i = 1, n do
+        local c = hand[i]
+        local u = K.smooth(min(1, c.dt / DEAL))
+        local x = K.lerp(self.deck_x, x0 + (i - 1) * gx, u)
+        local yy = K.lerp(self.deck_y, y, u)
+        if u >= 1 and not c.landed then c.landed = true K.juice(c, 0.2) end
+        if u >= 1 and hand == self.ph and self.state == "player" then K.hover(c, ox + x - gx / 2, oy + yy - K.card_h() * s / 2, gx, K.card_h() * s) end
+        K.card(c.key, ox + x, oy + yy, s * K.jk(c), {flip = c.f, r = K.jr(c)})
+    end
+    return x0 + (n - 1) * gx + K.card_w() * s / 2
+end
+
+function Game:draw(ox, oy)
+    local s = self.s
+    for i = 3, 1, -1 do K.card(nil, ox + self.deck_x + i * 0.03, oy + self.deck_y - i * 0.03, s, {flip = 1, shadow = i == 3}) end
+    local jk = K.jk(self.box)
+    K.chip("stake_gold", ox + self.deck_x - 0.55, oy + self.deck_y + 1.4, 0.42 * jk)
+    local sc = (self.sv < self.score - 0.5 and G.C.GREEN) or (self.sv > self.score + 0.5 and G.C.RED) or G.C.GOLD
+    K.text(self.stack_text, ox + self.deck_x - 0.25, oy + self.deck_y + 1.4, 0.55 * jk, sc, "l")
+    K.text(self.hand_text, ox + self.deck_x, oy + self.deck_y + 2.05, 0.38, G.C.UI.TEXT_LIGHT, "c")
+    local dx = self:draw_hand(self.dh, self.dy, ox, oy)
+    local px = self:draw_hand(self.ph, self.py, ox, oy)
+    if #self.dh > 0 then K.text(self.dtext, ox + dx + 0.3, oy + self.dy, 0.55 * K.jk(self.dj), G.C.UI.TEXT_LIGHT, "l") end
+    if #self.ph > 0 then K.text(self.ptext, ox + px + 0.3, oy + self.py, 0.55 * K.jk(self.pj), (self.ptext == "21" and G.C.GOLD) or G.C.UI.TEXT_LIGHT, "l") end
+    if self.msg ~= "" then
+        local k = K.out_back(min(1, self.t / 0.25))
+        K.text(L(self.msg), ox + self.mid, oy + (self.dy + self.py) / 2, 0.7 * k, self.msg_col, "c")
+    end
+    local off = self.state ~= "player"
+    self.hit.disabled, self.stand.disabled = off, off
+    self.double.disabled = off or #self.ph ~= 2 or self.score < 2 * BET
+    K.button(self.hit, 1, ox, oy)
+    K.button(self.stand, 1, ox, oy)
+    K.button(self.double, 1, ox, oy)
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "blackjack",
+    name = "Blackjack",
+    desc = "Beat the house to 21 with the game's deck",
+    how = "Get closer to 21 than the house. 5 hands, bet 20, Blackjack pays 3 to 2.",
+    score = "Chips",
+    end_only = true,
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Blackjack"] = "Blackjack", ["Beat the house to 21 with the game's deck"] = "Battez la banque jusqu'à 21 avec le jeu de cartes",
+            ["Get closer to 21 than the house. 5 hands, bet 20, Blackjack pays 3 to 2."] = "Approchez 21 mieux que la banque. 5 mains, mise 20, le Blackjack paie 3 pour 2.",
+            ["Hit"] = "Carte", ["Stand"] = "Rester", ["Double"] = "Doubler", ["Hand %d/%d"] = "Main %d/%d",
+            ["Blackjack!"] = "Blackjack !", ["Dealer wins"] = "La banque gagne", ["Dealer busts!"] = "La banque saute !", ["You win!"] = "Gagné !",
+            ["Push"] = "Égalité", ["Table closed"] = "Table fermée", ["Won: %d   Lost: %d   Pushes: %d"] = "Gagnées : %d   Perdues : %d   Égalités : %d",
+            ["Out of chips"] = "Plus de jetons"},
+        es = {["Blackjack"] = "Blackjack", ["Beat the house to 21 with the game's deck"] = "Gánale a la banca hasta 21 con la baraja del juego",
+            ["Get closer to 21 than the house. 5 hands, bet 20, Blackjack pays 3 to 2."] = "Acércate a 21 más que la banca. 5 manos, apuesta 20, el Blackjack paga 3 a 2.",
+            ["Hit"] = "Pedir", ["Stand"] = "Plantarse", ["Double"] = "Doblar", ["Hand %d/%d"] = "Mano %d/%d",
+            ["Blackjack!"] = "¡Blackjack!", ["Dealer wins"] = "Gana la banca", ["Dealer busts!"] = "¡La banca se pasa!", ["You win!"] = "¡Ganas!",
+            ["Push"] = "Empate", ["Table closed"] = "Mesa cerrada", ["Won: %d   Lost: %d   Pushes: %d"] = "Ganadas: %d   Perdidas: %d   Empates: %d",
+            ["Out of chips"] = "Sin fichas"},
+    }
+end
+
+return Game
+end

@@ -1,0 +1,3217 @@
+BOP 2
+eol lf
+final 1
+base 15
+c 20
+s 2
+r 15 21 %20%20 -
+l 1
+    if G.DT_jimbo then
+c 10
+s 1
+r 15 33 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 15 33 %20%20%20%20%20%20 -
+c 8
+s 1
+r 15 48 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 10
+s 1
+r 15 59 %20%20%20%20 -
+c 13
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("While in collection, hover over a card"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 2
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("and press the following keys:"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 3
+s 1
+l 1
+            {n=G.UIT.T, config={text = mod_loc("[1] Unlock"), scale = 0.25, colour = G.C.WHITE}}
+c 2
+s 1
+l 1
+            {n=G.UIT.T, config={text = mod_loc("[2] Discover"), scale = 0.25, colour = G.C.WHITE}}
+c 2
+s 1
+l 1
+            {n=G.UIT.T, config={text = mod_loc("[3] Spawn"), scale = 0.25, colour = G.C.WHITE}}
+c 5
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("Hover over any Joker/Playing card"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 2
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("and press [Q] to cycle Edition"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 4
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("Press [H] to isolate background"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 4
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("Press [J] to play splash animation"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 4
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("Press [8] to toggle cursor"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 2
+s 1
+r 15 71 %20%20%20%20%20%20 -
+c 1
+s 1
+l 1
+          {n=G.UIT.T, config={text = mod_loc("Press [9] to toggle all tooltips"), scale = 0.25, colour = G.C.WHITE, shadow = true}}
+c 5
+s 6
+l 6
+          UIBox_button{ label = {mod_loc("+1 Round")}, button = "DT_add_round", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("+1 Ante")}, button = "DT_add_ante", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("+1 Hand")}, button = "DT_add_hand", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("+1 Discard")}, button = "DT_add_discard", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("Boss Reroll")}, button = "DT_reroll_boss", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("Background")}, button = "DT_toggle_background", minw = 1.7, minh = 0.4, scale = 0.35},
+c 2
+s 7
+l 7
+          UIBox_button{ label = {mod_loc("+10 chips")}, button = "DT_add_chips", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("+10 mult")}, button = "DT_add_mult", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("X2 chips")}, button = "DT_x_chips", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("X10 mult")}, button = "DT_x_mult", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("Win this Run")}, button = "DT_win_game", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("Lose this Run")}, button = "DT_lose_game", minw = 1.7, minh = 0.4, scale = 0.35},
+          UIBox_button{ label = {mod_loc("Reset")}, button = "DT_chip_mult_reset", minw = 1.7, minh = 0.4, scale = 0.35},
+c 1
+s 1
+l 1
+          UIBox_button{ label = {mod_loc("Jimbo talk")}, button = "DT_jimbo_talk", minw = 1.7, minh = 0.4, scale = 0.35},
+c 7
+s 1
+e 15 145 - - =54,+%2C%20%5F%66%72%6F%6D%5F%6C%65%66%74,=1
+c 10
+s 1
+l 1
+
+c 1
+s 1
+r 15 158 %20%20%20%20 -
+c 6
+s 2
+e 15 165 %20%20%20%20 - =42,+%20%5F%66%72%6F%6D%5F%6C%65%66%74%20%61%6E%64%20%27%63%72%27%20%6F%72,=74
+e 15 166 %20%20%20%20 - =28,-1,+%5F%66%72%6F%6D%5F%6C%65%66%74%20%61%6E%64%20%27%63%72%27%20%6F%72%20%27,=2,-1,+%27,=107
+c 39
+e 15 2591 - - =22,-1,+%6C%6F%61%64,=1,+%6E,=1,-1,=3,-1,=2,-1,+%65%6E,=2
+e 15 627 %20%20 - =43,-1,+%27,=2,-1,+%27,=2,-7,+%72,=36
+e 15 2807 %20%20%20%20 - =49,+%27%4C%6F%61%64%69%6E%67%20%43,=2,-1,+%75%64%20%73,=1,-3,+%76,=1,-1,+%2E%2E%2E,=1,-18,=40,-5,+%62%75%6D%70,=19,-1,+%35,=2,+%2C,=3
+l 4
+  }}
+return t
+end
+
+c 2
+s 2
+l 6
+  -- FIX: Sandbox loadstring to prevent code injection from HTTP response
+  local _fn = loadstring(_resp)
+  if _fn then setfenv(_fn, {}) end
+  local _ok, _parsed = pcall(_fn or function() return nil end)
+  _resp = _ok and _parsed or nil
+  if not _resp then
+c 59
+s 1
+l 1
+    use =
+c 1
+s 1
+l 1
+
+c 8
+s 1
+e 15 280 %20%20%20%20%20%20%20%20 - =267,-4,=7,+%62%75%74%74%6F%6E%5F,=1,-3,+%68%65%63%6B,=11
+c 29
+s 1
+l 1
+    definition =
+c 2
+s 1
+l 1
+      }} or
+c 5
+s 1
+r 15 319 %20%20%20%20%20%20%20%20 -
+c 15
+s 1
+r 15 258 %20%20%20%20 -
+c 2
+s 1
+e 15 338 %20%20%20%20%20%20%20%20 - =8,-4,=11,+%5F%62%75%74%74%6F%6E%5F%63%68%65%63%6B,=52
+c 5
+s 1
+e 15 344 %20%20%20%20%20%20 - =8,-3,+%62%75%79,=3,-1,+%74%74%6F%6E%5F%63%68%65%63%6B,=79
+c 24
+s 1
+e 15 369 %20%20%20%20%20%20 - =8,-4,=7,+%62%75%74%74%6F%6E%5F,=1,-3,+%68%65%63%6B,=47
+c 16
+s 2
+r 15 386 %20%20 -
+l 1
+    button_contents =
+c 9
+s 1
+r 15 397 %20%20 -
+c 1
+s 1
+r 15 399 %20%20 -
+c 1
+s 1
+r 15 401 %20%20 -
+c 4
+s 1
+l 1
+    button_contents =
+c 12
+s 1
+l 1
+    definition =
+c 15
+s 1
+l 1
+      }},
+c 2
+s 1
+r 15 438 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 15 444 - -
+c 24
+s 1
+r 15 469 - -
+c 69
+s 1
+l 1
+
+c 7
+s 1
+l 1
+
+c 3
+s 1
+e 15 551 %20%20%20%20%20%20%20%20 - =51,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=21
+c 2
+s 1
+e 15 554 %20%20%20%20%20%20%20%20 - =58,+%20%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C,=50
+c 13
+s 1
+l 1
+
+c 17
+s 1
+r 15 586 %20%20%20%20 -
+c 12
+s 1
+l 1
+  local t =
+c 21
+s 1
+r 15 621 - -
+c 6
+s 1
+e 15 628 %20%20%20%20 - =41,-1,+%32,=1,-1,+%30,=26,-1,+%35,=118
+c 7
+s 1
+l 1
+
+c 5
+s 1
+l 1
+      1.05*G.CARD_H,
+c 1
+s 1
+c 5
+s 1
+l 1
+      1.05*G.CARD_H,
+c 1
+l 1
+    if RunRules and RunRules.active and RunRules.active('voucher_slots') then G.shop_vouchers.config.card_limit = RunRules.active('voucher_slots') end
+c 5
+s 1
+l 1
+      1.15*G.CARD_H,
+c 1
+l 1
+    if RunRules and RunRules.active and RunRules.active('pack_slots') then G.shop_booster.config.card_limit = RunRules.active('pack_slots') end
+c 7
+s 1
+l 1
+      definition =
+c 36
+s 2
+l 2
+                            }}
+                          }},
+c 31
+s 1
+c 4
+s 1
+l 15
+
+local function shop_rate_rules()
+  local g = G.GAME
+  g.spectral_rate = g.spectral_rate or 0
+  local saved = {joker_rate = g.joker_rate, tarot_rate = g.tarot_rate, planet_rate = g.planet_rate, spectral_rate = g.spectral_rate, playing_card_rate = g.playing_card_rate}
+  if g.shop_jokers_disabled then g.joker_rate = 0 end
+  if g.shop_tarots_disabled then g.tarot_rate = 0 end
+  if g.shop_planets_disabled then g.planet_rate = 0 end
+  if g.shop_spectrals_disabled then g.spectral_rate = 0 end
+  if g.joker_rate + g.tarot_rate + g.planet_rate + g.playing_card_rate + g.spectral_rate <= 0 then g.playing_card_rate = 1 end
+  return function()
+    for k, v in pairs(saved) do g[k] = v end
+  end
+end
+
+c 7
+s 1
+l 1
+
+c 14
+s 1
+l 1
+          local restore_shop_rates = shop_rate_rules()
+c 10
+l 1
+            if restore_shop_rates then restore_shop_rates() restore_shop_rates = nil end
+c 11
+s 1
+r 15 786 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 36
+s 1
+e 15 823 %20%20%20%20%20%20%20%20%20%20%20%20 - =160,-3,+%62%75%79,=3,-1,+%74%74%6F%6E%5F%63%68%65%63%6B,=69
+c 3
+s 1
+e 15 827 %20%20%20%20%20%20%20%20%20%20%20%20 - =166,-4,=11,+%5F%62%75%74%74%6F%6E%5F%63%68%65%63%6B,=99
+c 8
+s 1
+l 1
+              }}
+c 1
+s 1
+l 1
+
+c 43
+e 15 1903 %20%20 - =9,-1,+%64,=1,-1,=1,-2,+%67,=2,-1,+%61%72,=1,-2,=1,+%74,=6
+l 1
+    args = args or {}
+e 15 885 %20%20%20%20 - =25,+%7B,=1,-4,+%42%55%59,=1,+%7D
+e 15 887 %20%20%20%20 - =44,-2,+%55,=1,+%2E,=1,+%52%41%4E%53%50%41%52,=1,+%4E%54%5F%44%41%52%4B,=1
+e 15 6381 %20%20%20%20 - =6,-1,=1,-2,+%76,=1,+%72,=9,-1,=1,-2,+%76,=1,+%72,=7
+r 15 891 %20%20%20%20 -
+l 2
+    if not args.active_check then args.active_check = function() return true end end
+    if not args.release_func then args.release_func = function() end end
+e 15 900 %20%20%20%20 - =5,-3,+%74,=1,-1,+%78%74,=25,-2,+%57%48%49%54,=1,-2,=1
+l 6
+
+    -- Guard: cover must be a valid UI object with .T table, not a boolean
+    if args.cover and (type(args.cover) ~= "table" or not args.cover.T) then
+      args.cover = nil
+    end
+
+r 15 903 %20%20%20%20 -
+e 15 904 %20%20%20%20%20%20 - =23,-2,+%74%6C%69,=2
+r 15 905 %20%20%20%20%20%20 -
+r 15 906 %20%20%20%20%20%20 -
+l 17
+    }
+
+    local pad = args.cover_padding or 0
+    local zone_w = ((args.T and args.T.w) or (args.cover and args.cover.T.w) or 0.001) + pad
+    local zone_h = ((args.cover and args.cover.T.h) or 0.001) + pad
+    local text_w = zone_w - 0.1
+
+    local text_rows = {}
+    for _, line in ipairs(args.text) do
+      local label = DynaText({string = line, scale = args.scale, maxw = args.maxw or text_w, colours = {args.text_colour},
+        float = true, shadow = true, silent = not args.noisy, 0.7, pop_in = 0, pop_in_rate = 6, rotate = args.rotate or nil})
+      text_rows[#text_rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.05, maxw = text_w}, nodes = {{n = G.UIT.O, config = {object = label}}}}
+    end
+
+    local root = {align = 'cm', args = args, can_collide = true, hover = true, release_func = args.release_func,
+      func = 'check_drag_target_active', minw = zone_w, minh = zone_h, padding = 0.03, r = 0.1, emboss = args.emboss, colour = G.C.CLEAR}
+    args.DT = UIBox{T = {0, 0, 0, 0}, definition = {n = G.UIT.ROOT, config = root, nodes = text_rows}, config = args.uibox_config}
+e 15 923 %20%20%20%20 - =5,-1,+%44,=23
+l 4
+
+    local marks = G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.highlights
+    if marks then marks[#marks + 1] = args.DT end
+
+r 1 112 %20%20%20%20 -
+l 15
+      trigger = 'after',
+      delay = 0,
+      blockable = false,
+      blocking = false,
+      func = function()
+        if G.CONTROLLER.dragging.target or not args.DT then return end
+        local shown = G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.highlights
+        for k, v in ipairs(shown or {}) do
+          if v == args.DT then table.remove(shown, k) break end
+        end
+        args.DT:remove()
+        return true
+      end
+      }))
+  end
+c 13
+l 5
+    -- Guard: cover must be a valid UI object with .T table, not a boolean
+    if args.cover and (type(args.cover) ~= "table" or not args.cover.T) then
+      args.cover = nil
+    end
+
+c 10
+s 1
+r 15 905 %20%20%20%20%20%20 -
+c 11
+s 1
+l 1
+            definition =
+c 2
+s 1
+l 1
+              }},
+c 6
+s 1
+l 1
+
+c 21
+s 1
+r 15 949 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+s 1
+l 3
+            if args.text and args.text.pop_out then
+              args.text:pop_out(3)
+            end
+c 42
+s 1
+l 1
+                {n=G.UIT.C, config={align = "cm", minh = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 0.8 or 0.7, minw = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.3 or 0.9, padding = 0.1, r = 0.1, hover = true, colour =G.C.ORANGE, button = "sort_hand_value", shadow = true}, nodes={
+c 2
+s 1
+l 1
+                {n=G.UIT.C, config={align = "cm", minh = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 0.8 or 0.7, minw = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.3 or 0.9, padding = 0.1, r = 0.1, hover = true, colour =G.C.ORANGE, button = "sort_hand_suit", shadow = true}, nodes={
+c 5
+s 1
+l 1
+
+c 56
+s 3
+r 15 1077 %20%20%20%20%20%20 -
+r 15 1078 %20%20%20%20%20%20%20%20%20%20 -
+r 15 1079 %20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 15 1081 %20%20%20%20%20%20%20%20%20%20 -
+c 11
+s 1
+r 15 1093 %20%20%20%20%20%20 -
+c 85
+s 1
+l 1
+
+c 21
+s 1
+r 15 1201 %20%20%20%20 -
+c 16
+s 1
+e 15 1218 %20%20%20%20%20%20%20%20%20%20 - =221,-2,+%30,=27
+c 21
+s 1
+e 15 1240 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =104,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=69
+c 3
+s 1
+e 15 1244 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =120,+%2C%20%66%6F%6E%74%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2E%66%6F%6E%74,=127
+c 24
+s 1
+l 1
+
+c 54
+s 2
+e 15 1324 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =85,+%2C%20%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D,=3
+e 15 1325 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =110,+%2C%20%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D,=2
+c 8
+s 1
+e 15 1334 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =93,+%66%6F%6E%74%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2E%66%6F%6E%74%2C%20,=83
+c 2
+s 1
+l 1
+            }},
+c 7
+s 1
+e 15 1351 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =35,-1,+%5F%74%6F%74%61%6C,=20,+%5F%74%6F%74%61%6C,=103,+%5F%74%6F%74%61%6C,=118,-1,+%31,=1,-1,+%34,=5
+c 37
+s 3
+l 7
+    -- FIX: Build the run/options buttons first; only append the multiplayer Lobby Info button
+    -- when this run is actually a multiplayer match. In solo runs the button is now omitted
+    -- entirely (no greyed placeholder, no reserved layout space).
+    local _mp_hud = bom_match and bom_match._starting_mp_run
+    local _btn_h = _mp_hud and 1.35 or 1.75
+    local _hud_buttons = {
+          {n=G.UIT.R, config={id = 'run_info_button', align = "cm", minh = _btn_h, minw = 1.5, padding = 0.05, r = 0.1, hover = true, colour = G.C.RED, button = "run_info", shadow = true}, nodes={
+c 7
+s 1
+l 1
+          {n=G.UIT.R, config={align = "cm", minh = _btn_h, minw = 1.5, padding = 0.05, r = 0.1, hover = true, colour = G.C.ORANGE, button = "options", shadow = true}, nodes={
+c 3
+s 2
+l 8
+          }},
+    }
+    -- FEATURE: Lobby Info button (multiplayer matches only — pixel-perfect: inserted
+    -- only when bom_match._starting_mp_run is true at HUD build time, which is set
+    -- by bom_room.do_mp_start_run() before G.FUNCS.start_run() is called).
+    -- Same width as Run Info / Options (minw=1.5) but shorter height (minh=1.1).
+    if bom_match and bom_match._starting_mp_run then
+        table.insert(_hud_buttons, {n=G.UIT.R, config={id = 'mp_lobby_info_btn', align = "cm", minh = _btn_h, minw = 1.5, padding = 0.05, r = 0.1, hover = true, colour = G.C.GREEN, button = "mp_lobby_info", shadow = true}, nodes={
+r 15 1386 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+              {n=G.UIT.T, config={text = mod_loc("Lobby"), scale = 1.2*scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}}
+            }},
+r 15 1386 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+              {n=G.UIT.T, config={text = mod_loc("Info"), scale = 1*scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}}
+            }}
+          }})
+    end
+    local _row_round_nodes = nil
+    if _mp_hud and bom_ui and bom_ui.mp_hud_grid then
+        local _ok, _grid = pcall(bom_ui.mp_hud_grid, _hud_buttons, contents.round)
+        if _ok and _grid then _row_round_nodes = _grid end
+    end
+
+    contents.buttons = {
+      {n=G.UIT.C, config={align = "cm", r=0.1, colour = G.C.CLEAR, shadow = true, id = 'button_area', padding = 0.2}, nodes = _hud_buttons}
+c 9
+s 1
+l 1
+          {n=G.UIT.R, config={align = "cm", id = 'row_round'}, nodes=_row_round_nodes or {
+c 32
+s 1
+r 15 1441 %20%20 -
+c 1
+s 1
+r 15 1443 %20%20%20%20 -
+c 1
+s 1
+l 1
+
+c 4
+s 1
+l 1
+
+c 7
+s 1
+l 1
+  return t
+c 7
+s 2
+e 15 155 %20%20 - +%5F,=1,+%61%67,=2,+%70%72%69%74%65,=27
+l 1
+  return
+c 10
+s 1
+e 15 1478 %20%20%20%20%20%20%20%20 - =135,+%2C%20%68%6F%76%65%72%20%3D%20%74%72%75%65%2C%20%66%75%6E%63%20%3D%20%27%68%6F%76%65%72%5F%74%61%67%5F%70%72%6F%78%79%27%2C%20%72%65%66%5F%74%61%62%6C%65%20%3D%20%5F%74%61%67,=10
+c 20
+l 2
+  blind_choice.animation.atlas = G.ANIMATION_ATLAS[blind_choice.config.atlas or 'blind_chips'] or blind_choice.animation.atlas
+  blind_choice.animation:set_sprite_pos(blind_choice.config.pos)
+c 10
+s 1
+r 15 1509 %20%20 -
+c 4
+l 1
+    table.sort(_poker_hands)
+c 14
+s 1
+l 1
+    extras =
+c 19
+l 5
+  -- Apply Insanity Stake multiplier (2x) to blind amount display
+  local insanity_mult = 1
+  if get_insanity_blind_multiplier then
+      insanity_mult = get_insanity_blind_multiplier()
+  end
+c 1
+l 1
+  blind_amt = blind_amt*insanity_mult
+c 6
+s 1
+l 1
+  local t =
+c 1
+s 1
+r 15 1557 %20%20%20%20 -
+c 1
+s 3
+l 3
+          not run_info and {n=G.UIT.R, config={id = 'select_blind_button', align = "cm", ref_table = blind_choice.config, colour = disabled and G.C.UI.BACKGROUND_INACTIVE or G.C.ORANGE, minh = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.2 or 0.6, minw = 2.7, maxw = 2.7, padding = 0.07, r = 0.1, shadow = true, hover = true, one_press = true, func = (G.GAME.multiplayer and G.GAME.round_resets.pvp_blind_choices and G.GAME.round_resets.pvp_blind_choices[type]) and "bom_pvp_ready_button" or nil, button = 'select_blind'}, nodes={
+            {n=G.UIT.T, config={ref_table = G.GAME.round_resets.loc_blind_states, ref_value = type, scale = (G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 0.65 or 0.45, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.UI.TEXT_LIGHT, shadow = not disabled}}
+          }} or
+c 6
+s 1
+e 15 1568 %20%20%20%20%20%20%20%20%20%20%20%20 - =174,-2,+%30,=30
+c 25
+s 1
+e 15 1594 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =97,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=79
+c 3
+s 1
+e 15 1598 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =86,+%2C%20%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D,=96
+c 12
+s 1
+l 1
+
+c 22
+s 1
+l 1
+    1.05*G.CARD_H,
+c 45
+s 1
+l 1
+    1.05*G.CARD_H,
+c 45
+s 1
+l 1
+    1.05*G.CARD_H,
+c 45
+s 1
+l 1
+    1.05*G.CARD_H,
+c 45
+s 1
+l 1
+    1.05*G.CARD_H,
+c 62
+s 1
+l 1
+  local t =
+c 8
+s 1
+l 1
+  if args.label then
+c 5
+l 1
+        {n=G.UIT.C, config={align = "cm", minw = 0.9}, nodes={}},
+c 24
+s 1
+l 1
+  if args.info then
+c 1
+s 1
+r 15 1922 %20%20%20%20 -
+c 7
+s 3
+l 3
+  local t =
+        {n=args.col and G.UIT.C or G.UIT.R, config={id = args.id or nil, align = "cm", minw = 1.3*args.w, padding = 0.1, r = 0.1, colour = G.C.CLEAR, focus_args = {funnel_from = true}}, nodes={
+          {n=G.UIT.C, config={align = args.label_w and "cr" or "cm", minw = args.label_w, maxw = args.label_w or (args.w > 0 and args.w or nil)}, nodes={
+c 1
+s 1
+c 1
+s 1
+r 15 229 %20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+l 1
+   if args.info then
+c 6
+l 24
+end
+
+function ui_text_width(text, scale)
+  local f = G.LANG and G.LANG.font
+  if not f or not f.FONT then return 0 end
+  return f.FONT:getWidth(tostring(text or '')) * f.squish * (scale or 1) * f.FONTSCALE / G.TILESIZE
+end
+
+function create_toggle_group(list, opts)
+  opts = opts or {}
+  local widest = 0
+  for _, a in ipairs(list) do
+    local lw = ui_text_width(a.label or 'TEST?', a.label_scale or 0.4)
+    local cap = a.w or 3
+    if cap > 0 and lw > cap then lw = cap end
+    if lw > widest then widest = lw end
+  end
+  local rows = {}
+  for _, a in ipairs(list) do
+    a.label_w = widest
+    a.col = nil
+    rows[#rows+1] = create_toggle(a)
+  end
+  return {n = opts.col == false and G.UIT.R or G.UIT.C, config = {align = opts.align or "cm", padding = opts.padding or 0}, nodes = rows}
+c 24
+s 1
+l 1
+  if args.info then
+c 1
+s 1
+r 15 1922 %20%20%20%20 -
+c 9
+s 1
+r 15 1989 %20%20 -
+c 2
+s 1
+l 1
+
+c 2
+s 1
+l 1
+  local t =
+c 1
+s 1
+l 1
+          {n=G.UIT.C, config={align = "cm",r = 0.1, minw = ((G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.2 or 0.6)*args.scale, hover = not disabled, colour = not disabled and args.colour or G.C.BLACK,shadow = not disabled, button = not disabled and 'option_cycle' or nil, ref_table = args, ref_value = 'l', focus_args = {type = 'none'}}, nodes={
+c 19
+s 1
+l 1
+          {n=G.UIT.C, config={align = "cm",r = 0.1, minw = ((G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.2 or 0.6)*args.scale, hover = not disabled, colour = not disabled and args.colour or G.C.BLACK,shadow = not disabled, button = not disabled and 'option_cycle' or nil, ref_table = args, ref_value = 'r', focus_args = {type = 'none'}}, nodes={
+c 4
+s 2
+r 15 2022 %20%20 -
+l 1
+    t =
+c 6
+s 1
+l 1
+    t =
+c 4
+s 1
+r 15 2035 %20%20 -
+c 46
+l 9
+  local tab_port = PORTRAIT and PORTRAIT.on() and #args.tabs > 2
+  local tab_font = G.LANG and G.LANG.font
+  if tab_port and tab_font and tab_font.FONT and G.TILESIZE then
+    local maxw = 2.2*args.scale - 0.2
+    for _, v in ipairs(args.tabs) do
+      local w = tab_font.FONT:getWidth(tostring(v.label or ''))*(tab_font.squish or 1)*(tab_font.FONTSCALE or 0.1)/G.TILESIZE
+      if w > 0 then args.text_scale = math.min(args.text_scale, maxw/w) end
+    end
+  end
+c 3
+s 1
+l 13
+    tab_buttons[#tab_buttons+1] = UIBox_button({id = 'tab_but_'..(v.label or ''), ref_table = v, button = 'change_tab', label = {v.label}, minh = 0.8*args.scale, minw = (tab_port and 2.2 or 2.5)*args.scale, col = true, choice = true, scale = args.text_scale, chosen = v.chosen, func = v.func, focus_args = {type = 'none'}})
+  end
+  if PORTRAIT and PORTRAIT.on() and #tab_buttons > 3 then
+    local rows = math.ceil(#tab_buttons / 3)
+    local per = math.ceil(#tab_buttons / rows)
+    local strip = {}
+    for i = 1, #tab_buttons, per do
+      local row = {}
+      for j = i, math.min(#tab_buttons, i + per - 1) do row[#row + 1] = tab_buttons[j] end
+      strip[#strip + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes = row}
+      if i + per <= #tab_buttons then strip[#strip + 1] = {n=G.UIT.R, config={minh = 0.12}, nodes = {}} end
+    end
+    tab_buttons = strip
+c 2
+s 1
+l 1
+  local t =
+c 2
+s 1
+l 1
+      (#args.tabs > 1 and not args.no_shoulders) and {n=G.UIT.C, config={minw = tab_port and 0.3 or 0.7,align = "cm", colour = G.C.CLEAR,func = 'set_button_pip', focus_args = {button = 'leftshoulder', type = 'none', orientation = 'cm', scale = 0.7, offset = {x = -0.1, y = 0}}}, nodes = {}} or nil,
+c 1
+s 1
+l 1
+      (#args.tabs > 1 and not args.no_shoulders) and {n=G.UIT.C, config={minw = tab_port and 0.3 or 0.7,align = "cm", colour = G.C.CLEAR,func = 'set_button_pip', focus_args = {button = 'rightshoulder', type = 'none', orientation = 'cm', scale = 0.7, offset = {x = 0.1, y = 0}}}, nodes = {}} or nil,
+c 21
+s 1
+l 3
+  local start_chars = {}
+  for ch in tostring(args.ref_table[args.ref_value] or ''):gmatch('[%z\1-\127\194-\244][\128-\191]*') do start_chars[#start_chars+1] = ch end
+  local text = {ref_table = args.ref_table, ref_value = args.ref_value, letters = {}, current_position = #start_chars}
+c 2
+s 1
+l 1
+    text.letters[i] = start_chars[i] or ''
+c 9
+s 1
+l 1
+  local t =
+c 13
+l 1
+  local overall_scale = ((G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.5) or 1
+c 10
+l 5
+  if args.accents and G.TEXT_INPUT_CHARSET then
+    local lo, up = G.TEXT_INPUT_CHARSET.lower, G.TEXT_INPUT_CHARSET.upper
+    local function slice(t, a, b) local out = {} for i = a, math.min(b, #t) do out[#out+1] = t[i] end return out end
+    keyboard_rows = {slice(lo, 1, 12), slice(lo, 13, 23), slice(up, 1, 11), slice(up, 12, 22), {"'", '¡', '¿', ' '}}
+  else
+r 15 2152 %20%20%20%20 -
+l 9
+      local t = {}
+      for i = 1, #v do t[i] = v:sub(i, i) end
+      keyboard_rows[k] = t
+    end
+    if args.wide and keyboard_rows[5] then table.insert(keyboard_rows[5], 1, "'") end
+  end
+  if PORTRAIT and PORTRAIT.keyboard_def and PORTRAIT.keyboard_on() then
+    return PORTRAIT.keyboard_def(args, keyboard_rows)
+  end
+c 1
+s 2
+l 1
+      for _, c in ipairs(v) do
+c 17
+l 1
+              args.wide and {n=G.UIT.R, config={align = "cm", padding = 0.05, colour = G.C.CLEAR}, nodes={create_keyboard_button('accents')}} or nil,
+c 5
+s 1
+l 1
+
+c 3
+s 5
+l 15
+function create_keyboard_button(key, binding, size)
+  local overall_scale = ((G.F_MOBILE or (UIK and UIK.thumb and UIK.thumb())) and 1.9) or 1
+  if size then
+    local b = create_keyboard_button(key, binding)
+    local but = b.nodes and b.nodes[1]
+    if but and but.config then
+      but.config.minw, but.config.minh = size.w, size.h
+      for _, r in ipairs(but.nodes or {}) do
+        if r.config then r.config.minw, r.config.maxw = size.w, size.w - 0.15 end
+        for _, t in ipairs(r.nodes or {}) do if t.n == G.UIT.T and t.config then t.config.scale = size.scale end end
+      end
+    end
+    return b
+  end
+  local key_label = (key == 'backspace' and 'Backspace') or (key == ' ' and 'Space') or (key == 'back' and 'Back') or (key == 'return' and 'Enter') or (key == 'accents' and (G.CONTROLLER and G.CONTROLLER.kb_accents and 'ABC' or 'ÀÉÑ')) or key
+e 15 2183 %20%20 - =40,+%2C%20%73%63%61%6C%65%20%3D%20%6F%76%65%72%61%6C%6C%5F%73%63%61%6C%65%2A%30%2E%35,=79
+l 2
+      minw = key == ' ' and overall_scale*6 or key == 'return' and overall_scale*2.5 or key == 'backspace' and overall_scale*2.5 or key == 'back' and overall_scale*2.5 or key == 'accents' and overall_scale*2.5 or overall_scale*0.8,
+      minh = key == 'return' and 1.5 or key == 'backspace' and 1.5 or key == 'back' and 0.8 or key == 'accents' and 0.8 or overall_scale*0.7,
+c 22
+s 1
+r 15 2208 - -
+c 1
+l 1
+  local save_to_library = nil
+c 4
+s 1
+l 1
+  local profile = nil
+c 10
+s 1
+l 2
+    -- FIX: Hide New Run button during multiplayer matches
+    if not (G.GAME and G.GAME.multiplayer) then
+r 15 2225 %20%20%20%20%20%20 -
+l 1
+    end
+c 9
+s 1
+l 1
+            {n=G.UIT.C, config={align = "cm", maxw = 3.6}, nodes={
+c 7
+l 2
+    -- FEATURE: Save current run seed + deck + stake to Seed Library (own row below seed)
+    save_to_library = UIBox_button({button = 'seed_lib_save_current', label = {mod_loc("Save to Library")}, colour = G.C.SECONDARY_SET.Spectral, minw = 5,})
+c 3
+l 1
+    profile = UIBox_button{ id = 'options_profile', label = {localize('k_profile')}, button = "profile_select", minw = 5}
+c 5
+l 5
+  local mod_menu = nil
+  if G.STAGE == G.STAGES.RUN and not G.SETTINGS.mod_menu_disabled
+     and not (G.GAME and G.GAME.multiplayer) and cheats_allowed_in_run and cheats_allowed_in_run() then
+    mod_menu = UIBox_button{ label = {mod_loc("CHEATS")}, button = "open_mod_menu_inrun", minw = 5, colour = G.C.YELLOW, text_colour = G.C.UI.TEXT_DARK}
+  end
+c 2
+s 2
+l 4
+      Controls and Controls.pause_row and Controls.pause_row(settings) or settings,
+      mod_menu,
+      current_seed,
+      save_to_library,
+c 2
+l 1
+      bom_ui and bom_ui.contest_menu_button and bom_ui.contest_menu_button() or nil,
+c 1
+l 1
+      profile,
+c 7
+s 7
+l 273
+mod_loc_register{fr = {
+  ["Mod Guide"] = "Guide du mod",
+  ["Skip Tutorial"] = "Passer le tutoriel",
+  ["Speed"] = "Vitesse",
+  ["How fast the whole game plays"] = "Vitesse globale du jeu",
+  ["Speed of the scoring count"] = "Vitesse du décompte des points",
+  ["Jump straight to the final score"] = "Affiche directement le score final",
+  ["Locked in multiplayer"] = "Bloqué en multijoueur",
+  ["Up to 4x in multiplayer"] = "Jusqu'à 4x en multijoueur",
+  ["Hand"] = "Main",
+  ["Default Hand Sort"] = "Tri de la main",
+  ["How your hand is sorted at run start"] = "Tri de la main en début de partie",
+  ["Rank"] = "Rang",
+  ["Suit"] = "Couleur",
+  ["Side of the Play and Discard buttons"] = "Côté des boutons Jouer et Défausser",
+  ["Swipe over cards to pick several"] = "Glissez pour choisir plusieurs cartes",
+  ["Show the stake sticker during runs"] = "Affiche l'autocollant de mise en partie",
+  ["Tutorial"] = "Tutoriel",
+  ["The tutorial is complete"] = "Le tutoriel est terminé",
+  ["Mark the Jimbo tutorial as done"] = "Marque le tutoriel de Jimbo comme fini",
+  ["Done"] = "Fait",
+  ["Skip"] = "Passer",
+  ["Replay Tutorial"] = "Rejouer le tutoriel",
+  ["Start a new run with Jimbo's tutorial"] = "Nouvelle partie avec le tutoriel",
+  ["Play"] = "Jouer",
+  ["Scoring"] = "Score",
+  ["Locked by the host"] = "Verrouillé par l'hôte",
+  ["Shows the score before you play"] = "Montre le score avant de jouer",
+  ["Live values under your Jokers"] = "Valeurs en direct sous vos Jokers",
+  ["Suggests the best hand to play"] = "Suggère la meilleure main",
+  ["Fine tune the suggestions"] = "Réglez les suggestions",
+  ["Open"] = "Ouvrir",
+  ["Jimbo reacts to your plays"] = "Jimbo réagit à vos coups",
+  ["Brings Jimbo back if he is off screen"] = "Ramène Jimbo s'il est hors écran",
+  ["Window"] = "Fenêtre",
+  ["Screen the game opens on"] = "Écran utilisé par le jeu",
+  ["Windowed, fullscreen or borderless"] = "Fenêtré, plein écran ou sans bordure",
+  ["Resolution"] = "Résolution",
+  ["Size of the game window"] = "Taille de la fenêtre",
+  ["VSync"] = "VSync",
+  ["Stops screen tearing"] = "Évite les déchirures d'image",
+  ["Apply Window Changes"] = "Appliquer la fenêtre",
+  ["You have changes to apply"] = "Des changements à appliquer",
+  ["Nothing to apply"] = "Rien à appliquer",
+  ["Interface"] = "Interface",
+  ["Scale of the whole interface"] = "Échelle de toute l'interface",
+  ["Window Size"] = "Taille des fenêtres",
+  ["How much of the screen menus fill"] = "Place des menus à l'écran",
+  ["Classic"] = "Classique",
+  ["Server status in the corner"] = "État du serveur dans le coin",
+  ["Normal or modded label in the corner"] = "Étiquette normal ou moddé dans le coin",
+  ["Frame Rate"] = "Images par seconde",
+  ["Lower saves battery"] = "Plus bas économise la batterie",
+  ["Drag it to move it"] = "Glissez pour le déplacer",
+  ["How see-through the counter is"] = "Transparence du compteur",
+  ["Back to the default corner"] = "Retour au coin par défaut",
+  ["Look"] = "Apparence",
+  ["Drop shadows under cards"] = "Ombres sous les cartes",
+  ["Soft or sharp pixels"] = "Pixels doux ou nets",
+  ["Old TV screen effect"] = "Effet vieil écran TV",
+  ["Shake on big scores"] = "Tremblement sur les gros scores",
+  ["Easier to tell suits apart"] = "Couleurs plus faciles à distinguer",
+  ["Fewer moving backgrounds"] = "Moins de fonds animés",
+  ["Colour Filter"] = "Filtre de couleur",
+  ["Tints the whole screen"] = "Teinte tout l'écran",
+  ["Strength of the filter"] = "Force du filtre",
+  ["How fast the colours cycle"] = "Vitesse des couleurs",
+  ["Back to no filter"] = "Retour sans filtre",
+  ["Lighter shaders for slow devices"] = "Shaders légers pour appareils lents",
+  ["Resolution, particles, memory"] = "Résolution, particules, mémoire",
+  ["Volume"] = "Volume",
+  ["Everything at once"] = "Tout à la fois",
+  ["Music and Jukebox songs"] = "Musique et chansons du Jukebox",
+  ["Cards, chips and buttons"] = "Cartes, jetons et boutons",
+  ["Mute When Unfocused"] = "Muet en arrière-plan",
+  ["Silence while you use another app"] = "Silence quand vous changez d'app",
+  ["Vibration"] = "Vibration",
+  ["Background"] = "Arrière-plan",
+  ["Phone vibrates on plays"] = "Le téléphone vibre en jouant",
+  ["Strength of the buzz"] = "Force de la vibration",
+  ["Switch or manage save profiles"] = "Changer ou gérer les profils",
+  ["Change the game language"] = "Changer la langue du jeu",
+  ["Tour of the Overhaul features"] = "Visite des nouveautés Overhaul",
+  ["Mods"] = "Mods",
+  ["Hides the in-run mod menu button"] = "Cache le bouton mod en partie",
+  ["Privacy"] = "Confidentialité",
+  ["Error and mod list, nothing personal"] = "Erreur et liste des mods, rien de personnel",
+  ["Pick a topic to read how it works"] = "Choisissez un sujet pour en savoir plus",
+  ["Debug Mode"] = "Mode debug",
+  ["Unlock Debug"] = "Débloquer le debug",
+  ["Developer access, needs a PIN"] = "Accès développeur, code requis",
+  ["Unlock"] = "Débloquer",
+  ["Debug Active"] = "Debug actif",
+  ["Content Unlock"] = "Déblocage du contenu",
+  ["Unlock cards, decks and more"] = "Débloque cartes, jeux et plus",
+  ["Adds coins to this profile"] = "Ajoute des pièces au profil",
+  ["Add"] = "Ajouter",
+  ["Adds XP to this profile"] = "Ajoute de l'XP au profil",
+  ["Lock"] = "Verrouiller",
+  ["Turns debug mode off"] = "Désactive le mode debug",
+  ["Helpers"] = "Aides",
+  ["Display"] = "Affichage",
+  ["Account"] = "Compte",
+  ["Plays your own songs instead of the soundtrack"] = "Joue vos chansons à la place de la BO",
+  ["Shuffle"] = "Aléatoire",
+  ["Random order"] = "Ordre aléatoire",
+  ["Song List"] = "Liste des chansons",
+  ["Pick and play songs"] = "Choisir et jouer des chansons",
+  ["Mini Player"] = "Mini lecteur",
+  ["Reset position"] = "Réinitialiser la position",
+  ["Run"] = "Partie",
+  ["Screen"] = "Écran",
+  ["Performance"] = "Performance",
+  ["Scale"] = "Échelle",
+  ["On Screen"] = "À l'écran",
+  ["FPS Counter"] = "Compteur FPS",
+  ["Effects"] = "Effets",
+  ["Other"] = "Autre",
+  ["Developer"] = "Développeur",
+  ["Profile"] = "Profil",
+  ["Sounds"] = "Sons",
+}, es = {
+  ["Mod Guide"] = "Guía del mod",
+  ["Skip Tutorial"] = "Saltar tutorial",
+  ["Speed"] = "Velocidad",
+  ["How fast the whole game plays"] = "Velocidad general del juego",
+  ["Speed of the scoring count"] = "Velocidad del conteo de puntos",
+  ["Jump straight to the final score"] = "Muestra directamente la puntuación final",
+  ["Locked in multiplayer"] = "Bloqueado en multijugador",
+  ["Up to 4x in multiplayer"] = "Hasta 4x en multijugador",
+  ["Hand"] = "Mano",
+  ["Default Hand Sort"] = "Orden de la mano",
+  ["How your hand is sorted at run start"] = "Orden de la mano al empezar",
+  ["Rank"] = "Rango",
+  ["Suit"] = "Palo",
+  ["Side of the Play and Discard buttons"] = "Lado de los botones Jugar y Descartar",
+  ["Swipe over cards to pick several"] = "Desliza para elegir varias cartas",
+  ["Show the stake sticker during runs"] = "Muestra la pegatina del pozo en la partida",
+  ["Tutorial"] = "Tutorial",
+  ["The tutorial is complete"] = "El tutorial está completo",
+  ["Mark the Jimbo tutorial as done"] = "Marca el tutorial de Jimbo como hecho",
+  ["Done"] = "Hecho",
+  ["Skip"] = "Saltar",
+  ["Replay Tutorial"] = "Repetir tutorial",
+  ["Start a new run with Jimbo's tutorial"] = "Nueva partida con el tutorial",
+  ["Play"] = "Jugar",
+  ["Scoring"] = "Puntuación",
+  ["Locked by the host"] = "Bloqueado por el anfitrión",
+  ["Shows the score before you play"] = "Muestra la puntuación antes de jugar",
+  ["Live values under your Jokers"] = "Valores en vivo bajo tus comodines",
+  ["Suggests the best hand to play"] = "Sugiere la mejor mano",
+  ["Fine tune the suggestions"] = "Ajusta las sugerencias",
+  ["Open"] = "Abrir",
+  ["Jimbo reacts to your plays"] = "Jimbo reacciona a tus jugadas",
+  ["Brings Jimbo back if he is off screen"] = "Trae a Jimbo si está fuera de pantalla",
+  ["Window"] = "Ventana",
+  ["Screen the game opens on"] = "Pantalla donde se abre el juego",
+  ["Windowed, fullscreen or borderless"] = "Ventana, completa o sin bordes",
+  ["Resolution"] = "Resolución",
+  ["Size of the game window"] = "Tamaño de la ventana",
+  ["VSync"] = "VSync",
+  ["Stops screen tearing"] = "Evita los cortes de imagen",
+  ["Apply Window Changes"] = "Aplicar cambios de ventana",
+  ["You have changes to apply"] = "Hay cambios por aplicar",
+  ["Nothing to apply"] = "Nada que aplicar",
+  ["Interface"] = "Interfaz",
+  ["Scale of the whole interface"] = "Escala de toda la interfaz",
+  ["Window Size"] = "Tamaño de ventanas",
+  ["How much of the screen menus fill"] = "Cuánta pantalla ocupan los menús",
+  ["Classic"] = "Clásico",
+  ["Server status in the corner"] = "Estado del servidor en la esquina",
+  ["Normal or modded label in the corner"] = "Etiqueta normal o con mods",
+  ["Frame Rate"] = "Fotogramas",
+  ["Lower saves battery"] = "Más bajo ahorra batería",
+  ["Drag it to move it"] = "Arrástralo para moverlo",
+  ["How see-through the counter is"] = "Transparencia del contador",
+  ["Back to the default corner"] = "Vuelve a la esquina inicial",
+  ["Look"] = "Aspecto",
+  ["Drop shadows under cards"] = "Sombras bajo las cartas",
+  ["Soft or sharp pixels"] = "Píxeles suaves o nítidos",
+  ["Old TV screen effect"] = "Efecto de televisor antiguo",
+  ["Shake on big scores"] = "Temblor con grandes puntuaciones",
+  ["Easier to tell suits apart"] = "Palos más fáciles de distinguir",
+  ["Fewer moving backgrounds"] = "Menos fondos animados",
+  ["Colour Filter"] = "Filtro de color",
+  ["Tints the whole screen"] = "Tiñe toda la pantalla",
+  ["Strength of the filter"] = "Fuerza del filtro",
+  ["How fast the colours cycle"] = "Velocidad de los colores",
+  ["Back to no filter"] = "Vuelve a sin filtro",
+  ["Lighter shaders for slow devices"] = "Shaders ligeros para equipos lentos",
+  ["Resolution, particles, memory"] = "Resolución, partículas, memoria",
+  ["Volume"] = "Volumen",
+  ["Everything at once"] = "Todo a la vez",
+  ["Music and Jukebox songs"] = "Música y canciones del Jukebox",
+  ["Cards, chips and buttons"] = "Cartas, fichas y botones",
+  ["Mute When Unfocused"] = "Silenciar sin foco",
+  ["Silence while you use another app"] = "Silencio al usar otra app",
+  ["Vibration"] = "Vibración",
+  ["Background"] = "Segundo plano",
+  ["Phone vibrates on plays"] = "El teléfono vibra al jugar",
+  ["Strength of the buzz"] = "Fuerza de la vibración",
+  ["Switch or manage save profiles"] = "Cambiar o gestionar perfiles",
+  ["Change the game language"] = "Cambiar el idioma del juego",
+  ["Tour of the Overhaul features"] = "Recorrido por las novedades",
+  ["Mods"] = "Mods",
+  ["Hides the in-run mod menu button"] = "Oculta el botón de mods en partida",
+  ["Privacy"] = "Privacidad",
+  ["Error and mod list, nothing personal"] = "Error y lista de mods, nada personal",
+  ["Pick a topic to read how it works"] = "Elige un tema para saber más",
+  ["Debug Mode"] = "Modo debug",
+  ["Unlock Debug"] = "Desbloquear debug",
+  ["Developer access, needs a PIN"] = "Acceso de desarrollador, requiere PIN",
+  ["Unlock"] = "Desbloquear",
+  ["Debug Active"] = "Debug activo",
+  ["Content Unlock"] = "Desbloqueo de contenido",
+  ["Unlock cards, decks and more"] = "Desbloquea cartas, barajas y más",
+  ["Adds coins to this profile"] = "Añade monedas al perfil",
+  ["Add"] = "Añadir",
+  ["Adds XP to this profile"] = "Añade XP al perfil",
+  ["Lock"] = "Bloquear",
+  ["Turns debug mode off"] = "Desactiva el modo debug",
+  ["Helpers"] = "Ayudas",
+  ["Display"] = "Pantalla",
+  ["Account"] = "Cuenta",
+  ["Plays your own songs instead of the soundtrack"] = "Pone tus canciones en vez de la banda sonora",
+  ["Shuffle"] = "Aleatorio",
+  ["Random order"] = "Orden aleatorio",
+  ["Song List"] = "Lista de canciones",
+  ["Pick and play songs"] = "Elige y reproduce canciones",
+  ["Mini Player"] = "Minirreproductor",
+  ["Reset position"] = "Reiniciar posición",
+  ["Run"] = "Partida",
+  ["Screen"] = "Pantalla",
+  ["Performance"] = "Rendimiento",
+  ["Scale"] = "Escala",
+  ["On Screen"] = "En pantalla",
+  ["FPS Counter"] = "Contador de FPS",
+  ["Effects"] = "Efectos",
+  ["Other"] = "Otros",
+  ["Developer"] = "Desarrollador",
+  ["Profile"] = "Perfil",
+  ["Sounds"] = "Sonidos",
+}}
+
+local function settings_save()
+  if G and G.save_settings then pcall(function() G:save_settings() end) end
+end
+
+local function settings_defaults()
+  local S, GR = G.SETTINGS, G.SETTINGS.GRAPHICS
+  GR.fps_cap = GR.fps_cap or (G.F_MOBILE and 3 or 6)
+  GR.show_fps = GR.show_fps or false
+  GR.fps_opacity = GR.fps_opacity or 80
+  if S.mod_menu_disabled == nil then S.mod_menu_disabled = false end
+  if GR.show_online_status == nil then GR.show_online_status = true end
+  if GR.show_mode_indicator == nil then GR.show_mode_indicator = true end
+  if S.score_preview_enabled == nil then S.score_preview_enabled = false end
+  if GR.performance_mode == nil then GR.performance_mode = false end
+  S.joker_display = false
+  if S.drag_select == nil then S.drag_select = true end
+  if S.fast_score_resolve == nil then S.fast_score_resolve = 1.0 end
+  if S.jimbo_comments_enabled == nil then S.jimbo_comments_enabled = false end
+  if S.skip_score_animation == nil then S.skip_score_animation = false end
+  if S.haptic_feedback == nil then S.haptic_feedback = true end
+  if S.haptic_intensity == nil then S.haptic_intensity = 50 end
+  if S.mute_unfocused == nil then S.mute_unfocused = false end
+  if S.default_hand_sort == nil then S.default_hand_sort = 1 end
+  if S.keyboard_play == nil then S.keyboard_play = true end
+  if S.safe_sell == nil then S.safe_sell = false end
+  if S.spectate_follow == nil then S.spectate_follow = true end
+  GR.filter_type = GR.filter_type or 1
+  GR.filter_intensity = GR.filter_intensity or 50
+  GR.rainbow_speed = GR.rainbow_speed or 50
+r 10 1136 %20%20 -
+l 40
+end
+
+local function settings_mp_locked(key)
+  return (FairLock and FairLock.mp_setting_locked and FairLock.mp_setting_locked(key)) or false
+end
+
+local function settings_find(list, value, default)
+  for i, v in ipairs(list) do if v == value then return i end end
+  return default or 1
+end
+
+local function settings_tab_game()
+  local S = G.SETTINGS
+  local function mp_rule(what) return bom_match and bom_match.speed_rule and bom_match.speed_rule(what) or false end
+  local mp_speed, mp_score, mp_skip = mp_rule("speed"), mp_rule("score"), mp_rule("skip")
+  local speeds = mp_speed and {0.5, 1, 2, 4} or {0.5, 1, 2, 4, 6, 8, 10, 12, 16, 20}
+  local scores = {1.0, 0.75, 0.5, 0.25, 0}
+  local done = S.tutorial_complete and not G.OVERLAY_TUTORIAL
+  local ov_done = G.FUNCS.overhaul_tutorial_done and G.FUNCS.overhaul_tutorial_done() or false
+  local mp_info = mod_loc("Locked in multiplayer")
+  local items = {
+    UIK.header(mod_loc("Speed")),
+    UIK.cycle{id = 'set_gamespeed', label = localize('b_set_gamespeed'), info = mp_speed and mod_loc("Up to 4x in multiplayer") or mod_loc("How fast the whole game plays"), options = speeds, current = settings_find(speeds, S.GAMESPEED, 2),
+      callback = function(i, v) G.FUNCS.change_gamespeed{to_key = i, to_val = v} settings_save() end},
+    UIK.cycle{id = 'set_score_speed', label = mod_loc("Score Speed"), info = mp_score and mp_info or mod_loc("Speed of the scoring count"), options = {'100%', '75%', '50%', '25%', mod_loc("Instant")}, current = settings_find(scores, S.fast_score_resolve, 1),
+      disabled = mp_score, callback = function(i) G.FUNCS.change_score_speed{to_key = i} end},
+    UIK.toggle{id = 'set_skip_score', label = mod_loc("Skip Score Animation"), info = mp_skip and mp_info or mod_loc("Jump straight to the final score"), ref_table = S, ref_value = 'skip_score_animation', disabled = mp_skip, callback = settings_save},
+    UIK.header(mod_loc("Hand")),
+    UIK.cycle{id = 'set_play_pos', label = localize('b_set_play_discard_pos'), info = mod_loc("Side of the Play and Discard buttons"), options = localize('ml_play_discard_pos_opt'), current = S.play_button_pos or 1,
+      callback = function(i) G.FUNCS.change_play_discard_position{to_key = i} settings_save() end},
+    UIK.header(mod_loc("Run")),
+    UIK.toggle{id = 'set_stake_sticker', label = mod_loc("Display Stake Sticker"), info = mod_loc("Show the stake sticker during runs"), ref_table = S, ref_value = 'run_stake_stickers', callback = settings_save},
+    UIK.action{id = 'set_replay_tutorial', label = mod_loc("Balatro tutorial"), info = mod_loc("Your first run with Jimbo's tips"), button_label = mod_loc("Play"), button = 'start_tutorial', colour = UIK.C.accent,
+      disabled = G.GAME and G.GAME.multiplayer and G.STAGE == G.STAGES.RUN},
+    UIK.action{id = 'set_skip_tutorial', label = mod_loc("Skip Balatro tutorial"), info = done and mod_loc("The Balatro tutorial is done") or mod_loc("Mark Jimbo's first run as done"),
+      button_label = done and mod_loc("Done") or mod_loc("Skip"), button = 'skip_vanilla_tutorial', colour = UIK.C.warn, disabled = done},
+    UIK.action{id = 'set_replay_overhaul_tutorial', label = mod_loc("Overhaul tutorial"), info = G.STAGE == G.STAGES.MAIN_MENU and mod_loc("Hologram shows every Overhaul feature") or mod_loc("Open it from the main menu"),
+      button_label = mod_loc("Play"), button = 'replay_overhaul_tutorial', colour = UIK.C.accent, disabled = G.STAGE ~= G.STAGES.MAIN_MENU},
+    UIK.action{id = 'set_skip_overhaul_tutorial', label = mod_loc("Skip Overhaul tutorial"), info = ov_done and mod_loc("The Overhaul tutorial is done") or mod_loc("No tour and no Hologram tips"),
+      button_label = ov_done and mod_loc("Done") or mod_loc("Skip"), button = 'skip_overhaul_tutorial', colour = UIK.C.warn, disabled = ov_done},
+c 1
+s 5
+l 8
+  local kp = Extras and Extras.modules and Extras.modules.keyboard_play
+  if Controls and Controls.settings_rows then
+    for _, r in ipairs(Controls.settings_rows()) do items[#items+1] = r end
+  elseif kp and not kp.touch_only() then
+    items[#items+1] = UIK.header(mod_loc("Keyboard"))
+    items[#items+1] = UIK.toggle{id = 'set_keyboard_play', label = mod_loc("Keyboard play"), info = mod_loc("Play a whole run with the keyboard"), ref_table = S, ref_value = 'keyboard_play',
+      callback = function(v) Extras.set('keyboard_play', v) settings_save() UIK.refresh() end}
+    items[#items+1] = UIK.action{id = 'set_keyboard_binds', label = mod_loc("Keyboard keys"), info = mod_loc("See and change every key"), button_label = mod_loc("Open"), button = 'open_keyboard_binds', colour = UIK.C.accent, disabled = not kp.enabled()}
+c 1
+s 4
+l 15
+  if Speedrun and Speedrun.settings_rows then Speedrun.settings_rows(items) end
+  return UIK.flow{id = 'set_game', items = items, sections = true}
+end
+
+local function settings_tab_helpers()
+  local S = G.SETTINGS
+  local lock_opt = settings_mp_locked('hand_optimizer')
+  local rates = {mod_loc("Rarely"), mod_loc("Sometimes"), mod_loc("Often")}
+  local items = {
+    UIK.header(mod_loc("Hand Optimizer")),
+    UIK.toggle{id = 'set_optimizer', label = mod_loc("Hand Optimizer"), info = lock_opt and mod_loc("Locked by the host") or mod_loc("Suggests the best hand to play"), ref_table = S, ref_value = 'hand_optimizer', disabled = lock_opt, callback = settings_save},
+    UIK.header(mod_loc("Jimbo")),
+    UIK.toggle{id = 'set_jimbo_comments', label = mod_loc("Jimbo Comments"), info = mod_loc("Jimbo reacts to what happens"), ref_table = S, ref_value = 'jimbo_comments_enabled', callback = settings_save},
+    UIK.cycle{id = 'set_jimbo_rate', label = mod_loc("How often Jimbo talks"), info = mod_loc("From quiet to chatty"), options = rates, current = S.jimbo_comments_rate or 2,
+      callback = function(i) S.jimbo_comments_rate = i settings_save() end},
+c 1
+s 4
+l 64
+  return UIK.flow{id = 'set_helpers', items = items, sections = true}
+end
+
+local function settings_window_dirty()
+  local q, W = G.SETTINGS.QUEUED_CHANGE or {}, G.SETTINGS.WINDOW
+  return (q.screenmode and q.screenmode ~= W.screenmode) or q.screenres or q.vsync or (q.selected_display and q.selected_display ~= W.selected_display) or false
+end
+
+local function settings_tab_display()
+  local GR = G.SETTINGS.GRAPHICS
+  local items = {}
+  local fps_cap = UIK.cycle{id = 'set_fps_cap', label = mod_loc("FPS Cap"), info = mod_loc("Lower saves battery"), options = {"30", "40", "60", "90", "120", "144", "165", mod_loc("UNCAPPED")}, current = GR.fps_cap,
+    callback = function(i) G.FUNCS.change_fps_cap{to_key = i} end}
+  if G.F_VIDEO_SETTINGS then
+    local W, q = G.SETTINGS.WINDOW, G.SETTINGS.QUEUED_CHANGE
+    local disp = q.selected_display or W.selected_display
+    local mode = q.screenmode or W.screenmode
+    local res_option = GET_DISPLAYINFO(mode, disp)
+    local res = W.DISPLAYS[disp].screen_resolutions
+    if q.screenres then
+      for i, v in ipairs(res.values) do if v.w == q.screenres.w and v.h == q.screenres.h then res_option = i break end end
+    end
+    local vsync_on = (q.vsync or W.vsync) ~= 0
+    items[#items+1] = UIK.header(mod_loc("Window"))
+    items[#items+1] = UIK.cycle{id = 'set_screenmode', label = localize('b_set_windowmode'), info = mod_loc("Windowed, fullscreen or borderless"), options = localize('ml_windowmode_opt'), current = ({Windowed = 1, Fullscreen = 2, Borderless = 3})[mode] or 1,
+      callback = function(i) q.screenmode = ({"Windowed", "Fullscreen", "Borderless"})[i] q.screenres = nil UIK.refresh() end}
+    items[#items+1] = UIK.cycle{id = 'set_resolution', label = mod_loc("Resolution"), info = mod_loc("Size of the game window"), options = res.strings, current = res_option or 1,
+      callback = function(i) G.FUNCS.change_screen_resolution{to_key = i} UIK.refresh() end}
+    items[#items+1] = UIK.action{id = 'set_apply_window', label = mod_loc("Apply Window Changes"), info = settings_window_dirty() and mod_loc("You have changes to apply") or mod_loc("Nothing to apply"),
+      button_label = localize('b_set_apply'), button = 'settings_apply_window', colour = UIK.C.ok, disabled = not settings_window_dirty()}
+    items[#items+1] = UIK.header(mod_loc("Screen"))
+    items[#items+1] = UIK.cycle{id = 'set_monitor', label = localize('b_set_monitor'), info = mod_loc("Screen the game opens on"), options = W.display_names, current = disp,
+      callback = function(i) q.selected_display = i UIK.refresh() end}
+    items[#items+1] = UIK.cycle{id = 'set_vsync', label = mod_loc("VSync"), info = mod_loc("Stops screen tearing"), options = localize('ml_vsync_opt'), current = vsync_on and 1 or 2,
+      callback = function(i) q.vsync = ((i == 1 and 1 or 0) ~= W.vsync) and (i == 1 and 1 or 0) or nil UIK.refresh() end}
+    items[#items+1] = fps_cap
+  else
+    items[#items+1] = UIK.header(mod_loc("Frame Rate"))
+    items[#items+1] = fps_cap
+  end
+  items[#items+1] = UIK.header(mod_loc("Performance"))
+  items[#items+1] = UIK.toggle{id = 'set_perf', label = mod_loc("Performance Mode"), info = mod_loc("Lighter shaders for slow devices"), ref_table = GR, ref_value = 'performance_mode', callback = G.FUNCS.toggle_performance_mode}
+  items[#items+1] = UIK.action{id = 'set_perf_settings', label = mod_loc("Performance Settings"), info = mod_loc("Resolution, particles, memory"), button_label = mod_loc("Open"), button = 'open_performance_settings', colour = UIK.C.warn}
+  return UIK.flow{id = 'set_display', items = items, sections = true}
+end
+
+local function settings_tab_interface()
+  local GR = G.SETTINGS.GRAPHICS
+  G.UI_SIZE_EDIT = G.UI_SIZE_EDIT or {value = math.floor((G.UI_SIZE or 1)*(G.UI_SIZE_EXTRA or 1)*100 + 0.5)}
+  local fill_i = math.floor(window_fill()*100 + 0.5)
+  local items = {
+    UIK.header(mod_loc("Scale")),
+    UIK.slider{id = 'set_ui_size', label = mod_loc("UI Size"), info = mod_loc("Scale of the whole interface"), ref_table = G.UI_SIZE_EDIT, ref_value = 'value', min = UI_SIZE_MIN*100, max = math.floor(ui_size_max()*UI_SIZE_OVER*100 + 0.5),
+      callback = function() G.UI_SIZE_PENDING = true end},
+    UIK.cycle{id = 'set_window_size', label = mod_loc("Window Size"), info = mod_loc("How much of the screen menus fill"), options = {mod_loc("Classic"), "75%", "80%", "85%", "90%", "95%"},
+      current = ({[0] = 1, [75] = 2, [80] = 3, [85] = 4, [90] = 5, [95] = 6})[fill_i] or 4,
+      callback = function(i) GR.window_size = i settings_save() end},
+    UIK.header(mod_loc("On Screen")),
+    UIK.toggle{id = 'set_online', label = mod_loc("Online Status"), info = mod_loc("Server status in the corner"), ref_table = GR, ref_value = 'show_online_status', callback = settings_save},
+    UIK.toggle{id = 'set_mode', label = mod_loc("Mode Indicator"), info = mod_loc("Normal or modded label in the corner"), ref_table = GR, ref_value = 'show_mode_indicator', callback = settings_save},
+    UIK.toggle{id = 'set_show_fps', label = mod_loc("Show FPS Counter"), info = mod_loc("Drag it to move it"), ref_table = GR, ref_value = 'show_fps', callback = function() settings_save() UIK.refresh() end},
+    UIK.header(mod_loc("FPS Counter")),
+    UIK.slider{id = 'set_fps_opacity', label = mod_loc("FPS Opacity"), info = mod_loc("How see-through the counter is"), ref_table = GR, ref_value = 'fps_opacity', min = 0, max = 100, disabled = not GR.show_fps, callback = settings_save},
+    UIK.action{id = 'set_fps_reset', label = mod_loc("Reset FPS Position"), info = mod_loc("Back to the default corner"), button_label = mod_loc("Reset"), button = 'reset_fps_position', colour = UIK.C.danger, disabled = not GR.show_fps},
+c 1
+l 2
+  return UIK.flow{id = 'set_interface', items = items, sections = true}
+end
+c 1
+s 7
+l 49
+local function settings_tab_graphics()
+  local GR = G.SETTINGS.GRAPHICS
+  local items = {
+    UIK.header(mod_loc("Look")),
+    UIK.cycle{id = 'set_shadows', label = localize("b_set_shadows"), info = mod_loc("Drop shadows under cards"), options = localize('ml_shadow_opt'), current = GR.shadows == 'On' and 1 or 2,
+      callback = function(i) G.FUNCS.change_shadows{to_key = i} end},
+    UIK.cycle{id = 'set_smoothing', label = localize("b_set_pixel_smoothing"), info = mod_loc("Soft or sharp pixels"), options = localize('ml_smoothing_opt'), current = GR.texture_scaling or 2,
+      callback = function(i) G.FUNCS.change_pixel_smoothing{to_key = i} end},
+    suit_palette_setting_row and suit_palette_setting_row(settings_save) or UIK.toggle{id = 'set_contrast', label = localize('b_high_contrast_cards'), info = mod_loc("Easier to tell suits apart"), ref_table = G.SETTINGS, ref_value = 'colourblind_option', callback = function() G.FUNCS.refresh_contrast_mode() settings_save() end},
+    UIK.header(mod_loc("Effects")),
+    UIK.slider{id = 'set_crt', label = localize('b_set_CRT'), info = mod_loc("Old TV screen effect"), ref_table = GR, ref_value = 'crt', min = 0, max = 100, callback = settings_save},
+    UIK.slider{id = 'set_shake', label = localize('b_set_screenshake'), info = mod_loc("Shake on big scores"), ref_table = G.SETTINGS, ref_value = 'screenshake', min = 0, max = 100, callback = settings_save},
+    UIK.toggle{id = 'set_motion', label = localize('b_reduced_motion'), info = mod_loc("Fewer moving backgrounds"), ref_table = G.SETTINGS, ref_value = 'reduced_motion', callback = settings_save},
+    UIK.header(mod_loc("Colour Filter")),
+    UIK.cycle{id = 'set_filter', label = mod_loc("Filter Type"), info = mod_loc("Tints the whole screen"), options = {mod_loc("None"), mod_loc("Sepia"), mod_loc("B&W"), mod_loc("Rainbow RGB")}, current = GR.filter_type,
+      callback = function(i) G.FUNCS.change_filter_type{to_key = i} settings_save() UIK.refresh() end},
+    UIK.slider{id = 'set_filter_int', label = mod_loc("Filter Intensity"), info = mod_loc("Strength of the filter"), ref_table = GR, ref_value = 'filter_intensity', min = 0, max = 100, disabled = GR.filter_type == 1, callback = settings_save},
+  }
+  if suit_palette_custom_rows then suit_palette_custom_rows(items, settings_save) end
+  if GR.filter_type == 4 then
+    items[#items+1] = UIK.slider{id = 'set_rainbow', label = mod_loc("Rainbow Speed"), info = mod_loc("How fast the colours cycle"), ref_table = GR, ref_value = 'rainbow_speed', min = 10, max = 200, callback = settings_save}
+  end
+  return UIK.flow{id = 'set_graphics', items = items, sections = true}
+end
+
+local function settings_tab_audio()
+  local S = G.SETTINGS
+  local items = {
+    UIK.header(mod_loc("Volume")),
+    UIK.slider{id = 'set_vol_master', label = localize('b_set_master_vol'), info = mod_loc("Everything at once"), ref_table = S.SOUND, ref_value = 'volume', min = 0, max = 100, callback = settings_save},
+    UIK.slider{id = 'set_vol_music', label = localize('b_set_music_vol'), info = mod_loc("Music and Jukebox songs"), ref_table = S.SOUND, ref_value = 'music_volume', min = 0, max = 100, callback = settings_save},
+    UIK.header(mod_loc("Sounds")),
+    UIK.slider{id = 'set_vol_game', label = localize('b_set_game_vol'), info = mod_loc("Cards, chips and buttons"), ref_table = S.SOUND, ref_value = 'game_sounds_volume', min = 0, max = 100, callback = settings_save},
+    UIK.toggle{id = 'set_mute_unfocused', label = mod_loc("Mute When Unfocused"), info = mod_loc("Silence while you use another app"), ref_table = S, ref_value = 'mute_unfocused',
+      callback = function() settings_save() G.FUNCS.apply_focus_mute(not love.window or love.window.hasFocus()) end},
+    UIK.header(mod_loc("Vibration")),
+    UIK.toggle{id = 'set_haptic', label = mod_loc("Haptic Feedback"), info = mod_loc("Phone vibrates on plays"), ref_table = S, ref_value = 'haptic_feedback', callback = G.FUNCS.refresh_haptic_settings},
+    UIK.slider{id = 'set_haptic_int', label = mod_loc("Haptic Intensity"), info = mod_loc("Strength of the buzz"), ref_table = S, ref_value = 'haptic_intensity', min = 0, max = 100, disabled = not S.haptic_feedback,
+      callback = function() G.FUNCS.haptic_intensity_preview() settings_save() end},
+  }
+  return UIK.flow{id = 'set_audio', items = items, sections = true}
+end
+
+local function settings_tab_account()
+  local S = G.SETTINGS
+  local items = {
+    UIK.header(mod_loc("Profile")),
+    UIK.action{id = 'set_profile', label = mod_loc("Profile"), info = mod_loc("Switch or manage save profiles"), button_label = mod_loc("Open"), button = 'profile_select', colour = UIK.C.accent},
+  }
+r 15 6197 %20%20 -
+l 116
+    items[#items+1] = UIK.action{id = 'set_language', label = mod_loc("Language"), info = mod_loc("Change the game language"), button_label = mod_loc("Open"), button = 'language_selection', colour = UIK.C.accent}
+  end
+  items[#items+1] = UIK.header(mod_loc("Other"))
+  items[#items+1] = UIK.toggle{id = 'set_modmenu', label = mod_loc("Disable Cheats"), info = mod_loc("Hides the Cheats toggle and button"), ref_table = S, ref_value = 'mod_menu_disabled', callback = settings_save}
+  items[#items+1] = UIK.toggle{id = 'set_crash', label = mod_loc("Send crash reports"), info = mod_loc("Error and mod list, nothing personal"), ref_table = S, ref_value = 'crashreports', callback = settings_save}
+  if BOM_DEBUG_BUILD and not (DebugManager and DebugManager.is_enabled and DebugManager.is_enabled()) then
+    items[#items+1] = UIK.header(mod_loc("Developer"))
+    items[#items+1] = UIK.action{id = 'set_debug_unlock', label = mod_loc("Unlock Debug"), info = mod_loc("Developer access, needs a PIN"), button_label = mod_loc("Unlock"), button = 'open_debug_pin', colour = UIK.C.warn}
+  end
+  return UIK.flow{id = 'set_account', items = items, sections = true}
+end
+
+local SETTINGS_GUIDE = {
+  {"Overview", 'open_guide_overview'}, {"Cheats", 'open_guide_modmenu'},
+  {"Custom Runs", 'open_guide_customruns'}, {"Progression", 'open_guide_progression'}, {"Quests", 'open_guide_quests'},
+  {"Customization", 'open_guide_profile'}, {"Market", 'open_guide_shop'}, {"Stakes", 'open_guide_stakes'},
+  {"Optimizer", 'open_guide_handoptimizer'}, {"Deck Creator", 'open_guide_deck_creator'},
+  {"Comments", 'open_guide_jimbo_comments'}, {"Modded Game", 'open_guide_modded_game'},
+  {"Mods & Workshop", 'open_guide_mods_workshop'}, {"The Casino", 'open_guide_tavern'}, {"Performance", 'open_guide_performance'},
+  {"Keyboard play", 'open_guide_keyboard'}, {"Trackpad", 'open_guide_trackpad'}, {"QoL", 'open_guide_qol'},
+  {"Random Run", 'open_guide_random_run'}, {"Speedrun", 'open_guide_speedrun'}, {"Daily Seed", 'open_guide_daily_seed'},
+  {"Run History", 'open_guide_run_history'}, {"Boss Practice", 'open_guide_boss_practice'}, {"Minigames", 'open_guide_minigames'},
+  {"Joker Forge", 'open_guide_joker_forge'}, {"Suit Colours", 'open_guide_suit_colours'},
+}
+
+local SETTINGS_GUIDE_MP = {
+  {"Game Modes", 'open_guide_multiplayer'}, {"Ranked", 'open_guide_mp_ranked'}, {"Match Rules", 'open_guide_mp_rules'},
+  {"Emotes & Chat", 'open_guide_mp_emotes'}, {"Replays", 'open_guide_mp_replays'}, {"Mods in MP", 'open_guide_mp_mods'},
+  {"Fair Play", 'open_guide_mp_fair'}, {"Switcheroo", 'open_guide_mp_switcheroo'}, {"Friends", 'open_guide_mp_friends'},
+  {"Showcase", 'open_guide_mp_showcase'},
+}
+
+local function settings_tab_guide()
+  local t = UIK.touch()
+  local pad = t and 0.07 or 0.06
+  local h = t and 0.76 or 0.66
+  local bw = (UIK.W - UIK.GAP - 4*UIK.PAD) / 4 - 2*pad - 0.02
+  local rows_per = t and 5 or 6
+  local n = math.max(math.ceil(#SETTINGS_GUIDE / (3 * rows_per)), math.ceil(#SETTINGS_GUIDE_MP / rows_per), 1)
+  local idx = math.max(1, math.min(UIK._pages.set_guide or 1, n))
+  UIK._pages.set_guide = idx
+  local pager_h = n > 1 and ((t and 0.82 or 0.66) + 0.12) or 0
+  local function card(title, list, per_row, colour)
+    local btns = {}
+    local per_page = per_row * rows_per
+    for i = (idx - 1) * per_page + 1, math.min(#list, idx * per_page) do
+      local g = list[i]
+      btns[#btns+1] = UIK.button{id = 'set_guide_'..g[2], label = mod_loc(g[1]), button = g[2], colour = colour, w = bw, h = h}
+    end
+    local inner = per_row * (bw + 2*pad) + 0.02
+    return {n=G.UIT.C, config={align = "tm", minw = inner + 2*UIK.PAD, minh = UIK.H - UIK.TOP - pager_h, r = 0.12, padding = UIK.PAD, colour = UIK.C.section}, nodes={
+      UIK.header(title, {w = inner}),
+      #btns > 0 and UIK.grid(btns, per_row, {w = inner, padding = pad}) or nil,
+    }}
+  end
+  local rows = {{n=G.UIT.R, config={align = "tm", padding = 0}, nodes={
+    card(mod_loc("Overhaul"), SETTINGS_GUIDE, 3, UIK.C.accent),
+    {n=G.UIT.B, config={w = UIK.GAP, h = 0.1}},
+    card(mod_loc("Multiplayer"), SETTINGS_GUIDE_MP, 1, UIK.C.warn),
+  }}}
+  if n > 1 then
+    rows[2] = UIK.pager{prev = 'uik_page', next = 'uik_page', prev_ref = {id = 'set_guide', d = -1, n = n}, next_ref = {id = 'set_guide', d = 1, n = n},
+      text = string.format(mod_loc("Page %d of %d"), idx, n), w = UIK.W}
+  end
+  return {n=G.UIT.R, config={align = "tm", minw = UIK.W, padding = 0}, nodes = rows}
+end
+
+local function settings_tab_debug()
+  local on = DebugManager and DebugManager.is_enabled and DebugManager.is_enabled()
+  if not on then
+    return UIK.flow{id = 'set_debug', items = {
+      UIK.header(mod_loc("Debug Mode"), {colour = UIK.C.danger}),
+      UIK.action{id = 'set_debug_unlock', label = mod_loc("Unlock Debug"), info = mod_loc("Developer access, needs a PIN"), button_label = mod_loc("Unlock"), button = 'open_debug_pin', colour = UIK.C.warn},
+    }}
+  end
+  return UIK.flow{id = 'set_debug', items = {
+    UIK.header(mod_loc("Debug Active"), {colour = UIK.C.ok}),
+    UIK.action{id = 'set_debug_content', label = mod_loc("Content Unlock"), info = mod_loc("Unlock cards, decks and more"), button_label = mod_loc("Open"), button = 'open_debug_menu_overlay', colour = UIK.C.ok},
+    UIK.action{id = 'set_debug_coin', label = mod_loc("+10000 Balacoin"), info = mod_loc("Adds coins to this profile"), button_label = mod_loc("Add"), button = 'debug_add_balacoin', colour = UIK.C.money},
+    UIK.action{id = 'set_debug_xp', label = mod_loc("+50000 XP"), info = mod_loc("Adds XP to this profile"), button_label = mod_loc("Add"), button = 'debug_add_xp', colour = UIK.C.add},
+    UIK.action{id = 'set_debug_lock', label = mod_loc("Lock Debug"), info = mod_loc("Turns debug mode off"), button_label = mod_loc("Lock"), button = 'debug_reset', colour = UIK.C.danger},
+  }}
+end
+
+function create_UIBox_settings(selected_tab)
+  local new_ui = rawget(_G, "SettingsUI")
+  if new_ui and new_ui.window then
+    local ok, def = pcall(new_ui.window, selected_tab)
+    if ok and def then return def end
+    print("[Settings] new window failed: " .. tostring(def))
+  end
+  settings_defaults()
+  local tabs = {
+    {key = 'Game', label = localize('b_set_game'), build = settings_tab_game},
+    QOL and QOL.settings_tab and {key = 'QoL', label = mod_loc("QoL"), build = QOL.settings_tab} or false,
+    {key = 'Helpers', label = mod_loc("Helpers"), build = settings_tab_helpers},
+    {key = 'Display', label = mod_loc("Display"), build = settings_tab_display},
+    {key = 'Interface', label = mod_loc("Interface"), build = settings_tab_interface},
+    {key = 'Graphics', label = localize('b_set_graphics'), build = settings_tab_graphics},
+    {key = 'Audio', label = localize('b_set_audio'), build = settings_tab_audio},
+    {key = 'Jukebox', label = mod_loc("Jukebox"), build = function() return G.UIDEF.jukebox_tab() end},
+    {key = 'Account', label = mod_loc("Account"), build = settings_tab_account},
+    {key = 'Guide', label = mod_loc("Guide"), build = settings_tab_guide},
+    QOL and QOL.search_tab and {key = 'Search', label = mod_loc("Search"), build = QOL.search_tab} or false,
+  }
+  if BOM_DEBUG_BUILD and DebugManager and DebugManager.is_enabled and DebugManager.is_enabled() then
+    tabs[#tabs+1] = {key = 'Debug', label = mod_loc("Debug"), build = settings_tab_debug}
+  end
+  local legacy = {Video = 'Display', Other = 'Game'}
+  return UIK.window{
+    id = 'settings',
+    title = localize('b_settings'),
+    tabs = tabs,
+    tab = selected_tab and (legacy[selected_tab] or selected_tab) or nil,
+    back_func = 'options',
+  }
+c 3
+s 42
+l 5
+  local map = {Game = settings_tab_game, QoL = QOL and QOL.settings_tab or nil, Helpers = settings_tab_helpers, Display = settings_tab_display, Video = settings_tab_display, Interface = settings_tab_interface,
+    Graphics = settings_tab_graphics, Audio = settings_tab_audio, Account = settings_tab_account, Other = settings_tab_account,
+    Guide = settings_tab_guide, Debug = BOM_DEBUG_BUILD and settings_tab_debug or nil}
+  settings_defaults()
+  return (map[tab] or settings_tab_game)()
+c 7
+s 1
+l 1
+      table.insert(nodes,
+c 9
+s 1
+l 1
+      table.insert(nodes,
+c 9
+s 1
+l 1
+      table.insert(nodes,
+c 18
+s 1
+l 1
+              {n=G.UIT.T, config={text = mod_loc("Back"), scale = 0.5, colour = G.C.UI.TEXT_LIGHT}}
+c 5
+s 1
+l 1
+return t
+c 61
+s 1
+l 1
+    if v then
+c 5
+s 1
+l 1
+        G.CARD_H*0.7,
+c 3
+s 1
+r 15 2466 %20%20%20%20%20%20 -
+c 1
+s 1
+l 1
+
+c 13
+s 1
+r 15 2466 %20%20%20%20%20%20 -
+c 18
+s 1
+r 15 2501 %20%20%20%20%20%20 -
+c 7
+l 9
+  if rawget(_G, 'PORTRAIT') and PORTRAIT.on() then
+    local rows = {}
+    for i = 1, #histograms, 5 do
+      local row = {}
+      for j = i, math.min(#histograms, i + 4) do row[#row + 1] = histograms[j] end
+      rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.1, portrait_keep = true}, nodes=row}
+    end
+    t.nodes[2] = {n=G.UIT.R, config={align = "cm", padding = 0}, nodes={{n=G.UIT.C, config={align = "cm", padding = 0}, nodes=rows}}}
+  end
+c 42
+s 1
+l 1
+    1.4*G.CARD_H,
+c 2
+s 1
+l 1
+  table.insert(t,
+c 5
+s 4
+l 15
+  local raw_loc_options = localize(_suit, 'collabs')
+  local all_collab_ids = G.COLLABS.options[_suit]
+
+  -- Filter to only show unlocked collabs (default always available)
+  local filtered_loc_options = {}
+  local filtered_collab_ids = {}
+  for k, collab_id in ipairs(all_collab_ids) do
+    local is_unlocked = (collab_id == 'default')
+    if not is_unlocked and ProfileRewardsManager and ProfileRewardsManager.is_deck_unlocked then
+      is_unlocked = ProfileRewardsManager.is_deck_unlocked(collab_id)
+    end
+    if is_unlocked then
+      table.insert(filtered_collab_ids, collab_id)
+      table.insert(filtered_loc_options, raw_loc_options[tostring(k)] or raw_loc_options[k] or ("Collab " .. k))
+    end
+c 2
+s 1
+l 5
+  -- If no unlocked collabs, show default only
+  if #filtered_loc_options == 0 then
+    filtered_loc_options = {raw_loc_options["1"] or raw_loc_options[1] or "Default"}
+    filtered_collab_ids = {"default"}
+  end
+c 2
+s 1
+l 1
+  for k, v in ipairs(filtered_collab_ids) do
+c 3
+s 1
+l 5
+  -- Store filtered IDs for change_collab callback
+  G._filtered_collab_ids = G._filtered_collab_ids or {}
+  G._filtered_collab_ids[_suit] = filtered_collab_ids
+
+  table.insert(t,
+c 1
+s 1
+l 1
+      create_option_cycle({options = filtered_loc_options, w = 5.5, cycle_shoulders = true, curr_suit = _suit, opt_callback = 'change_collab', current_option = current_option, colour = G.C.RED, focus_args = {snap_to = true, nav = 'wide'}}),
+c 2
+s 1
+l 1
+  table.insert(t, rawget(_G, 'suit_palette_deck_row') and suit_palette_deck_row() or create_toggle({label = localize('b_high_contrast_cards'), ref_table = G.SETTINGS, ref_value = 'colourblind_option', callback = G.FUNCS.refresh_contrast_mode}))
+c 27
+s 1
+l 1
+
+c 9
+l 1
+      UIBox_button({button = 'mp_stats', label = {mod_loc("Multiplayer Stats")}, minw = 7.5, minh =1, focus_args = {nav = 'wide'}}),
+c 11
+s 2
+r 15 2628 %20%20 -
+c 70
+s 2
+l 1
+
+r 15 2700 %20%20 -
+c 6
+s 1
+r 15 2707 %20%20 -
+c 3
+s 1
+r 15 2711 %20%20 -
+c 4
+s 1
+r 15 2716 %20%20 -
+c 10
+s 1
+r 15 2727 %20%20 -
+c 22
+s 1
+l 16
+  -- In multiplayer, use dedicated MP win screen
+  if G and G.GAME and G.GAME.multiplayer then
+    local ok, result = pcall(function()
+      if bom_ui and bom_ui.register_funcs then bom_ui.register_funcs() end
+      return bom_ui.create_mp_win({jimbo = true})
+    end)
+    if ok and result then return result end
+    -- Fall through to vanilla on error
+  end
+  local show_win_cta = false
+  -- FEATURE: save seed+stake now (G.GAME accessible) so replay_run can use them after wipe
+  if not G.ARGS then G.ARGS = {} end
+  G.ARGS.replay_run = {
+    seed  = G.GAME and G.GAME.pseudorandom and G.GAME.pseudorandom.seed or nil,
+    stake = G.GAME and G.GAME.stake or 1,
+  }
+c 14
+s 1
+l 1
+      {n=G.UIT.C, config={align = "tm", padding = 0.08}, nodes={
+c 6
+s 1
+l 1
+        UIBox_button({button = 'copy_seed', label = {localize('b_copy')}, colour = G.C.BLUE, scale = (UIK and UIK.touch()) and 0.38 or 0.3, minw = 2.3, minh = (UIK and UIK.touch()) and 0.55 or 0.4}),
+c 7
+r 15 2780 %20%20%20%20%20%20%20%20 -
+l 2
+        -- FEATURE: Replay on same seed
+        not show_win_cta and UIBox_button({button = 'replay_run', label = {'Replay (same seed)'}, colour = G.C.BLUE, minw = 2.5, maxw = 2.5, minh = 1, focus_args = {nav = 'wide'}}) or nil,
+c 9
+s 1
+l 1
+  }})
+c 7
+s 1
+c 26
+s 1
+l 1
+  }}
+c 38
+l 9
+  -- In multiplayer, use dedicated MP game over screen
+  if G and G.GAME and G.GAME.multiplayer then
+    local ok, result = pcall(function()
+      if bom_ui and bom_ui.register_funcs then bom_ui.register_funcs() end
+      return bom_ui.create_mp_game_over({jimbo = true})
+    end)
+    if ok and result then return result end
+    -- Fall through to vanilla on error
+  end
+c 2
+l 6
+  -- FEATURE: save seed+stake now (G.GAME accessible) so replay_run can use them after wipe
+  if not G.ARGS then G.ARGS = {} end
+  G.ARGS.replay_run = {
+    seed  = G.GAME and G.GAME.pseudorandom and G.GAME.pseudorandom.seed or nil,
+    stake = G.GAME and G.GAME.stake or 1,
+  }
+c 16
+s 1
+l 1
+            {n=G.UIT.C, config={align = "tm", padding = 0.08}, nodes={
+c 6
+s 1
+l 1
+              UIBox_button({button = 'copy_seed', label = {localize('b_copy')}, colour = G.C.BLUE, scale = (UIK and UIK.touch()) and 0.38 or 0.3, minw = 2.3, minh = (UIK and UIK.touch()) and 0.55 or 0.4, focus_args = {nav = 'wide'}}),
+c 8
+s 1
+l 1
+        show_lose_cta and
+c 11
+l 4
+            }}
+          }},
+          -- FEATURE: Replay button — replays on the same seed/stake/deck
+          {n=G.UIT.R, config={align = "cm", minw = 5, padding = 0.1, r = 0.1, hover = true, colour = G.C.BLUE, button = "replay_run", shadow = true, focus_args = {nav = 'wide'}}, nodes={
+r 15 2907 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+              {n=G.UIT.T, config={text = 'Replay (same seed)', scale = 0.5, colour = G.C.UI.TEXT_LIGHT}}
+c 20
+s 1
+c 17
+s 1
+r 15 2947 %20%20 -
+c 7
+s 1
+r 15 2955 %20%20 -
+c 4
+s 1
+l 1
+      {n=G.UIT.O, config={object = DynaText({string = {G.GAME.pseudorandom.seed}, colours = {text_colour or G.C.WHITE},shadow = true, float = true, scale = 0.45, maxw = 3.6})}},
+c 2
+s 1
+r 15 2963 %20%20 -
+c 3
+l 2
+    blind_choice.animation.atlas = G.ANIMATION_ATLAS[blind_choice.config.atlas or 'blind_chips'] or blind_choice.animation.atlas
+    blind_choice.animation:set_sprite_pos(blind_choice.config.pos)
+c 4
+s 1
+l 1
+
+c 12
+s 1
+r 15 2700 %20%20 -
+c 18
+s 1
+r 15 3003 %20%20 -
+c 17
+s 1
+r 15 3021 %20%20 -
+c 3
+s 1
+l 1
+    0.75*G.CARD_H,
+c 17
+l 2
+  local port = rawget(_G, 'PORTRAIT') and PORTRAIT.on()
+  local nw, lw, cw = port and 3.4 or 4.5, port and 1.1 or 1.5, port and 0.95 or 1.1
+c 3
+s 2
+l 2
+      {n=G.UIT.C, config={align = "cl", padding = 0, minw = port and nw + lw or 5}, nodes={
+        {n=G.UIT.C, config={align = "cm", padding = 0.01, r = 0.1, colour = G.C.HAND_LEVELS[math.min(7, G.GAME.hands[handname].level)], minw = lw, outline = 0.8, outline_colour = G.C.WHITE}, nodes={
+c 2
+s 1
+l 1
+        {n=G.UIT.C, config={align = "cm", minw = nw, maxw = nw}, nodes={
+c 4
+s 2
+l 1
+        {n=G.UIT.C, config={align = "cr", padding = 0.01, r = 0.1, colour = G.C.CHIPS, minw = cw}, nodes={
+e 15 3056 %20%20%20%20%20%20%20%20%20%20 - =57,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=43
+c 2
+s 2
+e 15 3059 %20%20%20%20%20%20%20%20 - =46,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=20
+l 1
+        {n=G.UIT.C, config={align = "cl", padding = 0.01, r = 0.1, colour = G.C.MULT, minw = cw}, nodes={
+c 1
+s 1
+e 15 3062 %20%20%20%20%20%20%20%20%20%20 - =70,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=28
+c 3
+s 1
+l 1
+          {n=G.UIT.T, config={text = port and ' #' or '  #', scale = 0.45, colour = G.C.UI.TEXT_LIGHT, shadow = true}}
+c 1
+s 2
+l 1
+      {n=G.UIT.C, config={align = "cm", padding = 0.05, colour = G.C.L_BLACK,r = 0.1, minw = port and 0.75 or 0.9}, nodes={
+e 15 3069 %20%20%20%20%20%20%20%20 - =72,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=37
+c 59
+l 3
+function G.UIDEF.run_seed()
+  local seed = G.GAME and G.GAME.pseudorandom and G.GAME.pseudorandom.seed or '????????'
+  return {n=G.UIT.ROOT, config={align = "cm", padding = 0.4, colour = G.C.CLEAR}, nodes={
+r 15 723 %20%20%20%20 -
+l 2
+      {n=G.UIT.T, config={text = localize('k_seed'), scale = 0.5, colour = G.C.UI.TEXT_INACTIVE}},
+    }},
+r 15 1558 %20%20%20%20 -
+l 2
+      {n=G.UIT.O, config={object = DynaText({string = {seed}, colours = {G.C.WHITE}, shadow = true, float = true, scale = 0.75})}},
+    }},
+r 15 118 %20%20%20%20 -
+l 5
+      UIBox_button({button = 'copy_seed', label = {localize('b_copy')}, colour = G.C.BLUE, scale = 0.4, minw = 3.5, minh = 0.6, focus_args = {nav = 'wide'}}),
+    }},
+  }}
+end
+
+c 1
+s 2
+l 1
+  local tabs = {
+c 17
+s 1
+l 7
+    }
+  if Extras and Extras.run_info_tabs then
+    local list = {}
+    for i = 1, 4 do if tabs[i] then list[#list + 1] = tabs[i] end end
+    pcall(Extras.run_info_tabs, list)
+    tabs = list
+  end
+r 15 3106 %20%20 -
+l 1
+    {tabs = tabs,
+c 2
+l 8
+end
+
+-- ============================================
+-- FEATURE: Multiplayer Lobby Info overlay (Players / Run / Bans tabs)
+-- ============================================
+
+function G.UIDEF.mp_lobby_info()
+  return bom_ui.lobby_info_def()
+c 22
+s 1
+l 1
+      if (deck_usage and deck_usage.wins[i-1]) or i == 1 or G.PROFILES[G.SETTINGS.profile].all_unlocked or G.PROFILES[G.SETTINGS.profile].debug_unlocked then valid_option = true end
+c 80
+s 1
+r 15 3255 %20%20%20%20%20%20 -
+c 39
+s 1
+r 15 3295 %20%20%20%20 -
+c 14
+s 1
+r 15 3310 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 15 3314 %20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 15 3319 %20%20%20%20%20%20 -
+c 16
+s 1
+e 15 3336 %20%20%20%20%20%20%20%20 - =46,+%5D%2C%20%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27,=57
+c 3
+s 1
+e 15 3340 %20%20%20%20%20%20%20%20 - =52,+%20%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C,=49
+c 5
+s 1
+l 1
+  local t =
+c 59
+s 1
+r 15 3406 %20%20 -
+c 7
+s 1
+l 1
+  return
+c 6
+s 1
+e 15 3421 %20%20%20%20%20%20 - =77,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=16
+c 15
+s 1
+r 15 3437 %20%20%20%20 -
+c 3
+s 1
+r 15 3441 %20%20 -
+c 4
+s 1
+r 15 3441 %20%20 -
+c 1
+s 2
+r 15 3448 %20%20%20%20%20%20 -
+r 15 3449 %20%20%20%20%20%20%20%20 -
+c 7
+s 1
+r 15 3457 %20%20%20%20%20%20 -
+c 1
+s 1
+r 23 125 %20%20%20%20%20%20 -
+c 7
+s 1
+r 15 3467 %20%20%20%20%20%20 -
+c 10
+s 1
+l 1
+
+c 9
+s 1
+l 1
+  }} or
+c 17
+s 1
+l 1
+  local cols = {
+c 21
+s 1
+l 2
+      UIBox_button({button = 'your_collection_blinds', label = {localize('b_blinds')}, count = G.DISCOVER_TALLIES.blinds, minw = 5, id = 'your_collection_blinds'}),
+      UIBox_button({button = 'your_collection_stakes', label = {mod_loc("Stakes")}, minw = 5, id = 'your_collection_stakes', focus_args = {snap_to = true}}),
+c 1
+s 2
+l 9
+
+  }
+  if rawget(_G, 'PORTRAIT') and PORTRAIT.on() then
+    cols = {{n=G.UIT.C, config={align = "cm", padding = 0}, nodes={
+      {n=G.UIT.R, config={align = "cm", padding = 0}, nodes={cols[1]}},
+      {n=G.UIT.R, config={align = "cm", padding = 0}, nodes={cols[2]}},
+    }}}
+  end
+  local t = create_UIBox_generic_options({ back_func = G.STAGE == G.STAGES.RUN and 'options' or 'exit_overlay_menu', contents = cols})
+c 5
+l 2
+  local port = rawget(_G, 'PORTRAIT') and PORTRAIT.on()
+  local per_row, n_rows = port and 4 or 5, port and 4 or 3
+c 2
+s 1
+l 1
+  for j = 1, n_rows do
+c 2
+s 4
+l 3
+      per_row*G.CARD_W,
+      0.95*G.CARD_H,
+      {card_limit = per_row, type = 'title', highlight_limit = 0, collection = true})
+r 15 3255 %20%20%20%20 -
+c 7
+s 2
+l 2
+  for i = 1, math.ceil(#G.P_CENTER_POOLS.Joker/(per_row*#G.your_collection)) do
+    table.insert(joker_options, localize('k_page')..' '..tostring(i)..'/'..tostring(math.ceil(#G.P_CENTER_POOLS.Joker/(per_row*#G.your_collection))))
+c 2
+s 1
+l 1
+  for i = 1, per_row do
+c 1
+s 1
+l 1
+      local center = G.P_CENTER_POOLS["Joker"][i+(j-1)*per_row]
+c 7
+s 1
+l 1
+
+c 1
+s 1
+r 15 3569 %20%20%20%20%20%20%20%20 -
+c 4
+l 1
+  t.config.portrait_rebuild = 'jokers'
+c 11
+s 1
+l 1
+      1*G.CARD_H,
+c 1
+s 1
+r 15 3255 %20%20%20%20 -
+c 7
+s 2
+l 4
+  -- FIX: use math.ceil so last partial page is included; was math.floor (cut off last page)
+  local num_tarot_pages = math.ceil(#G.P_CENTER_POOLS.Tarot/11)
+  for i = 1, num_tarot_pages do
+    table.insert(tarot_options, localize('k_page')..' '..tostring(i)..'/'..tostring(num_tarot_pages))
+c 12
+s 1
+l 1
+
+c 17
+s 1
+l 1
+      1.3*G.CARD_H,
+c 1
+s 1
+r 15 3255 %20%20%20%20 -
+c 21
+s 1
+l 1
+
+c 17
+s 1
+l 1
+      1*G.CARD_H,
+c 1
+s 1
+r 15 3255 %20%20%20%20 -
+c 9
+r 4 614 %20%20%20%20%20%20 -
+c 7
+s 1
+l 1
+
+c 2
+s 1
+c 12
+s 1
+l 1
+      1*G.CARD_H,
+c 1
+s 1
+r 15 3255 %20%20%20%20 -
+c 9
+s 1
+l 1
+
+c 7
+s 2
+l 4
+  -- FIX: was using Tarot pool count (wrong) and math.floor (cuts last page)
+  local num_spectral_pages = math.ceil(#G.P_CENTER_POOLS.Spectral/9)
+  for i = 1, num_spectral_pages do
+    table.insert(spectral_options, localize('k_page')..' '..tostring(i)..'/'..tostring(num_spectral_pages))
+c 3
+s 1
+l 1
+
+c 17
+s 1
+l 1
+      1*G.CARD_H,
+c 1
+s 1
+r 15 3255 %20%20%20%20 -
+c 22
+s 1
+l 1
+
+c 15
+s 3
+l 1
+      1.03*G.CARD_H,
+r 15 3628 %20%20%20%20%20%20 -
+r 15 3255 %20%20%20%20 -
+c 8
+s 1
+l 2
+    -- FIX: guard against Cryptid seals not in G.shared_seals (prevents crash at card.lua:4547)
+    if G.shared_seals and G.shared_seals[v.key] then
+r 15 3799 %20%20%20%20%20%20 -
+l 1
+    end
+c 2
+s 1
+l 1
+
+c 7
+l 4
+  -- FIX: dynamic grid based on pool size (prevents crash when Cryptid adds more than 8 Enhanced types)
+  local pool = G.P_CENTER_POOLS["Enhanced"]
+  local items_per_row = 4
+  local num_rows = math.max(1, math.ceil(#pool / items_per_row))
+c 3
+s 1
+l 1
+  for j = 1, num_rows do
+c 3
+s 3
+l 2
+      1.03*G.CARD_H,
+      {card_limit = items_per_row, type = 'title', highlight_limit = 0})
+r 15 3255 %20%20%20%20 -
+c 6
+s 5
+l 5
+  local idx = 1
+  for j = 1, num_rows do
+    for i = 1, items_per_row do
+      local center = pool[idx]
+      if center then
+r 15 3829 %20%20%20%20%20%20%20%20 -
+r 15 3562 %20%20%20%20%20%20%20%20 -
+l 2
+      end
+      idx = idx + 1
+c 2
+s 1
+l 1
+
+c 11
+s 1
+l 1
+    1.03*G.CARD_H,
+c 1
+s 1
+l 1
+  local deck_tables =
+c 14
+s 1
+l 1
+
+c 8
+s 1
+l 1
+
+c 3
+s 1
+l 1
+    1.2*G.CARD_H,
+c 14
+s 1
+l 1
+
+c 1
+s 1
+r 15 3892 %20%20%20%20 -
+c 11
+s 1
+l 1
+                  }}
+c 7
+l 115
+-- ===== STAKES COLLECTION TAB =====
+function create_UIBox_your_collection_stakes()
+  local stake_list = {}
+  for k, v in pairs(G.P_STAKES) do
+    table.insert(stake_list, {key = k, data = v})
+  end
+  table.sort(stake_list, function(a, b) return (a.data.order or 0) < (b.data.order or 0) end)
+
+  local stake_descriptions = {
+    stake_white = "Base difficulty. No modifiers.",
+    stake_red = "+1 required ante to win.",
+    stake_green = "Required score scales faster.",
+    stake_black = "Shop can have Eternal jokers.",
+    stake_blue = "Shop items cost $1 more. Rerolls go up $2 each.",
+    stake_purple = "Required score scales even faster.",
+    stake_orange = "Shop can have Perishable jokers.",
+    stake_gold = "Shop can have Rental jokers.",
+    stake_chaos = "Booster Packs have -1 choice.",
+    stake_apocalypse = "Boss Blinds gain an additional effect.",
+    stake_oblivion = "1 random Joker slot disabled each round.",
+    stake_transcendent = "Boss Blinds are always Finisher Blinds.",
+  }
+
+  local stake_colors = {
+    stake_white = G.C.WHITE,
+    stake_red = G.C.RED,
+    stake_green = G.C.GREEN,
+    stake_black = G.C.BLACK,
+    stake_blue = G.C.BLUE,
+    stake_purple = G.C.PURPLE,
+    stake_orange = G.C.ORANGE,
+    stake_gold = G.C.GOLD,
+    stake_chaos = HEX('1a3a6b'),
+    stake_apocalypse = HEX('8b0000'),
+    stake_oblivion = G.C.BLACK,
+    stake_transcendent = HEX('e8d5b7'),
+  }
+
+  -- Determine highest stake beaten across all decks for unlock check
+  local highest_stake_beaten = 0
+  if G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile] then
+    local profile = G.PROFILES[G.SETTINGS.profile]
+    if profile.all_unlocked or profile.debug_unlocked then
+      highest_stake_beaten = 13
+    elseif profile.deck_usage then
+      for _, deck in pairs(profile.deck_usage) do
+        if deck.wins then
+          for s, _ in pairs(deck.wins) do
+            if type(s) == "number" and s > highest_stake_beaten then
+              highest_stake_beaten = s
+            end
+          end
+        end
+      end
+    end
+    -- Also check creative stake_progress
+    if profile.stake_progress then
+      for i = 1, 13 do
+        if profile.stake_progress[i] and i > highest_stake_beaten then
+          highest_stake_beaten = i
+        end
+      end
+    end
+  end
+
+  local stake_matrix = {}
+  for k, entry in ipairs(stake_list) do
+    local v = entry.data
+    local stake_level = v.stake_level or v.order or 0
+    -- Stake is unlocked if: it's stake 1 (always), or any deck has beaten the previous stake, or all_unlocked
+    local is_unlocked = stake_level <= 1 or stake_level <= (highest_stake_beaten + 1)
+    local col  = stake_colors[entry.key] or G.C.WHITE
+    local desc = stake_descriptions[entry.key] or ""
+
+    local temp_sprite
+    if stake_level >= 9 and type(get_stake_sprite) == "function" then
+      temp_sprite = get_stake_sprite(stake_level, 1.0)
+    else
+      temp_sprite = Sprite(0, 0, 1.0, 1.0, G.ASSET_ATLAS['chips'], v.pos or {x=0,y=0})
+    end
+
+    temp_sprite.states.hover.can    = true
+    temp_sprite.states.drag.can     = false
+    temp_sprite.states.collide.can  = true
+    temp_sprite:tilt_on_touch()
+    temp_sprite.config = {force_focus = true}
+
+    local ok_name, loc_name = pcall(localize, {type = 'name_text', set = 'Stake', key = entry.key})
+    local display_name  = (ok_name and type(loc_name) == "string" and loc_name ~= "ERROR" and loc_name) or v.name
+    local display_level = tostring(v.stake_level or v.order or "?")
+    local display_desc  = desc
+    local display_col   = col == G.C.BLACK and G.C.UI.TEXT_LIGHT or col
+
+    local popup_nodes = {
+      {n=G.UIT.R, config={align="cm"}, nodes={
+        {n=G.UIT.T, config={text=display_name, scale=0.4, colour=display_col, shadow=true}}
+      }},
+      {n=G.UIT.R, config={align="cm", padding=0.03}, nodes={
+        {n=G.UIT.T, config={text=mod_loc("Stake Level ")..display_level, scale=0.3, colour=G.C.WHITE}}
+      }},
+      {n=G.UIT.R, config={align="cm", padding=0.03, maxw=4}, nodes={
+        {n=G.UIT.T, config={text=mod_loc(display_desc), scale=0.25, colour=G.C.UI.TEXT_LIGHT}}
+      }},
+      {n=G.UIT.R, config={align="cm", padding=0.03}, nodes={
+        {n=G.UIT.T, config={text=is_unlocked and mod_loc("UNLOCKED") or mod_loc("LOCKED"), scale=0.28,
+          colour=is_unlocked and G.C.GREEN or G.C.RED}}
+      }},
+    }
+    if not is_unlocked then
+      table.insert(popup_nodes, {n=G.UIT.R, config={align="cm", padding=0.03, maxw=4}, nodes={
+        {n=G.UIT.T, config={text=mod_loc("Reach the previous stake to unlock this."), scale=0.25, colour=G.C.UI.TEXT_INACTIVE}}
+      }})
+    end
+
+    temp_sprite.hover = function()
+r 2 429 %20%20%20%20%20%20 -
+l 4
+        if not temp_sprite.hovering and temp_sprite.states.visible then
+          temp_sprite.hovering = true
+          temp_sprite.hover_tilt = 3
+          temp_sprite:juice_up(0.05, 0.02)
+r 2 434 %20%20%20%20%20%20%20%20%20%20 -
+l 34
+          temp_sprite.config.h_popup = {n=G.UIT.ROOT, config={align="cm", r=0.1, colour=G.C.L_BLACK, padding=0.1}, nodes=popup_nodes}
+          temp_sprite.config.h_popup_config = {align='cl', offset={x=-0.1,y=0}, parent=temp_sprite}
+          Node.hover(temp_sprite)
+        end
+      end
+      temp_sprite.stop_hover = function() temp_sprite.hovering = false; Node.stop_hover(temp_sprite); temp_sprite.hover_tilt = 0 end
+    end
+
+    local row_idx = math.ceil(k / 4)
+    if not stake_matrix[row_idx] then stake_matrix[row_idx] = {} end
+    table.insert(stake_matrix[row_idx], {n=G.UIT.C, config={align="cm", padding=0.10}, nodes={
+      {n=G.UIT.O, config={object=temp_sprite, focus_with_object=true}},
+    }})
+  end
+
+  local matrix_rows = {}
+  for _, row in ipairs(stake_matrix) do
+    if #row > 0 then
+      table.insert(matrix_rows, {n=G.UIT.R, config={align="cm", padding=0.05}, nodes=row})
+    end
+  end
+
+  local t = create_UIBox_generic_options({back_func='your_collection', contents={
+    {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("STAKES"), scale=0.5, colour=G.C.GOLD, shadow=true}}
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.03}, nodes={
+      {n=G.UIT.T, config={text=#stake_list.." "..mod_loc("difficulty stakes"), scale=0.28, colour=G.C.UI.TEXT_INACTIVE}}
+    }},
+    {n=G.UIT.R, config={align="cm", r=0.1, colour=G.C.BLACK, emboss=0.05, padding=0.15}, nodes=matrix_rows},
+  }})
+  return t
+end
+
+c 1
+s 3
+c 5
+s 1
+l 8
+  -- FIX: nil-guard sort so tags without order (Cryptid) don't crash
+  table.sort(tag_tab, function (a, b) return (a.order or 999) < (b.order or 999) end)
+
+  -- FIX: dynamic matrix — supports any number of tags (was hard-coded to 4 rows = 24 max)
+  local TAGS_PER_ROW = 6
+  local num_tag_rows = math.max(1, math.ceil(#tag_tab / TAGS_PER_ROW))
+  local tag_matrix = {}
+  for i = 1, num_tag_rows do tag_matrix[i] = {} end
+c 10
+s 1
+r 15 3932 %20%20%20%20 -
+c 9
+s 1
+r 3 87 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 8
+l 12
+        -- FIX: build rows dynamically instead of hard-coded tag_matrix[1..4]
+        (function()
+          local all_rows = {}
+          for r = 1, num_tag_rows do
+            if #tag_matrix[r] > 0 then
+              all_rows[#all_rows+1] = {n=G.UIT.R, config={align = "cm"}, nodes=tag_matrix[r]}
+            end
+          end
+          return {n=G.UIT.R, config={align = "cm"}, nodes=all_rows}
+        end)(),
+      }}
+    }}
+c 5
+s 3
+l 2
+  if bom_nemesis and bom_nemesis.ensure_registered then pcall(bom_nemesis.ensure_registered) end
+  -- FIX: dynamic matrix — was hard-coded to 6 rows (30 blinds max), Cryptid adds 20+ more
+c 2
+s 1
+l 1
+    if not v.rr_plain then blind_tab[#blind_tab+1] = v end
+c 2
+s 1
+l 7
+  -- FIX: Guard against nil order (e.g. bl_mp_nemesis) to prevent crash
+  table.sort(blind_tab, function (a, b) return (a.order or 999) < (b.order or 999) end)
+
+  local BLINDS_PER_ROW = 5
+  local num_blind_rows = math.max(1, math.ceil(#blind_tab / BLINDS_PER_ROW))
+  local blind_matrix = {}
+  for i = 1, num_blind_rows do blind_matrix[i] = {} end
+c 4
+s 1
+l 7
+    local blind_atlas = G.ANIMATION_ATLAS['blind_chips']
+    local blind_pos = discovered and v.pos or G.b_undiscovered.pos
+    if discovered and v.key == 'bl_mp_nemesis' and G.ANIMATION_ATLAS['mp_nemesis_chip'] then
+      blind_atlas = G.ANIMATION_ATLAS['mp_nemesis_chip']
+      blind_pos = {x = 0, y = 0}
+    end
+    local temp_blind = AnimatedSprite(0,0,1.3,1.3, blind_atlas, blind_pos)
+c 4
+s 1
+l 1
+    if k == 1 then
+c 12
+l 1
+    temp_blind:tilt_on_touch()
+c 1
+s 1
+r 15 3932 %20%20%20%20 -
+c 3
+s 1
+r 2 429 %20%20%20%20%20%20 -
+c 8
+s 1
+r 15 4013 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 21
+s 1
+r 3 87 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 9
+s 1
+r 15 4045 %20%20 -
+c 1
+s 1
+r 15 4047 %20%20%20%20 -
+c 15
+s 1
+l 1
+
+c 15
+s 10
+l 12
+      -- FIX: build blind rows dynamically instead of hard-coded blind_matrix[1..6]
+      (function()
+        local all_blind_rows = {}
+        for r = 1, num_blind_rows do
+          if #blind_matrix[r] > 0 then
+            all_blind_rows[#all_blind_rows+1] = {n=G.UIT.R, config={align = "cm"}, nodes=blind_matrix[r]}
+          end
+        end
+        return {n=G.UIT.R, config={align = "cm"}, nodes=all_blind_rows}
+      end)(),
+    }}
+  }}
+c 6
+s 1
+l 1
+
+c 4
+s 1
+l 1
+  if discovered then
+c 1
+s 1
+l 1
+    if loc_target then
+c 37
+s 1
+l 1
+end
+c 6
+s 3
+l 1
+    1*G.CARD_H,
+e 15 3544 %20%20%20%20 - =14,-1,+%32,=15,+%5F%32,=24,-2,+%66,=1,-3,+%61,=1,-3,=9
+l 1
+
+c 4
+s 1
+e 15 4154 %20%20 - +%2D%2D,=29
+c 17
+s 1
+l 1
+    trigger = 'after',
+c 1
+s 1
+l 1
+    func = (function()
+c 7
+s 1
+l 1
+    trigger = 'after',
+c 1
+s 2
+l 1
+    func = (function()
+r 15 4185 %20%20%20%20%20%20 -
+c 9
+s 1
+l 1
+
+c 33
+s 1
+l 1
+    1.2*G.CARD_H,
+c 16
+s 1
+r 15 4246 %20%20 -
+c 81
+s 1
+l 2
+function G.UIDEF.credits(opts)
+  opts = opts or {}
+c 1
+s 1
+l 4
+  local t =   create_UIBox_generic_options({back_func = opts.back, contents ={
+      {n=G.UIT.R, config={align = "cm", padding = 0.05, id = 'credits_title'}, nodes={
+        {n=G.UIT.T, config={text = localize('b_credits'), scale = (UIK and UIK.touch and UIK.touch()) and 0.5 or 0.45, colour = G.C.GOLD, shadow = true}},
+      }},
+c 5
+s 2
+l 1
+              chosen = opts.tab ~= 'patreon',
+r 15 4337 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 200
+s 1
+l 1
+
+c 2
+s 1
+l 1
+
+c 5
+s 1
+r 15 4337 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 257
+s 1
+c 194
+s 1
+l 1
+
+c 4
+s 1
+l 1
+
+c 4
+s 1
+l 1
+                return
+c 2
+s 1
+r 15 5013 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 8
+s 1
+r 15 4337 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 50
+s 1
+r 15 4337 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 10
+s 1
+r 15 5084 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 33
+s 1
+r 15 4337 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 80
+l 2
+            {
+              label = 'Overhaul',
+r 15 4337 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 4338 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                  {n=G.UIT.R, config={align = "cm", padding = 0.1, outline_colour = G.C.JOKER_GREY, r = 0.1, outline = 1}, nodes={
+r 15 71 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                      {n=G.UIT.T, config={text = 'Balatro Overhaul', scale = text_scale*0.6, colour = G.C.GOLD, shadow = true}},
+                    }},
+r 15 629 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 27
+                      {n=G.UIT.T, config={text = 'Jupiterian Soul  -  Developer', scale = text_scale*0.5, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+                    }},
+                  }},
+                  {n=G.UIT.R, config={align = "cm", padding = 0.1, outline_colour = G.C.JOKER_GREY, r = 0.1, outline = 1}, nodes={
+                    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+                      {n=G.UIT.T, config={text = mod_loc('Multiplayer based on'), scale = text_scale*0.45, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+                    }},
+                    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+                      {n=G.UIT.T, config={text = 'Balatro Multiplayer', scale = text_scale*0.65, colour = G.C.BLUE, shadow = true}},
+                    }},
+                    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+                      {n=G.UIT.T, config={text = mod_loc('by Virtualized and the BMP team'), scale = text_scale*0.5, colour = G.C.GOLD, shadow = true}},
+                    }},
+                  }},
+                  {n=G.UIT.R, config={align = "cm", padding = 0.1, outline_colour = G.C.JOKER_GREY, r = 0.1, outline = 1}, nodes={
+                    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+                      {n=G.UIT.T, config={text = mod_loc('Also built on'), scale = text_scale*0.45, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+                    }},
+                    {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+                      {n=G.UIT.T, config={text = 'Steamodded', scale = text_scale*0.5, colour = G.C.BLUE, shadow = true}},
+                      {n=G.UIT.T, config={text = '  -  ', scale = text_scale*0.5, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+                      {n=G.UIT.T, config={text = 'Balatro-DeckCreator', scale = text_scale*0.5, colour = G.C.BLUE, shadow = true}},
+                      {n=G.UIT.T, config={text = '  -  ', scale = text_scale*0.5, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+                      {n=G.UIT.T, config={text = 'Cryptid', scale = text_scale*0.5, colour = G.C.BLUE, shadow = true}},
+                    }},
+                  }},
+                  {n=G.UIT.R, config={align = "cm", padding = 0.1, outline_colour = G.C.JOKER_GREY, r = 0.1, outline = 1}, nodes={
+r 15 71 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                      {n=G.UIT.T, config={text = mod_loc('Special thanks'), scale = text_scale*0.6, colour = G.C.GOLD, shadow = true}},
+                    }},
+r 15 629 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 5
+                      {n=G.UIT.C, config={align = "cm", minw = 2.6, padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Samlegeek63', scale = text_scale*0.5, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                      {n=G.UIT.C, config={align = "cm", minw = 2.6, padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Monoceros', scale = text_scale*0.5, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                    }},
+                  }},
+                  (not rawget(_G, 'RELEASE_BUILD')) and {n=G.UIT.R, config={align = "cm", padding = 0.1, outline_colour = G.C.JOKER_GREY, r = 0.1, outline = 1}, nodes={
+r 15 71 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                      {n=G.UIT.T, config={text = 'Jukebox Music', scale = text_scale*0.6, colour = G.C.GREEN, shadow = true}},
+                    }},
+r 15 629 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 67
+                      {n=G.UIT.C, config={align = "tm", padding = 0.05, minw = 2.4}, nodes={
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = '123connorpoop', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Adam Isiah', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'AirRice', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Anything_F_744', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'BuzzyBee Music', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'CRANK', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Dom Palombi', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'EzioEagle', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Fickle Films', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'gorgo', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'InstrumentManiac', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'JAUWNTUBE', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                      }},
+                      {n=G.UIT.C, config={align = "tm", padding = 0.05, minw = 2.4}, nodes={
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'jac k', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'JonahZgo', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'KevinIsNotSeven', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Klei Entertainment', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Ko-Ko', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Kool Cat the Martian', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = "Linzer's Edits", scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Liquid Beats', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Logan Feece Music', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Lucas Pucas', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Machine Gamer 728', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Mattmatatt / OC ReMix', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                      }},
+                      {n=G.UIT.C, config={align = "tm", padding = 0.05, minw = 2.4}, nodes={
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Maxim Tsai', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Moorah', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Nikoheart VGM Remixes', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'NoteBlock', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Oli B', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Oofator', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Pavel Richer', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Pyzzabox', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Rob Allison', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Robert Rosenbrook', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'robtheimpure', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Roach', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                      }},
+                      {n=G.UIT.C, config={align = "tm", padding = 0.05, minw = 2.4}, nodes={
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'rocketbirdie', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'sebastien skaf', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Shimachine Prods', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'SiIvaGunner', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'tdstr', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Tezbright', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'The Jungle Jim', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'ValkyRiver', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Wanye', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Xoic3s', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Yaps Beats', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                        {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = 'Yetet', scale = text_scale*0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}},
+                      }},
+                    }},
+                  }} or nil,
+                }}
+              end,
+            },
+            {
+              label = 'Ko-fi',
+              chosen = opts.tab == 'patreon',
+              func = 'ri_rainbow',
+              tab_definition_function = function() return ReleaseInfo.patreon_tab() end,
+            },
+c 1
+l 1
+        scale = 0.86, text_scale = 0.45,
+c 3
+l 9
+  if UIK and UIK.touch and UIK.touch() and not UIK.portrait() then
+    local function drop(node)
+      for i, c in ipairs(node.nodes or {}) do
+        if c.config and c.config.id == 'credits_title' then table.remove(node.nodes, i) return true end
+        if drop(c) then return true end
+      end
+    end
+    drop(t)
+  end
+c 5
+s 1
+l 1
+  if G.PROFILES[G.SETTINGS.profile].all_unlocked or G.PROFILES[G.SETTINGS.profile].debug_unlocked then G.PROFILES[G.SETTINGS.profile].challenges_unlocked = #G.CHALLENGES end
+c 17
+s 1
+r 23 214 %20%20 -
+c 4
+s 1
+l 1
+
+c 58
+s 1
+r 15 5290 %20%20 -
+c 51
+s 25
+l 7
+  local tabs = {
+    {label = 1, chosen = G.focused_profile == 1, tab_definition_function = G.UIDEF.profile_option, tab_definition_function_args = 1},
+    {label = 2, chosen = G.focused_profile == 2, tab_definition_function = G.UIDEF.profile_option, tab_definition_function_args = 2},
+    {label = 3, chosen = G.focused_profile == 3, tab_definition_function = G.UIDEF.profile_option, tab_definition_function_args = 3},
+  }
+
+  local t = create_UIBox_generic_options({padding = 0, contents = {
+r 15 5343 %20%20%20%20 -
+l 2
+      create_tabs({tabs = tabs, snap_to_nav = true}),
+    }},
+c 7
+s 6
+r 4 242 %20%20 -
+l 2
+  local stored = G.FILES[_profile..'/profile.jkr']
+  local profile_data = (stored and next(stored) and not stored.deleted) and stored or nil
+r 15 5375 %20%20 -
+r 15 5377 %20%20%20%20 -
+l 3
+  end
+  local _shared_name = PlayerName and PlayerName.shared and PlayerName.shared()
+  G.PROFILES[_profile].name = _shared_name or (profile_data and profile_data.name) or ''
+c 8
+s 2
+e 15 5388 %20%20%20%20%20%20%20%20%20%20 - =95,-1,+%32,=1
+r 15 5389 %20%20%20%20%20%20%20%20%20%20 -
+l 1
+            if PlayerName and PlayerName.remember then PlayerName.remember(G.PROFILES[_profile].name) end
+c 34
+s 1
+l 1
+          (_profile == G.SETTINGS.profile and not G.PROFILES[G.SETTINGS.profile].all_unlocked and not G.PROFILES[G.SETTINGS.profile].debug_unlocked) and {n=G.UIT.R, config={align = "cm", padding = 0, minh = 0.7}, nodes={
+c 4
+s 1
+r 15 5429 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 8
+s 1
+l 1
+  }}
+c 6
+s 1
+r 15 5445 %20%20 -
+c 6
+l 12
+  -- Custom name colors for creative stakes
+  local name_colour = G.C.WHITE
+  if _stake_center and _stake_center.key then
+    local stake_name_colours = {
+      stake_chaos = HEX('1a3a6b'),       -- dark blue
+      stake_apocalypse = HEX('8b0000'),   -- dark red
+      stake_oblivion = G.C.BLACK,         -- black
+      stake_transcendent = HEX('e8d5b7'), -- ivory/light gold (unchanged)
+    }
+    name_colour = stake_name_colours[_stake_center.key] or G.C.WHITE
+  end
+
+c 2
+s 1
+l 1
+      {n=G.UIT.T, config={text = localize{type = 'name_text', key = _stake_center.key, set = _stake_center.set}, scale = 0.35, colour = name_colour}}
+c 11
+s 1
+l 1
+  if G.PROFILES[G.SETTINGS.profile].all_unlocked or G.PROFILES[G.SETTINGS.profile].debug_unlocked then max_stake = 12 end
+c 1
+s 1
+l 1
+  for i = 1, math.min(max_stake+1, 12) do
+c 3
+s 1
+r 15 5472 %20%20 -
+c 9
+s 2
+l 1
+  if G.PROFILES[G.SETTINGS.profile].all_unlocked or G.PROFILES[G.SETTINGS.profile].debug_unlocked then max_stake = 12 end
+c 2
+s 1
+l 1
+
+c 59
+s 1
+l 2
+      -- FIX: Custom challenges (k > 20) are always unlocked; only vanilla challenges require progress
+      local challenge_unlocked = (G.PROFILES[G.SETTINGS.profile].challenges_unlocked and (G.PROFILES[G.SETTINGS.profile].challenges_unlocked >= k)) or (k > 20)
+c 1
+s 1
+r 15 5548 %20%20%20%20%20%20 -
+c 10
+s 1
+l 1
+      }}
+c 5
+l 33
+end
+
+-- ============================================
+-- ACHIEVEMENTS LIST (tile-based like profile/stats)
+-- ============================================
+
+function G.UIDEF.achievements_list()
+  G.ACH_PAGE_SIZE = 5
+
+  -- Count achievements
+  local total = 0
+  local unlocked = 0
+
+  if G.ACHIEVEMENTS then
+    for id, data in pairs(G.ACHIEVEMENTS) do
+      total = total + 1
+      if data.earned then unlocked = unlocked + 1 end
+    end
+  end
+
+  local pct = total > 0 and (unlocked / total) or 0
+
+  -- Page options
+  local ach_pages = {}
+  local page_count = math.max(1, math.ceil(total / G.ACH_PAGE_SIZE))
+  for i = 1, page_count do
+    table.insert(ach_pages, localize('k_page')..' '..tostring(i)..'/'..tostring(page_count))
+  end
+
+  -- Progress data for bar
+  G.ACH_PROGRESS = {tally = unlocked, of = total}
+
+  -- Queue first page load
+r 15 5508 %20%20 -
+l 8
+    G.FUNCS.change_ach_list_page{cycle_config = {current_option = 1}}
+    return true
+  end)}))
+
+  local t = create_UIBox_generic_options({
+    back_func = 'options',
+    contents = {
+      -- Title
+r 15 723 %20%20%20%20%20%20 -
+l 4
+        {n=G.UIT.T, config={text = mod_loc("ACHIEVEMENTS"), scale = 0.6, colour = G.C.GOLD, shadow = true}}
+      }},
+      -- Progress bar tile (like create_progress_box style)
+      {n=G.UIT.R, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes={
+r 15 71 %20%20%20%20%20%20%20%20 -
+l 19
+          {n=G.UIT.C, config={align = "cm", padding = 0.05, minw = 2}, nodes={
+            {n=G.UIT.T, config={text = localize('k_progress'), scale = 0.45, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+          }},
+          {n=G.UIT.C, config={align = "cl", minh = 0.5, r = 0.1, minw = 4, colour = G.C.BLACK, emboss = 0.05,
+            progress_bar = {
+              max = total, ref_table = G.ACH_PROGRESS, ref_value = 'tally', empty_col = G.C.BLACK, filled_col = adjust_alpha(G.C.GOLD, 0.5)
+            }}, nodes={
+            {n=G.UIT.C, config={align = "cm", padding = 0.05, r = 0.1, minw = 4}, nodes={
+              {n=G.UIT.O, config={object = DynaText({string = {math.floor(0.01+100*pct)..'%'}, colours = {G.C.WHITE}, shadow = true, float = true, scale = 0.5})}},
+              {n=G.UIT.T, config={text = " ("..unlocked.."/"..total..")", scale = 0.35, colour = G.C.JOKER_GREY}}
+            }},
+          }},
+        }},
+      }},
+      -- Achievements list area
+      {n=G.UIT.R, config={align = "cm", padding = 0.1, minh = 4.2, minw = 7}, nodes={
+        {n=G.UIT.O, config={id = 'ach_list', object = Moveable()}}
+      }},
+      -- Page selector
+r 15 723 %20%20%20%20%20%20 -
+l 51
+        create_option_cycle({id = 'ach_page', scale = 0.9, h = 0.3, w = 3.5, options = ach_pages, cycle_shoulders = true, opt_callback = 'change_ach_list_page', current_option = 1, colour = G.C.RED, no_pips = true, focus_args = {snap_to = true}})
+      }}
+    }
+  })
+
+  return t
+end
+
+function G.UIDEF.achievements_list_page(_page)
+  local rows = {}
+  local all_achs = {}
+
+  -- Collect vanilla achievements
+  if G.ACHIEVEMENTS then
+    for id, data in pairs(G.ACHIEVEMENTS) do
+      local name = id
+      if localize then
+        local n = localize(id, 'achievement_names')
+        if n and n ~= "ERROR" then name = n end
+      end
+      local rarity = "Common"
+      if data.tier == 1 then rarity = "Legendary"
+      elseif data.tier == 2 then rarity = "Rare" end
+      table.insert(all_achs, {
+        id = id,
+        name = name,
+        rarity = rarity,
+        unlocked = data.earned == true,
+        order = data.order or 999
+      })
+    end
+  end
+
+  -- Sort by order
+  table.sort(all_achs, function(a, b)
+    return (a.order or 999) < (b.order or 999)
+  end)
+
+  -- Build tile rows for current page (like create_progress_box style)
+  for k, ach in ipairs(all_achs) do
+    if k > G.ACH_PAGE_SIZE * (_page or 0) and k <= G.ACH_PAGE_SIZE * ((_page or 0) + 1) then
+      -- Rarity color
+      local rar_col = G.C.GREY
+      if ach.rarity == "Rare" then rar_col = G.C.BLUE
+      elseif ach.rarity == "Legendary" then rar_col = G.C.GOLD end
+
+      -- Status indicator
+      local status_col = ach.unlocked and G.C.GREEN or darken(G.C.RED, 0.3)
+      local status_text = ach.unlocked and "UNLOCKED" or "LOCKED"
+
+      -- Tile row (same style as create_progress_box)
+r 15 2663 %20%20%20%20%20%20 -
+l 27
+        -- Achievement name column
+        {n=G.UIT.C, config={align = "cl", padding = 0.05, minw = 3.2, maxw = 3.2}, nodes={
+          {n=G.UIT.T, config={text = ach.name, scale = 0.38, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+        -- Rarity badge column
+        {n=G.UIT.C, config={align = "cm", r = 0.1, minh = 0.5, minw = 1.2, colour = G.C.BLACK, emboss = 0.05, padding = 0.03}, nodes={
+          {n=G.UIT.C, config={align = "cm", r = 0.1, minw = 1.1, colour = rar_col, padding = 0.02}, nodes={
+            {n=G.UIT.T, config={text = ach.rarity, scale = 0.25, colour = G.C.WHITE}}
+          }},
+        }},
+        -- Status badge column
+        {n=G.UIT.C, config={align = "cm", r = 0.1, minh = 0.5, minw = 1.4, colour = G.C.BLACK, emboss = 0.05, padding = 0.03}, nodes={
+          {n=G.UIT.C, config={align = "cm", r = 0.1, minw = 1.3, colour = status_col, padding = 0.02}, nodes={
+            {n=G.UIT.T, config={text = status_text, scale = 0.22, colour = G.C.WHITE}}
+          }},
+        }},
+      }}
+    end
+  end
+
+  if #rows == 0 then
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.5, r = 0.1, colour = darken(G.C.JOKER_GREY, 0.1), emboss = 0.05}, nodes={
+      {n=G.UIT.T, config={text = mod_loc("No achievements"), scale = 0.4, colour = G.C.UI.TEXT_INACTIVE}}
+    }}
+  end
+
+  return {n=G.UIT.ROOT, config={align = "cm", padding = 0.1, colour = G.C.CLEAR}, nodes=rows}
+c 9
+s 1
+l 1
+      0.6*G.CARD_H,
+c 2
+s 2
+l 1
+
+r 15 5578 %20%20 -
+c 18
+s 1
+l 1
+    0.6*G.CARD_H,
+c 3
+s 1
+r 15 5601 %20%20 -
+c 17
+s 1
+l 1
+    0.6*G.CARD_H,
+c 3
+s 1
+r 15 5623 %20%20 -
+c 15
+s 1
+l 1
+
+c 76
+s 1
+l 1
+
+c 17
+s 1
+l 1
+        end
+c 49
+s 1
+r 15 5784 %20%20%20%20%20%20%20%20%20%20 -
+c 15
+s 1
+l 1
+
+c 5
+s 1
+r 15 5806 %20%20%20%20%20%20%20%20%20%20 -
+c 13
+s 1
+l 1
+
+c 12
+l 1
+          temp_blind:tilt_on_touch()
+c 2
+s 1
+r 2 429 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 13
+s 1
+r 15 5849 %20%20%20%20%20%20%20%20%20%20 -
+c 15
+s 1
+r 15 5865 %20%20%20%20%20%20 -
+c 8
+s 1
+r 15 5874 %20%20%20%20%20%20 -
+c 7
+s 1
+r 15 5882 %20%20%20%20%20%20 -
+c 28
+s 1
+r 15 5911 %20%20%20%20 -
+c 13
+s 1
+l 1
+
+c 2
+s 1
+l 1
+    end
+c 15
+s 1
+r 15 3255 %20%20%20%20%20%20 -
+c 17
+s 4
+l 2
+  G.SAVED_GAME = G.SAVED_GAME or G.FILES[G.focused_profile..'/save.jkr']
+  if G.SAVED_GAME then G:plain_saved_numbers(G.SAVED_GAME) end
+c 6
+s 2
+r 15 5972 %20%20 -
+c 13
+s 1
+r 23 214 %20%20%20%20 -
+c 7
+s 1
+r 23 214 %20%20%20%20 -
+c 8
+s 1
+l 1
+    G.CARD_H,
+c 61
+s 1
+l 1
+                            }}
+c 3
+s 2
+l 2
+                          }}
+                        }}
+c 2
+s 1
+r 15 6074 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+                                  }}
+c 3
+s 2
+l 2
+                                }}
+                              }}
+c 27
+s 1
+r 4 1868 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 4
+                     type == 'New Run' and not (G.GAME and G.GAME.multiplayer) and {n=G.UIT.C, config={align = "cm", minw = 2, minh = 0.7, padding = 0.15, r = 0.1, hover = true, colour = G.C.YELLOW, button = "open_mod_menu_fullscreen", shadow = true}, nodes={
+                       {n=G.UIT.T, config={text = mod_loc("CHEATS"), scale = 0.5, colour = G.C.UI.TEXT_LIGHT}}
+                     }} or nil
+                   }}
+c 48
+s 1
+r 15 6169 %20%20 -
+c 10
+s 1
+e 15 6176 %20%20%20%20%20%20%20%20%20%20 - =20,+%72%65%66%5F,=1,+%61%62%6C,=1,-2,=3,-3,+%47%2C%20%72%65%66%5F%76,=2,-2,+%75,=1,-1,+%20%3D%20,=1,-2,=7,+%5F%64%69%73%70%6C%61%79,=1,-1,=58
+c 1
+s 1
+l 1
+      }},
+c 12
+s 14
+l 4
+  local text_scale = 0.497  -- was 0.585, scaled -15%
+  local _desk = true
+  local k = _desk and 1.2 or 1
+
+r 15 2219 %20%20 -
+c 2
+l 52
+  local _mods_on = G.FUNCS.mods_button and true or false
+  local _modded_game = _mods_on and MODLOADER and MODLOADER.modded and true or false
+  local _show_mode = _modded_game or (_mods_on and MODS_INSTALLED and MODS_INSTALLED())
+  if CORNER_LABELS then CORNER_LABELS.mode_available = _show_mode and true or false end
+  local _side_w = _desk and 2.9*k or 2.9
+  local _side_h = _desk and 0.45*k or 0.7
+  local _side_gap = _desk and 0.06*k or 0.09
+  local _side_text = _desk and text_scale*0.75*k or text_scale*0.82
+  local _big_h = _desk and 1.46*k or (3*_side_h + 2*_side_gap)
+  local _big_text = _desk and text_scale*1.71*k or text_scale*1.85
+  local _right_n = 2 + (G.F_QUIT_BUTTON and 1 or 0)
+  local _right_h = _desk and (G.F_QUIT_BUTTON and 0.45 or 0.7)*k or ((_big_h - (_right_n - 1)*_side_gap)/_right_n)
+  local _right_text = (_desk and not G.F_QUIT_BUTTON) and text_scale*0.9*k or (_desk and _side_text or (_right_n == 2 and text_scale*1.03 or _side_text))
+
+  local function side_column(specs, h, scale)
+    local nodes = {}
+    for i, v in ipairs(specs) do
+      if i > 1 then nodes[#nodes+1] = {n=G.UIT.R, config={align = "cm", minh = _side_gap}, nodes={}} end
+      nodes[#nodes+1] = UIBox_button{id = v.id, button = v.button, colour = v.colour, minw = _side_w, minh = h, label = {v.label}, scale = scale}
+    end
+    return {n=G.UIT.C, config={align = "cm"}, nodes=nodes}
+  end
+  local left_specs = {
+    {id = 'achievements_button', button = "open_achievements_menu", colour = G.C.PALE_GREEN, label = string.upper(mod_loc("Achievements"))},
+    {id = 'collection_button', button = "your_collection", colour = G.C.ORANGE, label = localize('b_collection_cap')},
+  }
+  if _mods_on then left_specs[3] = {id = 'progression_button', button = "open_progression_screen", colour = G.C.GREEN, label = string.upper(mod_loc("Progression"))} end
+  local right_specs = {
+    _mods_on and {id = 'tavern_button', button = "open_tavern_hub", colour = G.C.GREEN, label = string.upper(mod_loc("The Casino"))}
+      or {id = 'progression_button', button = "open_progression_screen", colour = G.C.GREEN, label = string.upper(mod_loc("Progression"))},
+    {button = 'options', colour = G.C.ORANGE, label = localize('b_options_cap')},
+  }
+  if G.F_QUIT_BUTTON then right_specs[3] = {button = quit_func, colour = G.C.RED, label = localize('b_quit_cap')} end
+  local _mpm = rawget(_G, 'mpm_menu')
+  local _mp = _mpm and _mpm.active and true or false
+  if _mp then
+    left_specs = _mpm.left_specs()
+    right_specs = _mpm.right_specs(quit_func)
+  end
+  local _left_three = _mods_on or _mp
+  local _left_h = _desk and (_left_three and 0.45*k or 0.7*k) or ((_big_h - (#left_specs - 1)*_side_gap)/#left_specs)
+  local _left_text = _desk and (_left_three and _side_text or text_scale*0.9*k) or (#left_specs == 2 and text_scale*1.03 or _side_text)
+  local _big_w = 3.45*k
+  local _big_nodes
+  if _mp then
+    _big_nodes = {}
+    for _, v in ipairs(_mpm.big_specs()) do
+      _big_nodes[#_big_nodes + 1] = v.mods and _mpm.mods_button(_big_w, _big_h, _big_text)
+        or UIBox_button{id = v.id, button = v.button, colour = G.C.BLUE, minw = _big_w, minh = _big_h, label = {v.label}, scale = _big_text, col = true}
+    end
+  end
+  local _panel_w = 2*_side_w + 3*_big_w + 6*0.22*k
+c 2
+s 10
+r 15 6213 %20%20%20%20 -
+r 15 6214 %20%20%20%20%20%20 -
+l 17
+        nil,
+        (not (G.SETTINGS.tutorial_complete and G.SETTINGS.showcase_seen)) and {n=G.UIT.R, config={align = "cm", padding = 0.12*k}, nodes={
+          UIBox_button{id = 'skip_tutorial_button', button = 'skip_tutorial', colour = G.C.ORANGE, minw = _side_w, minh = _desk and 0.5*k or 0.8, label = {string.upper(mod_loc("Skip Tutorial"))}, scale = _side_text},
+        }} or nil,
+        OverhaulUpdate and OverhaulUpdate.menu_row(_side_w, _desk and 0.5*k or 0.8, _side_text, 0.12*k) or nil,
+        _mp and _mpm.bell_row(_panel_w) or nil,
+        _mp and {n=G.UIT.R, config={align = "cm", padding = 0.22*k, r = 0.1, emboss = 0.1, colour = G.C.L_BLACK, mid = true}, nodes={
+          side_column(left_specs, _left_h, _left_text),
+          _big_nodes[1], _big_nodes[2], _big_nodes[3],
+          side_column(right_specs, _right_h, _right_text),
+        }} or {n=G.UIT.R, config={align = "cm", padding = 0.22*k, r = 0.1, emboss = 0.1, colour = G.C.L_BLACK, mid = true}, nodes={
+          side_column(left_specs, _left_h, _left_text),
+          UIBox_button{id = 'main_menu_play', button = not G.SETTINGS.tutorial_complete and "start_run" or "setup_run", colour = G.C.BLUE, minw = 3.45*k, minh = _big_h, label = {localize('b_play_cap')}, scale = _big_text, col = true},
+          _mods_on and UIBox_button{id = 'mods_button', button = "mods_button", colour = G.C.BLUE, minw = 3.45*k, minh = _big_h, label = {string.upper(mod_loc("Mods"))}, scale = _big_text, col = true}
+            or UIBox_button{id = 'tavern_button', button = "open_tavern_hub", colour = G.C.BLUE, minw = 3.45*k, minh = _big_h, label = {string.upper(mod_loc("The Casino"))}, scale = _big_text, col = true},
+          UIBox_button{id = 'multiplayer_button', button = "mpm_enter", colour = G.C.BLUE, minw = 3.45*k, minh = _big_h, label = {string.upper(mod_loc("Multiplayer"))}, scale = _big_text, col = true},
+          side_column(right_specs, _right_h, _right_text),
+c 1
+s 16
+c 5
+l 29
+G.UIDEF.profile_icon_frame = function()
+  local profile_icon_nodes = {}
+  pcall(function()
+    if ProfileRewardsManager and ProfileRewardsManager.get_equipped_icon then
+      local icon_key = ProfileRewardsManager.get_equipped_icon()
+      if icon_key and G.P_CENTERS and G.P_CENTERS[icon_key] then
+        local center = G.P_CENTERS[icon_key]
+        local icon_sprite = Sprite(0, 0, 0.9*G.CARD_W, 0.9*G.CARD_H,
+          G.ASSET_ATLAS[center.atlas or "Joker"] or G.ASSET_ATLAS["Joker"], center.pos)
+        icon_sprite.states.drag.can = false
+        icon_sprite.states.collide.can = false
+
+        -- Apply icon effect shader if equipped
+        local icon_effect = nil
+        pcall(function()
+          if AshCardManager and AshCardManager.get_equipped_icon_effect then
+            icon_effect = AshCardManager.get_equipped_icon_effect()
+          end
+        end)
+        if icon_effect then
+          local effect_def = nil
+          pcall(function()
+            for _, eff in ipairs(SHOP_ICON_EFFECTS) do
+              if eff.id == icon_effect then effect_def = eff; break end
+            end
+          end)
+          if effect_def and effect_def.shader then
+            -- Order: shadow → base dissolve → edition overlay (matches Card:draw() order)
+            icon_sprite:define_draw_steps({
+r 15 662 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 5 505 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 49
+              {shader = effect_def.shader},
+            })
+          end
+        end
+
+        -- Legendary jokers have soul_pos: overlay floating sprite ON TOP of the base card
+        if center.soul_pos then
+          local soul_sprite = Sprite(0, 0, 0.9*G.CARD_W, 0.9*G.CARD_H,
+            G.ASSET_ATLAS[center.atlas or "Joker"] or G.ASSET_ATLAS["Joker"], center.soul_pos)
+          soul_sprite.states.drag.can = false
+          soul_sprite.states.collide.can = false
+          soul_sprite:set_role({major = icon_sprite, role_type = 'Glued', draw_major = icon_sprite})
+          icon_sprite.children = icon_sprite.children or {}
+          icon_sprite.children.floating_sprite = soul_sprite
+          -- Override draw to render both base + floating sprite on top
+          local _orig_draw = icon_sprite.draw
+          local _soul_effect_def = effect_def  -- capture for draw closure
+          icon_sprite.draw = function(self)
+            if _orig_draw then _orig_draw(self) end
+            if self.children and self.children.floating_sprite then
+              local fs = self.children.floating_sprite
+              local scale_mod = 0.07 + 0.02*math.sin(1.8*G.TIMERS.REAL)
+              local rotate_mod = 0.05*math.sin(1.219*G.TIMERS.REAL)
+              fs:draw_shader('dissolve', 0, nil, nil, self, scale_mod, rotate_mod, nil, 0.1 + 0.03*math.sin(1.8*G.TIMERS.REAL), nil, 0.6)
+              fs:draw_shader('dissolve', nil, nil, nil, self, scale_mod, rotate_mod)
+              -- Apply icon effect shader to floating sprite too
+              if _soul_effect_def and _soul_effect_def.shader then
+                fs:draw_shader(_soul_effect_def.shader, nil, nil, nil, self, scale_mod, rotate_mod)
+              end
+            end
+          end
+        end
+        profile_icon_nodes = {{n=G.UIT.O, config={object = icon_sprite}}}
+      end
+    end
+  end)
+  return {n=G.UIT.ROOT, config={align="cm", colour=G.C.CLEAR}, nodes={
+    {n=G.UIT.C, config={align="cm", padding=0.1}, nodes={
+      {n=G.UIT.R, config={align="cm", padding=0.08, r=0.1, colour=G.C.L_BLACK, emboss=0.05}, nodes={
+        {n=G.UIT.R, config={align="cm", padding=0.06, r=0.08, colour=G.C.BLACK,
+          outline=1, outline_colour=G.C.GOLD, minw=0.9*G.CARD_W, minh=0.9*G.CARD_H}, nodes=
+          #profile_icon_nodes > 0 and profile_icon_nodes or
+          {{n=G.UIT.T, config={text="?", scale=0.7, colour=G.C.GREY, shadow=true}}}
+        },
+      }},
+    }},
+  }}
+end
+
+c 3
+s 1
+r 15 6213 %20%20%20%20 -
+c 13
+s 1
+r 15 6262 - -
+c 3
+s 1
+l 1
+    if not v.omit then
+c 13
+s 1
+r 15 6280 %20%20%20%20 -
+c 4
+s 1
+l 1
+
+c 25
+s 2
+l 2
+  local contents = args.contents or ({n=G.UIT.T, config={text = mod_loc("EMPTY"),colour = G.C.UI.RED, scale = 0.4}})
+  if args.infotip then
+c 7
+s 2
+r 15 6320 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 15 6321 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 11
+s 1
+l 1
+  return {n=G.UIT.ROOT, config = {align = "cm", minw = G.ROOM.T.w*5, minh = G.ROOM.T.h*5,padding = 0.1, r = 0.1, colour = args.bg_colour or {G.C.GREY[1], G.C.GREY[2], G.C.GREY[3],0.7}, back_func = back_func}, nodes={
+c 1
+s 1
+e 15 6335 %20%20%20%20%20%20 - =64,-1,+%31%35,=57
+c 3
+s 1
+e 15 6339 %20%20%20%20%20%20%20%20 - =114,+%2C%20%6D%69%6E%68%20%3D%20%30%2E%38,=224
+c 25
+s 1
+r 15 6365 %20%20 -
+c 1
+s 1
+r 15 6367 %20%20%20%20%20%20 -
+c 28
+s 2
+r 15 6396 %20%20 -
+r 15 6397 %20%20%20%20 -
+c 7
+s 2
+l 1
+  if args.count then
+r 15 6406 %20%20%20%20 -
+c 1
+s 1
+e 15 6408 %20%20%20%20%20%20 - =80,+%6C%61%6E%67%20%3D%20%47%2E%4C%41%4E%47%55%41%47%45%53%5B%27%65%6E%2D%75%73%27%5D%2C%20,=22
+c 4
+s 1
+l 1
+  return
+c 18
+l 1
+      ref_value = args.ref_value,
+c 5
+end

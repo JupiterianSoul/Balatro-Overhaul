@@ -1,0 +1,425 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 94
+local RA = {}
+
+local W, H = 71, 95
+local CHIP, FRAMES = 34, 21
+local FONT_FILE = "resources/fonts/m6x11plus.ttf"
+local INK = {0.16, 0.13, 0.2, 1}
+local TRAP_HUE = 356/360
+local GOLD = {38/360, 62/360}
+local FRAME_DARK = 0.6
+local WINDOW = {10, 7, 60, 74}
+local PLATE = {13, 83, 57, 89}
+local MP_HUE = 275/360
+
+RA.TRAPS = {
+    {"c_mp_trap_fire", 9, 4}, {"c_mp_trap_snare", 2, 5}, {"c_mp_trap_toll", 3, 4}, {"c_mp_trap_echo", 3, 5},
+    {"c_mp_trap_sticky", 2, 4}, {"c_mp_trap_smudge", 6, 4}, {"c_mp_trap_tripwire", 4, 5}, {"c_mp_trap_bear", 5, 5},
+    {"c_mp_trap_pit", 1, 5}, {"c_mp_trap_smoke", 8, 4}, {"c_mp_trap_ice", 4, 4}, {"c_mp_trap_alarm", 7, 4},
+}
+RA.PACK = {src = {0, 4}, clean = {15, 32}, label = {33, 70}, body = {10, 84}, dark = 0.85}
+RA.JOKERS = {{0, 0}, {0, 0}, {0, 0}, {0, 2}, {9, 0}, {8, 5}, {9, 2}, {0, 3}, {6, 1}, {4, 10}, {8, 6}, {5, 6}, {8, 11}}
+RA.MODE_JOKERS = {{0, 11}, {3, 7}, {1, 6}, {5, 7}, {3, 4}, {5, 2}, {5, 4}, {7, 4}, {9, 5}, {0, 10}, {0, 12}, {1, 10}}
+RA.DECKS = {{0, 3, 285}, {3, 0, 200}, {1, 2, 28}, {0, 2, 222}, {2, 2, 150}}
+RA.CHIPS = {{25, 300}, {2, 20}, {17, 3}, {9, 277}, {27, 40}, {7, 128}}
+RA.NEMESIS = {{25, 300}}
+
+local orig_image = love.graphics.newImage
+local orig_data = love.image.newImageData
+local fonts = {}
+local cache = {}
+
+function RA.on()
+    return rawget(_G, "RELEASE_BUILD") == true or (os.getenv and os.getenv("BOM_RELEASE_ART") == "1")
+end
+
+local function hls(r, g, b)
+    local mx, mn = math.max(r, g, b), math.min(r, g, b)
+    local l = (mx + mn)/2
+    if mx == mn then return 0, l, 0 end
+    local d = mx - mn
+    local s = l > 0.5 and d/(2 - mx - mn) or d/(mx + mn)
+    local h
+    if mx == r then h = (g - b)/d + (g < b and 6 or 0)
+    elseif mx == g then h = (b - r)/d + 2
+    else h = (r - g)/d + 4 end
+    return h/6, l, s
+end
+
+local function hue2(p, q, t)
+    if t < 0 then t = t + 1 end
+    if t > 1 then t = t - 1 end
+    if t < 1/6 then return p + (q - p)*6*t end
+    if t < 1/2 then return q end
+    if t < 2/3 then return p + (q - p)*(2/3 - t)*6 end
+    return p
+end
+
+local function rgb(h, l, s)
+    if s == 0 then return l, l, l end
+    local q = l < 0.5 and l*(1 + s) or l + s - l*s
+    local p = 2*l - q
+    return hue2(p, q, h + 1/3), hue2(p, q, h), hue2(p, q, h - 1/3)
+end
+
+local function to_trap(r, g, b, dark)
+    local h, l, s = hls(r, g, b)
+    local gold = h >= GOLD[1] and h <= GOLD[2] and s >= 0.3
+    if gold or (s < 0.06 and l >= 0.9) then return r, g, b end
+    if l < 0.9 then l = l*(dark or 1) end
+    return rgb(TRAP_HUE, l, s)
+end
+
+local function tint(r, g, b, hue)
+    local h, l, s = hls(r, g, b)
+    if s < 0.06 and (l > 0.85 or l < 0.12) then return r, g, b end
+    return rgb(hue, l, math.max(s, 0.35))
+end
+
+local function font_of(size)
+    if not fonts[size] then
+        local f = love.graphics.newFont(FONT_FILE, size, "mono", 1)
+        f:setFilter("nearest", "nearest")
+        fonts[size] = f
+    end
+    return fonts[size]
+end
+
+local function text_data(text, size, colour, outline)
+    local font = font_of(size)
+    local pad = outline + 2
+    local w, h = font:getWidth(text) + pad*2, font:getHeight() + pad*2
+    local canvas = love.graphics.newCanvas(w, h, {dpiscale = 1})
+    love.graphics.push("all")
+    love.graphics.setCanvas(canvas)
+    love.graphics.clear(0, 0, 0, 0)
+r 19 278 %20%20%20%20 -
+l 323
+    love.graphics.setFont(font)
+    if outline > 0 then
+        love.graphics.setColor(INK)
+        for dx = -outline, outline do
+            for dy = -outline, outline do
+                if dx ~= 0 or dy ~= 0 then love.graphics.print(text, pad + dx, pad + dy) end
+            end
+        end
+    end
+    love.graphics.setColor(colour)
+    love.graphics.print(text, pad, pad)
+    love.graphics.pop()
+    local data = canvas:newImageData()
+    canvas:release()
+    local x0, y0, x1, y1
+    for y = 0, h - 1 do
+        for x = 0, w - 1 do
+            local _, _, _, a = data:getPixel(x, y)
+            if a > 0.5 then
+                x0, x1 = math.min(x0 or x, x), math.max(x1 or x, x)
+                y0, y1 = y0 or y, y
+            end
+        end
+    end
+    if not x0 then data:release() return nil end
+    return {data = data, x = x0, y = y0, w = x1 - x0 + 1, h = y1 - y0 + 1}
+end
+
+local function stamp(base, t, left, top)
+    local bw, bh = base:getDimensions()
+    for y = 0, t.h - 1 do
+        for x = 0, t.w - 1 do
+            local r, g, b, a = t.data:getPixel(t.x + x, t.y + y)
+            local tx, ty = left + x, top + y
+            if a > 0.5 and tx >= 0 and ty >= 0 and tx < bw and ty < bh then base:setPixel(tx, ty, r, g, b, 1) end
+        end
+    end
+    t.data:release()
+end
+
+local function centre(base, t, cx, cy)
+    if t then stamp(base, t, math.floor(cx - t.w/2 + 0.5), math.floor(cy - t.h/2 + 0.5)) end
+end
+
+local function vanilla(file, s)
+    return orig_data("resources/textures/" .. s .. "x/" .. file)
+end
+
+local function copy_cell(dst, src, dx, dy, sx, sy, w, h)
+    dst:paste(src, dx, dy, sx, sy, w, h)
+end
+
+local function map_box(data, x, y, w, h, fn)
+    data:mapPixel(function(_, _, r, g, b, a)
+        if a <= 0 then return r, g, b, a end
+        local nr, ng, nb = fn(r, g, b)
+        return nr, ng, nb, a
+    end, x, y, w, h)
+end
+
+local function trap_name(key)
+    local ok, name = pcall(function() return bom_traps and bom_traps.name and bom_traps.name(key) end)
+    return ok and type(name) == "string" and name or ""
+end
+
+local function in_window(x, y, s)
+    return x >= WINDOW[1]*s and x < (WINDOW[3] + 1)*s and y >= WINDOW[2]*s and y < (WINDOW[4] + 1)*s
+end
+
+local function upper(text)
+    return (string.upper(text):gsub("\195([\160-\190])", function(c)
+        if c == "\183" then return nil end
+        return "\195" .. string.char(c:byte() - 32)
+    end))
+end
+
+local function plate_text(text, s, colour)
+    local room = (PLATE[3] - PLATE[1] + 1)*s - 2*s
+    local size = 8*s
+    local t = text_data(text, size, colour, 0)
+    while t and t.w > room and size > 6*s do
+        t.data:release()
+        size = size - 1
+        t = text_data(text, size, colour, 0)
+    end
+    return t
+end
+
+local function trap_plate(out, ox, key, s)
+    local px0, py0, px1, py1 = PLATE[1]*s, PLATE[2]*s, (PLATE[3] + 1)*s - 1, (PLATE[4] + 1)*s - 1
+    for y = py0, py1 do
+        local r, g, b, a = out:getPixel(px0 - 1, y)
+        for x = px0, px1 do out:setPixel(ox + x, y, r, g, b, a) end
+    end
+    local r, g, b = to_trap(0.31, 0.34, 0.47, 1)
+    centre(out, plate_text(upper(trap_name(key)), s, {r, g, b, 1}), ox + (PLATE[1] + PLATE[3] + 1)*s/2, (PLATE[2] + PLATE[4] + 1)*s/2)
+end
+
+local function trap_cell(out, src, i, t, s)
+    local cw, ch = W*s, H*s
+    local ox = (i - 1)*cw
+    copy_cell(out, src, ox, 0, t[2]*cw, t[3]*ch, cw, ch)
+    out:mapPixel(function(x, y, r, g, b, a)
+        if a <= 0 then return r, g, b, a end
+        local nr, ng, nb = to_trap(r, g, b, in_window(x - ox, y, s) and 1 or FRAME_DARK)
+        return nr, ng, nb, a
+    end, ox, 0, cw, ch)
+    trap_plate(out, ox, t[1], s)
+end
+
+local function pack_cell(out, s, ox)
+    local src = vanilla("boosters.png", s)
+    local cw, ch = W*s, H*s
+    local p = RA.PACK
+    copy_cell(out, src, ox, 0, p.src[1]*cw, p.src[2]*ch, cw, ch)
+    src:release()
+    local rows = (p.clean[2] - p.clean[1] + 1)*s
+    local top = p.label[1]*s
+    while top <= p.label[2]*s do
+        local n = math.min(rows, (p.label[2] + 1)*s - top)
+        local tmp = orig_data(cw, n)
+        tmp:paste(out, 0, 0, ox, p.clean[1]*s, cw, n)
+        out:paste(tmp, ox, top, 0, 0, cw, n)
+        tmp:release()
+        top = top + n
+    end
+    map_box(out, ox, p.body[1]*s, cw, (p.body[2] - p.body[1] + 1)*s, function(r, g, b) return to_trap(r, g, b, p.dark) end)
+end
+
+local function build_traps(s, path)
+    if not RA.on() and love.filesystem.getInfo(path) then
+        local out = orig_data(path)
+        for i, t in ipairs(RA.TRAPS) do trap_plate(out, (i - 1)*W*s, t[1], s) end
+        pack_cell(out, s, 12*W*s)
+        return out
+    end
+    local src = vanilla("Tarots.png", s)
+    local out = orig_data(W*s*13, H*s)
+    for i, t in ipairs(RA.TRAPS) do trap_cell(out, src, i, t, s) end
+    src:release()
+    pack_cell(out, s, 12*W*s)
+    return out
+end
+
+local function mp_mark(out, ox, s)
+    centre(out, text_data("MP", 8*s, {1, 1, 1, 1}, s), ox + (W - 11)*s, 9*s)
+end
+
+RA.mp_mark = mp_mark
+
+function RA.mp_tint(r, g, b)
+    return tint(r, g, b, MP_HUE)
+end
+
+local function joker_strip(list, s)
+    local src = vanilla("Jokers.png", s)
+    local cw, ch = W*s, H*s
+    local out = orig_data(cw*#list, ch)
+    for i, p in ipairs(list) do
+        local ox = (i - 1)*cw
+        copy_cell(out, src, ox, 0, p[1]*cw, p[2]*ch, cw, ch)
+        map_box(out, ox, 0, cw, ch, function(r, g, b) return tint(r, g, b, MP_HUE) end)
+        mp_mark(out, ox, s)
+    end
+    src:release()
+    return out
+end
+
+local function build_decks(s)
+    local src = vanilla("Enhancers.png", s)
+    local cw, ch = W*s, H*s
+    local out = orig_data(cw*#RA.DECKS, ch)
+    for i, d in ipairs(RA.DECKS) do
+        local ox = (i - 1)*cw
+        copy_cell(out, src, ox, 0, d[1]*cw, d[2]*ch, cw, ch)
+        map_box(out, ox, 0, cw, ch, function(r, g, b) return tint(r, g, b, d[3]/360) end)
+        mp_mark(out, ox, s)
+    end
+    src:release()
+    return out
+end
+
+local function chip_rows(list, s)
+    local src = vanilla("BlindChips.png", s)
+    local cw = CHIP*s
+    local out = orig_data(cw*FRAMES, cw*#list)
+    for i, c in ipairs(list) do
+        copy_cell(out, src, 0, (i - 1)*cw, 0, c[1]*cw, cw*FRAMES, cw)
+        map_box(out, 0, (i - 1)*cw, cw*FRAMES, cw, function(r, g, b) return tint(r, g, b, c[2]/360) end)
+    end
+    src:release()
+    return out
+end
+
+local function shift(r, g, b, d)
+    local h, l, s = hls(r, g, b)
+    if s < 0.06 then return r, g, b end
+    return rgb((h + d) % 1, l, s)
+end
+
+local function vanilla_centers(set, keep)
+    local out = {}
+    for k, v in pairs(G and G.P_CENTERS or {}) do
+        if v.set == set and v.pos and not v.atlas and not k:find("_mp_") and keep(v, k) then out[#out + 1] = v end
+    end
+    table.sort(out, function(a, b) return (a.order or 0) < (b.order or 0) end)
+    return out
+end
+
+local function grid_of(file, list, cols, rows, s, hue_step)
+    local src = vanilla(file, s)
+    local cw, ch = W*s, H*s
+    local out = orig_data(cw*cols, ch*rows)
+    local n = #list
+    for i = 0, math.min(cols*rows, hue_step and cols*rows or n) - 1 do
+        local c = n > 0 and list[i % n + 1]
+        if c then
+            local ox, oy = (i % cols)*cw, math.floor(i/cols)*ch
+            copy_cell(out, src, ox, oy, c.pos.x*cw, c.pos.y*ch, cw, ch)
+            local turn = math.floor(i/n)
+            if hue_step and turn > 0 then
+                map_box(out, ox, oy, cw, ch, function(r, g, b) return shift(r, g, b, turn*hue_step) end)
+            end
+        end
+    end
+    src:release()
+    return out
+end
+
+RA.BUILD = {
+    ["TavernBacks.png"] = function(s)
+        return grid_of("Enhancers.png", vanilla_centers("Back", function(_, k) return k ~= "b_challenge" end), 10, 4, s, 0.25)
+    end,
+    ["TavernPortraits.png"] = function(s)
+        return grid_of("Jokers.png", vanilla_centers("Joker", function(v) return not v.soul_pos and v.rarity ~= 4 end), 10, 8, s)
+    end,
+    ["MPTraps.png"] = build_traps,
+    ["MPJokers.png"] = function(s) return joker_strip(RA.JOKERS, s) end,
+    ["MPModeJokers.png"] = function(s) return joker_strip(RA.MODE_JOKERS, s) end,
+    ["MPDecks.png"] = build_decks,
+    ["MPBlindChips.png"] = function(s) return chip_rows(RA.CHIPS, s) end,
+    ["NemesisChip.png"] = function(s) return chip_rows(RA.NEMESIS, s) end,
+}
+
+RA.BLANK = {["RankFrames.png"] = {710, 190}, ["RankSleeves.png"] = {710, 95}, ["RankPack.png"] = {71, 95}}
+for name, size in pairs(RA.BLANK) do
+    RA.BUILD[name] = function(s, path)
+        if love.filesystem.getInfo(path) then return orig_data(path) end
+        return orig_data(size[1]*s, size[2]*s)
+    end
+end
+
+local function target(path)
+    if type(path) ~= "string" then return nil end
+    local s, name = path:match("resources/textures/(%d)x/([^/]+)$")
+    if not (s and RA.BUILD[name]) then return nil end
+    if RA.BLANK[name] and love.filesystem.getInfo(path) then return nil end
+    if not (RA.on() or name == "MPTraps.png" or not love.filesystem.getInfo(path)) then return nil end
+    return name, tonumber(s)
+end
+
+function RA.has(path)
+    return target(path) ~= nil
+end
+
+local function lang()
+    return G and G.SETTINGS and G.SETTINGS.language or "en-us"
+end
+
+function RA.data(path)
+    local name, s = target(path)
+    if not name then return nil end
+    local key = name .. s .. (name == "MPTraps.png" and lang() or "") .. (RA.on() and "r" or "")
+    if not cache[key] then
+        local ok, data = pcall(RA.BUILD[name], s, path)
+        if not ok then
+            print("[release_art] " .. tostring(data))
+            return nil
+        end
+        cache[key] = data
+    end
+    return cache[key]
+end
+
+function love.image.newImageData(a, ...)
+    local data = type(a) == "string" and RA.data(a)
+    if data then return data:clone() end
+    return orig_data(a, ...)
+end
+
+function love.graphics.newImage(a, ...)
+    local data = type(a) == "string" and RA.data(a)
+    if data then return orig_image(data, ...) end
+    return orig_image(a, ...)
+end
+
+function RA.refresh_traps()
+    if not (G and G.ASSET_ATLAS and G.ASSET_ATLAS.mp_traps and G.SETTINGS) then return end
+    local s = G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.texture_scaling or 2
+    local path = "resources/textures/" .. s .. "x/MPTraps.png"
+    local data = RA.data(path)
+    if not data then return end
+    local old = G.ASSET_ATLAS.mp_traps.image
+    local img = orig_image(data, {mipmaps = true, dpiscale = s})
+    if old then
+        img:setFilter(old:getFilter())
+        local mf, sharp = old:getMipmapFilter()
+        if mf then img:setMipmapFilter(mf, sharp) end
+    end
+    G.ASSET_ATLAS.mp_traps.image = img
+end
+
+local set_language_ref = Game and Game.set_language
+if set_language_ref then
+    function Game:set_language(...)
+        local r = set_language_ref(self, ...)
+        RA.refresh_traps()
+        return r
+    end
+end
+
+release_art = RA
+return RA
+end

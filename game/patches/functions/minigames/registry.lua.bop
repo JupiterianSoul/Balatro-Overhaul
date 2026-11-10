@@ -1,0 +1,164 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 149
+Minigames = Minigames or {}
+local MG = Minigames
+
+MG.FILE = "minigames.lua"
+MG.MODULES = {"high_low", "joker_memory", "name_hand", "find_ace", "blackjack", "whack", "slots", "beat_blind", "runner", "rhythm"}
+MG.GAMES = MG.GAMES or {}
+MG.RETIRED = {plinko = true, wheel = true, best_hand = true}
+
+local L = function(s) return mod_loc and mod_loc(s) or s end
+MG.L = L
+
+function MG.available()
+    return MG._available == true
+end
+
+local function load_state()
+    if MG.state then return MG.state end
+    MG.state = {on = {}, best = {}}
+    local ok, data = pcall(love.filesystem.read, MG.FILE)
+    if ok and type(data) == "string" then
+        local fn = loadstring(data)
+        if fn then
+            setfenv(fn, {})
+            local ok2, t = pcall(fn)
+            if ok2 and type(t) == "table" then
+                for k, v in pairs(type(t.on) == "table" and t.on or {}) do
+                    if type(k) == "string" and type(v) == "boolean" and not MG.RETIRED[k] then MG.state.on[k] = v end
+                end
+                for k, v in pairs(type(t.best) == "table" and t.best or {}) do
+                    if type(k) == "string" and type(v) == "number" and not MG.RETIRED[k] then MG.state.best[k] = v end
+                end
+                if type(t.last) == "string" and not MG.RETIRED[t.last] then MG.state.last = t.last end
+            end
+        end
+    end
+    return MG.state
+end
+
+local function dump(t, kind)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = k end
+    table.sort(keys)
+    local parts = {}
+    for _, k in ipairs(keys) do parts[#parts + 1] = string.format("[%q] = %s", k, kind == "n" and string.format("%d", t[k]) or tostring(t[k])) end
+    return "{" .. table.concat(parts, ", ") .. "}"
+end
+
+function MG.save()
+    local s = load_state()
+    local last = s.last and string.format(", last = %q", s.last) or ""
+    pcall(function() require("functions/fast_fs").write(MG.FILE, "return {on = " .. dump(s.on) .. ", best = " .. dump(s.best, "n") .. last .. "}\n") end)
+end
+
+function MG.on(key)
+    if not MG.available() then return false end
+    return load_state().on[key] ~= false
+end
+
+function MG.set(key, value)
+    load_state().on[key] = value and true or false
+    MG.save()
+end
+
+function MG.last()
+    return load_state().last
+end
+
+function MG.set_last(key)
+    local s = load_state()
+    if s.last == key then return end
+    s.last = key
+    MG.save()
+end
+
+function MG.best(key)
+    return load_state().best[key]
+end
+
+function MG.record(key, score)
+    local def = MG.def(key)
+    if not def or type(score) ~= "number" then return false end
+    local s = load_state()
+    local old = s.best[key]
+    local better = old == nil or (def.lower_better and score < old) or (not def.lower_better and score > old)
+    if better and (score > 0 or def.lower_better) then
+        s.best[key] = score
+        MG.save()
+        local sm = rawget(_G, "social_mg")
+        if sm and sm.on_best then pcall(sm.on_best, key, score) end
+        return true
+    end
+    return false
+end
+
+function MG.register(def)
+    if type(def) ~= "table" or not def.key then return end
+    for i, d in ipairs(MG.GAMES) do
+        if d.key == def.key then MG.GAMES[i] = def return end
+    end
+    MG.GAMES[#MG.GAMES + 1] = def
+end
+
+function MG.def(key)
+    for _, d in ipairs(MG.GAMES) do
+        if d.key == key then return d end
+    end
+end
+
+function MG.enabled()
+    local list = {}
+    for _, d in ipairs(MG.GAMES) do
+        if MG.on(d.key) then list[#list + 1] = d end
+    end
+    return list
+end
+
+G.FUNCS.mg_play = function(e)
+    local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+    if key and MG.host and MG.host.open then MG.host.open(key, "menu") end
+end
+
+function MG.boot()
+    MG.booted = true
+    MG._available = true
+    require "functions/minigames/kit"
+    require "functions/minigames/host"
+    for _, name in ipairs(MG.MODULES) do
+        local ok, err = pcall(require, "functions/minigames/" .. name)
+        if not ok then print("[Minigames] load " .. name .. ": " .. tostring(err)) end
+    end
+    local ok, err = pcall(require, "functions/minigames/pick")
+    if not ok then print("[Minigames] load pick: " .. tostring(err)) end
+    if MG.host and MG.host.install then MG.host.install() end
+end
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["MINIGAMES"] = "MINI-JEUX", ["Minigames"] = "Mini-jeux", ["No minigames yet."] = "Aucun mini-jeu pour l'instant.", ["On"] = "Actif",
+            ["Play"] = "Jouer", ["Best: %s"] = "Record : %s", ["No best score yet"] = "Pas encore de record",
+            ["Play while you wait in MP"] = "Jouer en attendant en MP"},
+        es = {["MINIGAMES"] = "MINIJUEGOS", ["Minigames"] = "Minijuegos", ["No minigames yet."] = "Todavía no hay minijuegos.", ["On"] = "Activo",
+            ["Play"] = "Jugar", ["Best: %s"] = "Récord: %s", ["No best score yet"] = "Sin récord todavía",
+            ["Play while you wait in MP"] = "Jugar mientras esperas en MP"},
+    }
+end
+
+if Game and Game.update and not MG._update_wrapped then
+    MG._update_wrapped = true
+    local update = Game.update
+r 10 2449 %20%20%20%20 -
+l 7
+        update(self, dt)
+        if not MG.booted then MG.boot() end
+        if MG._available and MG.host then MG.host.tick(dt) end
+    end
+end
+
+return MG
+end

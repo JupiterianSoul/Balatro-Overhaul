@@ -1,0 +1,682 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 473
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+local P = require "functions/minigames/poker"
+
+local min, max, floor, sin, abs = math.min, math.max, math.floor, math.sin, math.abs
+
+local Game = {}
+Game.__index = Game
+
+local HAND, HANDS, DISCARDS, PICK = 8, 3, 2, 5
+local STEP, TOTAL, FADE, WON, CHOSEN = 0.28, 0.8, 0.3, 1.1, 0.75
+local BASE, GROW = 150, 2.3
+local LEVEL = {
+    ["High Card"] = {10, 1}, ["Pair"] = {15, 1}, ["Two Pair"] = {20, 1}, ["Three of a Kind"] = {20, 2}, ["Straight"] = {30, 3},
+    ["Flush"] = {15, 2}, ["Full House"] = {25, 2}, ["Four of a Kind"] = {30, 3}, ["Straight Flush"] = {40, 4},
+}
+local PLANETS = {
+    {"c_pluto", "High Card"}, {"c_mercury", "Pair"}, {"c_uranus", "Two Pair"}, {"c_venus", "Three of a Kind"}, {"c_saturn", "Straight"},
+    {"c_jupiter", "Flush"}, {"c_earth", "Full House"}, {"c_mars", "Four of a Kind"}, {"c_neptune", "Straight Flush"},
+}
+local BOSSES = {"bl_hook", "bl_psychic", "bl_water", "bl_needle", "bl_flint", "bl_eye", "bl_mouth", "bl_wall"}
+
+Game.LEVEL, Game.PLANETS, Game.BOSSES = LEVEL, PLANETS, BOSSES
+
+local box_col = {0, 0, 0, 0.3}
+local bar_bg = {0, 0, 0, 0.35}
+
+local function by_rank(a, b)
+    if a.rank ~= b.rank then return a.rank > b.rank end
+    return a.suit < b.suit
+end
+
+local function word(key, fallback)
+    if localize then
+        local ok, s = pcall(localize, key)
+        if ok and type(s) == "string" and s ~= "ERROR" then return s end
+    end
+    return fallback
+end
+
+local function blind_info(key)
+    local d = G.localization and G.localization.descriptions and G.localization.descriptions.Blind
+    d = d and d[key]
+    local name = d and type(d.name) == "string" and d.name or key
+    local parts = {}
+    if d and type(d.text) == "table" then
+        for _, s in ipairs(d.text) do
+            if type(s) == "string" then parts[#parts + 1] = (s:gsub("{.-}", "")) end
+        end
+    end
+    return name, table.concat(parts, " "), parts
+end
+
+local function dark(c)
+    return {c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 1}
+end
+
+local function blind_colour(key)
+    if get_blind_main_colour then
+        local ok, c = pcall(get_blind_main_colour, key)
+        if ok and type(c) == "table" then return c end
+    end
+    return G.C.BLACK
+end
+
+function Game.target_for(ante, kind, boss)
+    local base = floor(BASE * GROW ^ (ante - 1) / 10 + 0.5) * 10
+    if kind == 1 then return base end
+    if kind == 2 then return floor(base * 1.5 / 10 + 0.5) * 10 end
+    if boss == "bl_wall" then return base * 3 end
+    if boss == "bl_needle" then return base end
+    return base * 2
+end
+
+function Game:start()
+    self.score = 0
+    self.levels, self.used = {}, {}
+    self.ante, self.kind, self.beaten = 1, 1, 0
+    self.bag = {}
+    self.pops = K.pops(8)
+    self.top_total, self.top_name = 0, nil
+    local touch = UIK.touch()
+    local W, H = self.W, self.H
+    self.s = min(touch and 0.56 or 0.66, (W - 0.5) / (HAND * K.card_w() * 1.06))
+    self.gx = K.card_w() * self.s * 1.06
+    local bw, bh = touch and 3 or 2.6, touch and 0.85 or 0.72
+    local by = H - bh - 0.1
+    self.by, self.bh, self.bw = by, bh, bw
+    self.play = {x = W / 2 - bw - 0.12, y = by, w = bw, h = bh, label = word("b_play_hand", "Play Hand"), colour = G.C.BLUE, scale = touch and 0.48 or 0.44}
+    self.disc = {x = W / 2 + 0.12, y = by, w = bw, h = bh, label = word("b_discard", "Discard"), colour = G.C.RED, scale = touch and 0.48 or 0.44}
+    self.hy = by - 0.25 - K.card_h() * self.s / 2
+    self.bp = {x = 0.05, y = 0.05, w = touch and 3.6 or 3.4, h = 1.84}
+    self.rx = W - 2.4
+    self.cx = (self.bp.x + self.bp.w + self.rx - 0.53) / 2
+    self.tb = self.bp.y + self.bp.h
+    self.lift_top = self.hy - K.card_h() * self.s / 2 - 0.3
+    self.hint_y = (self.tb + self.lift_top) / 2
+    self.hands_label, self.disc_label = word("k_hud_hands", "Hands"), word("k_hud_discards", "Discards")
+    self.at_least = word("ph_blind_score_at_least", "Score at least")
+    self.lvl = word("k_lvl", "lvl.")
+    self.box_c, self.box_m, self.box_h, self.box_d, self.bar = {}, {}, {}, {}, {}
+    self.name_j, self.fx_j = {}, {}
+    self.hint = L("Pick up to 5 cards")
+    self.pick_title = L("Pick a planet")
+    self:new_blind()
+end
+
+function Game:next_boss()
+    if #self.bag == 0 then
+        for i, k in ipairs(BOSSES) do self.bag[i] = k end
+        K.shuffle(self.rng, self.bag)
+        if self.boss and self.bag[#self.bag] == self.boss and #self.bag > 1 then self.bag[1], self.bag[#self.bag] = self.bag[#self.bag], self.bag[1] end
+    end
+    local k = self.bag[#self.bag]
+    self.bag[#self.bag] = nil
+    return k
+end
+
+function Game:new_blind()
+    local key = self.kind == 1 and "bl_small" or self.kind == 2 and "bl_big" or self:next_boss()
+    self.blind = key
+    self.boss = self.kind == 3 and key or nil
+    local lines
+    self.bname, self.btext, lines = blind_info(key)
+    self.blines = self.boss and lines or {}
+    self.bcol = blind_colour(key)
+    self.dcol = dark(self.bcol)
+    self.target = Game.target_for(self.ante, self.kind, self.boss)
+    self.target_text = tostring(self.target)
+    self.round, self.round_disp, self.round_text = 0, 0, "0"
+    self.hands = self.boss == "bl_needle" and 1 or HANDS
+    self.discards = self.boss == "bl_water" and 0 or DISCARDS
+    self.htext, self.dtext = tostring(self.hands), tostring(self.discards)
+    self.types, self.mouth = {}, nil
+    self.deck = K.deck(self.rng)
+    self.di = 0
+    self.hand, self.played = {}, {}
+    self.name, self.ctext, self.mtext, self.ok = "", "0", "0", true
+    self.state = "select"
+    self.t = 0
+    K.juice(self.bp, 0.4)
+    self:fill()
+    if self.boss then
+        K.sound("gong", 1, 0.25)
+        K.shake(0.05)
+        K.flash(self.bcol, 0.25)
+    end
+end
+
+function Game:fill()
+    local n = 0
+    while #self.hand < HAND and self.di < #self.deck do
+        self.di = self.di + 1
+        local c = self.deck[self.di]
+        n = n + 1
+        c.sel, c.hook, c.scoring, c.x, c.lift, c.delay = false, false, false, self.W - K.card_w() * self.s / 2 - 0.05, 0, n * 0.06
+        self.hand[#self.hand + 1] = c
+    end
+    table.sort(self.hand, by_rank)
+    if n > 0 then K.sound("cardSlide1", 1, 0.5) end
+end
+
+function Game:target_x(i)
+    return self.W / 2 + (i - (#self.hand + 1) / 2) * self.gx
+end
+
+function Game:selected()
+    local list = self.played
+    for i = #list, 1, -1 do list[i] = nil end
+    for i = 1, #self.hand do
+        if self.hand[i].sel then list[#list + 1] = self.hand[i] end
+    end
+    return list
+end
+
+function Game:allowed(name, n)
+    local b = self.boss
+    if b == "bl_psychic" and n < 5 then return false end
+    if b == "bl_eye" and self.types[name] then return false end
+    if b == "bl_mouth" and self.mouth and self.mouth ~= name then return false end
+    return true
+end
+
+function Game:level(name)
+    return self.levels[name] or 1
+end
+
+function Game:base(name)
+    local b, l, lv = P.BASE[name], LEVEL[name], self:level(name) - 1
+    local c, m = b[1] + l[1] * lv, b[2] + l[2] * lv
+    if self.boss == "bl_flint" then c, m = max(floor(c * 0.5 + 0.5), 1), max(floor(m * 0.5 + 0.5), 1) end
+    return c, m
+end
+
+function Game:preview()
+    local list = self:selected()
+    if #list == 0 then
+        self.name, self.ctext, self.mtext, self.ok = "", "0", "0", true
+        return
+    end
+    local name = P.eval(list, #list)
+    local was = self.ok
+    self.ok = self:allowed(name, #list)
+    if was and not self.ok then K.juice(self.fx_j, 0.3) end
+    local shown = P.hand_name(name) .. "  " .. self.lvl .. self:level(name)
+    if shown ~= self.name then K.juice(self.name_j, 0.3) end
+    self.name = shown
+    self.chips, self.mult = self:base(name)
+    self.ctext, self.mtext = tostring(self.chips), tostring(self.mult)
+end
+
+function Game:tap_card(i)
+    local c = self.hand[i]
+    if not c or self.state ~= "select" then return end
+    if not c.sel and #self:selected() >= PICK then
+        K.juice(c, 0.15)
+        return
+    end
+    c.sel = not c.sel
+    K.juice(c, 0.25)
+    K.sound("cardSlide2", 1 + (c.sel and 0.1 or 0), 0.45)
+    self:preview()
+end
+
+function Game:do_play()
+    if self.state ~= "select" or self.hands <= 0 then return end
+    local list = self:selected()
+    if #list == 0 then return end
+    local name = P.eval(list, #list)
+    local ok = self:allowed(name, #list)
+    K.press(self.play)
+    for i = 1, #list do list[i].scoring = ok and P.scoring[i] end
+    self.hname = P.hand_name(name)
+    self.blocked = not ok
+    if ok then
+        self.types[name] = true
+        self.mouth = self.mouth or name
+        self.used[name] = (self.used[name] or 0) + 1
+        self.chips, self.mult = self:base(name)
+    else
+        self.chips, self.mult = 0, 0
+        K.juice(self.name_j, 0.4)
+        K.sound("cancel", 1, 0.5)
+    end
+    self.ctext, self.mtext = tostring(self.chips), tostring(self.mult)
+    self.hands = self.hands - 1
+    self.htext = tostring(self.hands)
+    K.juice(self.box_h, 0.4)
+    if self.boss == "bl_hook" then
+        local held = {}
+        for i = 1, #self.hand do if not self.hand[i].sel then held[#held + 1] = self.hand[i] end end
+        K.shuffle(self.rng, held)
+        for i = 1, min(2, #held) do held[i].hook = true end
+    end
+    self.seq = 0
+    self.state = "score"
+    self.t = -0.2
+    K.juice(self.box_m, 0.3)
+    K.sound("cardSlide1", 1.1, 0.5)
+end
+
+function Game:do_discard()
+    if self.state ~= "select" or self.discards <= 0 then return end
+    local list = self:selected()
+    if #list == 0 then return end
+    K.press(self.disc)
+    self.discards = self.discards - 1
+    self.dtext = tostring(self.discards)
+    K.juice(self.box_d, 0.4)
+    self.state = "discard"
+    self.t = 0
+    K.sound("cardSlide2", 0.9, 0.5)
+end
+
+function Game:remove_gone()
+    local h = self.hand
+    for i = #h, 1, -1 do
+        if h[i].sel or h[i].hook then table.remove(h, i) end
+    end
+    self.name, self.ctext, self.mtext, self.ok = "", "0", "0", true
+end
+
+function Game:make_offer()
+    local top, tn = nil, 0
+    for _, n in ipairs(P.NAMES) do
+        local c = self.used[n] or 0
+        if c > tn then top, tn = n, c end
+    end
+    local pool = {}
+    for _, p in ipairs(PLANETS) do
+        if p[2] ~= top and p[2] ~= "Straight Flush" then pool[#pool + 1] = p end
+    end
+    K.shuffle(self.rng, pool)
+    local list = {}
+    for _, p in ipairs(PLANETS) do if p[2] == top then list[1] = p end end
+    local i = 1
+    while #list < 3 and pool[i] do list[#list + 1] = pool[i] i = i + 1 end
+    K.shuffle(self.rng, list)
+    local touch = UIK.touch()
+    local bw, gap = touch and 3.2 or 2.7, touch and 0.3 or 0.25
+    self.offer = {}
+    for k, p in ipairs(list) do
+        local cx = self.W / 2 + (k - 2) * (bw + gap)
+        local lv = self:level(p[2])
+        self.offer[k] = {key = p[1], hand = p[2], x = cx, j = {}, lv = self.lvl .. lv .. "  >  " .. self.lvl .. (lv + 1),
+            btn = {x = cx - bw / 2, y = self.by, w = bw, h = self.bh, label = P.hand_name(p[2]), colour = G.C.SECONDARY_SET.Planet or G.C.BLUE, scale = touch and 0.46 or 0.42}}
+    end
+    self.focus = 1
+    self.ps = touch and 0.56 or 0.62
+    local ch = K.card_h() * self.ps
+    self.py = (self.tb + 0.15 + self.by - 0.55) / 2
+    self.lv_y = self.py + ch / 2 + 0.3
+end
+
+function Game:choose(i)
+    local o = self.offer and self.offer[i]
+    if not o or self.state ~= "pick" then return end
+    self.focus = i
+    self.chosen = i
+    self.levels[o.hand] = self:level(o.hand) + 1
+    K.press(o.btn)
+    K.juice(o.j, 0.6)
+    K.sound("tarot1", 1, 0.6)
+    K.sound("multhit1", 1.2, 0.4)
+    K.pop(self.pops, word("k_level_up_ex", "Level Up!"), o.x, self.py + 0.2, G.C.GOLD, 0.55)
+    self.state = "chosen"
+    self.t = 0
+end
+
+function Game:advance()
+    self.kind = self.kind + 1
+    if self.kind > 3 then
+        self.kind = 1
+        self.ante = self.ante + 1
+    end
+    self.offer, self.chosen, self.keyed = nil, nil, nil
+    self:new_blind()
+end
+
+function Game:lose()
+    self.result = "Game over"
+    self.result_col = G.C.RED
+    local s = string.format(L("Blinds beaten: %d"), self.beaten)
+    if self.top_name then s = s .. "   " .. string.format(L("Best hand: %s for %d"), self.top_name, self.top_total) end
+    self.summary = string.format(L("Lost to %s on ante %d"), self.bname, self.ante) .. "\n" .. s
+    self.over = true
+end
+
+function Game:press(x, y)
+    if self.state == "pick" then
+        local hw, hh = K.card_w() * self.ps / 2 + 0.15, K.card_h() * self.ps / 2 + 0.15
+        for i, o in ipairs(self.offer or {}) do
+            if K.hit(o.btn, x, y, 0.06) or (abs(x - o.x) <= hw and abs(y - self.py) <= hh) then self:choose(i) return end
+        end
+        return
+    end
+    if (self.sweep and self.sweep.on) or (self.swept and K.now() - self.swept < 0.4) then
+        self.swept = nil
+        return
+    end
+    if K.hit(self.play, x, y, 0.06) then self:do_play() return end
+    if K.hit(self.disc, x, y, 0.06) then self:do_discard() return end
+    local i = self:card_at(x, y)
+    if i then self:tap_card(i) end
+end
+
+function Game:card_at(x, y)
+    if not (x and y) then return nil end
+    local hw, hh = self.gx / 2, K.card_h() * self.s / 2 + 0.1
+    for i = 1, #self.hand do
+        local c = self.hand[i]
+        local cy = self.hy - c.lift
+        if x >= c.x - hw and x <= c.x + hw and y >= cy - hh and y <= cy + hh then return i end
+    end
+    return nil
+end
+
+function Game:toggle(c)
+    for i = 1, #self.hand do
+        if self.hand[i] == c then self:tap_card(i) return end
+    end
+end
+
+function Game:drag(x, y, down)
+    local fresh = down and not self.held
+    self.held = down
+    if fresh then
+        local band = x and x >= 0 and x <= self.W and y >= self.lift_top - 0.1 and y <= self.hy + K.card_h() * self.s / 2 + 0.1
+        local i = band and self:card_at(x, y)
+        self.sweep = (band and self.state == "select") and {seen = {}, first = i and self.hand[i] or nil} or nil
+        return
+    end
+    local d = self.sweep
+    if not d then return end
+    if not down or self.state ~= "select" then
+        if d.on then self.swept = K.now() end
+        self.sweep = nil
+        return
+    end
+    local i = self:card_at(x, y)
+    local c = i and self.hand[i]
+    if not c or d.seen[c] or (c == d.first and not d.on) then return end
+    if not d.on then
+        d.on = true
+        if d.first then
+            d.seen[d.first] = true
+            self:toggle(d.first)
+        end
+    end
+    d.seen[c] = true
+    self:toggle(c)
+    self.swept = K.now()
+end
+
+function Game:key(k)
+    if self.state == "pick" then
+        self.keyed = true
+        local n = tonumber(k)
+        if n then self:choose(n) return end
+        if k == "left" or k == "right" then
+            self.focus = ((self.focus or 1) - 1 + (k == "left" and -1 or 1)) % #self.offer + 1
+            K.juice(self.offer[self.focus].j, 0.2)
+            K.sound("cardSlide2", 1, 0.35)
+        elseif k == "return" or k == "space" then
+            self:choose(self.focus or 1)
+        end
+        return
+    end
+    if k == "return" or k == "space" then self:do_play()
+    elseif k == "d" or k == "backspace" then self:do_discard()
+    else
+        local n = tonumber(k)
+        if n and n >= 1 and n <= HAND then self:tap_card(n) end
+    end
+end
+
+function Game:score_step()
+    local list = self.played
+    local i = self.seq + 1
+    while i <= #list and not list[i].scoring do i = i + 1 end
+    if i <= #list then
+        self.seq = i
+        local c = list[i]
+        local v = P.chips(c.rank)
+        self.chips = self.chips + v
+        self.ctext = tostring(self.chips)
+        K.juice(c, 0.5)
+        K.juice(self.box_c, 0.35)
+        K.pop(self.pops, "+" .. v, c.x, self.hy - c.lift - K.card_h() * self.s / 2 + 0.3, G.C.CHIPS, 0.6)
+        K.sound("chips1", 1 + i * 0.05, 0.6)
+        return
+    end
+    self.state = "total"
+    self.t = 0
+    local total = self.chips * self.mult
+    self.round = self.round + total
+    self.score = self.score + total
+    if total > self.top_total then self.top_total, self.top_name = total, self.hname end
+    K.juice(self.box_c, 0.5)
+    K.juice(self.box_m, 0.5)
+    K.juice(self.bar, 0.3)
+    if self.blocked then
+        self.total_text = word("k_not_allowed_ex", "Not Allowed!")
+        K.sound("cancel", 0.9, 0.5)
+        return
+    end
+    self.total_text = "+" .. total
+    K.sound("multhit2", 1, 0.7)
+    K.shake(min(0.12, 0.03 + total / (self.target * 4)))
+    if total >= self.target then K.flash(G.C.GOLD, 0.2) end
+end
+
+r 10 2449 - -
+l 201
+    self.t = self.t + dt
+    local ease = min(1, dt * 12)
+    local lifted = (self.state == "score" or self.state == "total") and 0.4 or 0.3
+    for i = 1, #self.hand do
+        local c = self.hand[i]
+        if c.delay > 0 then
+            c.delay = c.delay - dt
+        else
+            c.x = c.x + (self:target_x(i) - c.x) * ease
+        end
+        local want = c.sel and lifted or 0
+        c.lift = c.lift + (want - c.lift) * ease
+    end
+    if self.round_disp ~= self.round then
+        local d = self.round_disp + (self.round - self.round_disp) * min(1, dt * 7)
+        if abs(self.round - d) < 0.5 then d = self.round end
+        local before = floor(self.round_disp + 0.5)
+        self.round_disp = d
+        local now = floor(d + 0.5)
+        if now ~= before then self.round_text = tostring(now) end
+    end
+    local st = self.state
+    if st == "score" and self.t >= STEP then
+        self.t = 0
+        self:score_step()
+    elseif st == "total" and self.t >= TOTAL then
+        self.state = "clear"
+        self.t = 0
+    elseif (st == "clear" or st == "discard") and self.t >= FADE then
+        self:remove_gone()
+        self.t = 0
+        if st == "clear" and self.round >= self.target then
+            self.beaten = self.beaten + 1
+            self.state = "won"
+            K.sound("win", 1, 0.45)
+            K.flash(G.C.GOLD, 0.25)
+            K.shake(0.08)
+            K.juice(self.bp, 0.6)
+        elseif st == "clear" and self.hands <= 0 then
+            self:lose()
+        else
+            self:fill()
+            self.state = "select"
+        end
+    elseif st == "won" and self.t >= WON then
+        self:make_offer()
+        self.state = "pick"
+        self.t = 0
+        K.sound("cardFan2", 1, 0.5)
+    elseif st == "chosen" and self.t >= CHOSEN then
+        self:advance()
+    end
+end
+
+function Game:draw_top(ox, oy)
+    local bp = self.bp
+    local x, y = ox + bp.x, oy + bp.y
+    local jb = K.jk(bp)
+    K.rect(x, y, bp.w, bp.h, box_col, 0.12)
+    K.panel(x, y, bp.w, 0.4, self.bcol, 0.1, 1, 0.04)
+    K.text(self.bname, x + bp.w / 2, y + 0.2, K.fit(self.bname, 0.42, bp.w - 0.3) * jb, G.C.UI.TEXT_LIGHT, "c")
+    local nl = #self.blines
+    local r0 = y + 0.69
+    if nl > 0 then
+        local fy, fh = y + 0.45, 0.48
+        local bad = self.state == "select" and not self.ok
+        K.rect(x + 0.08, fy, bp.w - 0.16, fh, bad and G.C.RED or self.dcol, 0.08)
+        local jf = K.jk(self.fx_j)
+        for i, line in ipairs(self.blines) do
+            local ly = fy + fh / 2 + (i - (nl + 1) / 2) * 0.21
+            K.text(line, x + bp.w / 2, ly, K.fit(line, 0.29, bp.w - 0.36) * jf, G.C.UI.TEXT_LIGHT, "c")
+        end
+        r0 = y + 0.97
+    end
+    K.blind(self.blind, x + 0.5, r0 + 0.42, 0.72 * jb)
+    local tx, tw = x + 0.98, bp.w - 1.08
+    local mid = tx + tw / 2
+    K.text(self.at_least, mid, r0 + 0.1, K.fit(self.at_least, 0.28, tw), G.C.UI.TEXT_LIGHT, "c")
+    K.text(self.target_text, mid, r0 + 0.365, K.fit(self.target_text, 0.46, tw), G.C.RED, "c")
+    local u = min(1, self.round_disp / max(1, self.target))
+    local jr = K.jk(self.bar)
+    local bh = 0.26 * jr
+    local by = r0 + 0.7 - bh / 2
+    K.rect(tx, by, tw, bh, bar_bg, 0.08)
+    if u > 0 then K.rect(tx, by, max(0.16, tw * u), bh, u >= 1 and G.C.GREEN or G.C.CHIPS, 0.08) end
+    K.text(self.round_text, mid, r0 + 0.7, K.fit(self.round_text, 0.31, tw - 0.1) * jr, G.C.UI.TEXT_LIGHT, "c")
+    local cx = self.cx
+    local ns = UIK.touch() and 0.46 or 0.44
+    local ty = y + 0.25
+    local picking = self.state == "pick" or self.state == "chosen"
+    if picking then
+        local pu = self.state == "pick" and K.out_back(min(1, self.t / 0.3)) or 1
+        K.text(self.pick_title, ox + cx, y + bp.h / 2, K.fit(self.pick_title, UIK.touch() and 0.6 or 0.58, 3.6) * pu, G.C.GOLD, "c")
+    end
+    if self.state == "total" and self.total_text then
+        K.text(self.total_text, ox + cx, ty, K.fit(self.total_text, ns * 1.3, 3.6) * K.out_back(min(1, self.t / 0.2)), self.blocked and G.C.RED or G.C.GOLD, "c")
+    elseif self.name ~= "" and (self.state == "select" or self.state == "score") then
+        K.text(self.name, ox + cx, ty, K.fit(self.name, ns, 3.6) * K.jk(self.name_j), self.ok and G.C.UI.TEXT_LIGHT or G.C.RED, "c")
+    end
+    local bw, bh2, top = 1.45, 1.0, y + 0.55
+    if not picking then
+        local jc, jm = K.jk(self.box_c), K.jk(self.box_m)
+        K.panel(ox + cx - 0.3 - bw + bw * (1 - jc) / 2, top, bw * jc, bh2, G.C.CHIPS, 0.1)
+        K.text(self.ctext, ox + cx - 0.3 - bw / 2, top + bh2 / 2, K.fit(self.ctext, 0.62, bw - 0.15) * jc, G.C.UI.TEXT_LIGHT, "c")
+        K.text("X", ox + cx, top + bh2 / 2, 0.5, G.C.RED, "c")
+        K.panel(ox + cx + 0.3 + bw * (1 - jm) / 2, top, bw * jm, bh2, G.C.MULT, 0.1)
+        K.text(self.mtext, ox + cx + 0.3 + bw / 2, top + bh2 / 2, K.fit(self.mtext, 0.62, bw - 0.15) * jm, G.C.UI.TEXT_LIGHT, "c")
+    end
+    local rx, sw = ox + self.rx, 1.05
+    local jh, jd = K.jk(self.box_h), K.jk(self.box_d)
+    K.text(self.hands_label, rx, ty, K.fit(self.hands_label, 0.34, 1.3), G.C.UI.TEXT_LIGHT, "c")
+    K.panel(rx - sw * jh / 2, top, sw * jh, bh2, G.C.BLUE, 0.1)
+    K.text(self.htext, rx, top + bh2 / 2, 0.62 * jh, G.C.UI.TEXT_LIGHT, "c")
+    K.text(self.disc_label, rx + 1.35, ty, K.fit(self.disc_label, 0.34, 1.3), G.C.UI.TEXT_LIGHT, "c")
+    K.panel(rx + 1.35 - sw * jd / 2, top, sw * jd, bh2, G.C.RED, 0.1)
+    K.text(self.dtext, rx + 1.35, top + bh2 / 2, 0.62 * jd, G.C.UI.TEXT_LIGHT, "c")
+end
+
+function Game:draw_hint(ox, oy)
+    if self.state ~= "select" or self.boss or #self:selected() > 0 then return end
+    local hs = UIK.touch() and 0.36 or 0.34
+    local pulse = 0.75 + 0.25 * sin(K.now() * 3)
+    K.text(self.hint, ox + self.W / 2, oy + self.hint_y, K.fit(self.hint, hs, self.W - 0.4), G.C.GOLD, "c", pulse)
+end
+
+function Game:draw_hand(ox, oy)
+    local s = self.s
+    local st = self.state
+    local fading = st == "clear" or st == "discard"
+    local hw, hh = self.gx / 2, K.card_h() * s / 2
+    local all = st == "won" and max(0, 1 - self.t / 0.35) or 1
+    if all > 0 then
+        for i = 1, #self.hand do
+            local c = self.hand[i]
+            local a = (fading and (c.sel or (st == "clear" and c.hook))) and max(0, 1 - self.t / FADE) or all
+            local hov = st == "select" and K.hover(c, ox + c.x - hw, oy + self.hy - c.lift - hh, hw * 2, hh * 2)
+            K.card(c.key, ox + c.x, oy + self.hy - c.lift - ((hov and not c.sel) and 0.08 or 0), s * K.jk(c), {r = K.jr(c), a = a})
+        end
+    end
+    if st == "won" then
+        local u = K.out_back(min(1, self.t / 0.25))
+        local str = L("Blind defeated!")
+        K.text(str, ox + self.W / 2, oy + self.hy - 0.2, K.fit(str, UIK.touch() and 0.8 or 0.75, self.W - 0.6) * u, G.C.GOLD, "c")
+        return
+    end
+    self:draw_hint(ox, oy)
+    local n = #self.played
+    local busy = st ~= "select"
+    self.play.disabled = busy or n == 0
+    self.disc.disabled = busy or n == 0 or self.discards <= 0
+    K.button(self.play, 1, ox, oy)
+    K.button(self.disc, 1, ox, oy)
+end
+
+function Game:draw_pick(ox, oy)
+    local u = self.state == "pick" and K.smooth(min(1, self.t / 0.3)) or 1
+    local hw, hh = K.card_w() * self.ps / 2, K.card_h() * self.ps / 2
+    for i, o in ipairs(self.offer or {}) do
+        local dim = self.chosen and self.chosen ~= i
+        local k = dim and (1 - 0.15 * K.smooth(min(1, self.t / 0.25))) or 1
+        local hov = self.state == "pick" and K.hover(o.j, ox + o.x - hw, oy + self.py - hh, hw * 2, hh * 2)
+        local lift = (hov or (self.focus == i and not self.chosen)) and 0.1 or 0
+        K.center(o.key, ox + o.x, oy + self.py - lift - (1 - u) * 0.4, self.ps * k * K.jk(o.j), {r = K.jr(o.j)})
+        K.text(o.lv, ox + o.x, oy + self.lv_y, K.fit(o.lv, UIK.touch() and 0.36 or 0.34, o.btn.w), dim and G.C.UI.TEXT_INACTIVE or G.C.UI.TEXT_LIGHT, "c", u)
+        o.btn.disabled = self.state ~= "pick" and self.chosen ~= i
+        K.button(o.btn, u, ox, oy)
+        if self.focus == i and self.state == "pick" and self.keyed then
+            K.outline(ox + o.btn.x - 0.05, oy + o.btn.y - 0.05, o.btn.w + 0.1, o.btn.h + 0.17, G.C.WHITE, 0.12, 0.04, 0.8)
+        end
+    end
+end
+
+function Game:draw(ox, oy)
+    self:draw_top(ox, oy)
+    if self.state == "pick" or self.state == "chosen" then self:draw_pick(ox, oy) else self:draw_hand(ox, oy) end
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "beat_blind",
+    name = "Beat the Blind",
+    desc = "Beat blind after blind with poker hands and level them up with planets",
+    how = "Score at least the target in 3 hands to beat each blind. Every win levels up a hand.",
+    score = "Chips",
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Beat the Blind"] = "Battez la blinde", ["Beat blind after blind with poker hands and level them up with planets"] = "Battez blinde après blinde avec des mains de poker et montez-les de niveau avec des planètes",
+            ["Score at least the target in 3 hands to beat each blind. Every win levels up a hand."] = "Atteignez le score demandé en 3 mains pour battre chaque blinde. Chaque victoire monte une main de niveau.",
+            ["Pick up to 5 cards"] = "Choisissez jusqu'à 5 cartes", ["Pick a planet"] = "Choisissez une planète", ["Blind defeated!"] = "Blinde battue !",
+            ["Lost to %s on ante %d"] = "Battu par %s à la mise %d", ["Blinds beaten: %d"] = "Blindes battues : %d", ["Best hand: %s for %d"] = "Meilleure main : %s pour %d"},
+        es = {["Beat the Blind"] = "Vence a la ciega", ["Beat blind after blind with poker hands and level them up with planets"] = "Vence ciega tras ciega con manos de póker y súbelas de nivel con planetas",
+            ["Score at least the target in 3 hands to beat each blind. Every win levels up a hand."] = "Consigue la puntuación pedida en 3 manos para vencer cada ciega. Cada victoria sube una mano de nivel.",
+            ["Pick up to 5 cards"] = "Elige hasta 5 cartas", ["Pick a planet"] = "Elige un planeta", ["Blind defeated!"] = "¡Ciega vencida!",
+            ["Lost to %s on ante %d"] = "Derrota ante %s en la apuesta inicial %d", ["Blinds beaten: %d"] = "Ciegas vencidas: %d", ["Best hand: %s for %d"] = "Mejor mano: %s por %d"},
+    }
+end
+
+return Game
+end

@@ -1,0 +1,170 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 103
+local SP = rawget(_G, "social_party") or {}
+social_party = SP
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function state() return require("multiplayer.mps_state") end
+local function friends() return require("multiplayer.mps_friends") end
+
+SP.MAX = 7
+SP.pick = SP.pick or {}
+SP.page = SP.page or 1
+
+local function in_party()
+    local ok, v = pcall(function() return bom_party and bom_party.in_party and bom_party.in_party() end)
+    return ok and v and true or false
+end
+
+local function in_lobby()
+    local k = friends().kit
+    return k and k.in_lobby and k.in_lobby() or false
+end
+
+function SP.candidates()
+    local T = state()
+    local out = {}
+    for _, f in ipairs(T.friends()) do
+        if T.is_online(f) and T.where_of(f) ~= "match" then out[#out + 1] = f end
+    end
+    return out
+end
+
+function SP.picked()
+    local out = {}
+    for _, f in ipairs(SP.candidates()) do
+        if SP.pick[f.code] then out[#out + 1] = f.code end
+    end
+    return out
+end
+
+function SP.mode()
+    if in_party() then return "invite" end
+    if in_lobby() then return "busy" end
+    local ST = rawget(_G, "social_toasts")
+    if ST and ST.joinable and ST.joinable() then return "create" end
+    return "menu"
+end
+
+local function win_w() return touch() and 9.6 or 8.4 end
+local function per_page() return touch() and 4 or 5 end
+
+local function body()
+    local w = win_w()
+    local inner = w - 0.4
+    local d = bom_kit.dims()
+    local T = state()
+    local list = SP.candidates()
+    local n = math.max(1, math.ceil(#list / per_page()))
+    SP.page = math.max(1, math.min(SP.page, n))
+    local rows = {}
+    local mode = SP.mode()
+    local head = mode == "invite" and L("Pick friends to invite to your party.")
+        or mode == "busy" and L("Leave your lobby first.")
+        or mode == "menu" and L("Open this from the main menu.")
+        or L("Pick friends, then open a party for all of you.")
+    rows[#rows + 1] = UIK.note(head, {w = inner})
+    local th = touch() and 0.86 or 0.74
+    local list_h = per_page() * (th + 0.1)
+    local items = {}
+    if #list == 0 then
+        items[1] = {n = G.UIT.R, config = {align = "cm", minw = inner, minh = list_h, padding = 0}, nodes = {
+            UIK.text(L("No friend is online right now."), {scale = d.small, colour = UIK.C.muted}),
+        }}
+    else
+        local count = #SP.picked()
+        for i = (SP.page - 1) * per_page() + 1, math.min(#list, SP.page * per_page()) do
+            local f = list[i]
+            SP.view = SP.view or {}
+            SP.view[f.code] = SP.pick[f.code] == true
+            items[#items + 1] = UIK.toggle{label = f.name ~= "" and f.name or "?", info = T.status_text(f), w = inner,
+                ref_table = SP.view, ref_value = f.code, id = "social_party_" .. tostring(i),
+                disabled = mode == "busy" or mode == "menu" or (not SP.pick[f.code] and count >= SP.MAX),
+                callback = function(v)
+                    SP.pick[f.code] = v and true or nil
+                    UIK.refresh()
+                end}
+        end
+    end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "tm", minw = inner, minh = list_h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = items}}}
+    if n > 1 then
+        rows[#rows + 1] = UIK.pager{prev = "social_party_page", next = "social_party_page", prev_ref = {d = -1}, next_ref = {d = 1},
+            text = tostring(SP.page) .. " / " .. tostring(n), prev_disabled = SP.page <= 1, next_disabled = SP.page >= n, w = inner}
+    end
+    local count = #SP.picked()
+    rows[#rows + 1] = UIK.spacer(0.12)
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        UIK.button{label = count > 0 and T.fill("Invite {n}", {n = tostring(count)}) or L("Invite"), button = "social_party_go", colour = G.C.GREEN,
+            id = "social_party_go", w = inner, h = touch() and 0.78 or 0.62, col = true, disabled = count == 0 or mode == "busy" or mode == "menu"},
+    }}
+    return UIK.stack(rows, {w = w})
+end
+
+function SP.open()
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+r 4 1381 %20%20%20%20 -
+l 59
+    SP.page = 1
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "social_party", compact = true, w = win_w() + 0.2,
+        title = L("PARTY INVITE"),
+        tabs = {{key = "main", label = L("Friends"), build = body}},
+        back_func = "social_party_back",
+    }}
+end
+
+function SP.go()
+    local codes = SP.picked()
+    if #codes == 0 then return end
+    local mode = SP.mode()
+    local ST = rawget(_G, "social_toasts")
+    if mode == "invite" then
+        if ST then ST.sent_to = L("Party") end
+        state().send({type = "social_invite", codes = codes})
+        SP.pick = {}
+        friends().open("friends")
+    elseif mode == "create" and ST and ST.party_with then
+        SP.pick = {}
+        ST.party_with(codes)
+    end
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+function SP.init()
+    G.FUNCS.social_party_open = function() SP.open() end
+    G.FUNCS.social_party_back = function() friends().open("friends") end
+    G.FUNCS.social_party_go = function() SP.go() end
+    G.FUNCS.social_party_page = function(e)
+        SP.page = SP.page + (ref(e).d or 0)
+        UIK.refresh()
+    end
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["Pick friends to invite to your party."] = "Choisissez les amis à inviter dans votre groupe.",
+            ["Leave your lobby first."] = "Quittez d'abord votre salon.",
+            ["Open this from the main menu."] = "Ouvrez ceci depuis le menu principal.",
+            ["Pick friends, then open a party for all of you."] = "Choisissez des amis, puis ouvrez un groupe pour vous tous.",
+            ["No friend is online right now."] = "Aucun ami n'est en ligne.",
+            ["Invite {n}"] = "Inviter {n}", ["PARTY INVITE"] = "INVITER EN GROUPE", ["Party"] = "Groupe", ["Party invite"] = "Inviter en groupe",
+            ["Invites sent: {n}."] = "Invitations envoyées : {n}.",
+        },
+        es = {
+            ["Pick friends to invite to your party."] = "Elige a los amigos que invitar a tu grupo.",
+            ["Leave your lobby first."] = "Sal primero de tu sala.",
+            ["Open this from the main menu."] = "Ábrelo desde el menú principal.",
+            ["Pick friends, then open a party for all of you."] = "Elige amigos y abre un grupo para todos.",
+            ["No friend is online right now."] = "Ningún amigo está en línea ahora.",
+            ["Invite {n}"] = "Invitar a {n}", ["PARTY INVITE"] = "INVITAR AL GRUPO", ["Party"] = "Grupo", ["Party invite"] = "Invitar en grupo",
+            ["Invites sent: {n}."] = "Invitaciones enviadas: {n}.",
+        },
+    }
+end
+
+return SP
+end
