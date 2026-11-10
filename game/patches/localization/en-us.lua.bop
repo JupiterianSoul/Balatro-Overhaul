@@ -269,10 +269,7 @@ l 5
             mp_sticker_persistent="Persistent",
             mp_sticker_unreliable="Unreliable",
 c 372
-l 429
-            -- ==========================================
-            -- FEATURE: Overhaul Showcase text keys
-            -- ==========================================
+l 418
             sc_welcome={
                 "Hey there! Welcome to",
                 "{C:attention}Balatro Overhaul{}!",
@@ -339,7 +336,6 @@ l 429
                 "from {C:attention}Settings {}> {C:attention}What's New{}.",
                 "Now go break some blinds!",
             },
-            -- FEATURE: Sub-showcase text keys (contextual Jimbo tips)
             sc_sub_tavern_intro={
                 "Welcome to the {C:blue}Tavern{}!",
                 "This is your main hub.",
@@ -454,7 +450,6 @@ l 429
                 "Play head-to-head against",
                 "another player online!",
             },
-            -- FEATURE: Settings sub-showcase (per-setting walkthrough)
             sc_sub_settings_welcome={
                 "Welcome to {C:attention}Settings{}!",
                 "Let me walk you through",
@@ -482,7 +477,6 @@ l 429
                 "{C:attention}Drag Select{}, {C:attention}FPS Counter{},",
                 "{C:attention}Performance Mode{}, and more!",
             },
-            -- FEATURE: Individual toggle/button showcase steps
             sc_sub_tgl_modmenu={
                 "{C:attention}Disable Cheats{}: hides the",
                 "Cheats toggle and the",
@@ -548,7 +542,6 @@ l 429
                 "player profile, stats,",
                 "and progression!",
             },
-            -- FEATURE: Performance Settings sub-showcase
             sc_sub_perf_welcome={
                 "Welcome to {C:attention}Performance Settings{}!",
                 "Tune these options to get",
@@ -599,7 +592,6 @@ l 429
                 "skips long score animations",
                 "when the total is very large.",
             },
-            -- FEATURE: Optimizer Settings sub-showcase
             sc_sub_opt_welcome={
                 "Welcome to {C:attention}Optimizer Settings{}!",
                 "Configure how the Hand Optimizer",
@@ -681,21 +673,18 @@ l 429
                 "add your own songs in",
                 "{C:attention}My Music{} and play them!",
             },
-            -- FEATURE: Badge Immunity sub-showcase
             sc_sub_badge_immunity={
                 "Equip a {C:attention}Boss Badge{}!",
                 "Your badge {C:gold}disables{} that",
                 "boss's effect entirely.",
                 "Check {C:attention}Profile > Badges{}!",
             },
-            -- FEATURE: Seed Library sub-showcase
             sc_sub_seed_library={
                 "Welcome to the {C:attention}Seed Library{}!",
                 "Save your favorite {C:gold}seeds{},",
                 "{C:green}copy{} or {C:green}paste{} from clipboard,",
                 "name them, and {C:blue}Quickplay{} anytime!",
             },
-            -- FEATURE: First-launch language selector
             sc_choose_language={
                 "Choose your language:",
             },

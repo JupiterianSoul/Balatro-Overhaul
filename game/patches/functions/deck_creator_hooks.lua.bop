@@ -2,18 +2,10 @@ BOP 1
 eol lf
 final 1
 base 0
-l 134
--- FEATURE: Deck Creator - Game Hooks Layer (Phase 2)
--- Ported from Balatro-DeckCreator-1.2.2 (DeckCreator.lua ~3300 lines)
--- Hooks into Back:apply_to_run, Back:trigger_effect, end_round, evaluate_play,
--- get_current_pool, create_card, draw/discard, and shop mechanics.
--- All Steamodded/Balamod dependencies removed. Uses safe hook pattern (store + wrap).
+l 121
 
 DeckCreatorHooks = {}
 
-----------------------------------------------------------------------
--- HELPER: Check if current deck is a custom deck
-----------------------------------------------------------------------
 local function is_custom_deck()
     if not G then return false end
     if not G.GAME then return false end
@@ -28,15 +20,10 @@ local function get_deck_config()
     return G.GAME.selected_back.effect.config or {}
 end
 
--- Forward declarations for Number Randomizer functions referenced before
--- their definitions (the NR block is at the bottom of this file).
-local _nr_randomize_all_hands               -- function, defined in the NR block
-local _nr_hands_ante = -1                   -- last ante at which hands were randomized
-local _nr_hand_base_l = {}                  -- original s/l chip+mult per hand name
+local _nr_randomize_all_hands
+local _nr_hands_ante = -1
+local _nr_hand_base_l = {}
 
-----------------------------------------------------------------------
--- HOOK 1: Back:apply_to_run() — Apply all custom deck config at run start
-----------------------------------------------------------------------
 local original_back_apply_to_run = Back.apply_to_run
 
 local DC_ENH = {Bonus = "m_bonus", Mult = "m_mult", Wild = "m_wild", Glass = "m_glass", Steel = "m_steel", Stone = "m_stone", Gold = "m_gold", Lucky = "m_lucky"}
@@ -238,7 +225,7 @@ l 21
                         local key = dc_pick(pool, "dc_voucher")
                         G.GAME.used_vouchers[key] = true
 r 1 178 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 16
+l 13
                         Card.apply_to_run(nil, G.P_CENTERS[key])
                     end
                 end
@@ -250,14 +237,10 @@ l 16
     if not ok then DeckCreatorUtils.log("Custom deck apply failed: " .. tostring(err)) end
 end
 
-----------------------------------------------------------------------
--- HOOK 2: Back:trigger_effect() — Runtime effects during gameplay
-----------------------------------------------------------------------
 local original_back_trigger_effect = Back.trigger_effect
 
 r 1 108 - -
-l 60
-    -- Call vanilla first
+l 51
     local r1, r2 = original_back_trigger_effect(self, args)
 
     if not is_custom_deck() then return r1, r2 end
@@ -267,7 +250,6 @@ l 60
         local config = get_deck_config()
         if not config then return end
 
-        -- Final scoring step: apply chip/mult reductions
         if args.context == 'final_scoring_step' then
             if G.GAME.dc_chip_reduction_percent and G.GAME.dc_chip_reduction_percent > 0 then
                 local reduction = args.chips * (G.GAME.dc_chip_reduction_percent / 100)
@@ -282,18 +264,13 @@ l 60
             end
         end
 
-        -- Blind amount scaling
         if args.context == 'blind_amount' and G.GAME.dc_blind_scaling and G.GAME.dc_blind_scaling ~= 1 then
-            -- Blind scaling is applied during blind setup, not here
         end
     end)
 
     return r1, r2
 end
 
-----------------------------------------------------------------------
--- HOOK 3: end_round() — Tag on win, dollar bonuses, joker destruction
-----------------------------------------------------------------------
 local original_end_round = end_round
 
 function DeckCreatorHooks.round_end_effects()
@@ -303,7 +280,6 @@ function DeckCreatorHooks.round_end_effects()
         local config = get_deck_config()
         if not config then return end
 
-        -- Tag on win: roll for each tag type
         if G.GAME.dc_tag_on_win_config then
             for _, tagConfig in pairs(G.GAME.dc_tag_on_win_config) do
                 if tagConfig.chance and tagConfig.chance > 0 and tagConfig.key then
@@ -314,11 +290,10 @@ function DeckCreatorHooks.round_end_effects()
             end
         end
 
-        -- Enhanced dollars per round (count enhanced cards in hand/deck)
         if G.GAME.dc_enhanced_dollars_per_round and G.GAME.dc_enhanced_dollars_per_round > 0 then
             local count = 0
 r 3 4751 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 15
+l 14
                 for _, card in ipairs(G.playing_cards) do
                     if card.config and card.config.center and card.config.center.key ~= "c_base" then
                         count = count + 1
@@ -331,11 +306,10 @@ l 15
             end
         end
 
-        -- Negative joker money cost
         if G.GAME.dc_negative_joker_money and G.GAME.dc_negative_joker_money > 0 then
             local neg_count = 0
 r 13 2531 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 45
+l 38
                 for _, joker in ipairs(G.jokers.cards) do
                     if joker.edition and joker.edition.negative then
                         neg_count = neg_count + 1
@@ -348,7 +322,6 @@ l 45
             end
         end
 
-        -- Destroy random joker after ante 4
         if G.GAME.dc_destroy_joker_ante4 and G.GAME.dc_destroy_joker_ante4 > 0 then
             if G.GAME.round_resets and G.GAME.round_resets.ante and G.GAME.round_resets.ante >= 4 then
                 if math.random(100) <= G.GAME.dc_destroy_joker_ante4 then
@@ -361,13 +334,9 @@ end
 
 end_round = function()
     DeckCreatorHooks.round_end_effects()
-    -- Call vanilla end_round
     return original_end_round()
 end
 
-----------------------------------------------------------------------
--- HOOK 4: get_current_pool() — Pool filtering for custom deck rules
-----------------------------------------------------------------------
 local original_get_current_pool = get_current_pool
 
 get_current_pool = function(_type, _rarity, _legendary, _append)
@@ -376,34 +345,28 @@ get_current_pool = function(_type, _rarity, _legendary, _append)
     if not is_custom_deck() then return _pool, _pool_key end
 
     pcall(function()
-        -- Allow legendary jokers everywhere
         if G.GAME.dc_allow_legendary and _type == 'Joker' and not _legendary then
-            -- Add legendary jokers to the pool
             if G.P_JOKER_RARITY_POOLS and G.P_JOKER_RARITY_POOLS[4] then
                 for _, v in ipairs(G.P_JOKER_RARITY_POOLS[4]) do
 r 13 1955 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 13 2031 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 12
+l 9
                     end
                 end
             end
         end
 
-        -- Allow duplicate jokers (remove used_jokers check effectively by re-adding)
         if G.GAME.dc_allow_duplicates and _type == 'Joker' then
-            -- The pool was already culled by vanilla; duplicates were removed.
-            -- Re-scan and add back used jokers that aren't banned
             if G.P_CENTER_POOLS and G.P_CENTER_POOLS.Joker then
                 for _, v in ipairs(G.P_CENTER_POOLS.Joker) do
                     if G.GAME.used_jokers[v.key] and v.unlocked ~= false and not G.GAME.banned_keys[v.key] then
 r 13 2031 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 12
+l 11
                     end
                 end
             end
         end
 
-        -- Allow Black Hole and The Soul
         if G.GAME.dc_allow_black_hole or G.GAME.dc_allow_soul then
             if _type == 'Spectral' or _type == 'Planet' then
                 if G.P_CENTER_POOLS and G.P_CENTER_POOLS[_type] then
@@ -412,7 +375,7 @@ l 12
                            (G.GAME.dc_allow_soul and v.name == 'The Soul') then
 r 13 1955 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 13 2031 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 39
+l 32
                             end
                         end
                     end
@@ -421,10 +384,6 @@ l 39
         end
     end)
 
-    -- FIX: Post-filter banned items from pool (catches vanilla fallback bypass for j_joker/v_blank)
-    -- Vanilla's fallback hardcodes j_joker/v_blank without checking G.GAME.banned_keys.
-    -- We re-scan the returned pool and mark banned entries as UNAVAILABLE.
-    -- If ALL entries are banned, leave pool unchanged to prevent infinite loop in create_card.
     pcall(function()
         if G.GAME and G.GAME.banned_keys then
             local has_available = false
@@ -447,19 +406,15 @@ l 39
     return _pool, _pool_key
 end
 
-----------------------------------------------------------------------
--- HOOK 5: draw_from_deck_to_hand — Card rank changes on draw
-----------------------------------------------------------------------
 local original_draw_from_deck_to_hand = G.FUNCS.draw_from_deck_to_hand
 
 r 16 355 - -
-l 41
+l 35
     original_draw_from_deck_to_hand(e)
 
     pcall(function()
         if not is_custom_deck() then return end
 
-        -- Increase drawn card ranks
         if G.GAME.dc_increase_drawn_rank and G.GAME.dc_increase_drawn_rank > 0 then
             if G.hand and G.hand.cards then
                 local ranks_order = {"2","3","4","5","6","7","8","9","10","Jack","Queen","King","Ace"}
@@ -469,7 +424,6 @@ l 41
                             local current_rank = card.base.value
                             for i, r in ipairs(ranks_order) do
                                 if r == current_rank and i < #ranks_order then
-                                    -- Upgrade rank by one
                                     local new_id = card.base.suit:sub(1,1) .. "_" .. (ranks_order[i+1] == "10" and "T" or ranks_order[i+1]:sub(1,1))
                                     if G.P_CARDS[new_id] then
                                         card:set_base(G.P_CARDS[new_id])
@@ -483,24 +437,19 @@ l 41
             end
         end
 
-        -- Draw to fixed hand size
         if G.GAME.dc_draw_to_hand_size and G.hand then
             G.hand.config.card_limit = G.GAME.dc_draw_to_hand_size
         end
     end)
 end
 
-----------------------------------------------------------------------
--- HOOK 6: discard_cards_from_highlighted — Card rank changes on discard
-----------------------------------------------------------------------
 local original_discard = G.FUNCS.discard_cards_from_highlighted
 
 r 16 379 - -
-l 36
+l 32
     pcall(function()
         if not is_custom_deck() then return end
 
-        -- Increase discarded card ranks
         if G.GAME.dc_increase_discard_rank and G.GAME.dc_increase_discard_rank > 0 then
             if G.hand and G.hand.highlighted then
                 local ranks_order = {"2","3","4","5","6","7","8","9","10","Jack","Queen","King","Ace"}
@@ -527,14 +476,11 @@ l 36
     return original_discard(e, hook)
 end
 
-----------------------------------------------------------------------
--- HOOK 7: Skip blind bonus effects
-----------------------------------------------------------------------
 local original_skip_blind = G.FUNCS.skip_blind
 
 if original_skip_blind then
 r 4 2740 %20%20%20%20 -
-l 65
+l 51
         pcall(function()
             if not is_custom_deck() then return end
 
@@ -548,10 +494,6 @@ l 65
     end
 end
 
-----------------------------------------------------------------------
--- HOOK 8: Banned blind replacement
--- When a blind would be selected, replace banned blinds with bl_empty
-----------------------------------------------------------------------
 DeckCreatorHooks.filterBannedBlind = function(blind_key)
     if not is_custom_deck() then return blind_key end
     if not G.GAME then return blind_key end
@@ -566,35 +508,25 @@ DeckCreatorHooks.filterBannedBlind = function(blind_key)
     return blind_key
 end
 
-----------------------------------------------------------------------
--- HOOK 9: Banned tag filtering
--- Prevent banned tags from being awarded
-----------------------------------------------------------------------
 local original_add_tag = add_tag
 
 if original_add_tag then
     add_tag = function(_tag, ...)
-        -- FIX: C2 — Check ban OUTSIDE pcall so return actually blocks the call
         if is_custom_deck() and _tag and _tag.key then
             local ok, blocked = pcall(function()
-                -- Check banned_keys (populated in apply_to_run)
                 if G.GAME and G.GAME.banned_keys and G.GAME.banned_keys[_tag.key] then
                     return true
                 end
                 return false
             end)
             if ok and blocked then
-                return -- Silently prevent banned tag
+                return
             end
         end
         return original_add_tag(_tag, ...)
     end
 end
 
-----------------------------------------------------------------------
--- HOOK 10: Shop leave bonuses (money/joker when leaving shop)
--- FIX: I1 — Vanilla has no skip_shop; hook toggle_shop instead
-----------------------------------------------------------------------
 local original_toggle_shop = G.FUNCS.toggle_shop
 
 if original_toggle_shop then
@@ -617,7 +549,7 @@ l 14
     end
 
 r 4 2481 %20%20%20%20 -
-l 34
+l 27
         if G.STATE == G.STATES.SHOP then
             pcall(function()
                 if not is_custom_deck() then return end
@@ -632,28 +564,21 @@ l 34
     end
 end
 
-----------------------------------------------------------------------
--- Initialize: Load custom decks into pool on game startup
-----------------------------------------------------------------------
 function DeckCreatorHooks.init()
     pcall(function()
         DeckCreatorUtils.log("Initializing Deck Creator hooks...")
         DeckCreatorPersistence.loadAllDeckLists()
         DeckCreatorPersistence.loadRedSealMessages()
         DeckCreatorUtils.log("Deck Creator hooks initialized. " .. #DeckCreatorUtils.customDeckList .. " custom decks loaded.")
-        -- FEATURE: Register Deck Creator main menu button callback
         G.FUNCS.open_deck_creator = function(e)
             pcall(function()
                 DeckCreatorGUI.openDeckList()
             end)
         end
-        -- FIX: Hook setup_run to refresh the deck pool just before the run setup screen opens.
-        -- This ensures custom decks always appear in the deck selection screen regardless of
-        -- whether G.P_CENTER_POOLS.Back was ready when init() first ran.
         if G.FUNCS.setup_run then
             local _orig_setup_run = G.FUNCS.setup_run
 r 4 1570 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 265
+l 177
                 pcall(function() DeckCreatorPersistence.refreshDeckList() end)
                 _orig_setup_run(e)
             end
@@ -661,26 +586,10 @@ l 265
     end)
 end
 
-----------------------------------------------------------------------
--- FEATURE: Number Randomizer — Game-level hooks
--- Active when G.GAME.number_randomizer == true (set by Custom Runs,
--- Deck Creator, or MP lobby settings). Randomizes prices, joker/
--- consumable ability values, poker hand chips/mult, and booster sizes.
--- These hooks are placed here (after card.lua) so Card/CardArea exist.
---
--- System based on Cryptid mod's misprintize.lua:
---   - Log-uniform distribution (pseudoseed-seeded) for fair randomization
---   - create_card hook (not emplace) to catch ALL card creation paths
---   - Full card.ability table iteration with a field blacklist
---   - Per-hand-per-ante seeding so each hand's factor is stable within an ante
-----------------------------------------------------------------------
 local function _nr_active()
     return G and G.GAME and G.GAME.number_randomizer == true and not Randomizer
 end
 
--- Log-uniform random factor in [min_val, max_val] seeded deterministically.
--- Mirrors Cryptid's log_random(seed, min, max).
--- Reseeds math.random (same as vanilla pseudorandom does).
 local function _nr_log_rand(seed_str, min_val, max_val)
     math.randomseed(pseudoseed(seed_str))
     local lmin = math.log(min_val)
@@ -688,8 +597,6 @@ local function _nr_log_rand(seed_str, min_val, max_val)
     return math.exp(lmin + math.random() * (lmax - lmin))
 end
 
--- Apply a pre-computed factor to a numeric base value.
--- Uses %.2g formatting (2 significant figures) matching Cryptid's cry_format.
 local function _nr_apply(base, factor)
     if type(base) ~= 'number' or base == 0 then return base end
     local sign = (base < 0) and -1 or 1
@@ -697,54 +604,35 @@ local function _nr_apply(base, factor)
     return (result or math.abs(base) * factor) * sign
 end
 
--- Fields that must never be randomized.
--- Exact match of Cryptid's misprintize_value_blacklist (identity/structural fields).
--- NOTE: odds, repetitions, perma_repetitions, nominal are in Cryptid's bignum_blacklist —
--- they ARE randomized but capped. They are NOT in this blacklist.
 local _nr_blacklist = {
-    -- Cryptid misprintize_value_blacklist (identity/structural fields).
-    -- NOTE: h_size and d_size removed vs Cryptid so that joker hand/discard-size
-    -- bonuses (Juggler, Drunkard, Merry Andy, Troubadour, Turtle Bean, Stuntman)
-    -- ARE randomized.  In card.ability these fields represent bonus amounts, not
-    -- structural limits; the structural card-area limit is card_limit, still blocked.
     id = true, suit_nominal = true, base_nominal = true, face_nominal = true,
     suit_nominal_original = true, perish_tally = true, times_played = true,
     card_limit = true, extra_slots_used = true,
     qty = true, h_x_chips = true, selected_d6_face = true, colour = true,
-    -- Additional guard (Cryptid uses Card.no check):
     immutable = true,
 }
 
--- Value caps matching Cryptid's misprintize_value_cap.
 local _nr_value_cap = {
     repetitions = 40,
     perma_repetitions = 40,
 }
 
--- Randomize all numeric values in card.ability (and one level of sub-tables).
--- Uses a SINGLE per-ante seed (exact Cryptid match) so all fields share the same factor.
--- Skips blacklisted fields and identity multipliers (x_mult/x_chips == 1).
--- Caps repetitions/perma_repetitions at 40 (Cryptid misprintize_value_cap).
 local function _nr_randomize_ability(card)
     if not card or not card.config or not card.config.center then return end
-    -- FIX: Skip immutable cards entirely (Cryptid does Card.no(card,"immutable",true) check)
     if card.ability and card.ability.immutable then return end
     local ante = (G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante) or 0
-    -- Single per-ante factor — ALL fields on ALL cards share this factor (Cryptid exact match)
     local factor = _nr_log_rand('nr_misprint' .. ante, 0.1, 10)
     local ab = card.ability
     if not ab then return end
     for k, v in pairs(ab) do
         if not _nr_blacklist[k] then
             if type(v) == 'number' and v ~= 0 then
-                -- Skip identity multipliers (Cryptid does the same)
                 if not ((k == 'x_mult' or k == 'x_chips') and v == 1) then
                     local result = _nr_apply(v, factor)
                     if _nr_value_cap[k] then result = math.min(result, _nr_value_cap[k]) end
                     ab[k] = result
                 end
             elseif type(v) == 'table' and k ~= 'immutable' and k ~= 'colour' then
-                -- Recurse one level (e.g. ab.extra sub-table)
                 for k2, v2 in pairs(v) do
                     if not _nr_blacklist[k2] and type(v2) == 'number' and v2 ~= 0 then
                         if not ((k2 == 'x_mult' or k2 == 'x_chips') and v2 == 1) then
@@ -759,22 +647,16 @@ local function _nr_randomize_ability(card)
     end
 end
 
--- HOOK NR-1: Randomize card purchase prices (all shop cards)
--- Uses center key + ante as seed so price is stable within an ante.
 local _nr_orig_set_cost = Card.set_cost
 Card.set_cost = function(self)
     _nr_orig_set_cost(self)
     if not _nr_active() then return end
     if self.cost and type(self.cost) == 'number' and self.cost > 0 then
         local ante = (G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante) or 0
-        -- Same per-ante seed as ability values (Cryptid exact match)
         self.cost = math.max(1, math.floor(self.cost * _nr_log_rand('nr_misprint' .. ante, 0.1, 10)))
     end
 end
 
--- HOOK NR-2: Randomize joker/consumable/voucher ability values when a card is created.
--- Mirrors Cryptid's create_card hook — catches ALL creation paths
--- (shop, boosters, tags, spectral effects, etc.), not just emplace.
 local _nr_orig_create_card = create_card
 create_card = function(_type, area, legendary, _rarity, skip_materialize, soulable, forced_key, key_append)
     local card = _nr_orig_create_card(_type, area, legendary, _rarity, skip_materialize, soulable, forced_key, key_append)
@@ -782,16 +664,13 @@ create_card = function(_type, area, legendary, _rarity, skip_materialize, soulab
         local set = card.config.center.set
         if set == 'Joker' or set == 'Tarot' or set == 'Spectral' or set == 'Planet' or set == 'Voucher' then
             pcall(_nr_randomize_ability, card)
-            card._nr_done = true  -- FIX #146: mark to prevent double-randomization via emplace hook
+            card._nr_done = true
         end
     end
     return card
 end
 
--- HOOK NR-2b: Catch jokers that bypass create_card (spectral effects, tag joker grants,
--- Card:init() direct calls, etc.) and randomize their ability on first emplace into G.jokers.
--- card._nr_done guards against double-randomization for cards that went through create_card.
-local _nr_sp_emplace = CardArea.emplace  -- may already be wrapped by score_preview.lua
+local _nr_sp_emplace = CardArea.emplace
 CardArea.emplace = function(self, card, location, stay_flipped)
     _nr_sp_emplace(self, card, location, stay_flipped)
     if self == G.jokers and _nr_active()
@@ -803,20 +682,6 @@ CardArea.emplace = function(self, card, location, stay_flipped)
     end
 end
 
--- HOOK NR-5: Randomize playing card base.nominal (individual card chip contribution).
--- Cryptid misprintizes card.base as well as card.ability — this is the playing-card
--- equivalent. base.nominal is 2-11 for 2..Ace; jokers use G.P_CARDS.empty (nominal=0)
--- so the nominal ~= 0 guard naturally excludes them.
---
--- We hook Card:set_base(card, initial) because it is the single point where nominal
--- is written for BOTH creation paths:
---   - Starting deck:      card_from_control → Card() → set_base(card, true)
---   - Mid-run additions:  create_playing_card → Card() → set_base(card, true)
--- Passing initial=true means "first creation"; suit/rank transformations call
--- set_base without initial (nil/false) and are NOT re-randomized.
---
--- Seed: per-card-key + per-ante → all cards of the same type (e.g. all S_A)
--- share the same randomized nominal within an ante (mirrors Cryptid's base_values table).
 local _nr_orig_set_base = Card.set_base
 Card.set_base = function(self, card, initial)
     _nr_orig_set_base(self, card, initial)
@@ -831,28 +696,13 @@ Card.set_base = function(self, card, initial)
     end
 end
 
--- HOOK NR-3 (redesigned): Permanently randomize poker hand chip/mult values per ante.
--- Old approach: modified h.chips/h.mult right before evaluate_play, restored after.
---   Problem: Run Info poker-hands tab reads G.GAME.hands directly and always saw
---   vanilla values; also the per-play factor was not stable within an ante.
--- New approach: apply a single per-ante factor ONCE, written permanently into
---   G.GAME.hands so every consumer (scoring engine, UI tabs, HUD) sees the same
---   randomized values.  l_chips/l_mult are also randomized so level-up bonuses are
---   wild.  Original vanilla values are stored in _nr_hand_base_l (populated once at
---   run start) so re-randomizing on the NEXT ante uses clean originals (no compounding).
--- Called from:
---   (a) Back:apply_to_run (via G.E_MANAGER immediate event) — ante 1
---   (b) ease_ante hook (via G.E_MANAGER immediate event) — every subsequent ante
--- _nr_hands_ante dedup guard prevents double-application within the same ante.
 _nr_randomize_all_hands = function()
     if not _nr_active() or not G.GAME or not G.GAME.hands then return end
     local ante = (G.GAME.round_resets and G.GAME.round_resets.ante) or 1
-    if _nr_hands_ante == ante then return end   -- already done for this ante
+    if _nr_hands_ante == ante then return end
     _nr_hands_ante = ante
     local factor = _nr_log_rand('nr_misprint' .. ante, 0.1, 10)
     for name, h in pairs(G.GAME.hands) do
-        -- Snapshot original vanilla values on first call for this run.
-        -- Uses current h.s_chips/s_mult (NOT h.chips/mult which include level-ups).
         if not _nr_hand_base_l[name] then
             _nr_hand_base_l[name] = {
                 s_chips = h.s_chips, s_mult = h.s_mult,
@@ -860,13 +710,10 @@ _nr_randomize_all_hands = function()
             }
         end
         local base = _nr_hand_base_l[name]
-        -- Apply per-ante factor to originals (prevent compounding across antes).
         local new_s_chips = math.max(1, math.floor(_nr_apply(base.s_chips or h.s_chips, factor)))
         local new_s_mult  = math.max(1, math.floor(_nr_apply(base.s_mult  or h.s_mult,  factor)))
         local new_l_chips = math.max(1, math.floor(_nr_apply(base.l_chips or h.l_chips, factor)))
         local new_l_mult  = math.max(1, math.floor(_nr_apply(base.l_mult  or h.l_mult,  factor)))
-        -- Write all four fields so level_up_hand() continues to work correctly with
-        -- the randomized values: chips = s_chips + l_chips * (level-1).
         h.s_chips = new_s_chips
         h.s_mult  = new_s_mult
         h.l_chips = new_l_chips
@@ -877,17 +724,13 @@ _nr_randomize_all_hands = function()
     end
 end
 
--- HOOK NR-4: Randomize booster pack card count and choices on open.
--- Uses pseudoseed so results are stable per ante.
 local _nr_orig_use_consumeable = Card.use_consumeable
 Card.use_consumeable = function(self, area, copier, ...)
-    -- Randomize pack size (how many cards appear) before vanilla reads it
     if _nr_active() and self.ability and self.ability.set == 'Booster' then
         pcall(function()
             if self.ability.extra and type(self.ability.extra) == 'number' then
                 local ante = (G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante) or 0
                 local key = (self.config and self.config.center_key) or 'booster'
-                -- Absurd pack sizes: -3 to +8 cards, uncapped high end
                 math.randomseed(pseudoseed('nr_bsize_' .. key .. ante))
                 local delta = math.random(-3, 8)
                 self.ability.extra = math.max(1, math.min(15, self.ability.extra + delta))
@@ -895,7 +738,6 @@ Card.use_consumeable = function(self, area, copier, ...)
         end)
     end
     local result = _nr_orig_use_consumeable(self, area, copier, ...)
-    -- Randomize choices (how many you can pick) after vanilla sets G.GAME.pack_choices
     if _nr_active() and self.ability and self.ability.set == 'Booster' then
         pcall(function()
             if G.GAME and G.GAME.pack_choices then
@@ -910,18 +752,13 @@ Card.use_consumeable = function(self, area, copier, ...)
     return result
 end
 
--- HOOK NR-6: Re-randomize poker hand values on each ante change.
--- ease_ante() is the single function that increments G.GAME.round_resets.ante.
--- The actual increment happens inside an Event({trigger='immediate',...}) so we
--- also queue our own immediate event (FIFO ordering guaranteed) which executes
--- AFTER the ante field is updated — _nr_randomize_all_hands reads the new ante.
 local _nr_orig_ease_ante = ease_ante
 ease_ante = function(mod)
     local result = _nr_orig_ease_ante(mod)
     if _nr_active() then
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 17
+l 13
             func = function()
                 pcall(_nr_randomize_all_hands)
                 return true
@@ -931,10 +768,6 @@ l 17
     return result
 end
 
--- FIX: Expose hand randomization for cross-module use.
--- custom_runs.lua sets G.GAME.number_randomizer AFTER Back:apply_to_run() returns
--- (because Game.start_run calls apply_to_run before the hook's flag assignment).
--- This global function lets custom_runs.lua trigger the initial hand randomization.
 function nr_queue_hand_randomization()
     if not G.E_MANAGER then return end
     _nr_hands_ante = -1

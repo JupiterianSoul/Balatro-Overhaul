@@ -2,7 +2,6 @@
 .super Ljava/lang/Thread;
 .source "TlsTunnel.java"
 
-# annotations
 .annotation system Ldalvik/annotation/EnclosingClass;
     value = Lorg/love2d/android/TlsTunnel;
 .end annotation
@@ -13,13 +12,11 @@
 .end annotation
 
 
-# instance fields
 .field private final in:Ljava/io/InputStream;
 
 .field private final out:Ljava/io/OutputStream;
 
 
-# direct methods
 .method constructor <init>(Ljava/io/InputStream;Ljava/io/OutputStream;)V
     .locals 1
 
@@ -39,7 +36,6 @@
 .end method
 
 
-# virtual methods
 .method public run()V
     .locals 2
 

@@ -2,37 +2,29 @@ BOP 1
 eol lf
 final 1
 base 0
-l 35
--- FEATURE: Deck Creator - Utils Layer
--- Ported from Balatro-DeckCreator-1.2.2 (Utils.lua)
--- Stripped of Steamodded/Balamod dependencies for Android integration
+l 27
 
 DeckCreatorUtils = {}
 
--- State
 DeckCreatorUtils.customDeckList = {}
 DeckCreatorUtils.EditDeckConfig = nil
 DeckCreatorUtils.deletedSlugs = {}
 DeckCreatorUtils.disabledSlugs = {}
 DeckCreatorUtils.redSealMessages = {}
 
--- Logging (replaces sendDebugMessage)
 function DeckCreatorUtils.log(msg)
     print("[DeckCreator] " .. tostring(msg))
 end
 
--- Add deck to list
 function DeckCreatorUtils.addDeckToList(deck)
     if deck == nil then return end
     DeckCreatorUtils.customDeckList[#DeckCreatorUtils.customDeckList + 1] = deck
 end
 
--- Get the deck currently being edited (for GUI use)
 function DeckCreatorUtils.getCurrentEditingDeck()
     return DeckCreatorUtils.EditDeckConfig
 end
 
--- Add dollar amount at end of round (animated)
 function DeckCreatorUtils.addDollarAmountAtEndOfRound(dollars, text)
     if not G then return end
     if not G.GAME then return end
@@ -50,7 +42,7 @@ l 2
                         {n=G.UIT.T, config={text = text or "Deck Bonus",colour = G.C.WHITE, scale = 0.4, shadow = true}},
                     }},
 r 7 297 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 90
+l 87
                         {n=G.UIT.T, config={text = "$" .. tostring(dollars), colour = G.C.GOLD, scale = 0.5, shadow = true}},
                     }}
                 }
@@ -65,7 +57,6 @@ l 90
     }))
 end
 
--- List generators
 function DeckCreatorUtils.generateIntegerList()
     local list = {}
     for i = 0, 100 do
@@ -108,7 +99,6 @@ function DeckCreatorUtils.generateBoundedIntegerListWithNoneOption(min, max)
     return list
 end
 
--- Suit/Rank/Edition/Enhancement/Seal enumerators (vanilla only, no Steamodded)
 function DeckCreatorUtils.suits()
     return {"Clubs", "Diamonds", "Hearts", "Spades"}
 end
@@ -137,7 +127,6 @@ function DeckCreatorUtils.seals()
     return {"None", "Gold", "Red", "Blue", "Purple", "Random"}
 end
 
--- Key enumerators (pull from G.P_CENTERS, G.P_TAGS, G.P_BLINDS at runtime)
 function DeckCreatorUtils.jokerKeys()
     if not G or not G.P_CENTERS then return {} end
     local keys = {}
@@ -216,7 +205,7 @@ function DeckCreatorUtils.boosterKeys()
     if not G or not G.P_CENTERS then return {} end
     local keys = {}
 r 3 229 %20%20%20%20 -
-l 65
+l 63
         if v.set == "Booster" then
             keys[#keys + 1] = { id = k, name = v.name or k }
         end
@@ -225,7 +214,6 @@ l 65
     return keys
 end
 
--- Vouchers (hardcoded vanilla list)
 function DeckCreatorUtils.vouchers(includeLevelTwo)
     local list = {
         { id = "v_overstock_norm", name = "Overstock", pos = {x=0,y=0} },
@@ -271,7 +259,6 @@ function DeckCreatorUtils.vouchers(includeLevelTwo)
     return list
 end
 
--- Utility functions
 function DeckCreatorUtils.uuid()
     local random = math.random
     local template ='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
@@ -316,7 +303,7 @@ function DeckCreatorUtils.tableLength(t)
     if t == nil then return 0 end
     local count = 0
 r 12 187 %20%20%20%20 -
-l 52
+l 51
     return count
 end
 
@@ -324,7 +311,6 @@ function DeckCreatorUtils.timestamp()
     return os.time()
 end
 
--- Full deck conversion functions (apply edition/enhancement to all playing cards)
 function DeckCreatorUtils.fullDeckConversionFunctions(arg)
     if not G then return end
     if not G.playing_cards then return end
@@ -370,7 +356,7 @@ function DeckCreatorUtils.fullDeckConversionFunctions(arg)
     if not convFunc then return end
 
 r 1 112 %20%20%20%20 -
-l 48
+l 45
         func = function()
             for _, card in ipairs(G.playing_cards) do
                 pcall(function()
@@ -382,7 +368,6 @@ l 48
     }))
 end
 
--- Configure empty blind (fallback for banned blinds)
 function DeckCreatorUtils.configureEmptyBlind()
     if not G then return end
     if not G.P_BLINDS then return end
@@ -401,7 +386,6 @@ function DeckCreatorUtils.configureEmptyBlind()
             boss_colour = HEX("888888"),
             set = "Blind"
         }
-        -- Add localization
         if G.localization and G.localization.descriptions and G.localization.descriptions.Blind then
             G.localization.descriptions.Blind.bl_empty = {
                 name = "Empty",
@@ -411,7 +395,6 @@ function DeckCreatorUtils.configureEmptyBlind()
     end
 end
 
--- Add a tag to the current run
 function DeckCreatorUtils.addTag(tagKey)
     if not G then return end
     if not G.GAME then return end
@@ -421,7 +404,7 @@ function DeckCreatorUtils.addTag(tagKey)
     if tagKey == 'tag_orbital' then
 r 3 312 %20%20%20%20%20%20%20%20 -
 r 3 313 %20%20%20%20%20%20%20%20 -
-l 25
+l 24
             if v.visible then
                 _poker_hands[#_poker_hands + 1] = k
             end
@@ -436,7 +419,6 @@ l 25
     end
 end
 
--- Get all deck names from the Back pool
 function DeckCreatorUtils.allDeckNames()
     if not G or not G.P_CENTER_POOLS or not G.P_CENTER_POOLS.Back then
         return {}

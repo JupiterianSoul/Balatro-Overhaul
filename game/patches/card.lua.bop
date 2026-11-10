@@ -16,9 +16,8 @@ c 6
 s 1
 r 3 87 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 6
-l 7
+l 6
     end
-    -- Seal alert handling in collection
     if self.seal and self.area and self.area.config and self.area.config.collection then
         pcall(function()
             for _, v in ipairs(G.P_CENTER_POOLS['Seal'] or {}) do
@@ -77,8 +76,7 @@ r 3 180 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 3 181 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 2
 s 1
-l 2
-                    -- FIX: Use _center.atlas first so custom forge/mod atlases render correctly
+l 1
                     self.children.center = Sprite(self.T.x, self.T.y, self.T.w, self.T.h, G.ASSET_ATLAS[_center.atlas or _center.set] or G.ASSET_ATLAS[_center.set], self.config.center.pos)
 c 9
 s 1
@@ -94,8 +92,7 @@ s 1
 r 3 205 %20%20%20%20%20%20%20%20 -
 c 7
 s 1
-l 10
-            -- FIX: Support custom atlas for Cryptid deck backs (atlasdeck vs vanilla centers atlas)
+l 9
             local _back_atlas = G.ASSET_ATLAS["centers"]
             local _back_pos = self.params.bypass_back or (self.playing_card and G.GAME[self.back].pos or G.P_CENTERS['b_red'].pos)
             if self.playing_card and G.GAME and G.GAME[self.back] and G.GAME[self.back].effect then
@@ -159,10 +156,9 @@ c 3
 s 1
 r 3 361 %20%20%20%20 -
 c 1
-l 9
+l 8
     end
 
-    -- Quest hook: track card enhancements (Steel, Gold, Glass, etc.)
     if not initial and self.playing_card and center and center.set == "Enhanced" then
         if QuestManager and QuestManager.on_card_enhanced then
             pcall(function()
@@ -179,8 +175,7 @@ s 1
 r 3 372 %20%20%20%20%20%20%20%20 -
 c 2
 s 2
-l 6
-    -- Multiplayer sabotage: shop tax increases all shop prices
+l 5
     if G.GAME.multiplayer and (self.area == G.shop_jokers or self.area == G.shop_booster or self.area == G.shop_vouchers) then
         self.extra_cost = self.extra_cost + (G.GAME.mp_shop_tax or 0)
     end
@@ -204,10 +199,9 @@ c 30
 s 1
 r 3 357 %20%20%20%20 -
 c 1
-l 7
+l 6
     end
 
-    -- Quest hook: track edition obtained
     if self.edition and QuestManager and QuestManager.on_edition_obtained then
         pcall(function()
             QuestManager.on_edition_obtained(self.edition.type)
@@ -511,8 +505,7 @@ s 1
 r 3 1692 %20%20%20%20%20%20%20%20 -
 c 18
 s 1
-l 2
-        -- Chaos Stake (9+): Booster packs offer 1 fewer choice
+l 1
         if G.GAME.modifiers and G.GAME.modifiers.booster_minus_choice and G.GAME.pack_choices > 1 then
 r 4 2278 %20%20%20%20%20%20%20%20%20%20%20%20 -
 l 2
@@ -523,8 +516,7 @@ c 4
 s 1
 r 3 1716 %20%20%20%20%20%20%20%20%20%20%20%20 -
 c 6
-l 2
-            -- Haptic: booster pack opened (heavy)
+l 1
             pcall(function() haptic_buzz(3) end)
 c 4
 s 1
@@ -800,7 +792,7 @@ s 2
 r 3 3047 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 2
                 G.GAME.chips/G.GAME.blind.chips >= 0.25 and
-                not G.GAME.multiplayer then  -- FIX: Mr. Bones disabled in multiplayer per spec
+                not G.GAME.multiplayer then
 c 8
 s 1
 l 1
@@ -989,9 +981,8 @@ c 14
 s 1
 r 3 4315 %20%20%20%20 -
 c 3
-l 9
+l 8
         end
-        -- Also mark seal as alerted when hovering seal cards in collection
         if self.seal and self.area and self.area.config and self.area.config.collection then
             pcall(function()
                 local seal_key = self.seal

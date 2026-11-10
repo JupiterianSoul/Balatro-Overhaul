@@ -43,7 +43,7 @@ process.stdin.on('data', (chunk: string) => {
       r = { ok: true, chips: b.chips, hands_left: b.hands, discards_left: 3, over: b.hands === 0, lost: false };
     } else if (m.cmd === 'spin') {
       const end = Date.now() + Number(m.ms);
-      while (Date.now() < end) { /* busy */ }
+      while (Date.now() < end) {  }
     } else if (m.cmd === 'end_data' && b) {
       r = { ok: true, jokers: [{ k: 'j_joker', ed: 'foil' }], deck: { back: 'b_red', cards: [{ f: 'H_A' }, { f: 'S_K', e: 'm_steel', s: 'Red' }] } };
     } else if (m.cmd === 'drop') bots.delete(m.bot as string);

@@ -1,14 +1,6 @@
--- ============================================
--- COSMETICS SYSTEM for Balatro V10.5
--- Titles, Banners, Badges, Borders
--- Profile Customization + Display
--- ============================================
 
--- ===== COSMETIC DEFINITIONS =====
 
--- Titles (50+)
 local TITLES = {
-  -- Milestone Titles
   {id = "beginner", name = "Beginner", description = "Reach Level 5", unlock_type = "level", unlock_value = 5, category = "milestone"},
   {id = "rising_star", name = "Rising Star", description = "Reach Level 10", unlock_type = "level", unlock_value = 10, category = "milestone"},
   {id = "dedicated", name = "Dedicated", description = "Reach Level 25", unlock_type = "level", unlock_value = 25, category = "milestone"},
@@ -21,7 +13,6 @@ local TITLES = {
   {id = "champion", name = "Champion", description = "Win 1000 runs", unlock_type = "wins", unlock_value = 1000, category = "milestone"},
   {id = "legend", name = "Legend", description = "Win 500 runs", unlock_type = "wins", unlock_value = 500, category = "milestone"},
 
-  -- Stake Titles
   {id = "red_conqueror", name = "Red Conqueror", description = "Beat Red Stake", unlock_type = "stake", unlock_value = 2, category = "stake"},
   {id = "orange_conqueror", name = "Orange Conqueror", description = "Beat Orange Stake", unlock_type = "stake", unlock_value = 3, category = "stake"},
   {id = "green_victor", name = "Green Victor", description = "Beat Green Stake", unlock_type = "stake", unlock_value = 4, category = "stake"},
@@ -32,17 +23,14 @@ local TITLES = {
   {id = "insanity_victor", name = "Insanity Victor", description = "Beat Insanity Stake", unlock_type = "stake", unlock_value = 9, category = "stake"},
   {id = "stakes_master", name = "Stakes Master", description = "Beat all 9 Stakes", unlock_type = "all_stakes", unlock_value = 9, category = "stake"},
 
-  -- Quest Titles
   {id = "quest_hunter", name = "Quest Hunter", description = "Complete 100 quests", unlock_type = "quests", unlock_value = 100, category = "quest"},
   {id = "daily_warrior", name = "Daily Warrior", description = "Complete 50 daily quests", unlock_type = "daily_quests", unlock_value = 50, category = "quest"},
   {id = "weekly_champion", name = "Weekly Champion", description = "Complete 25 weekly quests", unlock_type = "weekly_quests", unlock_value = 25, category = "quest"},
   {id = "quest_master", name = "Quest Master", description = "Complete 500 quests", unlock_type = "quests", unlock_value = 500, category = "quest"},
 
-  -- Achievement Titles
   {id = "achievement_hunter", name = "Achievement Hunter", description = "Unlock 50 achievements", unlock_type = "achievements", unlock_value = 50, category = "achievement"},
   {id = "completionist", name = "Completionist", description = "Unlock all achievements", unlock_type = "all_achievements", unlock_value = 150, category = "achievement"},
 
-  -- Shop Titles (purchased with Balacoin)
   {id = "the_collector", name = "The Collector", description = "Special title for collectors", unlock_type = "shop", price = 500, category = "shop"},
   {id = "high_roller", name = "High Roller", description = "For big spenders", unlock_type = "shop", price = 750, category = "shop"},
   {id = "the_legend", name = "The Legend", description = "Legendary title", unlock_type = "shop", price = 2000, category = "shop"},
@@ -65,12 +53,9 @@ local TITLES = {
   {id = "nebula", name = "Nebula", description = "Star born", unlock_type = "shop", price = 3000, category = "shop"},
 }
 
--- Banners (30+)
 local BANNERS = {
-  -- Default
   {id = "default", name = "Default", description = "Standard banner", unlock_type = "default", category = "default"},
 
-  -- Rank Banners
   {id = "bronze_banner", name = "Bronze Frame", description = "Reach Bronze Rank", unlock_type = "rank", unlock_value = "Bronze", category = "rank"},
   {id = "silver_banner", name = "Silver Frame", description = "Reach Silver Rank", unlock_type = "rank", unlock_value = "Silver", category = "rank"},
   {id = "gold_banner", name = "Gold Frame", description = "Reach Gold Rank", unlock_type = "rank", unlock_value = "Gold", category = "rank"},
@@ -80,7 +65,6 @@ local BANNERS = {
   {id = "grandmaster_banner", name = "Grandmaster Frame", description = "Reach Grandmaster Rank", unlock_type = "rank", unlock_value = "Grandmaster", category = "rank"},
   {id = "celestial_banner", name = "Celestial Frame", description = "Reach Celestial Rank", unlock_type = "rank", unlock_value = "Celestial", category = "rank"},
 
-  -- Shop Banners
   {id = "holographic", name = "Holographic", description = "Shimmering effect", unlock_type = "shop", price = 5000, category = "shop"},
   {id = "rainbow", name = "Rainbow", description = "All colors", unlock_type = "shop", price = 7500, category = "shop"},
   {id = "neon", name = "Neon", description = "Glowing neon", unlock_type = "shop", price = 6000, category = "shop"},
@@ -103,12 +87,9 @@ local BANNERS = {
   {id = "void", name = "Void", description = "Endless darkness", unlock_type = "shop", price = 9000, category = "shop"},
 }
 
--- Badges (30+)
 local BADGES = {
-  -- Default
   {id = "default", name = "Default", description = "Standard badge", unlock_type = "default", category = "default"},
 
-  -- Rank Badges
   {id = "bronze_badge", name = "Bronze Badge", description = "Reach Bronze Rank", unlock_type = "rank", unlock_value = "Bronze", category = "rank", icon = "star"},
   {id = "silver_badge", name = "Silver Badge", description = "Reach Silver Rank", unlock_type = "rank", unlock_value = "Silver", category = "rank", icon = "star"},
   {id = "gold_badge", name = "Gold Badge", description = "Reach Gold Rank", unlock_type = "rank", unlock_value = "Gold", category = "rank", icon = "star"},
@@ -118,12 +99,10 @@ local BADGES = {
   {id = "grandmaster_badge", name = "Grandmaster Badge", description = "Reach Grandmaster Rank", unlock_type = "rank", unlock_value = "Grandmaster", category = "rank", icon = "crown"},
   {id = "celestial_badge", name = "Celestial Badge", description = "Reach Celestial Rank", unlock_type = "rank", unlock_value = "Celestial", category = "rank", icon = "omega"},
 
-  -- Achievement Badges
   {id = "winner_badge", name = "Winner", description = "Win 100 runs", unlock_type = "wins", unlock_value = 100, category = "achievement", icon = "checkmark"},
   {id = "millionaire_badge", name = "Millionaire", description = "Score 1M+ chips", unlock_type = "score", unlock_value = 1000000, category = "achievement", icon = "chips"},
   {id = "collector_badge", name = "Collector", description = "Collect all Jokers", unlock_type = "collection", unlock_value = "jokers", category = "achievement", icon = "star"},
 
-  -- Shop Badges
   {id = "chips_badge", name = "Chips Icon", description = "Blue chip badge", unlock_type = "shop", price = 1000, category = "shop", icon = "chips"},
   {id = "mult_badge", name = "Mult Icon", description = "Red mult badge", unlock_type = "shop", price = 1000, category = "shop", icon = "mult"},
   {id = "money_badge", name = "Money Icon", description = "Dollar badge", unlock_type = "shop", price = 1500, category = "shop", icon = "money"},
@@ -145,18 +124,14 @@ local BADGES = {
   {id = "skull_badge", name = "Skull", description = "Dark badge", unlock_type = "shop", price = 3000, category = "shop", icon = "skull"},
 }
 
--- Borders (20+)
 local BORDERS = {
-  -- Default
   {id = "default", name = "Default", description = "Standard border", unlock_type = "default", category = "default", style = "solid"},
 
-  -- Basic Borders
   {id = "clean", name = "Clean", description = "Minimal border", unlock_type = "level", unlock_value = 10, category = "basic", style = "thin"},
   {id = "thick", name = "Thick", description = "Bold border", unlock_type = "level", unlock_value = 20, category = "basic", style = "thick"},
   {id = "double", name = "Double", description = "Double line", unlock_type = "level", unlock_value = 30, category = "basic", style = "double"},
   {id = "ornate", name = "Ornate", description = "Decorative border", unlock_type = "level", unlock_value = 50, category = "basic", style = "ornate"},
 
-  -- Shop Borders
   {id = "shiny", name = "Shiny", description = "Reflective border", unlock_type = "shop", price = 750, category = "shop", style = "shiny"},
   {id = "legendary", name = "Legendary", description = "Legendary border", unlock_type = "shop", price = 3000, category = "shop", style = "legendary"},
   {id = "rainbow_border", name = "Rainbow", description = "Colorful border", unlock_type = "shop", price = 5000, category = "shop", style = "rainbow"},
@@ -174,13 +149,11 @@ local BORDERS = {
   {id = "celestial_border", name = "Celestial", description = "Star adorned", unlock_type = "shop", price = 7000, category = "shop", style = "celestial"},
 }
 
--- ===== COSMETICS MANAGER =====
 
 CosmeticsManager = {
   initialized = false,
 }
 
--- Initialize cosmetics system
 function CosmeticsManager.init()
   if CosmeticsManager.initialized then return true end
   if not G then return false end
@@ -191,12 +164,10 @@ function CosmeticsManager.init()
   local profile = G.PROFILES[G.SETTINGS.profile]
   if not profile then return false end
 
-  -- Initialize progression if missing
   if not profile.progression then
     profile.progression = {}
   end
 
-  -- Initialize cosmetic tables
   if not profile.progression.unlocked_titles then
     profile.progression.unlocked_titles = {}
   end
@@ -210,7 +181,6 @@ function CosmeticsManager.init()
     profile.progression.unlocked_borders = {"default"}
   end
 
-  -- Initialize equipped cosmetics
   if not profile.progression.equipped_title then
     profile.progression.equipped_title = nil
   end
@@ -226,14 +196,12 @@ function CosmeticsManager.init()
 
   CosmeticsManager.initialized = true
 
-  -- Check for unlocks
   CosmeticsManager.check_all_unlocks()
 
   print("[COSMETICS] Cosmetics system initialized!")
   return true
 end
 
--- Check if cosmetic is unlocked (hash set lookup)
 function CosmeticsManager.is_unlocked(cosmetic_type, id)
   if not CosmeticsManager.init() then return false end
 
@@ -253,7 +221,6 @@ function CosmeticsManager.is_unlocked(cosmetic_type, id)
 
   if not unlock_table then return false end
 
-  -- Build hash set for O(1) lookup
   if not unlock_table._set or unlock_table._n ~= #unlock_table then
     unlock_table._set = {}
     for _, unlocked_id in ipairs(unlock_table) do
@@ -264,9 +231,7 @@ function CosmeticsManager.is_unlocked(cosmetic_type, id)
   return unlock_table._set[id] == true
 end
 
--- Unlock cosmetic
 function CosmeticsManager.unlock(cosmetic_type, id)
-  -- ANTI-CHEAT: block all unlocks during modded runs
   if G and G.GAME and G.GAME.modded_run then return false end
   if not CosmeticsManager.init() then return false end
   if CosmeticsManager.is_unlocked(cosmetic_type, id) then return false end
@@ -287,13 +252,12 @@ function CosmeticsManager.unlock(cosmetic_type, id)
 
   if unlock_table then
     table.insert(unlock_table, id)
-    unlock_table._set = nil  -- Invalidate hash set cache
+    unlock_table._set = nil
     return true
   end
   return false
 end
 
--- Equip cosmetic
 function CosmeticsManager.equip(cosmetic_type, id)
   if not CosmeticsManager.init() then return false end
   if not CosmeticsManager.is_unlocked(cosmetic_type, id) then return false end
@@ -317,7 +281,6 @@ function CosmeticsManager.equip(cosmetic_type, id)
   return true
 end
 
--- Get equipped cosmetic
 function CosmeticsManager.get_equipped(cosmetic_type)
   if not CosmeticsManager.init() then return nil end
 
@@ -336,7 +299,6 @@ function CosmeticsManager.get_equipped(cosmetic_type)
   return nil
 end
 
--- Get cosmetic by ID
 function CosmeticsManager.get_cosmetic(cosmetic_type, id)
   local pool = nil
   if cosmetic_type == "title" then pool = TITLES
@@ -353,9 +315,7 @@ function CosmeticsManager.get_cosmetic(cosmetic_type, id)
   return nil
 end
 
--- Check all unlocks based on current stats
 function CosmeticsManager.check_all_unlocks()
-  -- ANTI-CHEAT: skip evaluation entirely during modded runs
   if G and G.GAME and G.GAME.modded_run then return end
   if not CosmeticsManager.init() then return end
 
@@ -366,7 +326,6 @@ function CosmeticsManager.check_all_unlocks()
   local wins = profile.progression.total_wins or 0
   local highest_stake = profile.progression.highest_stake_beaten or 0
 
-  -- Check title unlocks
   for _, title in ipairs(TITLES) do
     if not CosmeticsManager.is_unlocked("title", title.id) then
       local should_unlock = false
@@ -387,7 +346,6 @@ function CosmeticsManager.check_all_unlocks()
     end
   end
 
-  -- Check banner unlocks
   for _, banner in ipairs(BANNERS) do
     if not CosmeticsManager.is_unlocked("banner", banner.id) then
       local should_unlock = false
@@ -407,7 +365,6 @@ function CosmeticsManager.check_all_unlocks()
     end
   end
 
-  -- Check badge unlocks
   for _, badge in ipairs(BADGES) do
     if not CosmeticsManager.is_unlocked("badge", badge.id) then
       local should_unlock = false
@@ -429,7 +386,6 @@ function CosmeticsManager.check_all_unlocks()
     end
   end
 
-  -- Check border unlocks
   for _, border in ipairs(BORDERS) do
     if not CosmeticsManager.is_unlocked("border", border.id) then
       local should_unlock = false
@@ -447,7 +403,6 @@ function CosmeticsManager.check_all_unlocks()
   end
 end
 
--- Get count of unlocked cosmetics
 function CosmeticsManager.get_unlocked_count(cosmetic_type)
   if not CosmeticsManager.init() then return 0 end
 
@@ -468,7 +423,6 @@ function CosmeticsManager.get_unlocked_count(cosmetic_type)
   return unlock_table and #unlock_table or 0
 end
 
--- Get total count of cosmetics
 function CosmeticsManager.get_total_count(cosmetic_type)
   if cosmetic_type == "title" then return #TITLES
   elseif cosmetic_type == "banner" then return #BANNERS
@@ -478,7 +432,6 @@ function CosmeticsManager.get_total_count(cosmetic_type)
   return 0
 end
 
--- ===== EXPORTS =====
 _G.TITLES = TITLES
 _G.BANNERS = BANNERS
 _G.BADGES = BADGES

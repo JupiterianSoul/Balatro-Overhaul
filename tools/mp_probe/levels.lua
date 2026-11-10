@@ -1,4 +1,3 @@
--- usage: luajit tools/mp_probe/levels.lua <assets> <level> <games> [stake] [first_seed]
 local root, level, games, stake, first = arg[1], arg[2], tonumber(arg[3]) or 1, tonumber(arg[4]) or 1, tonumber(arg[5]) or 1
 local H = assert(loadfile(root .. "/bot/mp/worker.lua"))("--lib", root)
 local wins, antes, max_dec, tot_adv, adv_n = 0, 0, 0, 0, 0

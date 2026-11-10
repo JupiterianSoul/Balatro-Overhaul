@@ -5,9 +5,8 @@ base 57
 s 1
 e 57 1 - - =38,-2,=39
 c 14
-l 5
+l 4
 
-// Custom filter parameters
 extern MY_HIGHP_OR_MEDIUMP number filter_type;
 extern MY_HIGHP_OR_MEDIUMP number filter_intensity;
 extern MY_HIGHP_OR_MEDIUMP number rainbow_speed;
@@ -23,21 +22,17 @@ l 1
     }
 c 32
 s 1
-l 24
+l 20
     MY_HIGHP_OR_MEDIUMP vec4 result = (final_col*(1. -1.*bloom) + bloom*col)*mask;
     
-    // Apply custom filters
     if (filter_type > 1.5 && filter_type < 2.5) {
-        // Sepia filter (type 2)
         MY_HIGHP_OR_MEDIUMP float grey = dot(result.rgb, vec3(0.299, 0.587, 0.114));
         MY_HIGHP_OR_MEDIUMP vec3 sepia = vec3(grey * 1.2, grey * 1.0, grey * 0.8);
         result.rgb = mix(result.rgb, sepia, filter_intensity);
     } else if (filter_type > 2.5 && filter_type < 3.5) {
-        // Black & White filter (type 3)
         MY_HIGHP_OR_MEDIUMP float grey = dot(result.rgb, vec3(0.299, 0.587, 0.114));
         result.rgb = mix(result.rgb, vec3(grey), filter_intensity);
     } else if (filter_type > 3.5 && filter_type < 4.5) {
-        // Rainbow RGB animated filter (type 4)
         MY_HIGHP_OR_MEDIUMP float t = time * rainbow_speed * 0.5;
         MY_HIGHP_OR_MEDIUMP vec3 rainbow = vec3(
             (sin(t) + 1.0) * 0.5,

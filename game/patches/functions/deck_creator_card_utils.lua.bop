@@ -2,15 +2,10 @@ BOP 1
 eol lf
 final 1
 base 0
-l 31
--- FEATURE: Deck Creator - Card Utilities Layer
--- Ported from Balatro-DeckCreator-1.2.2 (CardUtils.lua)
--- Stripped of sendTraceMessage/sendDebugMessage, Steamodded branches removed
--- Helper.generateTagUI dependency guarded (deferred to Phase 3)
+l 25
 
 DeckCreatorCardUtils = {}
 
--- Tracking tables for starting and banned items
 DeckCreatorCardUtils.startingItems = {
     jokers = {},
     tarots = {},
@@ -31,16 +26,14 @@ DeckCreatorCardUtils.bannedItems = {
 }
 DeckCreatorCardUtils.allCardsEverMade = {}
 
--- Shuffle a deck table in-place
 local function shuffleDeck(deck)
     for i = #deck, 2, -1 do
 r 12 214 %20%20%20%20%20%20%20%20 -
-l 138
+l 130
         deck[i], deck[j] = deck[j], deck[i]
     end
 end
 
--- Apply random abilities (edition/enhancement/seal) to card protos based on config
 local function applyRandomAbilities(card_protos, config)
     if not card_protos or #card_protos == 0 then return end
     if not config then return end
@@ -83,7 +76,6 @@ local function applyRandomAbilities(card_protos, config)
     end
 end
 
--- Initialize custom card list for a deck (replaces standard 52 cards)
 function DeckCreatorCardUtils.initializeCustomCardList(deckObj)
     if not G then return end
     if not G.playing_cards then return end
@@ -93,7 +85,6 @@ function DeckCreatorCardUtils.initializeCustomCardList(deckObj)
     if not config.customCardList or #config.customCardList == 0 then return end
 
     local ok, err = pcall(function()
-        -- Flush existing cards
         DeckCreatorCardUtils.flushGPlayingCards()
 
         local card_protos = {}
@@ -107,7 +98,6 @@ function DeckCreatorCardUtils.initializeCustomCardList(deckObj)
             }
         end
 
-        -- Apply randomize_ranks / randomize_suits
         if config.randomize_ranks then
             local ranks = DeckCreatorUtils.protoRanks()
             for _, card in ipairs(card_protos) do
@@ -121,7 +111,6 @@ function DeckCreatorCardUtils.initializeCustomCardList(deckObj)
             end
         end
 
-        -- Filter no_faces / no_aces / no_numbered_cards
         if config.no_faces or config.remove_faces then
             local filtered = {}
             for _, card in ipairs(card_protos) do
@@ -151,10 +140,8 @@ function DeckCreatorCardUtils.initializeCustomCardList(deckObj)
             card_protos = filtered
         end
 
-        -- Apply random abilities
         applyRandomAbilities(card_protos, config)
 
-        -- Create actual Card objects and add to deck
         for _, proto in ipairs(card_protos) do
             pcall(function()
                 DeckCreatorCardUtils.cardProtoToCardObject(proto)
@@ -163,7 +150,6 @@ function DeckCreatorCardUtils.initializeCustomCardList(deckObj)
     end)
     if not ok then
         DeckCreatorUtils.log("Error initializing custom card list: " .. tostring(err))
-        -- FIX: If card creation failed after flush, ensure deck isn't empty (softlock prevention)
         if G.playing_cards and #G.playing_cards == 0 then
             DeckCreatorUtils.log("CRITICAL: Deck empty after failed init — creating standard 52-card fallback")
             pcall(function()
@@ -175,7 +161,7 @@ function DeckCreatorCardUtils.initializeCustomCardList(deckObj)
                             local _card = Card(G.deck.T.x, G.deck.T.y, G.CARD_W, G.CARD_H, G.P_CARDS[s..'_'..r], G.P_CENTERS.c_base)
                             _card:add_to_deck()
 r 12 1630 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 11
+l 10
                         end)
                     end
                 end
@@ -184,11 +170,10 @@ l 11
     end
 end
 
--- Flush G.playing_cards (remove all cards from deck area)
 function DeckCreatorCardUtils.flushGPlayingCards()
     if not G then return end
 r 3 4751 %20%20%20%20 -
-l 39
+l 37
         for i = #G.playing_cards, 1, -1 do
             local card = G.playing_cards[i]
             if card and card.remove then
@@ -208,7 +193,6 @@ l 39
     end
 end
 
--- Flush starting/banned item tracking
 function DeckCreatorCardUtils.flushStartingItems()
     DeckCreatorCardUtils.startingItems = {
         jokers = {}, tarots = {}, planets = {},
@@ -224,12 +208,11 @@ function DeckCreatorCardUtils.flushBannedItems()
     }
 end
 
--- Standard card set (deep copy of G.P_CARDS — 52 standard playing cards)
 function DeckCreatorCardUtils.standardCardSet()
     if not G or not G.P_CARDS then return {} end
     local set = {}
 r 3 101 %20%20%20%20 -
-l 647
+l 593
         set[#set + 1] = {
             suit = v.suit or string.sub(k, 1, 1),
             rank = v.value or string.sub(k, 3),
@@ -241,8 +224,6 @@ l 647
     return set
 end
 
--- Generate a card proto from args table
--- args: { suit, rank, edition, enhancement, seal }
 function DeckCreatorCardUtils.generateCardProto(args)
     local suits = DeckCreatorUtils.protoSuits()
     local ranks = DeckCreatorUtils.protoRanks()
@@ -253,7 +234,6 @@ function DeckCreatorCardUtils.generateCardProto(args)
     local enhancement = args.enhancement or "None"
     local seal = args.seal or "None"
 
-    -- Handle "Random" values
     if suit == "Random" then
         suit = suits[math.random(#suits)]
     end
@@ -282,7 +262,6 @@ function DeckCreatorCardUtils.generateCardProto(args)
     }
 end
 
--- Add card to custom card list with duplicate-key handling
 function DeckCreatorCardUtils.addCardToDeck(args)
     local deck = args.deck
     if not deck or not deck.config then return end
@@ -296,12 +275,10 @@ function DeckCreatorCardUtils.addCardToDeck(args)
     return proto
 end
 
--- Convert a card proto to an actual Card game object
 function DeckCreatorCardUtils.cardProtoToCardObject(proto)
     if not G then return nil end
     if not G.deck then return nil end
 
-    -- Build the suit/rank string for card creation (e.g. "H_2", "S_A")
     local suitMap = {
         Hearts = "H", Diamonds = "D", Clubs = "C", Spades = "S",
         H = "H", D = "D", C = "C", S = "S"
@@ -316,11 +293,9 @@ function DeckCreatorCardUtils.cardProtoToCardObject(proto)
     local r = rankMap[proto.rank] or "2"
     local cardKey = s .. "_" .. r
 
-    -- Create Card object
     local _card = create_playing_card({front = G.P_CARDS[cardKey] or G.P_CARDS["H_2"]}, G.deck, nil, nil, {G.C.SECONDARY_SET.Default})
 
     if _card then
-        -- Apply edition
         if proto.edition and proto.edition ~= "None" then
             local editionMap = {
                 Foil = {foil = true},
@@ -333,7 +308,6 @@ function DeckCreatorCardUtils.cardProtoToCardObject(proto)
             end
         end
 
-        -- Apply enhancement
         if proto.enhancement and proto.enhancement ~= "None" then
             local enhMap = {
                 Bonus = "m_bonus", Glass = "m_glass", Gold = "m_gold",
@@ -345,7 +319,6 @@ function DeckCreatorCardUtils.cardProtoToCardObject(proto)
             end
         end
 
-        -- Apply seal
         if proto.seal and proto.seal ~= "None" then
             _card:set_seal(proto.seal, true)
         end
@@ -356,7 +329,6 @@ function DeckCreatorCardUtils.cardProtoToCardObject(proto)
     return _card
 end
 
--- Get jokers from custom joker list and add to joker area
 function DeckCreatorCardUtils.getJokersFromCustomJokerList(deck)
     if not G then return end
     if not G.jokers then return end
@@ -369,13 +341,11 @@ function DeckCreatorCardUtils.getJokersFromCustomJokerList(deck)
             if not jokerKey then return end
             if not G.P_CENTERS[jokerKey] then return end
 
-            -- FIX: Starting items take priority over bans — temporarily bypass banned_keys
             local was_banned = G.GAME and G.GAME.banned_keys and G.GAME.banned_keys[jokerKey]
             if was_banned and G.GAME.banned_keys then G.GAME.banned_keys[jokerKey] = nil end
             local _card = create_card("Joker", G.jokers, nil, nil, nil, nil, jokerKey, nil)
             if was_banned and G.GAME.banned_keys then G.GAME.banned_keys[jokerKey] = true end
             if _card then
-                -- Apply edition
                 if jokerData.edition and jokerData.edition ~= "None" then
                     local editionMap = {
                         Foil = {foil = true}, Holographic = {holo = true},
@@ -386,12 +356,10 @@ function DeckCreatorCardUtils.getJokersFromCustomJokerList(deck)
                     end
                 end
 
-                -- Apply eternal
                 if jokerData.eternal then
                     _card.ability.eternal = true
                 end
 
-                -- Apply pinned
                 if jokerData.pinned then
                     _card.pinned = true
                 end
@@ -404,7 +372,6 @@ function DeckCreatorCardUtils.getJokersFromCustomJokerList(deck)
     end
 end
 
--- Get tarots from custom tarot list
 function DeckCreatorCardUtils.getTarotsFromCustomTarotList(deck)
     if not G then return end
     if not G.consumeables then return end
@@ -426,7 +393,6 @@ function DeckCreatorCardUtils.getTarotsFromCustomTarotList(deck)
     end
 end
 
--- Get planets from custom planet list
 function DeckCreatorCardUtils.getPlanetsFromCustomPlanetList(deck)
     if not G then return end
     if not G.consumeables then return end
@@ -448,7 +414,6 @@ function DeckCreatorCardUtils.getPlanetsFromCustomPlanetList(deck)
     end
 end
 
--- Get spectrals from custom spectral list
 function DeckCreatorCardUtils.getSpectralsFromCustomSpectralList(deck)
     if not G then return end
     if not G.consumeables then return end
@@ -470,7 +435,6 @@ function DeckCreatorCardUtils.getSpectralsFromCustomSpectralList(deck)
     end
 end
 
--- Get vouchers from custom voucher list
 function DeckCreatorCardUtils.getVouchersFromCustomVoucherList(deck)
     if not G then return end
     if not G.GAME then return end
@@ -482,11 +446,9 @@ function DeckCreatorCardUtils.getVouchersFromCustomVoucherList(deck)
             local key = voucherData.id or voucherData.key
             if not key or not G.P_CENTERS[key] then return end
 
-            -- Apply voucher effect (mark as used)
             G.GAME.used_vouchers[key] = true
             local voucherCenter = G.P_CENTERS[key]
             if voucherCenter then
-                -- Directly apply effect via G.GAME.current_round.voucher
                 Card.apply_to_run(nil, voucherCenter)
             end
             DeckCreatorCardUtils.startingItems.vouchers[#DeckCreatorCardUtils.startingItems.vouchers + 1] = key
@@ -494,8 +456,6 @@ function DeckCreatorCardUtils.getVouchersFromCustomVoucherList(deck)
     end
 end
 
--- Get tags from custom tag list
--- NOTE: Tag sprite UI generation depends on Helper.generateTagUI (Phase 3)
 function DeckCreatorCardUtils.getTagsFromCustomTagList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -511,7 +471,6 @@ function DeckCreatorCardUtils.getTagsFromCustomTagList(deck)
     end
 end
 
--- Add item to deck (joker/tarot/planet/spectral/voucher/tag)
 function DeckCreatorCardUtils.addItemToDeck(args)
     local deck = args.deck
     local itemType = args.type
@@ -527,11 +486,9 @@ function DeckCreatorCardUtils.addItemToDeck(args)
         Tag = "customTagList",
     }
 
-    -- Handle "Random" type
     if itemType == "Random" then
         local types = {"Joker", "Tarot", "Planet", "Spectral", "Voucher", "Tag"}
         itemType = types[math.random(#types)]
-        -- Get a random key for this type
         local keyFunc = {
             Joker = DeckCreatorUtils.jokerKeys,
             Tarot = DeckCreatorUtils.tarotKeys,
@@ -569,7 +526,6 @@ function DeckCreatorCardUtils.addItemToDeck(args)
     deck.config[listKey][#deck.config[listKey] + 1] = entry
 end
 
--- Ban an item
 function DeckCreatorCardUtils.banItem(args)
     local deck = args.deck
     local itemType = args.type
@@ -587,7 +543,6 @@ function DeckCreatorCardUtils.banItem(args)
         Booster = "bannedBoosterList",
     }
 
-    -- Handle "Random" type
     if itemType == "Random" then
         local types = {"Joker", "Tarot", "Planet", "Spectral", "Voucher", "Tag", "Blind", "Booster"}
         itemType = types[math.random(#types)]
@@ -626,7 +581,6 @@ function DeckCreatorCardUtils.banItem(args)
     }
 end
 
--- Get banned jokers and apply ban
 function DeckCreatorCardUtils.getBannedJokersFromBannedJokerList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -636,14 +590,12 @@ function DeckCreatorCardUtils.getBannedJokersFromBannedJokerList(deck)
         pcall(function()
             local key = banned.id or banned.key
             if key and G.P_CENTERS[key] then
-                -- FIX: Don't mutate global prototypes — use bannedItems + G.GAME.banned_keys only
                 DeckCreatorCardUtils.bannedItems.jokers[#DeckCreatorCardUtils.bannedItems.jokers + 1] = key
             end
         end)
     end
 end
 
--- Get banned tarots and apply ban
 function DeckCreatorCardUtils.getBannedTarotsFromBannedTarotList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -653,14 +605,12 @@ function DeckCreatorCardUtils.getBannedTarotsFromBannedTarotList(deck)
         pcall(function()
             local key = banned.id or banned.key
             if key and G.P_CENTERS[key] then
-                -- FIX: Don't mutate global prototypes — use bannedItems + G.GAME.banned_keys only
                 DeckCreatorCardUtils.bannedItems.tarots[#DeckCreatorCardUtils.bannedItems.tarots + 1] = key
             end
         end)
     end
 end
 
--- Get banned planets and apply ban
 function DeckCreatorCardUtils.getBannedPlanetsFromBannedPlanetList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -670,14 +620,12 @@ function DeckCreatorCardUtils.getBannedPlanetsFromBannedPlanetList(deck)
         pcall(function()
             local key = banned.id or banned.key
             if key and G.P_CENTERS[key] then
-                -- FIX: Don't mutate global prototypes — use bannedItems + G.GAME.banned_keys only
                 DeckCreatorCardUtils.bannedItems.planets[#DeckCreatorCardUtils.bannedItems.planets + 1] = key
             end
         end)
     end
 end
 
--- Get banned spectrals and apply ban
 function DeckCreatorCardUtils.getBannedSpectralsFromBannedSpectralList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -687,14 +635,12 @@ function DeckCreatorCardUtils.getBannedSpectralsFromBannedSpectralList(deck)
         pcall(function()
             local key = banned.id or banned.key
             if key and G.P_CENTERS[key] then
-                -- FIX: Don't mutate global prototypes — use bannedItems + G.GAME.banned_keys only
                 DeckCreatorCardUtils.bannedItems.spectrals[#DeckCreatorCardUtils.bannedItems.spectrals + 1] = key
             end
         end)
     end
 end
 
--- Get banned vouchers
 function DeckCreatorCardUtils.getBannedVouchersFromBannedVoucherList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -704,14 +650,12 @@ function DeckCreatorCardUtils.getBannedVouchersFromBannedVoucherList(deck)
         pcall(function()
             local key = banned.id or banned.key
             if key and G.P_CENTERS[key] then
-                -- FIX: Don't mutate global prototypes — use bannedItems + G.GAME.banned_keys only
                 DeckCreatorCardUtils.bannedItems.vouchers[#DeckCreatorCardUtils.bannedItems.vouchers + 1] = key
             end
         end)
     end
 end
 
--- Get banned tags
 function DeckCreatorCardUtils.getBannedTagsFromBannedTagList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -727,14 +671,12 @@ function DeckCreatorCardUtils.getBannedTagsFromBannedTagList(deck)
     end
 end
 
--- Get banned blinds (replace with bl_empty)
 function DeckCreatorCardUtils.getBannedBlindsFromBannedBlindList(deck)
     if not G then return end
     if not G.P_BLINDS then return end
     if not deck or not deck.config then return end
     if not deck.config.bannedBlindList or #deck.config.bannedBlindList == 0 then return end
 
-    -- Ensure bl_empty exists
     DeckCreatorUtils.configureEmptyBlind()
 
     for _, banned in ipairs(deck.config.bannedBlindList) do
@@ -747,7 +689,6 @@ function DeckCreatorCardUtils.getBannedBlindsFromBannedBlindList(deck)
     end
 end
 
--- Get banned boosters
 function DeckCreatorCardUtils.getBannedBoostersFromBannedBoosterList(deck)
     if not G then return end
     if not deck or not deck.config then return end
@@ -757,20 +698,17 @@ function DeckCreatorCardUtils.getBannedBoostersFromBannedBoosterList(deck)
         pcall(function()
             local key = banned.id or banned.key
             if key and G.P_CENTERS[key] then
-                -- FIX: Don't mutate global prototypes — use bannedItems + G.GAME.banned_keys only
                 DeckCreatorCardUtils.bannedItems.boosters[#DeckCreatorCardUtils.bannedItems.boosters + 1] = key
             end
         end)
     end
 end
 
--- Check if a card is a Stone card
 function DeckCreatorCardUtils.isStone(card)
     if not card then return false end
     return card.ability and card.ability.name == "Stone Card"
 end
 
--- Receive a random negative joker
 function DeckCreatorCardUtils.receiveRandomNegativeJoker()
     if not G then return end
     if not G.jokers then return end
@@ -785,7 +723,6 @@ function DeckCreatorCardUtils.receiveRandomNegativeJoker()
     end)
 end
 
--- Destroy a random joker
 function DeckCreatorCardUtils.destroyRandomJoker()
     if not G then return end
     if not G.jokers then return end
@@ -803,7 +740,6 @@ function DeckCreatorCardUtils.destroyRandomJoker()
     end)
 end
 
--- Remove all jokers from shop
 function DeckCreatorCardUtils.removeAllJokersFromShop()
     if not G then return end
     if not G.shop_jokers then return end
@@ -819,7 +755,6 @@ function DeckCreatorCardUtils.removeAllJokersFromShop()
     end
 end
 
--- Add four jokers to shop (shop joker pagination)
 function DeckCreatorCardUtils.addFourJokersToShop()
     if not G then return end
     if not G.shop_jokers then return end
@@ -835,7 +770,6 @@ function DeckCreatorCardUtils.addFourJokersToShop()
     end
 end
 
--- Set up big joker shop (8 joker slots)
 function DeckCreatorCardUtils.setupBigJokerShop()
     if not G then return end
     if not G.shop_jokers then return end
@@ -852,7 +786,6 @@ function DeckCreatorCardUtils.setupBigJokerShop()
     end
 end
 
--- Apply all bans for a deck at run start
 function DeckCreatorCardUtils.applyAllBans(deck)
     if not deck then return end
     DeckCreatorCardUtils.flushBannedItems()
@@ -866,15 +799,11 @@ function DeckCreatorCardUtils.applyAllBans(deck)
     DeckCreatorCardUtils.getBannedBoostersFromBannedBoosterList(deck)
 end
 
--- Apply all starting items for a deck at run start
 function DeckCreatorCardUtils.applyAllStartingItems(deck)
     if not deck then return end
     DeckCreatorCardUtils.flushStartingItems()
-    -- Vouchers and tags apply immediately: they modify G.GAME state and don't need CardArea
     DeckCreatorCardUtils.getVouchersFromCustomVoucherList(deck)
     DeckCreatorCardUtils.getTagsFromCustomTagList(deck)
-    -- FIX: Jokers/consumables need G.jokers/G.consumeables which are created AFTER apply_to_run
-    -- Defer these via event so they run once the CardAreas exist (game loop start)
     if G.E_MANAGER then
         local _deck = deck
 r 1 112 %20%20%20%20%20%20%20%20 -

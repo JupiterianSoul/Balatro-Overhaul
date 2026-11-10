@@ -100,7 +100,6 @@ function loadStore(): void {
     const raw = JSON.parse(readFileSync(state.storePath, 'utf8')) as CrashGroup[];
     if (Array.isArray(raw)) for (const g of raw) if (g && typeof g.signature === 'string') state.groups.set(g.signature, g);
   } catch {
-    // no store yet
   }
 }
 
@@ -112,7 +111,6 @@ function saveStore(): void {
     writeFileSync(tmp, JSON.stringify([...state.groups.values()]));
     renameSync(tmp, state.storePath);
   } catch {
-    // the store is best effort, the in-memory groups stay
   }
 }
 

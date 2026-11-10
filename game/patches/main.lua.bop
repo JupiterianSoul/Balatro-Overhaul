@@ -6,15 +6,13 @@ l 2
 require "functions/release_flags"
 local MP = require("multiplayer.init")
 c 1
-l 43
+l 40
 if (jit.arch == 'arm64' or jit.arch == 'arm') then
 	jit.off()
 else
 	jit.opt.start("maxtrace=8000", "maxrecord=16000", "maxmcode=65536", "sizemcode=256", "maxside=400", "maxsnap=1000")
 end
 
--- FEATURE: Desktop LÖVE compatibility — stub love.platform if it doesn't exist
--- (The GDK/mobile builds have love.platform as a C module; standard LÖVE does not)
 if not love.platform then
     love.platform = {
         earlyInit = function() end,
@@ -46,7 +44,6 @@ if not love.platform then
     }
 end
 
--- Detect if we're running on desktop (Windows/Mac/Linux) vs mobile
 _G._IS_DESKTOP = (love.system.getOS() == 'Windows' or love.system.getOS() == 'OS X' or love.system.getOS() == 'Linux');
 
 
@@ -191,8 +188,7 @@ end
 
 c 1
 s 1
-l 4
-	-- FEATURE: Desktop uses while-true loop (GDK pattern); mobile uses coroutine return
+l 3
 	if _G._IS_DESKTOP then
 		if love.ps then love.ps.hideSceSplash() end
 		if love.load then love.load() end
@@ -253,12 +249,11 @@ r 19 70 %09%09%09 -
 l 1
 			if dt > 0 then
 r 19 71 %09%09%09%09 -
-l 18
+l 16
 			end
 			if love.update then love.update(dt_smooth) end
 			PERF_MON.lap("upd")
 
-			-- Apply FPS cap from settings
 			if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.fps_cap then
 				G.FPS_CAP = FPS_CAP_VALUES[fps_cap_index(G.SETTINGS.GRAPHICS)] or 200
 			else
@@ -266,7 +261,6 @@ l 18
 			end
 			if PERF_OPTS and PERF_OPTS.frame_cap then G.FPS_CAP = PERF_OPTS.frame_cap(G.FPS_CAP) end
 
-			-- Desktop: use checkActive/beginFrame if available (GDK), else isActive
 			if love.graphics then
 				local active = love.graphics.checkActive and love.graphics.checkActive() or love.graphics.isActive()
 				if active then
@@ -276,7 +270,7 @@ r 19 76 %09%09%09%09%09 -
 l 1
 					PERF_MON.lap("drw")
 r 12 123 %09%09%09%09%09 -
-l 9
+l 8
 					PERF_MON.lap("pres")
 				end
 			end
@@ -285,7 +279,6 @@ l 9
 			PERF_MON.lap("pace")
 		end
 	else
-		-- Mobile path (Android/iOS): coroutine-based loop
 r 19 34 %09%09 -
 c 7
 l 1
@@ -322,10 +315,9 @@ r 19 71 %09%09%09 -
 l 1
 		end
 c 2
-l 9
+l 8
 		PERF_MON.lap("upd")
 
-		-- Apply FPS cap from settings
 		if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.fps_cap then
 			G.FPS_CAP = FPS_CAP_VALUES[fps_cap_index(G.SETTINGS.GRAPHICS)] or 60
 		else
@@ -344,19 +336,19 @@ l 1
 			PERF_MON.lap("pres")
 c 3
 s 2
-l 11
-		-- FIX: Removed redundant second sleep that doubled sleep time when combined with draw-phase sleep above
+l 1
 	end
-	end -- close else (mobile path)
-end
-
+c 3
+s 1
+l 4
 function love.load()
 
 	G:init_window()
 	pcall(function() require("functions.app_icon").game_start() end)
-	G:start_up()
-
-r 19 116 %09 -
+c 1
+s 27
+c 2
+s 1
 l 9
 	if love.mouse then love.mouse.setVisible(false) end
 	MP.init()
@@ -364,13 +356,11 @@ l 9
 	if Controls and Controls.init then pcall(Controls.init) end
 	if QOL and QOL.init then pcall(QOL.init) end
 
-	-- FEATURE: Deck Creator - initialize custom deck registry
 	if DeckCreatorHooks and DeckCreatorHooks.init then
 		pcall(DeckCreatorHooks.init)
+	end
 c 3
-s 15
-l 15
-function love.quit()
+l 17
 	PERF_MON.shutdown()
 	if G and G.send_saves and G.SAVE_MANAGER and G.SAVE_MANAGER.thread then
 		if G.FILE_HANDLER and G.FILE_HANDLER.update_queued then G.FILE_HANDLER.force = true end
@@ -385,33 +375,27 @@ function love.quit()
 				if not (ok2 and still) then break end
 				love.timer.sleep(0.01)
 			end
-c 1
-s 12
-c 1
-s 6
-l 1
+		end
+	end
 	if MODLOADER and MODLOADER.clean_exit then pcall(MODLOADER.clean_exit) end
 c 5
-l 7
+l 5
 local function misc_update(dt)
-	-- Update jukebox playback
 	if G.JUKEBOX_UPDATE then G.JUKEBOX_UPDATE(dt) end
-	-- Update mobile multi-select drag
 	if DRAG_SELECT then DRAG_SELECT.update(dt) end
 end
 
 c 1
 s 3
-l 7
+l 6
 
 	if not PERF_MON._checked then PERF_MON.init() end
 	PERF_MON.frame_update_begin()
 
-	-- PERF: Throttle timer_checkpoint — only run every 10th frame when not debugging
 	_perf_frame_count = (_perf_frame_count or 0) + 1
 	if G.F_ENABLE_PERF_OVERLAY or _perf_frame_count >= 10 then
 r 19 128 %09%09 -
-l 66
+l 60
 		_perf_frame_count = 0
 	end
 
@@ -428,17 +412,13 @@ l 66
 		end
 	end
 
-	-- Update achievement system
 	if AchievementManager and AchievementManager.update then
 		AchievementManager.update(dt)
 	end
 
-	-- PERF: Single pcall wrapping all optional subsystems (reduces pcall overhead on ARM)
 	pcall(misc_update, dt)
 	PERF_MON.checkpoint("misc", "update")
 
-	-- PERF: Subsystem interleaving — distribute JD/OPTIMIZER across frames
-	-- Uses frame counter modulo to avoid all three firing on the same frame
 	_subsystem_frame = (_subsystem_frame or 0) + 1
 
 
@@ -448,10 +428,9 @@ l 66
 		if _pm_t0 then PERF_MON.add_sub("OPTIMIZER", (love.timer.getTime() - _pm_t0) * 1000) end
 	end
 
-	-- Update Jimbo Comments (own timer, frames where frame%3==0)
 	if JIMBO_COMMENTS and (_subsystem_frame % 3 == 0) then
 		local _pm_t0 = PERF_MON.enabled and love.timer.getTime()
-		pcall(JIMBO_COMMENTS.update, dt * 3)  -- compensate for skipped frames
+		pcall(JIMBO_COMMENTS.update, dt * 3)
 		if _pm_t0 then PERF_MON.add_sub("JIMBO_COMMENTS", (love.timer.getTime() - _pm_t0) * 1000) end
 	end
 
@@ -465,7 +444,6 @@ l 66
 		end
 	end
 
-	-- FIX: Wrap MP.update in pcall to prevent multiplayer errors from crashing the game
 	local _mp_pm_t0 = PERF_MON.enabled and love.timer.getTime()
 	local _mp_ok, _mp_err = xpcall(MP.update, debug.traceback, dt)
 	if _mp_pm_t0 then PERF_MON.add_sub("MP", (love.timer.getTime() - _mp_pm_t0) * 1000) end
@@ -486,18 +464,16 @@ c 1
 s 1
 r 19 134 %09 -
 c 1
-l 45
+l 41
 	PERF_MON.checkpoint("after", "draw")
 	G.BG_UNZOOM = nil
 
-	-- FPS Counter (always shown when enabled, drawn on top of everything)
 	if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.show_fps and love.timer then
 		local fps = love.timer.getFPS()
-		-- PERF: Cache FPS string + width — only recalculate when value changes
 		if fps ~= _fps_cached_val then
 			_fps_cached_val = fps
 			_fps_cached_text = "FPS: " .. tostring(fps)
-			_fps_cached_w = nil  -- force width recalc
+			_fps_cached_w = nil
 		end
 		local fps_text = _fps_cached_text or ("FPS: " .. tostring(fps))
 
@@ -512,7 +488,6 @@ l 45
 		end
 		local _sw, _sh = love.graphics.getWidth(), love.graphics.getHeight()
 
-		-- Draggable position (stored in settings, defaults to top-right)
 		if not G.SETTINGS.GRAPHICS.fps_x then
 			G.SETTINGS.GRAPHICS.fps_x = _sw - text_w - 10
 		end
@@ -522,7 +497,6 @@ l 45
 		local x = math.max(0, math.min(G.SETTINGS.GRAPHICS.fps_x, _sw - text_w))
 		local y = math.max(0, math.min(G.SETTINGS.GRAPHICS.fps_y, _sh - text_h))
 
-		-- Use Green color slider value (G.C.GREEN), fallback to bright green
 		local gc = G.C and G.C.GREEN or {0.3, 1, 0.3, 1}
 		local fr, fg, fb = gc[1] or 0.3, gc[2] or 1, gc[3] or 0.3
 		local fps_alpha = (G.SETTINGS.GRAPHICS.fps_opacity or 80) / 100
@@ -533,7 +507,7 @@ l 45
 		else
 			love.graphics.push()
 r 19 278 %09%09%09 -
-l 30
+l 29
 			love.graphics.setColor(0, 0, 0, 0.6 * fps_alpha)
 			love.graphics.rectangle("fill", x, y, text_w, text_h, 4, 4)
 			love.graphics.setColor(fr, fg, fb, fps_alpha)
@@ -542,7 +516,6 @@ l 30
 			love.graphics.pop()
 		end
 
-		-- Handle dragging the FPS counter via touch/mouse
 		if not G._fps_drag then G._fps_drag = {} end
 		local mx, my = love.mouse.getPosition()
 		local inside = mx >= x and mx <= (x + text_w) and my >= y and my <= (y + text_h)
@@ -588,15 +561,13 @@ l 2
     if button == 1 and CORNER_LABELS and CORNER_LABELS.mode_press(x, y) then return end
     if button == 1 then
 c 4
-l 2
-		-- FEATURE: Desktop drag-select activated by right-click hold
+l 1
 		if DRAG_SELECT then DRAG_SELECT._rclick_down = true end
 c 5
 l 1
     if button == 1 and CORNER_LABELS and CORNER_LABELS.mode_release(x, y) then return end
 c 1
-l 5
-    -- FEATURE: Desktop drag-select released on right-click up
+l 4
     if button == 2 and DRAG_SELECT then
         DRAG_SELECT._rclick_down = false
         DRAG_SELECT.reset()
@@ -611,9 +582,8 @@ c 6
 s 1
 r 19 192 %09 -
 c 6
-l 14
+l 12
 
-	-- FIX: Include stack trace in error output for debugging
 	local trace = debug.traceback(tostring(msg), 2)
 	print(trace)
 	pcall(function()
@@ -624,7 +594,6 @@ l 14
 		require("functions/fast_fs").append("mp_error_trace.log", os.date("%Y-%m-%d %H:%M:%S") .. " " .. tostring(trace) .. "\n\n")
 	end)
 
-	-- FIX: Guard against G being nil during early boot errors
 	if not G then return end
 c 3
 s 1
@@ -723,8 +692,7 @@ end
 
 c 1
 s 3
-l 4
-	-- FIX: Guard against early resize events before G is initialized
+l 3
 	if not G or not G.window_prev then return end
 	G.resized_to = {w = w, h = h}
 	local _portrait_changed = PORTRAIT and PORTRAIT.fit(w, h)

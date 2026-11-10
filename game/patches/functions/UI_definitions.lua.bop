@@ -114,8 +114,7 @@ end
 
 c 2
 s 2
-l 6
-  -- FIX: Sandbox loadstring to prevent code injection from HTTP response
+l 5
   local _fn = loadstring(_resp)
   if _fn then setfenv(_fn, {}) end
   local _ok, _parsed = pcall(_fn or function() return nil end)
@@ -314,9 +313,8 @@ l 2
     if not args.active_check then args.active_check = function() return true end end
     if not args.release_func then args.release_func = function() end end
 e 15 900 %20%20%20%20 - =5,-3,+%74,=1,-1,+%78%74,=25,-2,+%57%48%49%54,=1,-2,=1
-l 6
+l 5
 
-    -- Guard: cover must be a valid UI object with .T table, not a boolean
     if args.cover and (type(args.cover) ~= "table" or not args.cover.T) then
       args.cover = nil
     end
@@ -367,8 +365,7 @@ l 15
       }))
   end
 c 13
-l 5
-    -- Guard: cover must be a valid UI object with .T table, not a boolean
+l 4
     if args.cover and (type(args.cover) ~= "table" or not args.cover.T) then
       args.cover = nil
     end
@@ -456,10 +453,7 @@ s 1
 e 15 1351 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 - =35,-1,+%5F%74%6F%74%61%6C,=20,+%5F%74%6F%74%61%6C,=103,+%5F%74%6F%74%61%6C,=118,-1,+%31,=1,-1,+%34,=5
 c 37
 s 3
-l 7
-    -- FIX: Build the run/options buttons first; only append the multiplayer Lobby Info button
-    -- when this run is actually a multiplayer match. In solo runs the button is now omitted
-    -- entirely (no greyed placeholder, no reserved layout space).
+l 4
     local _mp_hud = bom_match and bom_match._starting_mp_run
     local _btn_h = _mp_hud and 1.35 or 1.75
     local _hud_buttons = {
@@ -470,13 +464,9 @@ l 1
           {n=G.UIT.R, config={align = "cm", minh = _btn_h, minw = 1.5, padding = 0.05, r = 0.1, hover = true, colour = G.C.ORANGE, button = "options", shadow = true}, nodes={
 c 3
 s 2
-l 8
+l 4
           }},
     }
-    -- FEATURE: Lobby Info button (multiplayer matches only — pixel-perfect: inserted
-    -- only when bom_match._starting_mp_run is true at HUD build time, which is set
-    -- by bom_room.do_mp_start_run() before G.FUNCS.start_run() is called).
-    -- Same width as Run Info / Options (minw=1.5) but shorter height (minh=1.1).
     if bom_match and bom_match._starting_mp_run then
         table.insert(_hud_buttons, {n=G.UIT.R, config={id = 'mp_lobby_info_btn', align = "cm", minh = _btn_h, minw = 1.5, padding = 0.05, r = 0.1, hover = true, colour = G.C.GREEN, button = "mp_lobby_info", shadow = true}, nodes={
 r 15 1386 %20%20%20%20%20%20%20%20%20%20%20%20 -
@@ -542,8 +532,7 @@ s 1
 l 1
     extras =
 c 19
-l 5
-  -- Apply Insanity Stake multiplier (2x) to blind amount display
+l 4
   local insanity_mult = 1
   if get_insanity_blind_multiplier then
       insanity_mult = get_insanity_blind_multiplier()
@@ -813,8 +802,7 @@ l 1
   local profile = nil
 c 10
 s 1
-l 2
-    -- FIX: Hide New Run button during multiplayer matches
+l 1
     if not (G.GAME and G.GAME.multiplayer) then
 r 15 2225 %20%20%20%20%20%20 -
 l 1
@@ -824,8 +812,7 @@ s 1
 l 1
             {n=G.UIT.C, config={align = "cm", maxw = 3.6}, nodes={
 c 7
-l 2
-    -- FEATURE: Save current run seed + deck + stake to Seed Library (own row below seed)
+l 1
     save_to_library = UIBox_button({button = 'seed_lib_save_current', label = {mod_loc("Save to Library")}, colour = G.C.SECONDARY_SET.Spectral, minw = 5,})
 c 3
 l 1
@@ -1508,11 +1495,10 @@ l 1
   table.insert(t,
 c 5
 s 4
-l 15
+l 14
   local raw_loc_options = localize(_suit, 'collabs')
   local all_collab_ids = G.COLLABS.options[_suit]
 
-  -- Filter to only show unlocked collabs (default always available)
   local filtered_loc_options = {}
   local filtered_collab_ids = {}
   for k, collab_id in ipairs(all_collab_ids) do
@@ -1526,8 +1512,7 @@ l 15
     end
 c 2
 s 1
-l 5
-  -- If no unlocked collabs, show default only
+l 4
   if #filtered_loc_options == 0 then
     filtered_loc_options = {raw_loc_options["1"] or raw_loc_options[1] or "Default"}
     filtered_collab_ids = {"default"}
@@ -1538,8 +1523,7 @@ l 1
   for k, v in ipairs(filtered_collab_ids) do
 c 3
 s 1
-l 5
-  -- Store filtered IDs for change_collab callback
+l 4
   G._filtered_collab_ids = G._filtered_collab_ids or {}
   G._filtered_collab_ids[_suit] = filtered_collab_ids
 
@@ -1581,18 +1565,15 @@ s 1
 r 15 2727 %20%20 -
 c 22
 s 1
-l 16
-  -- In multiplayer, use dedicated MP win screen
+l 13
   if G and G.GAME and G.GAME.multiplayer then
     local ok, result = pcall(function()
       if bom_ui and bom_ui.register_funcs then bom_ui.register_funcs() end
       return bom_ui.create_mp_win({jimbo = true})
     end)
     if ok and result then return result end
-    -- Fall through to vanilla on error
   end
   local show_win_cta = false
-  -- FEATURE: save seed+stake now (G.GAME accessible) so replay_run can use them after wipe
   if not G.ARGS then G.ARGS = {} end
   G.ARGS.replay_run = {
     seed  = G.GAME and G.GAME.pseudorandom and G.GAME.pseudorandom.seed or nil,
@@ -1608,8 +1589,7 @@ l 1
         UIBox_button({button = 'copy_seed', label = {localize('b_copy')}, colour = G.C.BLUE, scale = (UIK and UIK.touch()) and 0.38 or 0.3, minw = 2.3, minh = (UIK and UIK.touch()) and 0.55 or 0.4}),
 c 7
 r 15 2780 %20%20%20%20%20%20%20%20 -
-l 2
-        -- FEATURE: Replay on same seed
+l 1
         not show_win_cta and UIBox_button({button = 'replay_run', label = {'Replay (same seed)'}, colour = G.C.BLUE, minw = 2.5, maxw = 2.5, minh = 1, focus_args = {nav = 'wide'}}) or nil,
 c 9
 s 1
@@ -1622,19 +1602,16 @@ s 1
 l 1
   }}
 c 38
-l 9
-  -- In multiplayer, use dedicated MP game over screen
+l 7
   if G and G.GAME and G.GAME.multiplayer then
     local ok, result = pcall(function()
       if bom_ui and bom_ui.register_funcs then bom_ui.register_funcs() end
       return bom_ui.create_mp_game_over({jimbo = true})
     end)
     if ok and result then return result end
-    -- Fall through to vanilla on error
   end
 c 2
-l 6
-  -- FEATURE: save seed+stake now (G.GAME accessible) so replay_run can use them after wipe
+l 5
   if not G.ARGS then G.ARGS = {} end
   G.ARGS.replay_run = {
     seed  = G.GAME and G.GAME.pseudorandom and G.GAME.pseudorandom.seed or nil,
@@ -1653,10 +1630,9 @@ s 1
 l 1
         show_lose_cta and
 c 11
-l 4
+l 3
             }}
           }},
-          -- FEATURE: Replay button — replays on the same seed/stake/deck
           {n=G.UIT.R, config={align = "cm", minw = 5, padding = 0.1, r = 0.1, hover = true, colour = G.C.BLUE, button = "replay_run", shadow = true, focus_args = {nav = 'wide'}}, nodes={
 r 15 2907 %20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
@@ -1770,12 +1746,9 @@ r 15 3106 %20%20 -
 l 1
     {tabs = tabs,
 c 2
-l 8
+l 5
 end
 
--- ============================================
--- FEATURE: Multiplayer Lobby Info overlay (Players / Run / Bans tabs)
--- ============================================
 
 function G.UIDEF.mp_lobby_info()
   return bom_ui.lobby_info_def()
@@ -1916,8 +1889,7 @@ s 1
 r 15 3255 %20%20%20%20 -
 c 7
 s 2
-l 4
-  -- FIX: use math.ceil so last partial page is included; was math.floor (cut off last page)
+l 3
   local num_tarot_pages = math.ceil(#G.P_CENTER_POOLS.Tarot/11)
   for i = 1, num_tarot_pages do
     table.insert(tarot_options, localize('k_page')..' '..tostring(i)..'/'..tostring(num_tarot_pages))
@@ -1964,8 +1936,7 @@ l 1
 
 c 7
 s 2
-l 4
-  -- FIX: was using Tarot pool count (wrong) and math.floor (cuts last page)
+l 3
   local num_spectral_pages = math.ceil(#G.P_CENTER_POOLS.Spectral/9)
   for i = 1, num_spectral_pages do
     table.insert(spectral_options, localize('k_page')..' '..tostring(i)..'/'..tostring(num_spectral_pages))
@@ -1992,8 +1963,7 @@ r 15 3628 %20%20%20%20%20%20 -
 r 15 3255 %20%20%20%20 -
 c 8
 s 1
-l 2
-    -- FIX: guard against Cryptid seals not in G.shared_seals (prevents crash at card.lua:4547)
+l 1
     if G.shared_seals and G.shared_seals[v.key] then
 r 15 3799 %20%20%20%20%20%20 -
 l 1
@@ -2003,8 +1973,7 @@ s 1
 l 1
 
 c 7
-l 4
-  -- FIX: dynamic grid based on pool size (prevents crash when Cryptid adds more than 8 Enhanced types)
+l 3
   local pool = G.P_CENTER_POOLS["Enhanced"]
   local items_per_row = 4
   local num_rows = math.max(1, math.ceil(#pool / items_per_row))
@@ -2067,8 +2036,7 @@ s 1
 l 1
                   }}
 c 7
-l 115
--- ===== STAKES COLLECTION TAB =====
+l 111
 function create_UIBox_your_collection_stakes()
   local stake_list = {}
   for k, v in pairs(G.P_STAKES) do
@@ -2106,7 +2074,6 @@ function create_UIBox_your_collection_stakes()
     stake_transcendent = HEX('e8d5b7'),
   }
 
-  -- Determine highest stake beaten across all decks for unlock check
   local highest_stake_beaten = 0
   if G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile] then
     local profile = G.PROFILES[G.SETTINGS.profile]
@@ -2123,7 +2090,6 @@ function create_UIBox_your_collection_stakes()
         end
       end
     end
-    -- Also check creative stake_progress
     if profile.stake_progress then
       for i = 1, 13 do
         if profile.stake_progress[i] and i > highest_stake_beaten then
@@ -2137,7 +2103,6 @@ function create_UIBox_your_collection_stakes()
   for k, entry in ipairs(stake_list) do
     local v = entry.data
     local stake_level = v.stake_level or v.order or 0
-    -- Stake is unlocked if: it's stake 1 (always), or any deck has beaten the previous stake, or all_unlocked
     local is_unlocked = stake_level <= 1 or stake_level <= (highest_stake_beaten + 1)
     local col  = stake_colors[entry.key] or G.C.WHITE
     local desc = stake_descriptions[entry.key] or ""
@@ -2229,11 +2194,9 @@ c 1
 s 3
 c 5
 s 1
-l 8
-  -- FIX: nil-guard sort so tags without order (Cryptid) don't crash
+l 6
   table.sort(tag_tab, function (a, b) return (a.order or 999) < (b.order or 999) end)
 
-  -- FIX: dynamic matrix — supports any number of tags (was hard-coded to 4 rows = 24 max)
   local TAGS_PER_ROW = 6
   local num_tag_rows = math.max(1, math.ceil(#tag_tab / TAGS_PER_ROW))
   local tag_matrix = {}
@@ -2246,8 +2209,7 @@ s 1
 r 3 87 %20%20%20%20%20%20%20%20%20%20%20%20 -
 c 12
 s 8
-l 12
-        -- FIX: build rows dynamically instead of hard-coded tag_matrix[1..4]
+l 11
         (function()
           local all_rows = {}
           for r = 1, num_tag_rows do
@@ -2261,17 +2223,15 @@ l 12
     }}
 c 5
 s 3
-l 2
+l 1
   if bom_nemesis and bom_nemesis.ensure_registered then pcall(bom_nemesis.ensure_registered) end
-  -- FIX: dynamic matrix — was hard-coded to 6 rows (30 blinds max), Cryptid adds 20+ more
 c 2
 s 1
 l 1
     if not v.rr_plain then blind_tab[#blind_tab+1] = v end
 c 2
 s 1
-l 7
-  -- FIX: Guard against nil order (e.g. bl_mp_nemesis) to prevent crash
+l 6
   table.sort(blind_tab, function (a, b) return (a.order or 999) < (b.order or 999) end)
 
   local BLINDS_PER_ROW = 5
@@ -2319,8 +2279,7 @@ l 1
 
 c 15
 s 10
-l 12
-      -- FIX: build blind rows dynamically instead of hard-coded blind_matrix[1..6]
+l 11
       (function()
         local all_blind_rows = {}
         for r = 1, num_blind_rows do
@@ -2643,15 +2602,14 @@ c 6
 s 1
 r 15 5445 %20%20 -
 c 6
-l 12
-  -- Custom name colors for creative stakes
+l 11
   local name_colour = G.C.WHITE
   if _stake_center and _stake_center.key then
     local stake_name_colours = {
-      stake_chaos = HEX('1a3a6b'),       -- dark blue
-      stake_apocalypse = HEX('8b0000'),   -- dark red
-      stake_oblivion = G.C.BLACK,         -- black
-      stake_transcendent = HEX('e8d5b7'), -- ivory/light gold (unchanged)
+      stake_chaos = HEX('1a3a6b'),
+      stake_apocalypse = HEX('8b0000'),
+      stake_oblivion = G.C.BLACK,
+      stake_transcendent = HEX('e8d5b7'),
     }
     name_colour = stake_name_colours[_stake_center.key] or G.C.WHITE
   end
@@ -2681,8 +2639,7 @@ l 1
 
 c 59
 s 1
-l 2
-      -- FIX: Custom challenges (k > 20) are always unlocked; only vanilla challenges require progress
+l 1
       local challenge_unlocked = (G.PROFILES[G.SETTINGS.profile].challenges_unlocked and (G.PROFILES[G.SETTINGS.profile].challenges_unlocked >= k)) or (k > 20)
 c 1
 s 1
@@ -2692,17 +2649,13 @@ s 1
 l 1
       }}
 c 5
-l 33
+l 26
 end
 
--- ============================================
--- ACHIEVEMENTS LIST (tile-based like profile/stats)
--- ============================================
 
 function G.UIDEF.achievements_list()
   G.ACH_PAGE_SIZE = 5
 
-  -- Count achievements
   local total = 0
   local unlocked = 0
 
@@ -2715,19 +2668,16 @@ function G.UIDEF.achievements_list()
 
   local pct = total > 0 and (unlocked / total) or 0
 
-  -- Page options
   local ach_pages = {}
   local page_count = math.max(1, math.ceil(total / G.ACH_PAGE_SIZE))
   for i = 1, page_count do
     table.insert(ach_pages, localize('k_page')..' '..tostring(i)..'/'..tostring(page_count))
   end
 
-  -- Progress data for bar
   G.ACH_PROGRESS = {tally = unlocked, of = total}
 
-  -- Queue first page load
 r 15 5508 %20%20 -
-l 8
+l 7
     G.FUNCS.change_ach_list_page{cycle_config = {current_option = 1}}
     return true
   end)}))
@@ -2735,15 +2685,13 @@ l 8
   local t = create_UIBox_generic_options({
     back_func = 'options',
     contents = {
-      -- Title
 r 15 723 %20%20%20%20%20%20 -
-l 4
+l 3
         {n=G.UIT.T, config={text = mod_loc("ACHIEVEMENTS"), scale = 0.6, colour = G.C.GOLD, shadow = true}}
       }},
-      -- Progress bar tile (like create_progress_box style)
       {n=G.UIT.R, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes={
 r 15 71 %20%20%20%20%20%20%20%20 -
-l 19
+l 17
           {n=G.UIT.C, config={align = "cm", padding = 0.05, minw = 2}, nodes={
             {n=G.UIT.T, config={text = localize('k_progress'), scale = 0.45, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
           }},
@@ -2758,13 +2706,11 @@ l 19
           }},
         }},
       }},
-      -- Achievements list area
       {n=G.UIT.R, config={align = "cm", padding = 0.1, minh = 4.2, minw = 7}, nodes={
         {n=G.UIT.O, config={id = 'ach_list', object = Moveable()}}
       }},
-      -- Page selector
 r 15 723 %20%20%20%20%20%20 -
-l 51
+l 45
         create_option_cycle({id = 'ach_page', scale = 0.9, h = 0.3, w = 3.5, options = ach_pages, cycle_shoulders = true, opt_callback = 'change_ach_list_page', current_option = 1, colour = G.C.RED, no_pips = true, focus_args = {snap_to = true}})
       }}
     }
@@ -2777,7 +2723,6 @@ function G.UIDEF.achievements_list_page(_page)
   local rows = {}
   local all_achs = {}
 
-  -- Collect vanilla achievements
   if G.ACHIEVEMENTS then
     for id, data in pairs(G.ACHIEVEMENTS) do
       local name = id
@@ -2798,37 +2743,29 @@ function G.UIDEF.achievements_list_page(_page)
     end
   end
 
-  -- Sort by order
   table.sort(all_achs, function(a, b)
     return (a.order or 999) < (b.order or 999)
   end)
 
-  -- Build tile rows for current page (like create_progress_box style)
   for k, ach in ipairs(all_achs) do
     if k > G.ACH_PAGE_SIZE * (_page or 0) and k <= G.ACH_PAGE_SIZE * ((_page or 0) + 1) then
-      -- Rarity color
       local rar_col = G.C.GREY
       if ach.rarity == "Rare" then rar_col = G.C.BLUE
       elseif ach.rarity == "Legendary" then rar_col = G.C.GOLD end
 
-      -- Status indicator
       local status_col = ach.unlocked and G.C.GREEN or darken(G.C.RED, 0.3)
       local status_text = ach.unlocked and "UNLOCKED" or "LOCKED"
 
-      -- Tile row (same style as create_progress_box)
 r 15 2663 %20%20%20%20%20%20 -
-l 27
-        -- Achievement name column
+l 24
         {n=G.UIT.C, config={align = "cl", padding = 0.05, minw = 3.2, maxw = 3.2}, nodes={
           {n=G.UIT.T, config={text = ach.name, scale = 0.38, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
         }},
-        -- Rarity badge column
         {n=G.UIT.C, config={align = "cm", r = 0.1, minh = 0.5, minw = 1.2, colour = G.C.BLACK, emboss = 0.05, padding = 0.03}, nodes={
           {n=G.UIT.C, config={align = "cm", r = 0.1, minw = 1.1, colour = rar_col, padding = 0.02}, nodes={
             {n=G.UIT.T, config={text = ach.rarity, scale = 0.25, colour = G.C.WHITE}}
           }},
         }},
-        -- Status badge column
         {n=G.UIT.C, config={align = "cm", r = 0.1, minh = 0.5, minw = 1.4, colour = G.C.BLACK, emboss = 0.05, padding = 0.03}, nodes={
           {n=G.UIT.C, config={align = "cm", r = 0.1, minw = 1.3, colour = status_col, padding = 0.02}, nodes={
             {n=G.UIT.T, config={text = status_text, scale = 0.22, colour = G.C.WHITE}}
@@ -2986,7 +2923,7 @@ l 1
 c 12
 s 14
 l 4
-  local text_scale = 0.497  -- was 0.585, scaled -15%
+  local text_scale = 0.497
   local _desk = true
   local k = _desk and 1.2 or 1
 
@@ -3070,7 +3007,7 @@ l 17
 c 1
 s 16
 c 5
-l 29
+l 27
 G.UIDEF.profile_icon_frame = function()
   local profile_icon_nodes = {}
   pcall(function()
@@ -3083,7 +3020,6 @@ G.UIDEF.profile_icon_frame = function()
         icon_sprite.states.drag.can = false
         icon_sprite.states.collide.can = false
 
-        -- Apply icon effect shader if equipped
         local icon_effect = nil
         pcall(function()
           if AshCardManager and AshCardManager.get_equipped_icon_effect then
@@ -3098,17 +3034,15 @@ G.UIDEF.profile_icon_frame = function()
             end
           end)
           if effect_def and effect_def.shader then
-            -- Order: shadow → base dissolve → edition overlay (matches Card:draw() order)
             icon_sprite:define_draw_steps({
 r 15 662 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 5 505 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 49
+l 46
               {shader = effect_def.shader},
             })
           end
         end
 
-        -- Legendary jokers have soul_pos: overlay floating sprite ON TOP of the base card
         if center.soul_pos then
           local soul_sprite = Sprite(0, 0, 0.9*G.CARD_W, 0.9*G.CARD_H,
             G.ASSET_ATLAS[center.atlas or "Joker"] or G.ASSET_ATLAS["Joker"], center.soul_pos)
@@ -3117,9 +3051,8 @@ l 49
           soul_sprite:set_role({major = icon_sprite, role_type = 'Glued', draw_major = icon_sprite})
           icon_sprite.children = icon_sprite.children or {}
           icon_sprite.children.floating_sprite = soul_sprite
-          -- Override draw to render both base + floating sprite on top
           local _orig_draw = icon_sprite.draw
-          local _soul_effect_def = effect_def  -- capture for draw closure
+          local _soul_effect_def = effect_def
           icon_sprite.draw = function(self)
             if _orig_draw then _orig_draw(self) end
             if self.children and self.children.floating_sprite then
@@ -3128,7 +3061,6 @@ l 49
               local rotate_mod = 0.05*math.sin(1.219*G.TIMERS.REAL)
               fs:draw_shader('dissolve', 0, nil, nil, self, scale_mod, rotate_mod, nil, 0.1 + 0.03*math.sin(1.8*G.TIMERS.REAL), nil, 0.6)
               fs:draw_shader('dissolve', nil, nil, nil, self, scale_mod, rotate_mod)
-              -- Apply icon effect shader to floating sprite too
               if _soul_effect_def and _soul_effect_def.shader then
                 fs:draw_shader(_soul_effect_def.shader, nil, nil, nil, self, scale_mod, rotate_mod)
               end

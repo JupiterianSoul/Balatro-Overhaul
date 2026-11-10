@@ -3,9 +3,8 @@ eol lf
 final 1
 base 16
 s 2
-l 7
+l 6
 ﻿function win_game()
-    -- Haptic: game won! (rigid — biggest moment)
     pcall(function() haptic_buzz(4) end)
     local is_normal_run = not G.GAME.seeded and not G.GAME.challenge
     local is_daily = G.GAME.daily == true
@@ -18,36 +17,31 @@ l 3
 
     if is_normal_run or is_daily then
 c 9
-l 34
+l 29
 
-        -- Quest hook: track run wins
         if QuestManager and QuestManager.on_run_won then
             pcall(function() QuestManager.on_run_won(G.GAME.stake, G.GAME.selected_back and G.GAME.selected_back.name) end)
         end
 
-        -- Progression system: Award XP for run win
         if progression_on_run_win then
             progression_on_run_win()
         end
     end
 
     if is_normal_run then
-        -- Profile Rewards: check icon + deck unlocks after win
         pcall(function()
             if ProfileRewardsManager then
                 ProfileRewardsManager.check_icon_unlocks()
                 ProfileRewardsManager.check_deck_unlocks()
-                -- Check win-specific deck unlocks
                 if G.GAME.dollars and G.GAME.dollars == 0 then
-                    ProfileRewardsManager.unlock_deck("collab_DS") -- win broke
+                    ProfileRewardsManager.unlock_deck("collab_DS")
                 end
                 if G.GAME.jokers and #G.GAME.jokers.cards == 0 then
-                    ProfileRewardsManager.unlock_deck("collab_AU") -- win no joker
+                    ProfileRewardsManager.unlock_deck("collab_AU")
                 end
             end
         end)
 
-        -- Booster system: award BC bonus and clear active boosters
         pcall(function()
             if BoosterManager and BoosterManager.on_run_end then
                 BoosterManager.on_run_end()
@@ -69,17 +63,13 @@ s 1
 l 1
 
 c 32
-l 58
+l 46
 
-            -- FIX: Determine MP status using bom_match module-local state as FALLBACK.
-            -- G.GAME.multiplayer may be nil if apply_to_game() event failed or was delayed.
-            -- bom_match.is_in_match() survives G.GAME reinitializations since it reads module-local state.
             local _is_mp = G.GAME.multiplayer
             if not _is_mp then
                 pcall(function()
                     if bom_match and bom_match.is_in_match and bom_match.is_in_match() then
                         _is_mp = true
-                        -- Sync G.GAME.multiplayer so downstream code works
                         G.GAME.multiplayer = true
                     end
                 end)
@@ -94,16 +84,9 @@ l 58
                 end)
             end
 
-            -- FEATURE: PvP blinds never game-over — score is submitted to server for comparison
             if _is_mp and G.GAME.mp_in_boss_blind then
                 game_over = false
             end
-            -- FIX: In multiplayer with lives remaining, intercept blind loss BEFORE G.STATE=GAME_OVER.
-            -- Set mp_blind_loss_pending + blind.chips=-1 so the success path runs and shows
-            -- "Lose a Life" button (via add_round_eval_row hook) instead of GAME OVER screen.
-            -- We do NOT call bom_events.on_game_event("game_over") here because that queues
-            -- a NEW_ROUND state change that would conflict with the success path's ROUND_EVAL.
-            -- Instead we set the flags directly and notify the server.
             if game_over and _is_mp and _mp_lives and _mp_lives > 0 then
                 pcall(function()
                     if bom_match and bom_match.mark_round_lost then
@@ -115,7 +98,6 @@ l 58
                     if G.GAME.blind then
                         G.GAME.blind.chips = -1
                     end
-                    -- Notify server of life loss
                     if bom_core and bom_core.send and not (bom_match and bom_match.is_match_over and bom_match.is_match_over()) then
                         local score = G.GAME.chips or 0
                         bom_core.send({
@@ -130,22 +112,20 @@ l 58
             end
 c 12
 s 3
-l 7
+l 6
 
-            -- Dynamic win ante: Creative Stakes require higher ante
             local win_ante = G.GAME.win_ante
             if is_creative_stake and is_creative_stake() then
                 win_ante = get_creative_win_ante and get_creative_win_ante() or 10
             elseif is_insanity_stake and is_insanity_stake() then
                 win_ante = get_insanity_win_ante and get_insanity_win_ante() or 10
 c 1
-l 12
+l 11
             if _is_mp then
                 pcall(function()
                     if bom_match and bom_match.final_ante then win_ante = bom_match.final_ante() end
                 end)
             end
-            -- FIX: Don't count as win if boss blind was actually lost in MP
             if _is_mp or win_ante ~= G.GAME.win_ante or G.GAME.mp_blind_loss_pending or G.GAME.mp_round_lost then
                 if G.GAME.round_resets.ante == win_ante and G.GAME.blind:get_type() == 'Boss' and not G.GAME.mp_blind_loss_pending and not G.GAME.mp_round_lost then
                     game_won = true
@@ -170,10 +150,8 @@ l 14
 
 c 2
 s 1
-l 20
+l 17
 
-                -- Multiplayer hook: game over (lose a life)
-                -- FIX: Use _is_mp (bom_match fallback) instead of G.GAME.multiplayer only
                 pcall(function()
                     if _is_mp then
                         G.GAME.mp_in_boss_blind = false
@@ -183,7 +161,6 @@ l 20
                     end
                 end)
 
-                -- Clear active boosters on game over (BC bonus only on win)
                 pcall(function()
                     if BoosterManager and BoosterManager.clear_active then
                         BoosterManager.clear_active()
@@ -200,33 +177,27 @@ s 1
 r 16 132 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 7
 s 3
-l 3
-                -- FIX: Skip boss achievements/progression when blind was actually lost in MP
+l 2
                 if G.GAME.blind:get_type() == 'Boss' and not G.GAME.mp_blind_loss_pending and ((not G.GAME.seeded and not G.GAME.challenge) or G.GAME.daily)  then
                     if not G.GAME.daily then
 r 16 141 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 16 142 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 14
+l 11
                     end
 
-                    -- Quest hook: track boss defeated
                     if QuestManager and QuestManager.on_boss_defeated then
                         pcall(function() QuestManager.on_boss_defeated() end)
                     end
-                    -- Haptic: boss defeated (heavy)
                     pcall(function() haptic_buzz(3) end)
 
-                    -- Progression system: Award XP for boss defeated
                     if progression_on_boss_defeated then
                         progression_on_boss_defeated()
                     end
 
 c 1
 s 2
-l 12
+l 10
 
-                -- Multiplayer hook: boss defeated (OUTSIDE seeded guard — MP runs are seeded)
-                -- FIX: Skip when mp_blind_loss_pending — boss was lost, not defeated
                 pcall(function()
                     if G.GAME.multiplayer and G.GAME.blind:get_type() == 'Boss' and not G.GAME.mp_blind_loss_pending and not G.GAME.mp_round_lost then
                         G.GAME.mp_in_boss_blind = false
@@ -242,9 +213,8 @@ s 1
 l 1
                     if (not G.GAME.seeded and not G.GAME.challenge) or G.GAME.daily  then
 c 7
-l 8
+l 7
 
-                -- Multiplayer hook: round won
                 pcall(function()
                     if G.GAME.multiplayer and bom_events and bom_events.on_game_event then
                         bom_events.on_game_event("round_won")
@@ -252,9 +222,8 @@ l 8
                 end)
 
 c 2
-l 8
+l 7
 
-                    -- Multiplayer: winning the run = winning the match
                     pcall(function()
                         if G.GAME.multiplayer and bom_match and bom_match.end_match then
                             bom_match.end_match("win", "run_completed")
@@ -294,14 +263,7 @@ l 1
 c 1
 s 1
 r 16 221 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-c 15
-l 5
-                -- FIX: Always advance ante after boss blind — even on MP loss.
-                -- Reference mod (BalatroMultiplayer-0.3.3) always lets ease_ante(1) run;
-                -- the old mp_blind_loss_pending guard blocked ante advancement, causing
-                -- the game to get stuck replaying the same boss (blind_states.Boss='Defeated'
-                -- but ante unchanged). The server handles life loss separately.
-c 3
+c 18
 s 1
 r 16 240 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 4
@@ -309,9 +271,8 @@ s 1
 r 16 245 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 2
 s 1
-l 8
+l 7
                     delay(0.4); ease_ante(1); delay(0.4);
-                    -- FIX: Only award progression/unlocks if blind was actually beaten (not a MP loss)
                     if not G.GAME.mp_blind_loss_pending then
                         check_for_unlock({type = 'ante_up', ante = G.GAME.round_resets.ante + 1})
                         if progression_on_ante_cleared then
@@ -319,10 +280,7 @@ l 8
                         end
                     end
 c 6
-l 17
-                        -- FIX: Nemesis spoofing — temporarily swap Nemesis blind to bl_small/bl_big
-                        -- so blind_states advance correctly (ref: BalatroMultiplayer end_round.toml).
-                        -- Without this, Nemesis in Small/Big slot falls into the else→Boss branch.
+l 14
                         local mp_nemesis_spoof = false
                         pcall(function()
                             if G.GAME.round_resets.blind and G.GAME.round_resets.blind.key == "bl_mp_nemesis" then
@@ -339,10 +297,7 @@ l 17
                         local defeat_haptic = G.GAME.round_resets.blind == G.P_BLINDS.bl_small and 1 or G.GAME.round_resets.blind == G.P_BLINDS.bl_big and 2 or 4
 c 3
 s 1
-l 5
-                        -- FIX: Boss/Nemesis loss in MP — always advance past boss.
-                        -- Player already loses a life via the "Lose a Life" button;
-                        -- forcing a replay was wrong (caused stuck state).
+l 2
                         local played = G.GAME.round_resets.blind
                         if played == G.P_BLINDS.bl_small then
 c 1
@@ -350,11 +305,10 @@ s 1
 l 1
                         elseif played == G.P_BLINDS.bl_big then
 c 7
-l 10
+l 9
                         end
                         pcall(function() haptic_buzz(defeat_haptic) end)
 
-                        -- FIX: Restore Nemesis after blind_states advancement
                         if mp_nemesis_spoof then
                             pcall(function()
                                 if G.P_BLINDS and G.P_BLINDS["bl_mp_nemesis"] then
@@ -369,9 +323,7 @@ c 13
 s 1
 r 3 313 %20%20%20%20%20%20%20%20%20%20%20%20 -
 c 14
-l 15
-            -- FIX: Nemesis spoofing for new_round — swap to bl_small/bl_big before
-            -- blind_states 'Current' check so correct state advances (ref: end_round.toml).
+l 13
             local mp_nemesis_spoof_nr = false
             pcall(function()
                 if G.GAME.round_resets.blind and G.GAME.round_resets.blind.key == "bl_mp_nemesis" then
@@ -395,15 +347,9 @@ s 1
 l 1
             elseif bl_name == 'Big Blind' then
 c 9
-l 29
-            -- Multiplayer: track boss blind state + notify bom_match of blind entry
+l 22
             pcall(function()
                 if G.GAME.multiplayer then
-                    -- FIX: Use is_blind_pvp() instead of (blhash == 'L').
-                    -- (blhash == 'L') makes ALL Boss blinds PvP-like (e.g., ante 1 Boss
-                    -- in Attrition is not PvP, but was treated as PvP).
-                    -- on_blind_entered also sets mp_in_boss_blind correctly, but this
-                    -- early write prevents a stale-true window if on_blind_entered fails.
                     local ante = G.GAME.round_resets.ante or 1
                     local is_pvp_local = false
                     if bom_match and bom_match.is_blind_pvp then
@@ -416,7 +362,6 @@ l 29
                 end
             end)
 
-            -- FIX: Restore Nemesis before set_blind so HOOK 1 sees bl_mp_nemesis
             if mp_nemesis_spoof_nr then
                 pcall(function()
                     if G.P_BLINDS and G.P_BLINDS["bl_mp_nemesis"] then
@@ -427,9 +372,8 @@ l 29
 
 c 1
 s 1
-l 8
+l 7
 
-            -- Multiplayer daily modifier applies at round start after blind setup
             pcall(function()
                 if G.GAME.multiplayer and bom_daily and bom_daily.apply_modifier then
                     bom_daily.apply_modifier()
@@ -437,19 +381,16 @@ l 8
             end)
 
 c 3
-l 21
+l 18
 
-            -- Oblivion Stake (11+): Debuff a random joker at round start
             pcall(function()
                 if G.GAME.modifiers and G.GAME.modifiers.random_joker_disable and #G.jokers.cards > 0 then
-                    -- Clear previous Oblivion debuffs
                     for _, card in ipairs(G.jokers.cards) do
                         if card.ability and card.ability.oblivion_debuffed then
                             card.ability.oblivion_debuffed = nil
                             card.debuff = false
                         end
                     end
-                    -- Pick a random joker to disable
                     local random_idx = math.ceil(pseudorandom(pseudoseed('oblivion')) * #G.jokers.cards)
                     local target = G.jokers.cards[random_idx]
                     if target and not target.ability.eternal then
@@ -462,8 +403,7 @@ l 21
 c 19
 s 2
 r 16 357 %20%20%20%20%20%20%20%20 -
-l 26
-        -- FIX: In MP with lives remaining, redirect to Lose a Life instead of GAME_OVER
+l 25
         local mp_redirect = false
         pcall(function()
             local is_mp = (G.GAME and G.GAME.multiplayer) or (bom_match and bom_match.is_in_match and bom_match.is_in_match())
@@ -498,8 +438,7 @@ c 12
 s 1
 r 16 371 %20%20%20%20%20%20%20%20 -
 c 8
-l 2
-    -- Haptic: discard (light)
+l 1
     pcall(function() haptic_buzz(1) end)
 c 10
 s 1
@@ -522,17 +461,15 @@ s 1
 l 1
 
 c 3
-l 2
-    -- Haptic: hand played (light)
+l 1
     pcall(function() haptic_buzz(1) end)
 c 9
 s 1
 l 1
 
 c 13
-l 6
+l 5
 
-    -- Progression system: Award XP for hand played
     if progression_on_hand_played then
         progression_on_hand_played()
     end
@@ -556,8 +493,7 @@ function score_delay(t)
 end
 
 c 1
-l 3
-    -- FEATURE: Skip Score Animation — force all delays to 0 and suppress visual popups
+l 2
     local skip_anim = G.SETTINGS and G.SETTINGS.skip_score_animation
 
 c 1
@@ -566,7 +502,7 @@ l 1
 
 c 8
 l 1
-    local has_splash = next(find_joker('Splash'))  -- PERF: cache before per-card loop
+    local has_splash = next(find_joker('Splash'))
 c 1
 s 1
 l 1
@@ -577,7 +513,6 @@ l 2
     if not skip_anim then
       score_delay(0.2)
 r 16 602 %20%20%20%20%20%20 -
-r 16 603 %20%20%20%20%20%20%20%20%20%20 -
 r 16 604 %20%20%20%20%20%20%20%20%20%20 -
 l 1
       end
@@ -590,17 +525,12 @@ s 1
 l 1
                 delay = G.GAME.current_round.current_hand.handname ~= disp_text and score_time(0.4) or 0}, {handname=disp_text, level=G.GAME.hands[text].level, mult = G.GAME.hands[text].mult, chips = G.GAME.hands[text].chips})
 c 5
-l 12
-        -- PERF: Local aliases for frequently accessed tables in hot evaluation loops
+l 7
         local joker_cards = G.jokers.cards
         local play_cards = G.play.cards
-        local n_jokers = #joker_cards  -- PERF: cache length — avoids re-evaluating on every inner loop iteration
-        -- PERF: Global iteration counter to guard against pathological hand doublings
+        local n_jokers = #joker_cards
         local _eval_iterations = 0
-        -- FIX: Increased from 1000 to handle 100+ cards held-in-hand without crashing.
-        -- 100 cards * ~5 jokers * ~10 reps = ~5000 iterations. Cap at 10000 for headroom.
         local _MAX_EVAL_ITERATIONS = 10000
-        -- FIX: Cap repetitions per card to prevent runaway seal/joker rep stacking
         local _MAX_REPS_PER_CARD = 100
 
 c 2
@@ -624,9 +554,8 @@ l 2
                 if next(eval) then
 c 5
 s 1
-l 4
+l 3
                 for j=1, n_jokers do
-                    -- PERF: Iteration guard
                     _eval_iterations = _eval_iterations + 1
                     if _eval_iterations > _MAX_EVAL_ITERATIONS then break end
 c 1
@@ -635,8 +564,7 @@ l 1
                     local eval = eval_card(joker_cards[j], {cardarea = G.play, full_hand = play_cards, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, other_card = scoring_hand[i], repetition = true})
 r 16 679 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 6
-l 3
-                    -- PERF: Iteration guard
+l 2
                     _eval_iterations = _eval_iterations + 1
                     if _eval_iterations > _MAX_EVAL_ITERATIONS then break end
 c 4
@@ -679,11 +607,9 @@ s 1
 l 1
         score_delay(0.3)
 c 9
-l 5
-                    -- PERF: Iteration guard (shared with scoring_hand phase)
+l 3
                     _eval_iterations = _eval_iterations + 1
                     if _eval_iterations > _MAX_EVAL_ITERATIONS then break end
-                    -- FIX: Per-card repetition cap to prevent runaway loops with 100+ held-in-hand cards
                     if #reps > _MAX_REPS_PER_CARD then break end
 c 6
 s 1
@@ -722,8 +648,7 @@ l 1
 
 c 2
 s 1
-l 3
-                        -- PERF: Skip juice animation when queue is saturated
+l 2
                         if effects[ii].card and
                            (not G.E_MANAGER or #G.E_MANAGER.queues.base < 100) then
 c 6
@@ -740,7 +665,7 @@ r 16 727 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%2
 c 31
 s 2
 l 3
-        local n_consumeables = #G.consumeables.cards  -- PERF: cache length
+        local n_consumeables = #G.consumeables.cards
         for i=1, n_jokers + n_consumeables do
             local _card = joker_cards[i] or G.consumeables.cards[i - n_jokers]
 c 1
@@ -801,17 +726,15 @@ l 1
 
 c 11
 s 2
-l 5
+l 4
         trigger = 'after',delay = score_time(0.4),
         func = (function()  update_hand_text({delay = 0, immediate = true}, {mult = 0, chips = 0, chip_total = math.floor(hand_chips*mult), level = '', handname = ''});play_sound('button', 0.9, 0.6)
-          -- Haptic: score crunch (medium for normal, heavy for big scores)
           pcall(function() haptic_buzz(hand_chips*mult >= (G.GAME.blind.chips or 0) and 3 or 2) end)
           return true end)
 c 4
 s 3
-l 15
+l 14
 
-      -- Quest hook: track hand score and type with final calculated values
       if QuestManager and QuestManager.on_hand_scored then
           pcall(function()
               local score_data = {

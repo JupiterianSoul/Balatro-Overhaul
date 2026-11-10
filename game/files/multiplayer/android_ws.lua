@@ -1,19 +1,14 @@
--- ============================================
--- AndroidWS — WebSocket bridge for LÖVE2D Android
--- Uses love.thread + luasocket TCP for background WebSocket
--- Exposes: AndroidWS.connect/send/receive/close/isConnected/lastError
--- ============================================
 
 local AndroidWS = {}
 
 local _connected = false
 local _last_error = nil
-local _incoming = {}  -- queued incoming messages
+local _incoming = {}
 local _thread = nil
-local _cmd_channel = nil  -- main → worker commands
-local _msg_channel = nil  -- worker → main messages
-local _status_channel = nil  -- worker → main status updates
-local _socket_available = nil  -- nil=unknown, true/false after probe
+local _cmd_channel = nil
+local _msg_channel = nil
+local _status_channel = nil
+local _socket_available = nil
 local _initialized = false
 local _debug_url = nil
 local _debug_host = nil
@@ -21,7 +16,6 @@ local _debug_path = nil
 local _last_status = nil
 local _waiting = false
 
--- Worker thread code (runs in separate love.thread)
 local WORKER_CODE = [[
 local bit = require("bit")
 
@@ -29,11 +23,9 @@ local cmd_ch = love.thread.getChannel("aws_cmd")
 local msg_ch = love.thread.getChannel("aws_msg")
 local status_ch = love.thread.getChannel("aws_status")
 
--- Try to load luasocket
 local socket_ok, socket = pcall(require, "socket")
 if not socket_ok then
     status_ch:push("ERROR:socket_missing:" .. tostring(socket))
-    -- Keep thread alive to report status
     while true do
         local cmd = cmd_ch:demand(1)
         if cmd then
@@ -47,9 +39,6 @@ end
 
 status_ch:push("PROBE:true:luasocket loaded OK")
 
--- ============================================
--- WebSocket protocol helpers
--- ============================================
 
 local mime_b64
 pcall(function() mime_b64 = require("mime").b64 end)
@@ -82,16 +71,13 @@ local function generate_mask()
     return m
 end
 
--- ============================================
--- WebSocket frame encoding
--- ============================================
 
 local function ws_encode_frame(data)
     local payload = tostring(data)
     local len = #payload
     local header = {}
 
-    header[1] = string.char(0x81) -- FIN + text opcode
+    header[1] = string.char(0x81)
     local mask = generate_mask()
     if len < 126 then
         header[2] = string.char(bit.bor(0x80, len))
@@ -122,7 +108,7 @@ end
 
 local function ws_encode_pong(data)
     local len = data and #data or 0
-    local frame = string.char(0x8A) -- FIN + pong
+    local frame = string.char(0x8A)
     local mask = generate_mask()
     frame = frame .. string.char(bit.bor(0x80, len))
     for i = 1, 4 do frame = frame .. string.char(mask[i]) end
@@ -140,9 +126,6 @@ local function ws_encode_close()
     return frame
 end
 
--- ============================================
--- Main worker loop
--- ============================================
 
 local tcp = nil
 local connected = false
@@ -150,21 +133,12 @@ local buffer = ""
 local frag_parts = nil
 local url = nil
 
--- TLS tunnel port (must match TlsTunnel.java PORT)
 local TUNNEL_PORT = 44380
 
--- ============================================
--- FEATURE: WinHTTP WebSocket for Windows desktop
--- Replaces Java TlsTunnel on non-Android platforms.
--- Uses LuaJIT FFI to call winhttp.dll natively.
--- ============================================
 local using_winhttp = false
 local wh_ses, wh_con, wh_req, wh_ws_h = nil, nil, nil, nil
 
 local ffi_ok, ffi_lib = pcall(require, "ffi")
--- FIX: Use jit.os for reliable Windows detection in LÖVE worker threads
--- love.system.getOS() may not be available in isolated thread Lua states
--- Also try ffi.os as another fallback available in LuaJIT
 local on_windows = false
 if jit and jit.os == "Windows" then
     on_windows = true
@@ -219,17 +193,14 @@ local function wh_reason(step, code)
     return step .. " " .. tostring(code) .. (WH_REASONS[code] and (" (" .. WH_REASONS[code] .. ")") or "")
 end
 
--- Push WinHTTP availability status for diagnostics (must be after ffi.load)
 status_ch:push("STATUS:winhttp_init:ffi=" .. tostring(ffi_ok) .. " win=" .. tostring(on_windows) .. " winhttp=" .. tostring(winhttp ~= nil) .. " kernel32=" .. tostring(kernel32 ~= nil))
 
--- Write debug log to file for connection diagnostics (use love.filesystem, available in threads)
 pcall(function()
     require("love.filesystem")
     local msg = os.date("%Y-%m-%d %H:%M:%S") .. " WORKER_INIT: ffi=" .. tostring(ffi_ok) .. " jit.os=" .. tostring(jit and jit.os) .. " ffi.os=" .. tostring(ffi_ok and ffi_lib and ffi_lib.os) .. " on_windows=" .. tostring(on_windows) .. " winhttp=" .. tostring(winhttp ~= nil) .. " kernel32=" .. tostring(kernel32 ~= nil) .. "\n"
     love.filesystem.append("winhttp_debug.log", msg)
 end)
 
--- Convert ASCII string to wchar_t[?] (safe for hostnames and paths)
 local function wcs(s)
     if not ffi_lib then return nil end
     local ws = ffi_lib.new("wchar_t[?]", #s + 1)
@@ -251,34 +222,30 @@ end
 
 local function winhttp_do_connect(h, p, ph)
     if not winhttp or not ffi_lib then return false, "no winhttp" end
-    -- FIX: Clean up any stale handles from a previous connection before reconnecting
     winhttp_close_all()
     local NULL  = ffi_lib.cast("void*", 0)
     local WNULL = ffi_lib.cast("wchar_t*", 0)
-    -- FIX: 90s connect timeout to cover Render free-tier cold start (~60s)
     local connect_ms   = ffi_lib.new("unsigned long[1]", 20000)
     local resolve_ms   = ffi_lib.new("unsigned long[1]", 15000)
-    -- FIX: 90s receive timeout for HTTP response (WebSocket upgrade); 10ms is for ws polling only
     local response_ms  = ffi_lib.new("unsigned long[1]", 90000)
     local recv_ms      = ffi_lib.new("unsigned long[1]", 10)
     local ses = winhttp.WinHttpOpen(wcs("BalatroOverhaul/1.0"), 4, WNULL, WNULL, 0)
     if ses == nil then ses = winhttp.WinHttpOpen(wcs("BalatroOverhaul/1.0"), 0, WNULL, WNULL, 0) end
     if ses == nil then return false, wh_reason("WinHttpOpen", last_err()) end
     winhttp.WinHttpSetOption(ses, 2, resolve_ms, 4)
-    winhttp.WinHttpSetOption(ses, 3, connect_ms, 4)  -- WINHTTP_OPTION_CONNECT_TIMEOUT
+    winhttp.WinHttpSetOption(ses, 3, connect_ms, 4)
     local con = winhttp.WinHttpConnect(ses, wcs(h), p, 0)
     if con == nil then
         winhttp.WinHttpCloseHandle(ses)
         return false, wh_reason("WinHttpConnect", last_err())
     end
-    -- WINHTTP_FLAG_SECURE = 0x00800000
     local req = winhttp.WinHttpOpenRequest(con, wcs("GET"), wcs(ph), WNULL, WNULL, NULL, 0x00800000)
     if req == nil then
         winhttp.WinHttpCloseHandle(con); winhttp.WinHttpCloseHandle(ses)
         return false, wh_reason("WinHttpOpenRequest", last_err())
     end
-    winhttp.WinHttpSetOption(req, 114, NULL, 0)  -- WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET
-    winhttp.WinHttpSetOption(req, 6, response_ms, 4)  -- FIX: 90s receive timeout for HTTP upgrade response
+    winhttp.WinHttpSetOption(req, 114, NULL, 0)
+    winhttp.WinHttpSetOption(req, 6, response_ms, 4)
     if winhttp.WinHttpSendRequest(req, WNULL, 0, NULL, 0, 0, 0) == 0 then
         local e = last_err()
         winhttp.WinHttpCloseHandle(req); winhttp.WinHttpCloseHandle(con); winhttp.WinHttpCloseHandle(ses)
@@ -303,7 +270,7 @@ local function winhttp_ws_send(text)
     if not wh_ws_h or not winhttp or not ffi_lib then return false end
     local buf = ffi_lib.new("uint8_t[?]", #text + 1)
     ffi_lib.copy(buf, text, #text)
-    return winhttp.WinHttpWebSocketSend(wh_ws_h, 0, buf, #text) == 0  -- 0 = UTF8 message
+    return winhttp.WinHttpWebSocketSend(wh_ws_h, 0, buf, #text) == 0
 end
 
 local wh_frag = nil
@@ -327,10 +294,10 @@ local function winhttp_ws_receive()
         if #chunk > 0 then return chunk end
         return nil
     end
-    if r ~= 12002 then  -- 12002 = ERROR_WINHTTP_TIMEOUT (normal poll expiry)
+    if r ~= 12002 then
         return nil, "error:" .. r
     end
-    return nil  -- timeout = no data yet
+    return nil
 end
 
 
@@ -409,16 +376,13 @@ local function do_connect(target_url)
     status_ch:push("STATUS:connecting:" .. host .. ":" .. port)
     status_ch:push("DEBUG_URL:" .. tostring(url) .. "|" .. tostring(host) .. "|" .. tostring(path) .. "|" .. tostring(proto) .. "|" .. tostring(port))
 
-    -- Debug log: connection attempt details
     pcall(function()
         require("love.filesystem")
         love.filesystem.append("winhttp_debug.log", os.date("%Y-%m-%d %H:%M:%S") .. " CONNECT: proto=" .. tostring(proto) .. " host=" .. tostring(host) .. " port=" .. tostring(port) .. " path=" .. tostring(path) .. " winhttp=" .. tostring(winhttp ~= nil) .. "\n")
     end)
 
-    -- FEATURE: On Windows desktop, use WinHTTP WebSocket for wss:// (early return)
     if proto == "wss" and winhttp ~= nil then
         status_ch:push("STATUS:winhttp:Connecting via WinHTTP WSS to " .. host .. ":" .. port)
-        -- FIX: pcall-wrap FFI calls to prevent thread crash on WinHTTP errors
         local pcall_ok, ok_or_err, err_msg = pcall(winhttp_do_connect, host, port, path)
         pcall(function()
             require("love.filesystem")
@@ -448,9 +412,7 @@ local function do_connect(target_url)
     t:settimeout(10)
 
     if proto == "wss" then
-        -- Route through Java TLS tunnel on localhost (Android)
         status_ch:push("STATUS:tunnel:Connecting via TLS tunnel 127.0.0.1:" .. TUNNEL_PORT)
-        -- FIX: Log tunnel connection attempt to file for mobile debugging
         pcall(function()
             require("love.filesystem")
             love.filesystem.append("mp_connection.log", os.date("%Y-%m-%d %H:%M:%S") .. " TUNNEL_CONNECT: host=" .. tostring(host) .. " port=" .. tostring(port) .. " tunnel_port=" .. tostring(TUNNEL_PORT) .. "\n")
@@ -467,7 +429,6 @@ local function do_connect(target_url)
             return false
         end
 
-        -- Send target host:port to tunnel
         local send_ok, send_err = t:send(host .. ":" .. port .. "\n")
         if not send_ok then
             status_ch:push("ERROR:tunnel_send:Failed to send target to tunnel: " .. tostring(send_err))
@@ -475,7 +436,6 @@ local function do_connect(target_url)
             return false
         end
 
-        -- Read tunnel response: "OK\n" or "ERROR:...\n"
         t:settimeout(15)
         local response, recv_err = t:receive("*l")
         if not response then
@@ -497,7 +457,6 @@ local function do_connect(target_url)
             love.filesystem.append("mp_connection.log", os.date("%Y-%m-%d %H:%M:%S") .. " TUNNEL_OK: TLS to " .. tostring(host) .. ":" .. tostring(port) .. "\n")
         end)
     else
-        -- Plain ws:// — connect directly
         local res, conn_err = t:connect(host, port)
         if not res then
             status_ch:push("ERROR:tcp_fail:TCP connect failed: " .. tostring(conn_err))
@@ -507,7 +466,6 @@ local function do_connect(target_url)
         status_ch:push("STATUS:waiting:server reached, waiting for its answer")
     end
 
-    -- WebSocket handshake
     local key = generate_ws_key()
     local handshake = "GET " .. path .. " HTTP/1.1\r\n" ..
         "Host: " .. host .. (port ~= 80 and port ~= 443 and (":" .. port) or "") .. "\r\n" ..
@@ -536,13 +494,12 @@ local function do_connect(target_url)
         pcall(function() t:close() end)
         return false
     end
-    -- Drain remaining headers
     while true do
         local line = t:receive("*l")
         if not line or line == "" then break end
     end
 
-    t:settimeout(0) -- non-blocking
+    t:settimeout(0)
     tcp = t
     connected = true
     buffer = ""
@@ -556,7 +513,6 @@ local function do_connect(target_url)
 end
 
 local function do_disconnect()
-    -- FEATURE: WinHTTP disconnect path
     if using_winhttp then
         wrecv_gen = wrecv_gen + 1
         winhttp_close_all()
@@ -579,7 +535,6 @@ local function do_disconnect()
 end
 
 local function do_send(text)
-    -- FEATURE: WinHTTP send path
     if using_winhttp then
         if not winhttp_ws_send(text) then
             status_ch:push("ERROR:send_fail:WinHTTP send error")
@@ -616,7 +571,6 @@ local function do_send(text)
 end
 
 local function process_frames()
-    -- FEATURE: WinHTTP receive path
     if using_winhttp then
         local recv_err = nil
         local e = wrecv_ch:pop()
@@ -640,7 +594,6 @@ local function process_frames()
     if not connected or not tcp then return end
 
     local ok, err = pcall(function()
-        -- PERF: 32 KB buffer — reduces multi-pass reads for large messages
         local parts = {}
         for _ = 1, 64 do
             local data, read_err, partial = tcp:receive(65536)
@@ -704,16 +657,16 @@ local function process_frames()
                         frag_parts = nil
                     end
                 end
-            elseif opcode == 0x01 then -- Text
+            elseif opcode == 0x01 then
                 if is_fin then
                     msg_ch:push(payload)
                 else
                     frag_parts = { payload }
                 end
-            elseif opcode == 0x08 then -- Close
+            elseif opcode == 0x08 then
                 do_disconnect()
                 return
-            elseif opcode == 0x09 then -- Ping → Pong
+            elseif opcode == 0x09 then
                 pcall(function() tcp:send(ws_encode_pong(payload)) end)
             end
         end
@@ -725,11 +678,7 @@ local function process_frames()
     end
 end
 
--- ============================================
--- Worker main loop
--- ============================================
 while true do
-    -- Check for commands (non-blocking if connected, blocking if not)
     local cmd
     if connected then
         cmd = cmd_ch:pop()
@@ -745,13 +694,11 @@ while true do
             return
         elseif cmd:sub(1, 8) == "CONNECT:" then
             local target = cmd:sub(9)
-            -- FIX: pcall-wrap do_connect to prevent thread death on unexpected errors
             local dc_ok, dc_err = pcall(do_connect, target)
             if not dc_ok then
                 status_ch:push("ERROR:connect_crash:" .. tostring(dc_err))
             end
         elseif cmd == "CLOSE" then
-            -- FIX: pcall-wrap do_disconnect to prevent worker death
             local cl_ok, cl_err = pcall(do_disconnect)
             if not cl_ok then
                 connected = false
@@ -766,12 +713,10 @@ while true do
         cmd = (connected and handled < 64) and cmd_ch:pop() or nil
     end
 
-    -- Process incoming WebSocket frames
     if connected then
         process_frames()
     end
 
-    -- Small sleep to avoid busy-loop
     if not connected then
         socket.sleep(0.05)
     else
@@ -780,9 +725,6 @@ while true do
 end
 ]]
 
--- ============================================
--- Initialize the bridge (spawn worker thread)
--- ============================================
 function AndroidWS.init()
     if _initialized then return end
     _initialized = true
@@ -791,12 +733,10 @@ function AndroidWS.init()
     _msg_channel = love.thread.getChannel("aws_msg")
     _status_channel = love.thread.getChannel("aws_status")
 
-    -- Clear channels
     _cmd_channel:clear()
     _msg_channel:clear()
     _status_channel:clear()
 
-    -- FIX: pcall-wrap newThread to prevent main thread crash on WORKER_CODE compile error
     local nt_ok, nt_err
     nt_ok, _thread = pcall(love.thread.newThread, WORKER_CODE)
     if not nt_ok then
@@ -813,29 +753,23 @@ function AndroidWS.init()
         return
     end
 
-    -- Send probe to check if luasocket loaded
     _cmd_channel:push("PROBE")
 end
 
--- ============================================
--- Poll status updates from worker (call in update loop)
--- ============================================
 function AndroidWS.poll()
     if not _status_channel then return end
 
-    -- FIX: Detect dead worker thread and surface the error
     if _thread and not _thread:isRunning() then
         local thread_err = _thread:getError()
         if thread_err then
             _last_error = "Worker thread crashed: " .. tostring(thread_err)
             _connected = false
             mp_log.error("AndroidWS", "Worker thread error: %s", tostring(thread_err))
-            _thread = nil  -- Clear to avoid repeated error logging
+            _thread = nil
             _initialized = false
         end
     end
 
-    -- Process all pending status messages
     local iterations = 0
     while iterations < 50 do
         iterations = iterations + 1
@@ -860,7 +794,6 @@ function AndroidWS.poll()
             _last_error = (code or "") .. ": " .. (detail or "")
             mp_log.error("AndroidWS", "Error: %s", tostring(_last_error))
         elseif kind == "DEBUG_URL" then
-            -- Format: DEBUG_URL:<url>|<host>|<path>|<proto>|<port>
             local rest = status:sub(#"DEBUG_URL:" + 1)
             local parts = {}
             for part in rest:gmatch("[^|]+") do
@@ -878,9 +811,6 @@ function AndroidWS.poll()
     end
 end
 
--- ============================================
--- Public API
--- ============================================
 
 function AndroidWS.connect(url)
     if not _initialized then AndroidWS.init() end
@@ -888,7 +818,6 @@ function AndroidWS.connect(url)
         _last_error = "Bridge not initialized"
         return
     end
-    -- FIX: Check if worker thread is alive; respawn if it died (prevents "connect once" bug)
     if _thread and not _thread:isRunning() then
         local thread_err = _thread:getError()
         if thread_err then
@@ -896,7 +825,6 @@ function AndroidWS.connect(url)
         else
             mp_log.warn("AndroidWS", "Worker thread stopped — respawning")
         end
-        -- Reset and respawn
         _initialized = false
         _thread = nil
         AndroidWS.init()
@@ -905,8 +833,6 @@ function AndroidWS.connect(url)
             return
         end
     end
-    -- FIX: Clear stale status/message channels from previous session to prevent
-    -- old DISCONNECTED/ERROR messages from poisoning the new connection attempt
     _last_error = nil
     _last_status = nil
     _waiting = false

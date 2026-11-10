@@ -1,14 +1,6 @@
-﻿-- ============================================
--- MULTIPLAYER CORE — WebSocket connection, lifecycle, heartbeat, reconnect
--- Uses luajit-request or love2d-lua-websocket (pure Lua, Android-safe)
--- ============================================
-
+﻿
 local bom_core = {}
 
--- ============================================
--- MINIMAL JSON ENCODER / DECODER
--- (No external dependency — pure Lua 5.1 compatible)
--- ============================================
 
 bom_core.json = {}
 
@@ -40,7 +32,7 @@ local function json_encode_value(val, depth)
     elseif t == "boolean" then
         return val and "true" or "false"
     elseif t == "number" then
-        if val ~= val then return "null" end -- NaN
+        if val ~= val then return "null" end
         if val == math.huge or val == -math.huge then return "null" end
         return tostring(val)
     elseif t == "cdata" or (t == "table" and is_big and is_big(val)) then
@@ -53,7 +45,6 @@ local function json_encode_value(val, depth)
         local s = val:gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '\\r'):gsub('\t', '\\t')
         return '"' .. s .. '"'
     elseif t == "table" then
-        -- Detect array vs object
         local is_array = true
         local max_i = 0
         local count = 0
@@ -91,7 +82,6 @@ function json.encode(val)
     return "{}"
 end
 
--- Minimal JSON decoder (recursive descent)
 local function skip_ws(s, i)
     while i <= #s do
         local c = s:byte(i)
@@ -101,10 +91,9 @@ local function skip_ws(s, i)
     return i
 end
 
-local json_parse_value -- forward declaration
+local json_parse_value
 
 local function json_parse_string(s, i)
-    -- i points to the opening "
     i = i + 1
     local parts = {}
     local n = #s
@@ -156,7 +145,7 @@ local function json_parse_number(s, i)
 end
 
 local function json_parse_object(s, i)
-    i = i + 1 -- skip {
+    i = i + 1
     local obj = {}
     i = skip_ws(s, i)
     if s:sub(i, i) == '}' then return obj, i + 1 end
@@ -165,7 +154,7 @@ local function json_parse_object(s, i)
         local key
         key, i = json_parse_string(s, i)
         i = skip_ws(s, i)
-        i = i + 1 -- skip :
+        i = i + 1
         i = skip_ws(s, i)
         local val
         val, i = json_parse_value(s, i)
@@ -173,13 +162,13 @@ local function json_parse_object(s, i)
         i = skip_ws(s, i)
         local c = s:sub(i, i)
         if c == '}' then return obj, i + 1 end
-        i = i + 1 -- skip ,
+        i = i + 1
     end
     return obj, i
 end
 
 local function json_parse_array(s, i)
-    i = i + 1 -- skip [
+    i = i + 1
     local arr = {}
     i = skip_ws(s, i)
     if s:sub(i, i) == ']' then return arr, i + 1 end
@@ -191,7 +180,7 @@ local function json_parse_array(s, i)
         i = skip_ws(s, i)
         local c = s:sub(i, i)
         if c == ']' then return arr, i + 1 end
-        i = i + 1 -- skip ,
+        i = i + 1
     end
     return arr, i
 end
@@ -216,17 +205,8 @@ function json.decode(s)
     return nil
 end
 
--- ============================================
--- WEBSOCKET CLIENT — now uses AndroidWS bridge
--- The pure-Lua TCP WebSocket has been replaced by the
--- threaded AndroidWS bridge (see android_ws.lua)
--- ============================================
 
--- ============================================
--- PUBLIC API
--- ============================================
 
--- ARCH: All constants sourced from mp_config
 local SERVER_URL = mp_config and mp_config.SERVER_URL or "wss://balatro-overhaul-muliplayer.onrender.com/ws"
 local reconnect_timer = 0
 local RECONNECT_DELAY = mp_config and mp_config.RECONNECT_DELAY or 3
@@ -356,8 +336,6 @@ function bom_core.send(data, opts)
     if type(data) == "table" and data.name ~= nil and data.pkey == nil then data.pkey = bom_core.player_key() end
     local encoded = json.encode(data)
     if opts and opts.raw then return AndroidWS.send(encoded) end
-    -- PERF: compress large payloads using native love.data (deflate, C-level speed)
-    -- Threshold: 300 bytes. Wire format: {"z":1,"d":"<base64-raw-deflate>"}
     if #encoded > 300 and love and love.data and love.data.compress then
         local ok_c, compressed = pcall(love.data.compress, "string", "deflate", encoded)
         if ok_c and compressed and #compressed < #encoded then
@@ -445,8 +423,6 @@ function bom_core.update(dt)
     if not AndroidWS then return end
     if bom_match and bom_match.tick_ante_timer then pcall(bom_match.tick_ante_timer) end
 
-    -- Check for incoming messages
-    -- ARCH: Message-per-frame cap from mp_config
     local max_msgs = mp_config and mp_config.MAX_MSG_PER_FRAME or 50
     local iterations = 0
     while iterations < max_msgs do
@@ -454,8 +430,6 @@ function bom_core.update(dt)
         local msg = AndroidWS.receive()
         if not msg then break end
 
-        -- PERF: decompress if server sent a compressed payload
-        -- Wire format: {"z":1,"d":"<base64-raw-deflate>"}
         if msg:sub(1, 6) == '{"z":1' and love and love.data then
             local ok_env, envelope = pcall(json.decode, msg)
             if ok_env and envelope and envelope.z == 1 and type(envelope.d) == "string" then
@@ -470,8 +444,6 @@ function bom_core.update(dt)
         if mp_log.enabled("DEBUG") then mp_log.debug("BOM_CORE", "Received message: %s", tostring(msg):sub(1, 200)) end
         local ok, data = pcall(json.decode, msg)
         if ok and data and data.type then
-            -- FIX: log handler errors instead of silently swallowing them.
-            -- Catches crashes in any of the 13+ bom_events handlers centrally.
             local ok_disp, err_disp = pcall(function()
                 if bom_events and bom_events.dispatch then
                     bom_events.dispatch(data)
@@ -488,7 +460,6 @@ function bom_core.update(dt)
         end
     end
 
-    -- Detect connection state changes
     local connected_now = AndroidWS.isConnected()
     if was_connected and not connected_now then
         mp_log.warn("BOM_CORE", "Connection lost")
@@ -515,7 +486,6 @@ function bom_core.update(dt)
         connect_timeout_timer = 0
         mp_log.info("BOM_CORE", "Connected successfully")
         pcall(send_ping)
-        -- FIX: Guard against callback being non-function (prevents "attempt to call a number value")
         if type(cb) == "function" then
             local ok, err = pcall(cb)
             if not ok then
@@ -526,9 +496,7 @@ function bom_core.update(dt)
         end
     end
 
-    -- Connection timeout — if still waiting for connection
     if not connected_now and reconnect_callback then
-        -- FIX: Bail immediately if AndroidWS already reported a connection error
         local ws_err = AndroidWS and AndroidWS.lastError()
         if ws_err then
             mp_log.warn("BOM_CORE", "Connection failed: %s", tostring(ws_err))
@@ -569,7 +537,6 @@ function bom_core.update(dt)
         end
     end
 
-    -- Heartbeat ping
     if connected_now then
         heartbeat_timer = heartbeat_timer + (dt or 0)
         if heartbeat_timer >= HEARTBEAT_INTERVAL then

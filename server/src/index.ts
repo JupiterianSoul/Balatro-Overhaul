@@ -1,17 +1,3 @@
-/**
- * Balatro Overhaul — Multiplayer Server (Bun + native WebSocket)
- *
- * Transport migrated from Node.js + ws library → Bun.serve with native pub/sub.
- * All match/lobby/PvP/validation logic is identical to the prior Node.js version.
- *
- * Key differences from server.js:
- *   - Bun.serve() replaces http.createServer() + WebSocketServer()
- *   - ws.data.* replaces custom socket properties (socket.roomCode, socket.rl)
- *   - ws.subscribe(code) + server.publish() / ws.publish() replace manual forEach loops
- *   - idleTimeout: 120s replaces the 10s heartbeat interval (client pings every 25s)
- *   - export replaces module.exports
- *   - startServer() is called only when this is the main module (import.meta.main)
- */
 
 import type { Server, ServerWebSocket } from 'bun';
 import { inflateRawSync } from 'node:zlib';
@@ -40,9 +26,6 @@ import { SpeedrunService, SPEEDRUN_TYPES, SPEEDRUN_BIG_TYPES, SR_REPLAY_MSG_BYTE
 import { forgeBoard, setForgeBoard, ForgeBoard, FORGE_TYPES, validateForge, forgeStoreFor, forgeHandlers } from './forge_mods';
 import { traffic } from './traffic';
 
-// ============================================
-// TYPES
-// ============================================
 
 interface RateLimiter {
   msgCount: number;
@@ -88,12 +71,11 @@ interface Player {
   status: 'active' | 'eliminated';
   score: number | null;
   blindFinished: boolean;
-  // FEATURE: Ascension tracking — how far each player got
   lastAnte?: number;
-  lastBlind?: string;    // 'S', 'B', or 'L'
-  lastScore?: number;    // Score on the blind where they died
-  currentAnte?: number;  // Live progress tracking for Ascension
-  currentBlind?: string; // Live progress tracking for Ascension
+  lastBlind?: string;
+  lastScore?: number;
+  currentAnte?: number;
+  currentBlind?: string;
   lostBlinds?: string[];
 }
 
@@ -112,7 +94,7 @@ interface MatchState {
   pvpStartAnte: number;
   seed: string | null;
   seed2?: string;
-  players: Player[];      // always exactly 2 entries: [P0, P1]
+  players: Player[];
   currentAnte: number;
   currentBlind: string;
   isPvpBlind: boolean;
@@ -195,7 +177,6 @@ interface Room {
   pvpTimer: ReturnType<typeof setTimeout> | null;
   rematchVotes?: [boolean, boolean];
   inLobby?: [boolean, boolean];
-  // FIX: Store player names at room level so they persist across match creation
   playerNames: [string, string];
   tokens: [string, string];
   holdDeadline: [number | null, number | null];
@@ -239,19 +220,15 @@ interface Settings {
   [key: string]: unknown;
 }
 
-// All handlers share the same 3-argument signature for the dispatch table
 type Handler = (ws: BunWS, msg: Record<string, unknown>, raw: string | Buffer) => void;
 
-// ============================================
-// CONSTANTS
-// ============================================
 
 const RATE_LIMIT_MSG_PER_SEC    = 30;
 const RATE_LIMIT_CREATE_PER_MIN = 5;
 const RATE_LIMIT_ACT_PER_SEC    = 60;
 const ROOM_TTL_MS               = 30 * 60 * 1000;
 const ROOM_CLEANUP_INTERVAL_MS  = 60 * 1000;
-const PVP_TIMEOUT_MS            = 180 * 1000; // FIX: Bug 2 — timer starts at actual blind start
+const PVP_TIMEOUT_MS            = 180 * 1000;
 const MAX_MESSAGE_BYTES         = 4096;
 const MAX_FRAME_BYTES           = 1024 * 1024;
 const MAX_SETTINGS_BYTES        = 64 * 1024;
@@ -275,18 +252,12 @@ const READY_UNREADY_DEBOUNCE_MS = 900;
 const VALID_SCORE_MAX = 1e15;
 const VALID_ANTE_MAX  = 999;
 const VALID_LIVES_MAX = 20;
-const WS_OPEN         = 1; // WebSocket.OPEN
+const WS_OPEN         = 1;
 const VALID_MODES     = ['nemesis', 'faceoff', 'ascension', 'attrition', 'vanilla', 'ruleset', 'race', 'swap'];
 const ASC_LIKE = (mode: unknown): boolean => mode === 'ascension' || mode === 'race';
 
-// ============================================
-// PERF: Application-level deflate compression
-// Payloads > COMPRESS_THRESHOLD bytes are compressed before sending.
-// Wire format: {"z":1,"d":"<base64-raw-deflate>"}
-// Bun.deflateSync/inflateSync = raw DEFLATE (RFC 1951), same as love.data "deflate".
-// ============================================
 
-const COMPRESS_THRESHOLD  = 300;   // bytes — only compress messages larger than this
+const COMPRESS_THRESHOLD  = 300;
 const DECOMPRESS_MAX_BYTES = MAX_FRAME_BYTES;
 
 async function countHttp(path: string, res: Response | Promise<Response>): Promise<Response> {
@@ -309,7 +280,6 @@ function tryCompress(data: string): string {
     const compressed = Bun.deflateSync(Buffer.from(data, 'utf8'));
     const b64        = Buffer.from(compressed).toString('base64');
     const wrapped    = `{"z":1,"d":"${b64}"}`;
-    // Only use compressed form if it’s actually shorter
     return wrapped.length < data.length ? wrapped : data;
   } catch {
     return data;
@@ -329,9 +299,6 @@ function tryDecompress(str: string): string | null {
   }
 }
 
-// ============================================
-// STRUCTURED LOGGING
-// ============================================
 
 const LOG_LEVEL = process.env.LOG_LEVEL ?? 'INFO';
 const LOG_LEVELS: Record<string, number> = { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 };
@@ -349,21 +316,13 @@ function log(level: string, tag: string, msg: string, extra?: unknown): void {
   }
 }
 
-// ============================================
-// STATE
-// ============================================
 
 const rooms: Record<string, Room> = {};
 const endedSessions = new Map<string, EndedSession>();
 let queue: BunWS[] = [];
 
-// Assigned by startServer(). Functions that call server.publish() are only
-// invoked after the server is started, so the definite-assignment assertion is safe.
 let server!: Server;
 
-// ============================================
-// MATCH STATE — Server-authoritative
-// ============================================
 
 function generateCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -461,7 +420,7 @@ function timerConfig(settings?: Settings | Record<string, unknown>): { on: boole
 
 function isBlindPvp(match: MatchState, ante: number, blindType: string): boolean {
   if (match.mode === 'vanilla') return false;
-  if (ASC_LIKE(match.mode)) return false;  // FEATURE: Ascension has no PvP blinds
+  if (ASC_LIKE(match.mode)) return false;
   if (match.mode === 'nemesis' || match.mode === 'attrition' || match.mode === 'ruleset' || match.mode === 'swap') {
     return blindType === 'L' && ante > match.pvpStartAnte;
   } else if (match.mode === 'faceoff' || match.mode === 'showdown') {
@@ -470,9 +429,6 @@ function isBlindPvp(match: MatchState, ante: number, blindType: string): boolean
   return false;
 }
 
-// ============================================
-// ROOM OBJECT
-// ============================================
 
 function createRoom(code: string): Room {
   return {
@@ -554,24 +510,11 @@ function touchRoom(room: Room): void {
   room.lastActivity = Date.now();
 }
 
-/** Returns the room that this socket belongs to, or null. */
 function getRoomForSocket(ws: BunWS): Room | null {
   const code = ws.data.roomCode;
   return (code && rooms[code]) ? rooms[code] : null;
 }
 
-// ============================================
-// SEND HELPERS
-//
-// Three distinct broadcast patterns, now implemented with Bun pub/sub:
-//
-//   sendTo(ws, data)        point-to-point (unchanged API)
-//   sendToRoom(room, data)  server.publish(code, ...) → ALL subscribers (both players)
-//   relay(ws, raw)          ws.publish(code, ...)     → all subscribers EXCEPT sender
-//
-// broadcastMatchState() cannot use pub/sub because each player gets DIFFERENT
-// payloads (myLives vs oppLives), so it keeps the explicit per-player loop.
-// ============================================
 
 initParty({
   sendTo: (ws, data) => sendTo(ws as unknown as BunWS, data),
@@ -599,7 +542,6 @@ function topicCount(topic: string): number {
   return server ? server.subscriberCount(topic) : 0;
 }
 
-/** Broadcast identical payload to both players via Bun native pub/sub. */
 function sendToRoom(room: Room, data: object): void {
   const payload = tryCompress(JSON.stringify(data));
   server.publish(room.code, payload);
@@ -607,18 +549,15 @@ function sendToRoom(room: Room, data: object): void {
   deliverToBots(room.code, payload);
 }
 
-/** Relay raw message to everyone in the room EXCEPT the sending socket. */
 function relay(ws: BunWS, raw: string | Buffer): void {
   const code = ws.data.roomCode;
   if (!code) return;
-  // ws.publish() in Bun sends to all topic subscribers EXCLUDING this socket
   const str = typeof raw === 'string' ? raw : raw.toString();
   ws.publish(code, str);
   traffic.sent(undefined, str, topicCount(code) - (isBot(ws) ? 0 : 1));
   if (!isBot(ws)) deliverToBots(code, str, ws);
 }
 
-/** Send player-specific state diff to each player (different payloads per player). */
 function broadcastMatchState(room: Room, extra?: Record<string, unknown>): void {
   if (!room || !room.match) return;
   const m = room.match;
@@ -792,9 +731,6 @@ function dropPlayer(room: Room, pid: number, reason: string): void {
   log('INFO', 'DISCONNECT', `P${pid} dropped from ${room.code} (${reason}), holding ${holdSeconds()}s`);
 }
 
-// ============================================
-// PVP RESOLUTION — Authoritative score comparison
-// ============================================
 
 function clearPvpTimer(room: Room): void {
   if (room.pvpTimer) { clearTimeout(room.pvpTimer); room.pvpTimer = null; }
@@ -1128,9 +1064,6 @@ function resolvePvp(room: Room): void {
     return;
   }
   m.phase = 'playing';
-  // FIX de-sync Bug #1: publish authoritative phase update so clients
-  // can transition out of PVP_RESOLVE → PLAYING immediately.
-  // Without this, Lua match.phase stays PVP_RESOLVE and blocks the next PvP blind.
   broadcastMatchState(room, { event: 'pvp_resolved' });
 }
 
@@ -1153,7 +1086,6 @@ function ascensionPassed(room: Room, pid: number): void {
   resolveAscension(room);
 }
 
-// FEATURE: Ascension resolution — compare how far each player got
 function resolveAscension(room: Room): void {
   const m = room.match;
   if (!m) return;
@@ -1161,7 +1093,6 @@ function resolveAscension(room: Room): void {
   const p0 = m.players[0];
   const p1 = m.players[1];
 
-  // Convert blind letter to numeric order: S=1, B=2, L=3
   function blindOrder(b: string | undefined): number {
     if (b === 'S') return 1;
     if (b === 'B') return 2;
@@ -1173,7 +1104,6 @@ function resolveAscension(room: Room): void {
   const a1 = p1.lastAnte ?? 1;
   const b0 = blindOrder(p0.lastBlind);
   const b1 = blindOrder(p1.lastBlind);
-  // Total "round progress" = ante * 10 + blind_order (higher = further)
   const prog0 = a0 * 10 + b0;
   const prog1 = a1 * 10 + b1;
 
@@ -1185,17 +1115,15 @@ function resolveAscension(room: Room): void {
   } else if (prog1 > prog0) {
     winnerId = 1;
   } else {
-    // Tie on round — compare highest score on last blind
     const s0 = p0.lastScore ?? 0;
     const s1 = p1.lastScore ?? 0;
     if (s0 > s1)      { winnerId = 0; reason = 'ascension_score_tiebreak'; }
     else if (s1 > s0) { winnerId = 1; reason = 'ascension_score_tiebreak'; }
-    else               { winnerId = null; reason = 'ascension_draw'; } // Perfect tie
+    else               { winnerId = null; reason = 'ascension_draw'; }
   }
 
   log('INFO', 'ASCENSION', `Resolved: P0 ante=${a0} blind=${p0.lastBlind} score=${p0.lastScore} | P1 ante=${a1} blind=${p1.lastBlind} score=${p1.lastScore} | winner=P${winnerId} reason=${reason} room=${room.code}`);
 
-  // Notify both players of the Ascension result
   for (let i = 0; i < 2; i++) {
     const s = room.sockets[i];
     if (!s || s.readyState !== WS_OPEN) continue;
@@ -1224,9 +1152,6 @@ function schedulePvpTimeout(room: Room): void {
   }, timing.pvpTimeoutMs);
 }
 
-// ============================================
-// INPUT VALIDATION
-// ============================================
 
 const RANKED_TYPES = ['ranked_profile', 'ranked_leaderboard', 'ranked_history', 'ranked_open_pack', 'ranked_equip', 'ranked_recovery', 'ranked_restore', 'ranked_badges'];
 if (process.env.MP_TEST_RANKED_RP) RANKED_TYPES.push('ranked_test_set');
@@ -1610,9 +1535,6 @@ function validateMessage(msg: Record<string, unknown>, byteLength: number): stri
   return null;
 }
 
-// ============================================
-// RATE LIMITING
-// ============================================
 
 const MATCH_FLOW_TYPES = new Set([
   'play_hand', 'blind_finished', 'blind_entered', 'game_over', 'match_finished',
@@ -1644,9 +1566,6 @@ function isActRateLimited(rl: RateLimiter): boolean {
   return rl.actCount > RATE_LIMIT_ACT_PER_SEC;
 }
 
-// ============================================
-// ROOM TTL CLEANUP
-// ============================================
 
 function detachRoomSockets(room: Room): void {
   for (const s of room.sockets) {
@@ -1685,9 +1604,6 @@ function sweepRooms(now = Date.now()): void {
 
 const roomCleanupInterval = setInterval(() => sweepRooms(), ROOM_CLEANUP_INTERVAL_MS);
 
-// ============================================
-// CLEANUP ON DISCONNECT
-// ============================================
 
 function cleanupSocket(ws: BunWS): void {
   l1Closed(ws);
@@ -1756,9 +1672,6 @@ function quitRoom(room: Room, pid: number, legacyType: string): void {
   closeRoom(room, 'opponent_left', postMatch, { type: legacyType, post_match: postMatch, reason: 'opponent_left' });
 }
 
-// ============================================
-// MESSAGE HANDLERS — one function per message type
-// ============================================
 
 function handleCreateRoom(ws: BunWS, msg: Record<string, unknown>): void {
   rememberMods(ws, msg);
@@ -1967,7 +1880,6 @@ function handleCancelSearch(ws: BunWS): void {
   sendTo(ws, { type: 'search_cancelled' });
 }
 
-// Simple relay-only handlers
 function handleRoomJoined(ws: BunWS, msg: Record<string, unknown>, raw: string | Buffer): void {
   const room = getRoomForSocket(ws);
   relay(ws, room ? JSON.stringify({ ...msg, pid: getPlayerId(room, ws), players: roomRoster(room) }) : raw);
@@ -1998,10 +1910,8 @@ function handleMatchStart(ws: BunWS, msg: Record<string, unknown>, _raw: string 
   match.phase = 'playing';
   assignSeeds(match, room.settings, room.ranked ? null : ((msg.seed as string) ?? null));
 
-  // FIX: Seed player names from room-level store (set by player_name messages in lobby)
   match.players[0].name = room.playerNames[0];
   match.players[1].name = room.playerNames[1];
-  // Also apply name from this message directly (in case player_name wasn't sent beforehand)
   const pid = getPlayerId(room, ws);
   const startName = typeof msg.player_name === 'string' && msg.player_name.length <= 32 ? cleanName(msg.player_name) : '';
   if (pid >= 0 && startName && nameIsClean(startName)) {
@@ -2070,9 +1980,7 @@ function handlePlayerName(ws: BunWS, msg: Record<string, unknown>): void {
   if (pid < 0) return;
   if (msg.name !== undefined && !claimName(ws, msg)) return;
   const name = ws.data.name || room.playerNames[pid];
-  // FIX: Store at room level (works before match exists)
   room.playerNames[pid] = name;
-  // Also update match and re-broadcast so opponent gets updated name immediately
   if (room.match) {
     room.match.players[pid].name = name;
     broadcastMatchState(room);
@@ -2150,7 +2058,6 @@ function handleBlindEntered(ws: BunWS, msg: Record<string, unknown>, raw: string
     m.blindReadyAt = [0, 0];
     room.specBoards = [null, null];
     room.specWatch = [false, false];
-    // FIX: Bug 2 — timeout scheduled in handleReadyBlind (when play actually starts)
   }
 
   touchRoom(room);
@@ -2168,7 +2075,6 @@ function handleBlindFinished(ws: BunWS, msg: Record<string, unknown>): void {
   const pid = getPlayerId(room, ws);
   if (pid < 0) return;
 
-  // FIX: Session 61 — reject stale blind_finished from a prior ante/blind
   const ownAnte  = m.players[pid].currentAnte  ?? m.currentAnte;
   const ownBlind = m.players[pid].currentBlind ?? m.currentBlind;
   if (msg.ante  !== undefined && Number(msg.ante)   !== Number(ownAnte)) {
@@ -2268,10 +2174,6 @@ function handleGameOver(ws: BunWS, msg: Record<string, unknown>, raw: string | B
     return;
   } else {
     if (typeof msg.ante === 'number' && typeof msg.blind === 'string') (m.players[pid].lostBlinds ??= []).push(`${msg.ante}:${msg.blind}`);
-    // FIX: Non-PvP blind loss — deduct a life server-side so broadcastMatchState
-    // sends the correct lives value. Previously the server never deducted for
-    // non-PvP losses, causing the next broadcastMatchState to overwrite the
-    // client's local deduction with the stale starting_lives value.
     m.players[pid].lives = Math.max(0, m.players[pid].lives - 1);
     log('INFO', 'GAME_OVER', `P${pid} lost non-PvP blind room=${room.code} lives=${m.players[pid].lives}`);
     if (m.players[pid].lives <= 0) {
@@ -2801,7 +2703,6 @@ function handlePlayHand(ws: BunWS, msg: Record<string, unknown>): void {
     schedulePvpTimeout(room);
   }
   if (handsLeft === 0 && pid >= 0 && m.isPvpBlind && m.phase === 'pvp_pending') {
-    // FIX: Bug 1 — no premature end_pvp; P1 waits for pvp_resolved (both players done)
     if (!m.players[pid].blindFinished) {
       m.players[pid].blindFinished = true;
       touchRoom(room);
@@ -2849,7 +2750,7 @@ function handleReadyBlind(ws: BunWS): void {
     m.blindReadyAt = [0, 0];
     log('INFO', 'PVP', `Both ready — sending start_blind in ${room.code}`);
     m.pvpStarted = true;
-    schedulePvpTimeout(room); // FIX: Bug 2 — timer starts here, not at blind_entered
+    schedulePvpTimeout(room);
     sendToRoom(room, { type: 'start_blind', first: pid === 0 ? 1 : 0 });
   }
 }
@@ -2881,9 +2782,6 @@ function handleUnreadyBlind(ws: BunWS): void {
   if (opp) sendTo(opp, { type: 'opponent_unready_blind', pid });
 }
 
-// ============================================
-// DISPATCH TABLE — O(1) lookup
-// ============================================
 
 function dispatchMessage(ws: BunWS, msg: Record<string, unknown>, str: string): void {
   const activeRoom = getRoomForSocket(ws);
@@ -3533,9 +3431,6 @@ const HANDLERS: Record<string, Handler> = {
   player_deck:     (ws, msg)     => handlePlayerDeck(ws, msg),
 };
 
-// ============================================
-// SERVER — Bun.serve with native WebSocket
-// ============================================
 
 function matchIdOf(holder: object): string | null {
   const id = (holder as { matchId?: unknown }).matchId;
@@ -3621,10 +3516,6 @@ export function setUpdates(u: UpdateService): void { updates = u; }
 export let release = new ReleaseService(null);
 export function setRelease(r: ReleaseService): void { release = r; }
 
-/**
- * Start the Bun WebSocket server.
- * Call with port=0 in tests to let the OS pick a free port.
- */
 export function startServer(port = parseInt(process.env.PORT ?? '3000', 10)): Server {
   if (process.env.CF_D1_DATABASE_ID && ranked.store.kind === 'memory') setRanked(new RankedService(storeFromEnv(process.env, (l, m) => log(l, 'RANKED', m)), undefined, undefined, (l, m) => log(l, 'RANKED', m)));
   social.stop();
@@ -3646,7 +3537,6 @@ export function startServer(port = parseInt(process.env.PORT ?? '3000', 10)): Se
     fetch(req, srv) {
       const url = new URL(req.url);
 
-      // Health check endpoint — Render pings this to keep the service alive
       if (url.pathname === '/ping') {
         return new Response('pong', { headers: { 'Content-Type': 'text/plain', 'X-Build': (process.env.RENDER_GIT_COMMIT ?? 'dev').slice(0, 12), ...traffic.headers(),
           'X-Rooms': String(Object.keys(rooms).length), 'X-Bots': String(listBots().length) } });
@@ -3675,7 +3565,6 @@ export function startServer(port = parseInt(process.env.PORT ?? '3000', 10)): Se
         return countHttp('/crash', handleCrashRequest(req, ip));
       }
 
-      // Upgrade HTTP → WebSocket, attach typed per-connection data
       const upgraded = srv.upgrade(req, {
         data: {
           roomCode: null,
@@ -3687,12 +3576,8 @@ export function startServer(port = parseInt(process.env.PORT ?? '3000', 10)): Se
     },
 
     websocket: {
-      // Close connections idle for 120 s.
-      // The client sends {type:"ping"} every 25 s so legitimate connections stay alive.
-      // This replaces the Node.js 10 s setInterval heartbeat entirely.
       idleTimeout: 120,
 
-      // Reject frames larger than MAX_MESSAGE_BYTES before they reach message()
       maxPayloadLength: MAX_FRAME_BYTES,
 
       open(_ws) {
@@ -3700,11 +3585,10 @@ export function startServer(port = parseInt(process.env.PORT ?? '3000', 10)): Se
       },
 
       message(ws, raw) {
-        // PERF: always work with a plain string; decompress if client sent a compressed payload
         let str = typeof raw === 'string' ? raw : (raw as Buffer).toString();
         const wire = Buffer.byteLength(str, 'utf8');
         const dc = tryDecompress(str);
-        if (dc) str = dc; // str is now always the real JSON content
+        if (dc) str = dc;
 
         const byteLength = Buffer.byteLength(str, 'utf8');
 
@@ -3747,18 +3631,15 @@ export function startServer(port = parseInt(process.env.PORT ?? '3000', 10)): Se
       },
 
       drain(_ws) {
-        // Backpressure callback — not needed for small JSON payloads
       },
     },
   });
 
-  // Assign the module-level reference so sendToRoom / destroyRoom can use server.publish()
   server = bunServer;
   log('INFO', 'SERVER', `Balatro MP server on 0.0.0.0:${port} [Bun ${Bun.version}] [AUTHORITATIVE]`);
   return bunServer;
 }
 
-// Auto-start only when this is the entry point (not when imported by tests)
 if (import.meta.main) {
   startServer();
   installProcessAlerts();
@@ -3767,14 +3648,11 @@ if (import.meta.main) {
     log('INFO', 'SERVER', 'SIGTERM — shutting down');
     clearInterval(roomCleanupInterval);
     stopBots();
-    server.stop(true); // true = force-close active connections
+    server.stop(true);
     process.exit(0);
   });
 }
 
-// ============================================
-// EXPORTS — pure functions available to unit tests
-// ============================================
 export {
   createMatchState,
   isBlindPvp,

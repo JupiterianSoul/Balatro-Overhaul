@@ -3,13 +3,11 @@
 .source "OverhaulFiles.java"
 
 
-# static fields
 .field public static final APK_TYPE:Ljava/lang/String; = "application/vnd.android.package-archive"
 
 .field public static final SUFFIX:Ljava/lang/String; = ".overhaul.files"
 
 
-# direct methods
 .method public constructor <init>()V
     .locals 0
 
@@ -133,7 +131,6 @@
 .end method
 
 
-# virtual methods
 .method public delete(Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
     .locals 0
 

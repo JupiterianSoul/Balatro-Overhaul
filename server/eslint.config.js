@@ -1,4 +1,3 @@
-// ARCH: ESLint flat config (v9+) for Balatro Overhaul server
 const globals = require("globals");
 const tseslint = require("typescript-eslint");
 

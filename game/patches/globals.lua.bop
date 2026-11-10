@@ -4,22 +4,21 @@ final 1
 base 18
 s 2
 l 4
-OVERHAUL_VERSION = '55'
-OVERHAUL_NAME = '2.0.2 (pre-release)'
+OVERHAUL_VERSION = '57'
+OVERHAUL_NAME = '2.0.3 (pre-release)'
 VERSION = 'V ' .. OVERHAUL_NAME .. ' - Overhaul'
 MP_PROTOCOL_VERSION = 10
 c 23
 s 1
 l 1
-    self.F_CRASH_REPORTS = true             --Send Crash reports over the internet
+    self.F_CRASH_REPORTS = true
 c 17
 s 1
 c 4
 s 1
-l 5
+l 4
         self.F_CRASH_REPORTS = true
 
-        -- FIX: F_MOBILE must be false on desktop — controls UI scaling, FPS cap, text sizes
         self.F_MOBILE = false
 
 e 18 97 %20%20%20%20%20%20%20%20 - =7,-2,+%4C,=1,-1,+%4E%4B%54%52%45,=8

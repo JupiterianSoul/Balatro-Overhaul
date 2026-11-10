@@ -249,10 +249,7 @@ l 5
             mp_sticker_persistent="Persistant",
             mp_sticker_unreliable="Peu fiable",
 c 372
-l 428
-            -- ==========================================
-            -- FEATURE: Overhaul Showcase text keys
-            -- ==========================================
+l 417
             sc_welcome={
                 "Salut ! Bienvenue dans",
                 "{C:attention}Balatro Overhaul{} !",
@@ -319,7 +316,6 @@ l 428
                 "depuis {C:attention}Paramètres{} > {C:attention}Nouveautés{}.",
                 "Maintenant, va éclater des blinds !",
             },
-            -- FEATURE: Sub-showcase text keys (contextual Jimbo tips)
             sc_sub_tavern_intro={
                 "Bienvenue à la {C:blue}Taverne{} !",
                 "C'est ton hub principal.",
@@ -434,7 +430,6 @@ l 428
                 "Joue en face-à-face contre",
                 "un autre joueur en ligne !",
             },
-            -- FEATURE: Settings sub-showcase (per-setting walkthrough)
             sc_sub_settings_welcome={
                 "Bienvenue dans les {C:attention}Paramètres{} !",
                 "Laisse-moi te présenter",
@@ -462,7 +457,6 @@ l 428
                 "{C:attention}Glisser pour Sélect.{}, {C:attention}Compteur FPS{},",
                 "{C:attention}Mode Performance{}, et plus !",
             },
-            -- FEATURE: Individual toggle/button showcase steps
             sc_sub_tgl_modmenu={
                 "{C:attention}Désactiver les triches{} : cache",
                 "l'option Triches et le bouton",
@@ -528,7 +522,6 @@ l 428
                 "ton profil joueur, tes stats",
                 "et ta progression !",
             },
-            -- FEATURE: Performance Settings sub-showcase
             sc_sub_perf_welcome={
                 "Bienvenue dans les {C:attention}Réglages de Performance{} !",
                 "Ajuste ces options pour obtenir",
@@ -579,7 +572,6 @@ l 428
                 "saute les longues animations de score",
                 "quand le total est très grand.",
             },
-            -- FEATURE: Optimizer Settings sub-showcase
             sc_sub_opt_welcome={
                 "Bienvenue dans les {C:attention}Réglages Optimiseur{} !",
                 "Configure comment l'Optimiseur",
@@ -660,21 +652,18 @@ l 428
                 "ajoute tes morceaux dans",
                 "{C:attention}Ma musique{} et écoute-les !",
             },
-            -- FEATURE: Badge Immunity sub-showcase
             sc_sub_badge_immunity={
                 "Équipe un {C:attention}Badge de Boss{} !",
                 "Ton badge {C:gold}désactive{} l'effet",
                 "de ce boss entièrement.",
                 "Voir {C:attention}Profil > Badges{} !",
             },
-            -- FEATURE: Seed Library sub-showcase
             sc_sub_seed_library={
                 "Bienvenue dans la {C:attention}Bibliothèque de Seeds{} !",
                 "Sauvegarde tes {C:gold}seeds{} préférées,",
                 "{C:green}copie{} ou {C:green}colle{} depuis le presse-papiers,",
                 "nomme-les et {C:blue}joue{} quand tu veux !",
             },
-            -- FEATURE: First-launch language selector
             sc_choose_language={
                 "Choisis ta langue :",
             },

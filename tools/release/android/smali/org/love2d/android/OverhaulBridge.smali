@@ -3,11 +3,9 @@
 .source "OverhaulBridge.java"
 
 
-# static fields
 .field private static final PREFIX:Ljava/lang/String; = "overhaul:"
 
 
-# direct methods
 .method public constructor <init>()V
     .locals 0
 

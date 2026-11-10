@@ -2,19 +2,14 @@ BOP 1
 eol lf
 final 1
 base 0
-l 102
-﻿-- ============================================
--- BOM_PVP_HUD â€” Native blind HUD override + PvP countdown helpers
--- FEATURE: Phase 3 port â€” enemy score/hands blind HUD + countdown overlay
--- ============================================
-
+l 95
+﻿
 local bom_pvp_hud = {
     state = {
         countdown = 0,
         countdown_active = false,
         last_blind_token = nil,
         blind_hud_active = false,
-        -- FIX: Session 61 â€” track enemy location shown state to avoid per-frame UI rebuilds
         enemy_location_shown = false,
     },
 }
@@ -61,7 +56,6 @@ function bom_pvp_hud.is_countdown_active()
     return bom_pvp_hud.state.countdown_active or false
 end
 
--- FEATURE: PvP countdown overlay shown once when entering a PvP blind
 function bom_pvp_hud.start_pvp_countdown(callback)
     local settings = get_settings()
     local seconds = settings.pvp_countdown_seconds or 0
@@ -91,7 +85,6 @@ function bom_pvp_hud.start_pvp_countdown(callback)
             return true
         end
 
-        -- FIX: Use vanilla attention_text (attention_text_realtime doesn't exist in this codebase)
         pcall(function()
             attention_text({
                 text = tostring(bom_pvp_hud.state.countdown),
@@ -117,7 +110,7 @@ l 9
     end
 
 r 1 112 %20%20%20%20 -
-l 30
+l 28
         trigger = "after",
         timer = "REAL",
         delay = 0,
@@ -126,10 +119,8 @@ l 30
     }))
 end
 
--- FEATURE: Replace blind HUD labels with enemy score/hands during PvP blinds
 function bom_pvp_hud.update_blind_hud()
     if not G or not G.GAME then return end
-    -- FIX: Use bom_match as fallback for multiplayer check (G.GAME.multiplayer may be nil)
     local is_mp = G.GAME.multiplayer or (bom_match and bom_match.is_in_match and bom_match.is_in_match())
     if not is_mp then return end
     if not G.HUD_blind then return end
@@ -149,7 +140,7 @@ function bom_pvp_hud.update_blind_hud()
     bom_pvp_hud.state.blind_hud_active = true
 
 r 1 112 %20%20%20%20 -
-l 150
+l 144
         trigger = "after",
         delay = 0.05,
         blockable = false,
@@ -164,7 +155,6 @@ l 150
 
                 local blind_name = G.HUD_blind:get_UIE_by_ID("HUD_blind_name")
                 if blind_name and blind_name.config and blind_name.config.object then
-                    -- FEATURE: Nemesis blind shows opponent's name
                     local opp_name = "Rival"
                     pcall(function()
                         if G.GAME.mp_opponent_panel and G.GAME.mp_opponent_panel.name then
@@ -195,7 +185,6 @@ l 150
                     if party then pcall(function() G.HUD_blind:recalculate() end) end
                 end
 
-                -- FIX: Use ref_table reference so enemy hands update dynamically
                 local dollars = G.HUD_blind:get_UIE_by_ID("dollars_to_be_earned")
                 if dollars and dollars.config and dollars.config.object then
                     dollars.config.object.config.string = { { ref_table = panel, ref_value = "hands_left" } }
@@ -214,7 +203,6 @@ function bom_pvp_hud.reset_blind_hud()
     if not G or not G.GAME or not G.HUD_blind then return end
 
     pcall(function()
-        -- FIX: Restore blind name back to loc_name (ported from reference reset_blind_HUD)
         local blind_name = G.HUD_blind:get_UIE_by_ID("HUD_blind_name")
         if blind_name and blind_name.config and blind_name.config.object and G.GAME.blind then
             blind_name.config.object.config.string = { { ref_table = G.GAME.blind, ref_value = "loc_name" } }
@@ -294,9 +282,6 @@ function bom_pvp_hud.juice_up_pvp_hud()
     end)
 end
 
--- FEATURE: Evaluate remaining hand cards + joker end-of-round effects during PvP
--- Called when player runs out of hands during PvP blind.
--- Ported from BalatroMultiplayer-0.3.3 ui/game/game_state.lua (eval_hand_and_jokers)
 function bom_pvp_hud._eval_hand_and_jokers()
     pcall(function()
         if not G or not G.hand or not G.hand.cards then return end
@@ -369,7 +354,7 @@ l 2
                         card_eval_status_text(G.hand.cards[i], "dollars", effects[ii].h_dollars, percent)
                     end
 r 16 227 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 233
+l 222
                         card_eval_status_text(G.hand.cards[i], "extra", nil, percent, nil, effects[ii].extra)
                     end
                 end
@@ -393,7 +378,6 @@ function bom_pvp_hud.ensure_for_current_blind()
         local token = get_blind_token()
         if token ~= bom_pvp_hud.state.last_blind_token then
             bom_pvp_hud.state.last_blind_token = token
-            -- FIX: Skip countdown on blind token change
         end
     else
         if bom_pvp_hud.state.blind_hud_active then
@@ -403,23 +387,17 @@ function bom_pvp_hud.ensure_for_current_blind()
     end
 end
 
--- FEATURE: Session 56 â€” Enemy location display (ported from BalatroMultiplayer-0.3.3)
--- Replaces the chip count pill in row_dollars_chips with opponent location text.
--- IMPORTANT: keeps id = "chip_UI_count" so ease_chips() still finds the element.
 
 function bom_pvp_hud.show_enemy_location()
     if not G or not G.GAME or not G.GAME.multiplayer then return end
     if not G.GAME.mp_opponent_panel then return end
-    -- FIX: Session 61 â€” reset flag on new run (new G.GAME object each run start)
     if bom_pvp_hud._last_game_ref ~= G.GAME then
         bom_pvp_hud._last_game_ref = G.GAME
         bom_pvp_hud.state.enemy_location_shown = false
     end
-    -- FIX: Session 61 â€” only rebuild once per state entry, not every frame (avoids GC churn)
     if bom_pvp_hud.state.enemy_location_shown then return end
     local row_dollars_chips = G.HUD:get_UIE_by_ID("row_dollars_chips")
     if row_dollars_chips then
-        -- FIX: Session 61 â€” guard against nil children[1] (crash if HUD was rebuilt)
         if row_dollars_chips.children[1] then
             row_dollars_chips.children[1]:remove()
         end
@@ -490,7 +468,6 @@ end
 function bom_pvp_hud.hide_enemy_location()
     local row_dollars_chips = G.HUD:get_UIE_by_ID("row_dollars_chips")
     if row_dollars_chips then
-        -- FIX: Session 61 â€” guard against nil children[1] (crash if HUD was rebuilt)
         if row_dollars_chips.children[1] then
             row_dollars_chips.children[1]:remove()
         end
@@ -568,7 +545,6 @@ function bom_pvp_hud.hide_enemy_location()
             },
         }, row_dollars_chips)
     end
-    -- FIX: Session 61 â€” reset flag so show_enemy_location() rebuilds on next shop/select entry
     bom_pvp_hud.state.enemy_location_shown = false
 end
 
@@ -592,8 +568,6 @@ function bom_pvp_hud.init()
         end
     end
 
-    -- FEATURE: Session 57 â€” PvP blind ready button
-    -- Converts blind select button to Ready/Unready toggle on PvP blinds
     G.GAME.mp_blind_ready = false
     G.GAME.mp_blind_ready_text = mod_loc("Ready")
     G.GAME.mp_opponent_blind_ready = false
@@ -607,7 +581,7 @@ r 4 58 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
                 e.config.hover = false
 r 4 57 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 29
+l 24
             end
             return
         end
@@ -622,35 +596,27 @@ l 29
                 return
             end
         end
-        -- FIX: Always reconvert to bom_toggle_ready_blind every frame.
-        -- blind_choice_handler (vanilla) resets button = 'select_blind' every frame;
-        -- we must override it back here, idempotently.
         pcall(function()
             e.config.button = "bom_toggle_ready_blind"
             e.config.one_press = false
-            -- Switch text reference only once (avoid resetting after it already points to G.GAME)
             if e.children and e.children[1]
                 and e.children[1].config.ref_table ~= G.GAME then
                 e.children[1].config.ref_table = G.GAME
                 e.children[1].config.ref_value = "mp_blind_ready_text"
             end
         end)
-        -- Update color based on ready state
         if G.GAME.mp_blind_ready then
 r 4 268 %20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
         else
 r 4 101 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 241
+l 199
         end
     end
 
     G.FUNCS.bom_toggle_ready_blind = function(e)
         if not bom_match or not bom_match.is_in_match() then return end
 
-        -- FIX P3#31: only allow ready-toggle inside a PvP blind. Otherwise the
-        -- server logs "rejected -- isPvp=false" and the UI never reflects the click,
-        -- producing a confusing dead-button experience.
         local on_deck = G.GAME.blind_on_deck or "Boss"
         local rr = G.GAME.round_resets
         local pvp_slot = rr and rr.pvp_blind_choices and rr.pvp_blind_choices[on_deck]
@@ -663,13 +629,11 @@ l 241
             return
         end
 
-        -- FIX: Debounce â€” prevent double-tap toggling on mobile
         local now = love.timer.getTime()
         if bom_pvp_hud._last_ready_toggle and (now - bom_pvp_hud._last_ready_toggle) < 0.8 then
             return
         end
 
-        -- FIX: Latch ready briefly to avoid accidental immediate ready->unready flip
         if G.GAME.mp_blind_ready and bom_pvp_hud._ready_lock_until and now < bom_pvp_hud._ready_lock_until then
             return
         end
@@ -685,7 +649,6 @@ l 241
             bom_pvp_hud._ready_lock_until = nil
         end
 
-        -- Store the blind select context for later use when server says start
         pcall(function()
             if G.GAME.mp_blind_ready and e then
                 bom_pvp_hud._pending_blind_context = e
@@ -707,19 +670,12 @@ l 241
         end
     end
 
-    -- FEATURE: Session 56 â€” Game:update_shop patch (send location + show enemy location)
-    -- FEATURE: Session 58 â€” also reset end_pvp + ready_blind state on shop entry (ref: game_state.lua)
 
-    -- FEATURE: Patch vanilla HUD for MP: replace "Ante" label+value with Lives,
-    -- keep Round as-is. Runs once per run (guard by G.GAME ref).
     local _hud_mp_patched_ref = nil
     function bom_pvp_hud.patch_run_hud_for_mp()
         if not G or not G.GAME or not G.HUD then return end
         if not bom_match or not bom_match.is_in_match() then return end
-        -- FIX: Re-apply every frame because G.HUD:recalculate() can recreate DynaText objects,
-        -- resetting our ref_value override. Only the label text edit and suffix hide are guarded.
         pcall(function()
-            -- FIX: Redirect "Ante" DynaText to mp_lives (re-applied if vanilla reset it)
             local ante_elem = G.HUD:get_UIE_by_ID("ante_UI_count")
             if ante_elem and ante_elem.config and ante_elem.config.object then
                 local dyna = ante_elem.config.object
@@ -731,12 +687,9 @@ l 241
                 end
             end
         end)
-        -- Only run label + suffix hide once per run (new G.GAME = new run)
         if _hud_mp_patched_ref == G.GAME then return end
         _hud_mp_patched_ref = G.GAME
         pcall(function()
-            -- Change the "Ante" label text to "Lives"
-            -- Target ONLY the first Row child of hud_ante (the label row)
             local hud_ante = G.HUD:get_UIE_by_ID("hud_ante")
             if hud_ante and hud_ante.children then
                 local label_row = hud_ante.children[1]
@@ -744,7 +697,6 @@ l 241
                     local label = label_row.children[1]
                     if label.config and label.config.text then
                         label.config.text = mod_loc("Lives")
-                        -- FIX: Also update text_drawable so the change renders immediately
                         if label.config.text_drawable then
                             label.config.text_drawable:set(mod_loc("Lives"))
                         end
@@ -753,14 +705,11 @@ l 241
             end
         end)
         pcall(function()
-            -- Hide the "/ win_ante" suffix: find elements AFTER ante_UI_count in value row
             local ante_elem = G.HUD:get_UIE_by_ID("ante_UI_count")
             if ante_elem and ante_elem.parent and ante_elem.parent.children then
                 local found_ante = false
                 for _, sibling in ipairs(ante_elem.parent.children) do
                     if found_ante and sibling.config then
-                        -- FIX: Nil out BOTH ref_table AND ref_value so UIBox update
-                        -- never accesses ref_table[nil] (which can cause issues)
                         sibling.config.ref_table = nil
                         sibling.config.ref_value = nil
                         sibling.config.text = ""
@@ -775,27 +724,17 @@ l 241
                 end
             end
         end)
-        -- FIX: Bug 5 â€” Do NOT hide the Run Info button. It should work normally in MP games.
-        -- Previous code collapsed the button dimensions and removed its callback.
     end
 
-    -- =============================================
-    -- FIX: Hook reset_blinds() â€” authoritative PvP blind setup per ante (ref: round.lua)
-    -- reset_blinds() is called once per ante (after Boss defeated â†’ cash_out) and at game start.
-    -- We hook it to: (1) wipe pvp_blind_choices, (2) populate from gamemode's get_blinds_by_ante.
-    -- This replaces the fragile lazy-population in update_blind_select.
-    -- =============================================
     pcall(function()
         if reset_blinds then
             local reset_blinds_ref = reset_blinds
-            ---@diagnostic disable-next-line: lowercase-global
             reset_blinds = function()
                 reset_blinds_ref()
                 pcall(function()
                     if not G or not G.GAME or not G.GAME.round_resets then return end
                     if not bom_match or not bom_match.is_in_match() then return end
 
-                    -- FIX: Always wipe pvp_blind_choices at ante start â€” prevents stale data
                     G.GAME.round_resets.pvp_blind_choices = {}
 
                     local ante = G.GAME.round_resets.ante or 1
@@ -828,7 +767,6 @@ l 241
             bom_match.send_location(bom_match.shop_location())
             bom_pvp_hud.show_enemy_location()
             pcall(bom_pvp_hud.patch_run_hud_for_mp)
-            -- Reset PvP state on shop entry
             pcall(function()
                 G.GAME.mp_blind_ready = false
                 G.GAME.mp_blind_ready_text = mod_loc("Ready")
@@ -838,17 +776,12 @@ l 241
         return update_shop_ref(self, dt)
     end
 
-    -- FEATURE: Session 56 â€” Game:update_blind_select patch (send location + show enemy location)
-    -- FIX: Session 70 â€” removed lazy pvp_blind_choices population; reset_blinds() hook handles it now.
-    -- Safety fallback: if pvp_blind_choices is nil (e.g., first ante before reset_blinds), populate once.
     local update_blind_select_ref = Game.update_blind_select
     Game.update_blind_select = function(self, dt)
         if bom_match and bom_match.is_in_match() and not G.STATE_COMPLETE then
             bom_match.send_location("loc_selecting")
             bom_pvp_hud.show_enemy_location()
             pcall(bom_pvp_hud.patch_run_hud_for_mp)
-            -- FIX: Safety fallback â€” if reset_blinds() hasn't populated pvp_blind_choices yet
-            -- (e.g., ante 1 before any Boss defeated), populate once from gamemode.
             pcall(function()
                 if not G.GAME.round_resets.pvp_blind_choices then
                     G.GAME.round_resets.pvp_blind_choices = {}
@@ -876,31 +809,20 @@ l 241
         return update_blind_select_ref(self, dt)
     end
 
-    -- FEATURE: Session 56 â€” G.FUNCS.select_blind patch (send playing location + hide enemy location)
-    -- Also reset end_pvp when new blind is selected (ported from reference functions.lua)
-    -- FIX: Guard against accidental select_blind during PvP blind selection.
-    -- In PvP, vanilla blind_choice_handler and button system can fire select_blind
-    -- directly, bypassing the ready system. Only allow it when authorized via
-    -- bom_pvp_hud._pvp_blind_starting (set by on_start_blind after server confirms).
     local select_blind_ref = G.FUNCS.select_blind
 r 4 2513 %20%20%20%20 -
-l 73
+l 58
         local off_deck = rawget(_G, "blind_choice_off_deck")
         if off_deck and off_deck(e) then return end
-        -- FIX: Block vanilla select_blind during PvP ready phase.
-        -- Guard now checks pvp_blind_choices (set lazily) OR a direct PvP blindType check
-        -- so it catches clicks on the very first frame before pvp_blind_choices is populated.
         local is_pvp_ready_phase = false
         pcall(function()
             if bom_match and bom_match.is_in_match()
                 and G.GAME and G.GAME.round_resets
                 and not bom_pvp_hud._pvp_blind_starting then
                 local blind_on_deck = G.GAME.blind_on_deck or "Boss"
-                -- Path 1: pvp_blind_choices already populated
                 if G.GAME.round_resets.pvp_blind_choices
                     and G.GAME.round_resets.pvp_blind_choices[blind_on_deck] then
                     is_pvp_ready_phase = true
-                -- Path 2: check directly before pvp_blind_choices is set (first frame)
                 elseif not G.GAME.round_resets.pvp_blind_choices then
                     local ante = G.GAME.round_resets.ante or 1
                     local btype = blind_on_deck == "Boss" and "L"
@@ -928,11 +850,6 @@ l 73
         end
     end
 
-    -- =============================================
-    -- HOOK: Game:update_draw_to_hand â€” PvP blind entry detection
-    -- On first draw of a PvP blind: set pvp flag, animate blind name â†’ opponent username, update HUD
-    -- Ported from BalatroMultiplayer-0.3.3 ui/game/game_state.lua
-    -- =============================================
     local update_draw_to_hand_ref = Game.update_draw_to_hand
     Game.update_draw_to_hand = function(self, dt)
         pcall(function()
@@ -942,13 +859,9 @@ l 73
                 and G.GAME.current_round.discards_used == 0
                 and G.GAME.facing_blind then
 
-                -- Set pvp flag on blind based on pvp_blind_choices
                 if G.GAME.round_resets.pvp_blind_choices
                     and G.GAME.round_resets.pvp_blind_choices[G.GAME.blind_on_deck] then
                     G.GAME.blind.pvp = true
-                    -- FIX: Transition to PVP_BLIND locally (not from server isPvpBlind).
-                    -- This is the authoritative local check: pvp_blind_choices is populated
-                    -- by reset_blinds() hook from gamemode.get_blinds_by_ante().
                     pcall(function()
                         bom_match.transition(bom_match.PHASE.PVP_BLIND)
                     end)
@@ -957,7 +870,6 @@ l 73
                 end
 
                 if bom_nemesis and bom_nemesis.is_pvp_boss() then
-                    -- FEATURE: Animate blind name pop-out â†’ opponent username â†’ pop-in
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 11
                         trigger = "after",
@@ -972,7 +884,7 @@ l 11
                             end)
                             bom_pvp_hud.update_blind_hud()
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 73
+l 58
                                 trigger = "after",
                                 delay = 0.45,
                                 blockable = false,
@@ -996,7 +908,6 @@ l 73
                         end,
                     }))
 
-                    -- FEATURE: Swap blind sprite to opponent's color
                     pcall(function()
                         if G.GAME.blind and G.GAME.blind.children and G.GAME.blind.children.animatedSprite then
                             local nemesis_key = bom_nemesis.get_nemesis_key()
@@ -1012,34 +923,20 @@ l 73
         return update_draw_to_hand_ref(self, dt)
     end
 
-    -- =============================================
-    -- HOOK: Game:update_hand_played â€” PvP hand override
-    -- In PvP: send score per hand, wait for opponent, end_pvp â†’ NEW_ROUND
-    -- Ported from BalatroMultiplayer-0.3.3 ui/game/game_state.lua
-    -- =============================================
     local update_hand_played_ref = Game.update_hand_played
     Game.update_hand_played = function(self, dt)
-        -- FIX: Check end_pvp FIRST before anything else.
-        -- on_pvp_resolved transitions phase to PLAYING, which makes is_pvp_boss() return false.
-        -- Checking end_pvp here catches that timing gap and advances to NEW_ROUND correctly.
         if G and G.GAME and G.GAME.multiplayer and bom_match and bom_match.is_end_pvp()
             and not (G.GAME.STOP_USE and G.GAME.STOP_USE > 0) then
             if bom_ui and bom_ui.pvp_result_holding and bom_ui.pvp_result_holding() then return end
-            -- FIX: Force blind.chips to -1 so vanilla end-of-round treats this as "defeated"
-            -- and does NOT trigger game_over. The server already handled life loss.
             pcall(function()
                 if G.GAME.blind then
                     G.GAME.blind.chips = -1
-                    -- FIX: Clear pvp flag so next blind is not treated as Nemesis
                     G.GAME.blind.pvp = false
                     G.GAME.blind.mp_pvp_over = true
                 end
             end)
-            -- FIX: Clear mp_in_boss_blind so vanilla doesn't think we're still in boss
             pcall(function() G.GAME.mp_in_boss_blind = false end)
-            -- FIX: Bug 3 â€” Clear pvp_blind_choices so next ante's blind_select re-evaluates fresh
             pcall(function() G.GAME.round_resets.pvp_blind_choices = nil end)
-            -- FIX: If PvP loss is pending, show "Lose a Life" button instead of Cash Out
             pcall(function()
                 local state = bom_match.get_state and bom_match.get_state()
                 if state and state.pvp_loss_pending then
@@ -1048,12 +945,11 @@ l 73
             end)
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 23
+l 21
             bom_match.set_end_pvp(false)
             return
         end
 
-        -- Only override for MP PvP boss blinds
         local is_pvp = false
         pcall(function()
             is_pvp = bom_match and bom_match.is_in_match() and bom_nemesis and bom_nemesis.in_unresolved_pvp_blind()
@@ -1062,7 +958,6 @@ l 23
             return update_hand_played_ref(self, dt)
         end
 
-        -- Remove buttons/shop (prevent interaction during hand resolution)
         if self.buttons then
             self.buttons:remove()
             self.buttons = nil
@@ -1075,7 +970,7 @@ l 23
 r 10 3061 %20%20%20%20%20%20%20%20 -
 r 16 469 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 26
+l 23
                 trigger = "immediate",
                 func = function()
                     if bom_pvp_hud._pvp_finished_token and bom_pvp_hud._pvp_finished_token == get_blind_token() then
@@ -1087,36 +982,24 @@ l 26
                         return true
                     end
                     pcall(function()
-                        -- FEATURE: Send live score update to server
                         bom_match.send_play_hand(G.GAME.chips, G.GAME.current_round.hands_left)
                     end)
 
                     if G.GAME.current_round.hands_left < 1 then
-                        -- FIX: Out of hands â€” show persistent waiting overlay on top of everything
                         pcall(function()
                             if bom_ui and bom_ui.show_pvp_waiting then
                                 bom_ui.show_pvp_waiting(bom_party_run and bom_party_run.kind() and bom_party_run.waiting_text() or "Waiting for opponent...")
                             end
                         end)
-                        -- Evaluate remaining hand cards + joker effects (end-of-round)
                         pcall(function()
                             if G.hand.cards[1] and G.STATE == G.STATES.HAND_PLAYED then
                                 bom_pvp_hud._eval_hand_and_jokers()
 r 16 237 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 29
+l 20
                             end
                         end)
-                        -- FIX: Explicitly send blind_finished so server can resolve PvP.
-                        -- Our hook blocks vanilla update_hand_played_ref, so the vanilla
-                        -- blind:defeat() â†’ boss_defeated event path never fires.
-                        -- Without this, server never gets blind_finished and the
-                        -- 60-second timeout fires, causing random forced losses.
                         pcall(function()
                             if bom_core and bom_core.send then
-                                -- FIX: Sync — use the actual current blind, not hardcoded "L".
-                                -- In Showdown mode, PvP blinds can be S or M; the server's stale
-                                -- check rejects the message if the blind type doesn't match its
-                                -- record, causing the PvP timeout to fire and a forced loss.
                                 local cur_blind = "L"
                                 pcall(function()
                                     local st = bom_match.get_state and bom_match.get_state()
@@ -1134,7 +1017,7 @@ l 29
                         end)
                         bom_pvp_hud._pvp_finished_token = get_blind_token()
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 10
+l 9
                             trigger = "immediate",
                             func = function()
                                 if G.STATE == G.STATES.HAND_PLAYED and not bom_match.is_end_pvp() then
@@ -1144,22 +1027,18 @@ l 10
                             end,
                         }))
                     elseif not bom_match.is_end_pvp() and G.STATE == G.STATES.HAND_PLAYED then
-                        -- More hands available and PvP not resolved yet â€” draw next hand
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 16 343 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 23
+l 19
                     end
                     return true
                 end,
             }))
         end
 
-        -- end_pvp at top-of-function handles the case where this check is reached
-        -- while is_pvp is already true â€” belt-and-suspenders fallback.
         if bom_match.is_end_pvp()
             and not (G.GAME.STOP_USE and G.GAME.STOP_USE > 0) then
             if bom_ui and bom_ui.pvp_result_holding and bom_ui.pvp_result_holding() then return end
-            -- FIX: Force blind.chips to -1 so vanilla treats as defeated
             pcall(function()
                 if G.GAME.blind then
                     G.GAME.blind.chips = -1
@@ -1168,21 +1047,15 @@ l 23
                 end
             end)
             pcall(function() G.GAME.mp_in_boss_blind = false end)
-            -- FIX: Bug 3 â€” Clear pvp_blind_choices so next ante's blind_select re-evaluates fresh
             pcall(function() G.GAME.round_resets.pvp_blind_choices = nil end)
             pcall(function() if bom_match.get_state().pvp_loss_pending then G.GAME.mp_blind_loss_pending = true end end)
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 41
+l 34
             bom_match.set_end_pvp(false)
         end
     end
 
-    -- =============================================
-    -- HOOK: Game:update_new_round â€” handle end_pvp during new round transition
-    -- Forces deck cleanup and state reset when end_pvp arrives during NEW_ROUND
-    -- Ported from BalatroMultiplayer-0.3.3 ui/game/game_state.lua
-    -- =============================================
     if reset_blinds and not bom_match._reset_blinds_hooked then
         bom_match._reset_blinds_hooked = true
         local reset_blinds_ref = reset_blinds
@@ -1203,7 +1076,6 @@ l 41
                     pcall(function() G.FUNCS.draw_from_hand_to_deck() end)
                     pcall(function() G.FUNCS.draw_from_discard_to_deck() end)
                 end
-                -- FIX: Force blind.chips = -1 so vanilla end_round doesn't trigger game_over
                 pcall(function()
                     if G.GAME.blind then
                         G.GAME.blind.chips = -1
@@ -1212,7 +1084,6 @@ l 41
                     end
                 end)
                 pcall(function() G.GAME.mp_in_boss_blind = false end)
-                -- FIX: Bug 3 â€” Clear pvp_blind_choices so next ante's blind_select re-evaluates fresh
                 pcall(function() G.GAME.round_resets.pvp_blind_choices = nil end)
                 pcall(function() if bom_match.get_state().pvp_loss_pending then G.GAME.mp_blind_loss_pending = true end end)
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
@@ -1229,7 +1100,7 @@ l 10
                 mp_log.warn("BOM_PVP_HUD", "PvP blind reached NEW_ROUND before pvp_resolved, back to waiting")
 r 16 468 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 31
+l 25
                 bounce = true
             end
         end)
@@ -1237,7 +1108,6 @@ l 31
 
         update_new_round_ref(self, dt)
 
-        -- Restore win_ante after vanilla logic runs
         pcall(function()
             if bom_match and bom_match.is_in_match() then
                 G.GAME.win_ante = (bom_match.final_ante and bom_match.final_ante()) or 8
@@ -1245,13 +1115,8 @@ l 31
         end)
     end
 
-    -- =============================================
-    -- HOOK: Game:update_selecting_hand â€” handle deck-out + end_pvp during hand selection
-    -- Ported from BalatroMultiplayer-0.3.3 ui/game/game_state.lua
-    -- =============================================
     local update_selecting_hand_ref = Game.update_selecting_hand
     Game.update_selecting_hand = function(self, dt)
-        -- FEATURE: Deck-out detection during PvP
         pcall(function()
             if bom_match and bom_match.is_in_match()
                 and G.GAME.current_round.hands_left < G.GAME.round_resets.hands
@@ -1263,13 +1128,12 @@ l 31
                 if not bom_nemesis.in_unresolved_pvp_blind() then
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 3
+l 2
                 else
-                    -- PvP deck-out: send score with 0 hands, transition to HAND_PLAYED
                     bom_match.send_play_hand(G.GAME.chips, 0)
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 16 468 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 10
+l 9
                 end
                 return
             end
@@ -1277,12 +1141,10 @@ l 10
 
         update_selecting_hand_ref(self, dt)
 
-        -- FEATURE: end_pvp during hand selection â†’ force to NEW_ROUND
         pcall(function()
             if bom_match and bom_match.is_end_pvp() and bom_nemesis and bom_nemesis.in_unresolved_pvp_blind() then
 r 2 582 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 12
-                -- FIX: Force blind.chips = -1 so vanilla end_round doesn't trigger game_over
+l 10
                 pcall(function()
                     if G.GAME.blind then
                         G.GAME.blind.chips = -1
@@ -1291,40 +1153,29 @@ l 12
                     end
                 end)
                 pcall(function() G.GAME.mp_in_boss_blind = false end)
-                -- FIX: Bug 3 â€” Clear pvp_blind_choices so next ante's blind_select re-evaluates fresh
                 pcall(function() G.GAME.round_resets.pvp_blind_choices = nil end)
                 pcall(function() if bom_match.get_state().pvp_loss_pending then G.GAME.mp_blind_loss_pending = true end end)
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 13
+l 8
                 bom_match.set_end_pvp(false)
             end
         end)
     end
 
-    -- =============================================
-    -- FEATURE: LOSE A LIFE button â€” replaces CASH OUT on non-PvP blind loss in MP
-    -- Gives player $10 loss gift then proceeds to SHOP (same flow as vanilla cash_out).
-    -- Triggered when G.GAME.mp_blind_loss_pending = true (set by bom_match.on_game_over).
-    -- =============================================
     G.FUNCS.bom_lose_life_button = function(e)
         stop_use()
         if not G.round_eval then return end
 r 4 58 %20%20%20%20%20%20%20%20 -
-l 59
+l 49
 
-        -- FIX P1#36: track elimination outside the pcall so we can return early
-        -- before queueing the SHOP transition (otherwise a player at 0 lives
-        -- briefly enters SHOP before the win/lose overlay appears).
         local _eliminated = false
 
-        -- FIX: Deduct a life â€” handle PvP (server already deducted) vs non-PvP separately.
         pcall(function()
             if bom_match and bom_match.get_state then
                 local state = bom_match.get_state()
                 local was_pvp = false
                 if state.pvp_loss_pending and state.pvp_pending_lives ~= nil then
-                    -- PvP loss: apply server-authoritative lives (server already deducted in resolvePvp)
                     state.my_lives = state.pvp_pending_lives
                     if G.GAME then G.GAME.mp_lives = state.pvp_pending_lives end
                     state.pvp_loss_pending = false
@@ -1338,11 +1189,9 @@ l 59
                     if G.GAME then G.GAME.mp_lives = state.my_lives end
                     mp_log.info("BOM_PVP_HUD", "lose_life: lives now %d", state.my_lives)
                 end
-                -- Animate life loss on HUD
                 if bom_ui and bom_ui.animate_life_loss then
                     bom_ui.animate_life_loss()
                 end
-                -- Check for elimination (0 lives)
                 if state.my_lives <= 0 then
                     mp_log.info("BOM_PVP_HUD", "lose_life: ELIMINATED (0 lives)")
                     if (state.mode == "ascension" or state.mode == "race") and not state.match_over and bom_ui and bom_ui.show_ascension_wait then
@@ -1355,9 +1204,7 @@ l 59
             end
         end)
 
-        -- FIX P1#36: bail out before SHOP transition if the player was eliminated.
         if _eliminated then
-            -- Clear the pending flag so the button doesn't re-render
             pcall(function()
                 if G and G.GAME then G.GAME.mp_blind_loss_pending = false end
             end)
@@ -1370,11 +1217,9 @@ l 59
             mp_log.info("BOM_PVP_HUD", "lose_life cash out: $%s", tostring(pay))
         end)
 
-        -- Slide round_eval off screen (same animation as vanilla cash_out)
 r 4 2916 %20%20%20%20%20%20%20%20 -
 r 4 2917 %20%20%20%20%20%20%20%20 -
-l 4
-        -- Shuffle deck (collects all card areas) and transition to SHOP
+l 3
         G.deck:shuffle('losealife' .. (G.GAME.round_resets and G.GAME.round_resets.ante or 1))
         G.deck:hard_set_T()
         delay(0.3)
@@ -1393,8 +1238,7 @@ r 4 2931 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 4 2932 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 4 2933 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 5
-                -- FIX: Clear flag AFTER state change to SHOP so mid-frame checks still see it
+l 4
                 G.GAME.mp_blind_loss_pending = false
                 return true
             end,
@@ -1409,33 +1253,22 @@ l 4
         }))
         play_sound('coin7')
 r 3 2049 %20%20%20%20%20%20%20%20 -
-l 5
+l 2
         haptic_buzz(2)
-        -- FIX: Must mirror vanilla cash_out() â€” reset chips display and reset blind states
-        -- for the next ante. Without this, blind_states.Boss stays 'Defeated' forever,
-        -- no new boss is generated, and blind_on_deck stays wrong â†’ stuck blind select.
         ease_chips(0)
 r 4 2949 %20%20%20%20%20%20%20%20 -
 r 4 2950 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 4 2951 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 4 2952 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 44
+l 34
         end
         reset_blinds()
         delay(0.6)
     end
 
-    -- =============================================
-    -- HOOK: add_round_eval_row â€” swap CASH OUT â†’ LOSE A LIFE on non-PvP blind loss
-    -- evaluate_round() calls add_round_eval_row({name='bottom', dollars=N}) for the button.
-    -- When mp_blind_loss_pending=true, we replace it with a RED LOSE A LIFE button.
-    -- NOTE: bom_nemesis.lua already wrapped add_round_eval_row for the PvP score display;
-    -- this wraps it again (chain: this â†’ nemesis wrapper â†’ original), which is safe.
-    -- =============================================
     pcall(function()
         if add_round_eval_row then
             local orig_row = add_round_eval_row
-            ---@diagnostic disable-next-line: lowercase-global
             add_round_eval_row = function(config)
                 local cap = G.GAME and G.GAME.mp_pay_cap
                 if cap and config and config.dollars then
@@ -1450,7 +1283,6 @@ l 44
                         if config.bonus and give <= 0 then return end
                     end
                 end
-                -- Detect cash_out button creation: evaluate_round uses name='bottom'
                 if G.GAME and G.GAME.mp_blind_loss_pending
                     and config and config.name == 'bottom' then
                     local total = tonumber(config.dollars) or 0
@@ -1462,7 +1294,6 @@ l 44
                         end
                     end)
                     G.GAME.current_round.dollars = total
-                    -- Skip original ORANGE CASH OUT â€” queue RED LOSE A LIFE button instead
                     delay(0.4)
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 31
@@ -1499,12 +1330,12 @@ l 31
                             }
 r 13 1089 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 3 2049 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 71
+l 62
                             haptic_buzz(2)
                             return true
                         end,
                     }))
-                    return  -- don't call original (no orange CASH OUT)
+                    return
                 end
                 return orig_row(config)
             end
@@ -1536,7 +1367,6 @@ l 71
     mp_log.info("BOM_PVP_HUD", "PvP HUD helpers + location + game state hooks initialized")
 end
 
--- FEATURE: Session 57 â€” Called when server sends start_blind (both players ready)
 function bom_pvp_hud.on_start_blind()
     bom_pvp_hud._pvp_finished_token = nil
     pcall(function()
@@ -1549,11 +1379,7 @@ function bom_pvp_hud.on_start_blind()
         bom_pvp_hud._last_ready_toggle = nil
     end)
 
-    -- Use countdown then select the blind
     local function begin_pvp_blind()
-        -- FIX de-sync Bug #4: set/reset _pvp_blind_starting OUTSIDE the pcall.
-        -- If select_blind(ctx) throws, the pcall catches it but previously left
-        -- _pvp_blind_starting=true permanently, blocking all future blind selections.
         bom_pvp_hud._pvp_blind_starting = true
         pcall(function()
             local ctx = bom_pvp_hud._pending_blind_context
@@ -1566,13 +1392,9 @@ function bom_pvp_hud.on_start_blind()
             end
             bom_pvp_hud._pending_blind_context = nil
         end)
-        -- FIX P1#34: defer reset of _pvp_blind_starting via an event so any
-        -- queued select_blind calls during the blind-entry animation still pass
-        -- the patched select_blind guard. Resetting synchronously can race with
-        -- async blind setup that re-invokes select_blind on the same frame.
         if G and G.E_MANAGER then
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 19
+l 18
                 trigger = 'after',
                 delay = 0.5,
                 blocking = false,
@@ -1587,7 +1409,6 @@ l 19
         end
     end
 
-    -- FIX: Skip countdown, start PvP blind immediately
     begin_pvp_blind()
 end
 

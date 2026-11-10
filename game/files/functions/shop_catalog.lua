@@ -1,11 +1,4 @@
--- ============================================
--- SHOP CATALOG for Balatro V10.5
--- All purchasable items: Color Sets, Icon Effects
--- Rarity + Economy System
--- ============================================
 
--- ===== RARITY SYSTEM =====
--- 5 tiers matching achievement rarity
 
 require("functions/shop/tavern_palettes")
 
@@ -17,22 +10,17 @@ SHOP_RARITY = {
   LEGENDARY = {id = 5, name = "Legendary", color = "GOLD",   price_mult = 16.0},
 }
 
--- Base prices per category (multiplied by rarity)
 local BASE_PRICE = {
   color_set   = 80,
   icon_effect = 150,
 }
 
--- Helper: compute price from base × rarity
 local function rarity_price(base, rarity)
   return math.floor(base * rarity.price_mult)
 end
 
--- ===== COLOR SETS (40 + Polychromatic) =====
--- Each set: {blue_r,g,b}, {red_r,g,b}, {green_r,g,b}, {yellow_r,g,b} (0-255)
 
 SHOP_COLOR_SETS = {
-  -- Common sets (simple palettes)
   {id="ocean",      name="Ocean",       rarity=SHOP_RARITY.COMMON,
     blue={0,180,220}, red={255,100,80}, green={0,200,170}, yellow={255,220,100}},
   {id="forest",     name="Forest",      rarity=SHOP_RARITY.COMMON,
@@ -44,7 +32,6 @@ SHOP_COLOR_SETS = {
   {id="candy",      name="Candy",       rarity=SHOP_RARITY.COMMON,
     blue={100,200,255}, red={255,80,130}, green={100,230,150}, yellow={255,240,80}},
 
-  -- Uncommon sets
   {id="sunset",     name="Sunset",      rarity=SHOP_RARITY.UNCOMMON,
     blue={80,60,160}, red={240,80,50}, green={200,120,180}, yellow={255,180,50}},
   {id="neon",       name="Neon",        rarity=SHOP_RARITY.UNCOMMON,
@@ -56,7 +43,6 @@ SHOP_COLOR_SETS = {
   {id="sakura",     name="Sakura",      rarity=SHOP_RARITY.UNCOMMON,
     blue={180,160,210}, red={240,130,150}, green={140,190,140}, yellow={255,230,200}},
 
-  -- Rare sets
   {id="midnight",   name="Midnight",    rarity=SHOP_RARITY.RARE,
     blue={30,40,120}, red={150,30,50}, green={40,80,100}, yellow={180,160,100}},
   {id="winter",     name="Winter",      rarity=SHOP_RARITY.RARE,
@@ -68,7 +54,6 @@ SHOP_COLOR_SETS = {
   {id="toxic",      name="Toxic",       rarity=SHOP_RARITY.RARE,
     blue={40,180,60}, red={160,40,200}, green={80,255,80}, yellow={220,255,0}},
 
-  -- Epic sets
   {id="volcanic",   name="Volcanic",    rarity=SHOP_RARITY.EPIC,
     blue={40,50,80}, red={230,50,20}, green={100,90,80}, yellow={255,160,30}},
   {id="cosmic",     name="Cosmic",      rarity=SHOP_RARITY.EPIC,
@@ -78,13 +63,10 @@ SHOP_COLOR_SETS = {
   {id="ember",      name="Ember",       rarity=SHOP_RARITY.EPIC,
     blue={50,60,80}, red={230,80,30}, green={120,110,100}, yellow={255,140,20}},
 
-  -- Legendary set
   {id="abyss",      name="Abyss",       rarity=SHOP_RARITY.LEGENDARY,
     blue={20,60,140}, red={180,20,40}, green={10,40,30}, yellow={40,200,220}},
 
-  -- === NEW SETS (20 additional) ===
 
-  -- Common (4 new)
   {id="lavender",   name="Lavender",    rarity=SHOP_RARITY.COMMON,
     blue={150,130,220}, red={220,130,160}, green={160,200,170}, yellow={240,220,180}},
   {id="desert",     name="Desert",      rarity=SHOP_RARITY.COMMON,
@@ -94,7 +76,6 @@ SHOP_COLOR_SETS = {
   {id="slate",      name="Slate",       rarity=SHOP_RARITY.COMMON,
     blue={100,120,150}, red={160,100,100}, green={120,140,130}, yellow={190,180,160}},
 
-  -- Uncommon (4 new)
   {id="tropical",   name="Tropical",    rarity=SHOP_RARITY.UNCOMMON,
     blue={0,190,200}, red={255,70,90}, green={50,220,100}, yellow={255,210,0}},
   {id="aurora",     name="Aurora",      rarity=SHOP_RARITY.UNCOMMON,
@@ -104,7 +85,6 @@ SHOP_COLOR_SETS = {
   {id="coral",      name="Coral",       rarity=SHOP_RARITY.UNCOMMON,
     blue={60,160,190}, red={240,100,100}, green={80,200,160}, yellow={255,200,120}},
 
-  -- Rare (4 new)
   {id="cyberpunk",  name="Cyberpunk",   rarity=SHOP_RARITY.RARE,
     blue={0,200,255}, red={255,0,100}, green={0,255,100}, yellow={255,200,0}},
   {id="glacier",    name="Glacier",     rarity=SHOP_RARITY.RARE,
@@ -114,7 +94,6 @@ SHOP_COLOR_SETS = {
   {id="jade",       name="Jade",        rarity=SHOP_RARITY.RARE,
     blue={40,100,120}, red={160,60,80}, green={20,180,100}, yellow={180,200,80}},
 
-  -- Epic (4 new)
   {id="phantom",    name="Phantom",     rarity=SHOP_RARITY.EPIC,
     blue={60,20,140}, red={200,40,120}, green={30,80,100}, yellow={180,120,220}},
   {id="solar",      name="Solar",       rarity=SHOP_RARITY.EPIC,
@@ -124,7 +103,6 @@ SHOP_COLOR_SETS = {
   {id="bloodmoon",  name="Blood Moon",  rarity=SHOP_RARITY.EPIC,
     blue={40,30,60}, red={200,20,30}, green={60,40,50}, yellow={180,100,40}},
 
-  -- Legendary (4 new)
   {id="prismatic",  name="Prismatic",   rarity=SHOP_RARITY.LEGENDARY,
     blue={40,80,255}, red={255,40,80}, green={40,255,120}, yellow={255,240,40}},
   {id="ethereal",   name="Ethereal",    rarity=SHOP_RARITY.LEGENDARY,
@@ -237,7 +215,6 @@ SHOP_COLOR_SETS = {
 
 SHOP_COLOR_GROUPS = {"Themes", "Pastels", "Neons", "Dark", "Seasonal", "Balatro Decks"}
 
--- Polychromatic: unlocked after owning all 40 sets — uses RGB sliders
 SHOP_POLYCHROMATIC = {
   id = "polychromatic",
   name = "Polychromatic",
@@ -245,14 +222,12 @@ SHOP_POLYCHROMATIC = {
   description = "Full RGB control over all 4 colors",
 }
 
--- Compute prices
 for _, set in ipairs(SHOP_COLOR_SETS) do
   set.price = rarity_price(BASE_PRICE.color_set, set.rarity)
 end
 SHOP_POLYCHROMATIC.price = rarity_price(BASE_PRICE.color_set * 2, SHOP_POLYCHROMATIC.rarity)
 TAVERN_PALETTES.filter(SHOP_COLOR_SETS)
 
--- ===== ICON EFFECTS (4) =====
 
 SHOP_ICON_EFFECTS = {
   {id="foil",        name="Foil",         rarity=SHOP_RARITY.UNCOMMON,
@@ -269,28 +244,24 @@ for _, eff in ipairs(SHOP_ICON_EFFECTS) do
   eff.price = rarity_price(BASE_PRICE.icon_effect, eff.rarity)
 end
 
--- ===== DATA MANAGEMENT (save/load owned items) =====
 
 AshCardManager = {
-  initialized_profile = nil,  -- track WHICH profile was initialized
+  initialized_profile = nil,
 }
 
 function AshCardManager.init()
   if not G or not G.PROFILES or not G.SETTINGS or not G.SETTINGS.profile then return false end
 
   local prof_id = G.SETTINGS.profile
-  -- Re-init if profile changed
   if AshCardManager.initialized_profile == prof_id then return true end
 
   local profile = G.PROFILES[prof_id]
   if not profile then return false end
   if not profile.progression then profile.progression = {} end
 
-  -- Owned color sets
   if not profile.progression.owned_color_sets then
     profile.progression.owned_color_sets = {}
   end
-  -- Polychromatic custom values (only used when equipped_color_set == "polychromatic")
   if not profile.progression.poly_colors then
     profile.progression.poly_colors = {
       blue_r=0, blue_g=157, blue_b=255,
@@ -302,7 +273,6 @@ function AshCardManager.init()
 
   TAVERN_PALETTES.migrate(profile.progression)
 
-  -- Owned icon effects
   if not profile.progression.owned_icon_effects then
     profile.progression.owned_icon_effects = {}
   end
@@ -311,7 +281,6 @@ function AshCardManager.init()
   return true
 end
 
--- Ownership checks
 function AshCardManager.owns_color_set(set_id)
   if not AshCardManager.init() then return false end
   local profile = G.PROFILES[G.SETTINGS.profile]
@@ -338,13 +307,9 @@ function AshCardManager.owns_icon_effect(effect_id)
   return false
 end
 
--- Can buy joker: must be discovered AND used in a winning run
--- Record that a joker was used in a winning run
--- Purchase functions (return success, message)
 function AshCardManager.buy_color_set(set_id)
   if not AshCardManager.init() then return false, "Not initialized" end
   if AshCardManager.owns_color_set(set_id) then return false, "Already owned" end
-  -- Find price
   local price = 0
   for _, set in ipairs(SHOP_COLOR_SETS) do
     if set.id == set_id then price = set.price; break end
@@ -354,7 +319,6 @@ function AshCardManager.buy_color_set(set_id)
   if not ShopManager.spend_balacoin(price) then return false, "Insufficient Balacoins" end
   local profile = G.PROFILES[G.SETTINGS.profile]
   table.insert(profile.progression.owned_color_sets, set_id)
-  -- Auto-unlock polychromatic when all 40 base color sets are owned
   if set_id ~= "polychromatic" then
     pcall(function()
       if AshCardManager.owns_all_color_sets() and not AshCardManager.owns_color_set("polychromatic") then
@@ -382,7 +346,6 @@ function AshCardManager.buy_icon_effect(effect_id)
   return true, "Purchased!"
 end
 
--- Equip functions
 function AshCardManager.equip_color_set(set_id)
   if not AshCardManager.init() then return false end
   if set_id and set_id ~= "none" and not AshCardManager.owns_color_set(set_id) then return false end
@@ -424,8 +387,6 @@ function AshCardManager.save_poly_colors(colors)
   return true
 end
 
--- ===== COLOR SET APPLICATION =====
--- Apply a color set in-place (same mechanism as apply_custom_colors)
 
 function apply_color_set(set_id)
   if not G or not G.C then return end
@@ -433,7 +394,6 @@ function apply_color_set(set_id)
   local function ic(t,a,b,c) t[1]=a; t[2]=b; t[3]=c; t[4]=1 end
   set_id = TAVERN_PALETTES.resolve(set_id)
 
-  -- Find the set
   local colors = nil
   if set_id == "polychromatic" then
     local poly = AshCardManager.get_poly_colors()
@@ -456,26 +416,22 @@ function apply_color_set(set_id)
 
   if not colors then return end
 
-  -- Apply Blue
   local r,g,b = colors.blue[1]/255, colors.blue[2]/255, colors.blue[3]/255
   ic(G.C.BLUE, r, g, b)
   ic(G.C.CHIPS, r, g, b)
   if G.C.UI_CHIPS then ic(G.C.UI_CHIPS, r, g, b) end
 
-  -- Apply Red
   r,g,b = colors.red[1]/255, colors.red[2]/255, colors.red[3]/255
   ic(G.C.RED, r, g, b)
   ic(G.C.MULT, r, g, b)
   if G.C.XMULT then ic(G.C.XMULT, r, g, b) end
   if G.C.UI_MULT then ic(G.C.UI_MULT, r, g, b) end
 
-  -- Apply Green
   r,g,b = colors.green[1]/255, colors.green[2]/255, colors.green[3]/255
   ic(G.C.GREEN, r, g, b)
   if G.C.CHANCE then ic(G.C.CHANCE, r, g, b) end
   if G.C.PALE_GREEN then ic(G.C.PALE_GREEN, r*0.85, g*0.85, b*0.85) end
 
-  -- Apply Yellow (direct application — same system as Blue/Red/Green)
   r,g,b = colors.yellow[1]/255, colors.yellow[2]/255, colors.yellow[3]/255
   ic(G.C.YELLOW, r, g, b)
   ic(G.C.GOLD, r, g, b)
@@ -484,7 +440,6 @@ function apply_color_set(set_id)
   if G.C.IMPORTANT then ic(G.C.IMPORTANT, r, g, b) end
   if G.C.FILTER then ic(G.C.FILTER, r, g, b) end
 
-  -- Update suit colors
   if G.C.SUITS then
     r,g,b = colors.red[1]/255, colors.red[2]/255, colors.red[3]/255
     ic(G.C.SUITS.Hearts, r, g, b)
@@ -496,7 +451,6 @@ function apply_color_set(set_id)
     ic(G.C.SUITS.Clubs, r*0.5+0.05, g*0.5+0.05, b*0.5+0.05)
   end
 
-  -- Update secondary suit colors (SO_2)
   if G.C.SO_2 then
     r,g,b = colors.red[1]/255, colors.red[2]/255, colors.red[3]/255
     ic(G.C.SO_2.Hearts, r*0.97, g*0.23, b*0.18)
@@ -529,7 +483,6 @@ function reset_colors_to_default()
   ihex(G.C.MONEY,     'f3b958')
   if G.C.IMPORTANT then ihex(G.C.IMPORTANT, 'ff9a00') end
   if G.C.FILTER then ihex(G.C.FILTER, 'ff9a00') end
-  -- Reset suit colors
   if G.C.SUITS then
     ihex(G.C.SUITS.Hearts,   'FE5F55')
     ihex(G.C.SUITS.Diamonds, 'FE5F55')
@@ -544,7 +497,6 @@ function reset_colors_to_default()
   end
 end
 
--- Auto-apply equipped color set on game load
 function auto_apply_color_set()
   pcall(function()
     AshCardManager.init()
@@ -555,7 +507,6 @@ function auto_apply_color_set()
   end)
 end
 
--- ===== EXPORTS =====
 _G.SHOP_RARITY = SHOP_RARITY
 _G.SHOP_COLOR_SETS = SHOP_COLOR_SETS
 _G.SHOP_POLYCHROMATIC = SHOP_POLYCHROMATIC

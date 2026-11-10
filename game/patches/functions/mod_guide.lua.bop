@@ -2,15 +2,8 @@ BOP 1
 eol lf
 final 1
 base 0
-l 72
--- ============================================
--- MOD GUIDE V8.0 — Individual category windows
--- Each category button opens its own window
--- BACK returns to Guide tab, no tab switching
--- Two-column layout for text-heavy categories
--- ============================================
+l 61
 
--- Color name to color value resolver
 local function resolve_colour(name)
   if not name or not G or not G.C then return G.C.WHITE end
   local map = {
@@ -21,7 +14,6 @@ local function resolve_colour(name)
   return map[name] or G.C.WHITE
 end
 
--- Build rows from a lines array
 local function build_line_rows(lines)
   local rows = {}
   for _, line in ipairs(lines) do
@@ -38,7 +30,6 @@ local function build_line_rows(lines)
   return rows
 end
 
--- Build a single-column content window
 local function build_single_column(title, lines)
   local rows = build_line_rows(lines)
   return create_UIBox_generic_options({
@@ -54,7 +45,6 @@ local function build_single_column(title, lines)
   })
 end
 
--- Build a two-column content window
 local function build_two_columns(title, left_lines, right_lines)
   local left_rows = build_line_rows(left_lines)
   local right_rows = build_line_rows(right_lines)
@@ -73,28 +63,23 @@ local function build_two_columns(title, left_lines, right_lines)
   })
 end
 
--- BACK from any category window → returns to Guide tab in settings
 G.FUNCS.guide_back_to_guide_tab = function(e)
 r 4 1382 %20%20 -
-l 6
+l 5
     definition = create_UIBox_settings('Guide')
   }
 end
 
--- Back to settings from guide overlay (legacy, kept for safety)
 G.FUNCS.guide_back_to_settings = function(e)
 r 4 1382 %20%20 -
-l 8
+l 5
     definition = create_UIBox_settings('Guide')
   }
 end
 
--- =====================
--- Category 1: Overview
--- =====================
 G.FUNCS.open_guide_overview = function(e)
 r 4 1382 %20%20 -
-l 27
+l 24
     definition = build_single_column(mod_loc("BALATRO OVERHAUL"), {
       {text = mod_loc("Welcome to Balatro Overhaul!"), scale = 0.45, colour = "ORANGE"},
       {text = ""},
@@ -118,14 +103,10 @@ l 27
   }
 end
 
--- =====================
--- Category 2: Mod Menu (v3.0 — 7 tabs)
--- =====================
 G.FUNCS.open_guide_modmenu = function(e)
 r 4 1382 %20%20 -
-l 34
+l 29
     definition = build_two_columns(mod_loc("CHEATS"),
-      -- Left column
       {
         {text = mod_loc("TURN THEM ON:"), scale = 0.45, colour = "BLUE"},
         {text = mod_loc("Play > New Run > Cheats."), scale = 0.39},
@@ -138,7 +119,6 @@ l 34
         {text = mod_loc("JOKERS: Browse + add any"), scale = 0.39},
         {text = mod_loc("CONSUM.: Tarots/Planets/Spectrals"), scale = 0.39},
       },
-      -- Right column
       {
         {text = mod_loc("CARDS: Browse/modify cards"), scale = 0.39},
         {text = mod_loc("VOUCHERS: Activate any"), scale = 0.39},
@@ -154,14 +134,10 @@ l 34
   }
 end
 
--- =====================
--- Category 3: Custom Runs (two columns)
--- =====================
 G.FUNCS.open_guide_customruns = function(e)
 r 4 1382 %20%20 -
-l 35
+l 30
     definition = build_two_columns(mod_loc("CUSTOM RUNS"),
-      -- Left column
       {
         {text = mod_loc("ACCESS:"), scale = 0.45, colour = "BLUE"},
         {text = mod_loc("Play > Custom tab"), scale = 0.39},
@@ -174,7 +150,6 @@ l 35
         {text = mod_loc("- Starting Money"), scale = 0.39},
         {text = mod_loc("- Endless Mode"), scale = 0.39},
       },
-      -- Right column
       {
         {text = mod_loc("DECK:"), scale = 0.45, colour = "BLUE"},
         {text = mod_loc("- Deck Back selector"), scale = 0.39},
@@ -191,12 +166,9 @@ l 35
   }
 end
 
--- =====================
--- Category 4: Progression (two columns)
--- =====================
 G.FUNCS.open_guide_progression = function(e)
 r 4 1382 %20%20 -
-l 33
+l 30
     definition = build_two_columns(mod_loc("PROGRESSION"),
       {
         {text = mod_loc("XP SOURCES:"), scale = 0.45, colour = "BLUE"},
@@ -226,12 +198,9 @@ l 33
   }
 end
 
--- =====================
--- Category 5: Quests (two columns)
--- =====================
 G.FUNCS.open_guide_quests = function(e)
 r 4 1382 %20%20 -
-l 34
+l 31
     definition = build_two_columns(mod_loc("QUESTS"),
       {
         {text = mod_loc("TYPES:"), scale = 0.45, colour = "BLUE"},
@@ -262,12 +231,9 @@ l 34
   }
 end
 
--- =====================
--- Category 6: Profile (actual 6 tabs)
--- =====================
 G.FUNCS.open_guide_profile = function(e)
 r 4 1382 %20%20 -
-l 31
+l 28
     definition = build_two_columns(mod_loc("CUSTOMIZATION"),
       {
         {text = mod_loc("WHERE:"), scale = 0.45, colour = "BLUE"},
@@ -295,12 +261,9 @@ l 31
   }
 end
 
--- =====================
--- Category 7: Shop (actual 3 tabs)
--- =====================
 G.FUNCS.open_guide_shop = function(e)
 r 4 1382 %20%20 -
-l 41
+l 35
     definition = build_two_columns(mod_loc("MARKET"),
       {
         {text = mod_loc("PACKS:"), scale = 0.45, colour = "BLUE"},
@@ -331,21 +294,14 @@ l 41
   }
 end
 
--- =====================
--- Category 8: Filters (removed — stub only)
--- =====================
 G.FUNCS.open_guide_filters = function(e)
   G.FUNCS.guide_back_to_guide_tab(e)
 end
 
--- =====================
--- Category 9: Stakes (4 stakes, 9-12)
--- =====================
 G.FUNCS.open_guide_stakes = function(e)
 r 4 1382 %20%20 -
-l 43
+l 34
     definition = build_two_columns(mod_loc("CREATIVE STAKES (9-12)"),
-      -- Left column
       {
         {text = mod_loc("4 new difficulty tiers beyond Gold Stake!"), scale = 0.39, colour = "ORANGE"},
         {text = ""},
@@ -357,7 +313,6 @@ l 43
         {text = mod_loc("- Boss Blinds gain an additional effect"), scale = 0.39},
         {text = mod_loc("- Holographic sticker"), scale = 0.39},
       },
-      -- Right column
       {
         {text = ""},
         {text = mod_loc("STAKE 11 - OBLIVION:"), scale = 0.45, colour = "GREY"},
@@ -372,20 +327,13 @@ l 43
   }
 end
 
--- =====================
--- Category 10: Debug (removed — stub only)
--- =====================
 G.FUNCS.open_guide_debug = function(e)
   G.FUNCS.guide_back_to_guide_tab(e)
 end
 
--- Remove old functions
 _G.create_guide_page_content = nil
 _G.build_guide_pages = nil
 
--- =====================
--- Category 11: Multiplayer
--- =====================
 G.FUNCS.open_guide_multiplayer = function(e)
 r 4 1382 %20%20 -
 l 33
@@ -550,7 +498,7 @@ end
 
 G.FUNCS.open_guide_mp_mods = function(e)
 r 4 1382 %20%20 -
-l 24
+l 21
     definition = build_two_columns(mod_loc("MODS IN MP"),
       {
         {text = mod_loc("MODDED ROOMS (BETA):"), scale = 0.45, colour = "BLUE"},
@@ -571,12 +519,9 @@ l 24
   }
 end
 
--- =====================
--- Category 13: Hand Optimizer
--- =====================
 G.FUNCS.open_guide_handoptimizer = function(e)
 r 4 1382 %20%20 -
-l 28
+l 24
     definition = build_single_column(mod_loc("HAND OPTIMIZER"), {
       {text = mod_loc("Finds the best hand you can play."), scale = 0.42, colour = "ORANGE"},
       {text = ""},
@@ -597,18 +542,13 @@ l 28
   }
 end
 
--- Remove old functions
 _G.create_guide_page_content = nil
 _G.build_guide_pages = nil
 
--- =====================
--- Category 14: Deck Creator
--- =====================
 G.FUNCS.open_guide_deck_creator = function(e)
 r 4 1382 %20%20 -
-l 32
+l 27
     definition = build_two_columns(mod_loc("DECK CREATOR"),
-      -- Left column
       {
         {text = mod_loc("ACCESS:"), scale = 0.45, colour = "BLUE"},
         {text = mod_loc("The Casino > The Forge"), scale = 0.39},
@@ -620,7 +560,6 @@ l 32
         {text = mod_loc("- Bans: banned content"), scale = 0.39},
         {text = mod_loc("- Gameplay: modifiers"), scale = 0.39},
       },
-      -- Right column
       {
         {text = mod_loc("RATE PAGES:"), scale = 0.45, colour = "BLUE"},
         {text = mod_loc("- Page 1: rate sliders"), scale = 0.39},
@@ -635,9 +574,6 @@ l 32
   }
 end
 
--- =====================
--- Category 15: Jimbo Comments
--- =====================
 G.FUNCS.open_guide_jimbo_comments = function(e)
 r 4 1382 %20%20 -
 l 23

@@ -1,11 +1,3 @@
-/**
- * Balatro Overhaul — Server unit tests (Bun test runner)
- * Run: bun test
- *
- * Migrated from server.test.js (node:test) to bun:test.
- * Tests cover pure functions only; no live WebSocket connections are opened.
- * The server is started on port 0 (OS-assigned) and stopped in afterAll.
- */
 
 import { describe, it, expect, afterAll } from 'bun:test';
 import {
@@ -29,13 +21,9 @@ import {
   cleanRules,
 } from './index';
 
-// Start server on OS-assigned port so tests don't conflict with a running instance
 const srv = startServer(0);
 afterAll(() => srv.stop(true));
 
-// ============================================
-// createMatchState
-// ============================================
 describe('createMatchState', () => {
   it('returns default state with no settings', () => {
     const m = createMatchState();
@@ -65,9 +53,6 @@ describe('createMatchState', () => {
   });
 });
 
-// ============================================
-// isBlindPvp
-// ============================================
 describe('isBlindPvp', () => {
   it('returns false in vanilla mode always', () => {
     const m = createMatchState({ mode: 'vanilla' });
@@ -79,7 +64,7 @@ describe('isBlindPvp', () => {
     const m = createMatchState({ mode: 'attrition' });
     m.pvpStartAnte = 1;
     expect(isBlindPvp(m, 2, 'L')).toBe(true);
-    expect(isBlindPvp(m, 1, 'L')).toBe(false); // not > pvpStartAnte
+    expect(isBlindPvp(m, 1, 'L')).toBe(false);
   });
 
   it('returns false for non-L blinds in attrition', () => {
@@ -90,14 +75,11 @@ describe('isBlindPvp', () => {
 
   it('handles showdown mode', () => {
     const m = createMatchState({ mode: 'showdown' });
-    expect(isBlindPvp(m, 2, 'S')).toBe(true);  // ante > 1
-    expect(isBlindPvp(m, 1, 'L')).toBe(false); // ante not > 1
+    expect(isBlindPvp(m, 2, 'S')).toBe(true);
+    expect(isBlindPvp(m, 1, 'L')).toBe(false);
   });
 });
 
-// ============================================
-// createRoom
-// ============================================
 describe('createRoom', () => {
   it('creates room with expected structure', () => {
     const r = createRoom('ABCD');
@@ -110,9 +92,6 @@ describe('createRoom', () => {
   });
 });
 
-// ============================================
-// generateCode
-// ============================================
 describe('generateCode', () => {
   it('returns a 4-character string', () => {
     const code = generateCode();
@@ -133,9 +112,6 @@ describe('generateCode', () => {
   });
 });
 
-// ============================================
-// validateMessage
-// ============================================
 describe('validateMessage', () => {
   it('accepts a valid create_room message', () => {
     expect(validateMessage({ type: 'create_room' }, 20)).toBeNull();
@@ -219,9 +195,6 @@ describe('validateMessage', () => {
   });
 });
 
-// ============================================
-// isRateLimited
-// ============================================
 describe('isRateLimited', () => {
   it('allows messages under the per-second limit', () => {
     const rl = { msgCount: 0, msgWindowStart: Date.now(), createCount: 0, createWindowStart: Date.now() };
@@ -258,9 +231,6 @@ describe('isActRateLimited', () => {
   });
 });
 
-// ============================================
-// Live match flow over real WebSockets
-// ============================================
 type Msg = Record<string, unknown>;
 
 interface TestClient {
@@ -1339,9 +1309,6 @@ describe('life rules', () => {
   });
 });
 
-// ============================================
-// Final ante: draws, lives and sudden death
-// ============================================
 async function waitCount(c: TestClient, type: string, n: number): Promise<Msg> {
   for (let i = 0; i < 100; i++) {
     const all = c.msgs.filter((m) => m.type === type);
@@ -1512,9 +1479,6 @@ describe('final ante', () => {
   });
 });
 
-// ============================================
-// End-of-match viewer data
-// ============================================
 const sampleEnd = {
   jokers: [{ k: 'j_joker', ed: 'foil', st: ['eternal'] }, { k: 'j_blueprint' }],
   deck: { back: 'b_red', cards: [{ f: 'H_A', e: 'm_glass', ed: 'holo', s: 'Red' }, { f: 'S_2' }] },

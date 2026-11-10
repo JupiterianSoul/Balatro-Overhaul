@@ -2,18 +2,10 @@ BOP 1
 eol lf
 final 1
 base 0
-l 280
--- ============================================
--- MULTIPLAYER MATCH STATE — Server-authoritative match lifecycle.
--- Server tracks lives, resolves PvP scores, declares winners.
--- Client sends events, receives authoritative state updates.
--- ============================================
+l 241
 
 local bom_match = {}
 
--- ============================================
--- MATCH PHASES
--- ============================================
 bom_match.PHASE = {
     NONE        = "none",
     LOBBY       = "lobby",
@@ -28,17 +20,11 @@ bom_match.MODE = {
     NEMESIS   = "nemesis",
     FACEOFF   = "faceoff",
     ASCENSION = "ascension",
-    -- Legacy aliases
     ATTRITION = "nemesis",
     SHOWDOWN  = "faceoff",
     SURVIVAL  = "ascension",
 }
 
--- ============================================
--- STAGE 2: TRANSITION TABLE — valid phase→phase moves for the state machine
--- Any direct match.phase assignment MUST go through bom_match.transition().
--- reset() is the only exception (hard reset, bypasses guards).
--- ============================================
 local TRANSITIONS = {
     [bom_match.PHASE.NONE]        = { [bom_match.PHASE.LOBBY]       = true },
     [bom_match.PHASE.LOBBY]       = { [bom_match.PHASE.STARTING]    = true, [bom_match.PHASE.PLAYING]    = true, [bom_match.PHASE.NONE]      = true },
@@ -50,11 +36,6 @@ local TRANSITIONS = {
 }
 local phase_change_listeners = {}
 
--- ============================================
--- DEFAULT SETTINGS
--- ============================================
--- FEATURE: Complete lobby settings matching balatromp.com spec
--- Ported from BalatroMultiplayer v0.3.3 lobby options
 local DEFAULT_SETTINGS = {
     mode                    = "nemesis",
     starting_lives          = 4,
@@ -147,9 +128,6 @@ function bom_match.non_default_keys(s)
     return out
 end
 
--- ============================================
--- MATCH STATE — Updated by server pushes + local events
--- ============================================
 local match = {
     phase        = "none",
     mode         = "nemesis",
@@ -185,28 +163,17 @@ local match = {
     profile_sent  = false,
     disconnect_handled = false,
 
-    -- Server-driven fields
-    server_player_id = nil,        -- Our player ID on the server (0 or 1)
-    opp_blind_finished = false,    -- Opponent finished their blind (from server)
-    opp_status = "active",         -- From server: active | eliminated
+    server_player_id = nil,
+    opp_blind_finished = false,
+    opp_status = "active",
 
-    -- FEATURE: Nemesis blind visual system (ported from BalatroMultiplayer-0.3.3)
-    opp_blind_col = 1,             -- Opponent's blind column color (1-25)
-    end_pvp = false,               -- Server signaled PvP round end
+    opp_blind_col = 1,
+    end_pvp = false,
 }
 
--- ============================================
--- RESET
--- ============================================
 
 function bom_match.reset()
     pcall(function() bom_spectate.wait_over() end)
-    -- FIX: Delete the MP run save to prevent Continue after match ends.
-    -- Use remove_save() only — NOT G:delete_run() — because delete_run() destroys
-    -- ALL visual elements (SPLASH_BACK, main menu UI, HUD, stage objects) which
-    -- causes a black screen when returning to the main menu or cancelling from lobby.
-    -- G:delete_run() is called by the callers of reset() when a full state transition
-    -- is needed (mp_leave_lobby, match end events). Here we only need to clear the file.
     pcall(function()
         if remove_save then
             remove_save()
@@ -263,8 +230,6 @@ function bom_match.reset()
     match.end_pvp = false
     match.pvp_results_seen = 0
     match.end_reason = nil
-    -- FIX P1#37: clear mp_blind_loss_pending flag on reset so a stale Lose-A-Life
-    -- button doesn't render for one frame after disconnect / rematch / return-to-lobby.
     pcall(function()
         if G and G.GAME then
             G.GAME.mp_blind_loss_pending = false
@@ -272,20 +237,16 @@ function bom_match.reset()
     end)
     match.pvp_loss_pending = false
     match.pvp_pending_lives = nil
-    -- FIX pixel-perfect: clear the pre-start flag so solo HUD rebuilds don't include
-    -- the Lobby Info button row.
     bom_match._starting_mp_run = false
     mp_log.info("BOM_MATCH", "reset complete")
 end
 
--- Called by bom_room.do_mp_start_run() BEFORE G.FUNCS.start_run() so that the
--- HUD builder can check this flag synchronously at construction time.
 function bom_match.set_starting_mp_run()
     bom_match._starting_mp_run = true
     if G and G.SETTINGS and not G.SETTINGS.tutorial_complete then
 r 16 1212 %20%20%20%20%20%20%20%20 -
 r 16 1213 %20%20%20%20%20%20%20%20 -
-l 721
+l 629
     end
 end
 
@@ -296,9 +257,6 @@ end
 
 bom_match.reset()
 
--- ============================================
--- ACCESSORS
--- ============================================
 
 function bom_match.get_state()     return match end
 function bom_match.get_phase()     return match.phase end
@@ -408,10 +366,6 @@ function bom_match.is_match_over() return match.match_over end
 function bom_match.get_my_lives()  return match.my_lives end
 function bom_match.get_opp_lives() return match.opp_lives end
 
--- ============================================
--- STAGE 2: GUARDED PHASE TRANSITION
--- Returns true on success or same-phase no-op; false on rejected transition.
--- ============================================
 
 function bom_match.transition(new_phase)
     local old = match.phase
@@ -429,23 +383,17 @@ function bom_match.transition(new_phase)
     return true
 end
 
--- Stage 2: Subscribe to phase changes. callback receives (old_phase, new_phase).
 function bom_match.on_phase_change(fn)
     if type(fn) == "function" then table.insert(phase_change_listeners, fn) end
 end
 
--- Stage 2: Unsubscribe from phase changes.
 function bom_match.off_phase_change(fn)
     for i = #phase_change_listeners, 1, -1 do
         if phase_change_listeners[i] == fn then table.remove(phase_change_listeners, i) end
     end
 end
 
--- ============================================
--- LOCAL PVP CHECK — Used for local prediction; server is authoritative
--- ============================================
 
--- FEATURE: Local PvP check — delegates to gamemode system
 function bom_match.is_blind_pvp(ante, blind_type)
     ante = ante or match.current_ante
     blind_type = blind_type or match.current_blind
@@ -453,11 +401,9 @@ function bom_match.is_blind_pvp(ante, blind_type)
     if skipped and skipped[tostring(ante) .. ":" .. tostring(blind_type)] then
         return false
     end
-    -- Delegate to gamemode system if available
     if bom_gamemodes and bom_gamemodes.is_blind_pvp then
         return bom_gamemodes.is_blind_pvp(ante, blind_type, match.settings)
     end
-    -- Fallback: legacy logic
     if match.mode == "ascension" or match.mode == "survival" or match.mode == "vanilla" then
         return false
     end
@@ -465,14 +411,10 @@ function bom_match.is_blind_pvp(ante, blind_type)
         local start_ante = match.settings.showdown_starting_antes or 1
         return ante >= start_ante
     end
-    -- Nemesis (attrition) default
     local pvp_start = match.settings.pvp_start_round or 2
     return blind_type == "L" and ante >= pvp_start
 end
 
--- ============================================
--- LOBBY
--- ============================================
 
 function bom_match.enter_lobby(is_host, room_code)
     pcall(function()
@@ -518,13 +460,11 @@ function bom_match.set_opponent_profile(profile)
     if not profile then return end
     match.opp_name = bom_match.resolve_name(profile.name, false)
     match.opp_profile = profile
-    -- FEATURE: Store opponent's blind column color for nemesis visual
     if profile.blind_col and tonumber(profile.blind_col) then
         match.opp_blind_col = tonumber(profile.blind_col)
     end
 end
 
--- FEATURE: Send score update to server during PvP blind (called per hand)
 function bom_match.send_play_hand(score, hands_left)
     if not bom_core or not bom_core.send then return end
     local score_str = tostring(bom_core.plain_number(score))
@@ -539,7 +479,6 @@ function bom_match.send_play_hand(score, hands_left)
     end)
 end
 
--- FEATURE: end_pvp flag management
 function bom_match.set_end_pvp(flag)
     match.end_pvp = flag
 end
@@ -567,9 +506,6 @@ function bom_match.can_start()
     return match.is_host and match.my_ready and match.opp_ready
 end
 
--- ============================================
--- SETTINGS
--- ============================================
 
 function bom_match.update_settings(new_settings)
     if not new_settings then return end
@@ -587,7 +523,6 @@ function bom_match.update_settings(new_settings)
         end
     end
     match.mode = match.settings.mode or "nemesis"
-    -- Update lives from gamemode default or settings
     local default_lives = 4
     if bom_gamemodes and bom_gamemodes.get_default_lives then
         default_lives = bom_gamemodes.get_default_lives()
@@ -609,9 +544,6 @@ function bom_match.on_settings_received(settings)
     bom_match.update_settings(settings)
 end
 
--- ============================================
--- MATCH START — Called when host starts the match
--- ============================================
 
 function bom_match.start_match(seed)
     match.opp_location = nil
@@ -619,7 +551,6 @@ function bom_match.start_match(seed)
     bom_match.transition(bom_match.PHASE.PLAYING)
     match.seed = seed
     match.ante_timer = nil
-    -- Use gamemode default lives, overridden by settings
     local default_lives = 4
     if bom_gamemodes and bom_gamemodes.get_default_lives then
         default_lives = bom_gamemodes.get_default_lives()
@@ -658,7 +589,6 @@ function bom_match.start_match(seed)
 end
 
 function bom_match.restore_fairness()
-    -- FIX: Restore pre-match feature settings (optimizer, score preview)
     pcall(function()
         if G.SETTINGS and match.pre_match_features then
             local f = match.pre_match_features
@@ -667,7 +597,6 @@ function bom_match.restore_fairness()
             match.pre_match_features = nil
         end
     end)
-    -- FIX: Restore G.MOD_SETTINGS cheat states that were disabled for MP fairness
     pcall(function()
         if G.MOD_SETTINGS and match.pre_match_mod_settings then
             local s = match.pre_match_mod_settings
@@ -683,8 +612,6 @@ function bom_match.restore_fairness()
 end
 
 function bom_match.apply_fairness()
-    -- FIX: Save G.MOD_SETTINGS cheat states before forcing off for MP fairness.
-    -- Restored in end_match so single-player cheat preferences survive the match.
     pcall(function()
         if G.MOD_SETTINGS then
             match.pre_match_mod_settings = {
@@ -696,8 +623,6 @@ function bom_match.apply_fairness()
             }
         end
     end)
-    -- FIX: Multiplayer fairness - force all mod-menu cheats off when a match binds to G.GAME.
-    -- (Values already saved to match.pre_match_mod_settings above)
     pcall(function()
         if G.MOD_SETTINGS then
             G.MOD_SETTINGS.pre_run.enabled = false
@@ -708,8 +633,6 @@ function bom_match.apply_fairness()
         end
         if remove_floating_mod_button then remove_floating_mod_button() end
     end)
-    -- FIX: Save pre-match feature states and disable those not allowed by host settings.
-    -- Restored in end_match so single-player settings survive the match.
     pcall(function()
         if G.SETTINGS and match.settings then
             match.pre_match_features = {
@@ -722,7 +645,6 @@ function bom_match.apply_fairness()
     end)
 end
 
--- Apply MP state to G.GAME after G:start_run() creates fresh game object
 function bom_match.apply_to_game()
     mp_log.info("BOM_MATCH", "apply_to_game")
     if not G or not G.GAME then
@@ -746,14 +668,12 @@ function bom_match.apply_to_game()
     G.GAME.mp_won_from_one_life = false
     G.GAME.mp_match_wins = G.GAME.mp_match_wins or 0
     G.GAME.mp_shop_tax = 0
-    G.GAME.mp_blind_loss_pending = false  -- FIX: Reset blind-loss flag on new match
+    G.GAME.mp_blind_loss_pending = false
     G.GAME.mp_pvp_results_seen = 0
 
-    -- FIX: Reset PvP loss pending state
     match.pvp_loss_pending = false
     match.pvp_pending_lives = nil
 
-    -- Build opponent panel
     G.GAME.mp_opponent_panel = {
         name = match.opp_name or "Opponent",
         title = "",
@@ -761,10 +681,10 @@ function bom_match.apply_to_game()
         lives = match.opp_lives or match.settings.starting_lives or 5,
         score = 0,
         score_text = "0",
-        hands_left = 0,  -- FIX: Initialize so HUD ref_table works from the start
+        hands_left = 0,
         status = "active",
         blind_finished = false,
-        location = (match.opp_location and bom_match.format_location(match.opp_location)) or "...",  -- FEATURE: Session 56 — enemy location (updated live by set_location events)
+        location = (match.opp_location and bom_match.format_location(match.opp_location)) or "...",
     }
     pcall(function()
         if match.opp_profile then
@@ -774,13 +694,6 @@ function bom_match.apply_to_game()
         end
     end)
 
-    -- FIX: Exclude bl_mp_nemesis from random boss pool.
-    -- get_new_boss() iterates G.P_BLINDS and adds bosses to eligible_bosses as `true`.
-    -- If bl_mp_nemesis is not in G.GAME.bosses_used, the count-replacement loop skips it,
-    -- leaving eligible_bosses["bl_mp_nemesis"] = true (boolean). Later code then does
-    -- `true <= min_use` → crash: "attempt to compare number with boolean" (common_events.lua:2684).
-    -- Adding to banned_keys prevents get_new_boss() from selecting it.
-    -- Adding to bosses_used with count 0 is a belt-and-suspenders safeguard.
     pcall(function()
         G.GAME.banned_keys = G.GAME.banned_keys or {}
         G.GAME.banned_keys["bl_mp_nemesis"] = true
@@ -792,8 +705,6 @@ function bom_match.apply_to_game()
     mp_log.info("BOM_MATCH", "apply_to_game done: panel=%s", tostring(G.GAME.mp_opponent_panel.name))
 end
 
--- FEATURE: Apply gamemode + ruleset bans to the current game
--- Called after G:start_run() creates the fresh G.GAME object
 function bom_match.apply_bans()
     if not G or not G.GAME then return end
     G.GAME.banned_keys = G.GAME.banned_keys or {}
@@ -803,8 +714,6 @@ function bom_match.apply_bans()
     mp_log.info("BOM_MATCH", "apply_bans done")
 end
 
--- FEATURE: Return to lobby after match ends (preserves connection)
----@diagnostic disable-next-line: duplicate-set-field
 function bom_match.return_to_lobby()
     local room_code = match.room_code
     local is_host = match.is_host
@@ -822,8 +731,6 @@ function bom_match.return_to_lobby()
     mp_log.info("BOM_MATCH", "return_to_lobby: room=%s host=%s", tostring(room_code), tostring(is_host))
 end
 
--- FEATURE: Vote for rematch
----@diagnostic disable-next-line: duplicate-set-field
 function bom_match.vote_rematch()
     if match.rematch_voted then return end
     match.rematch_voted = true
@@ -835,24 +742,14 @@ function bom_match.vote_rematch()
     mp_log.info("BOM_MATCH", "voted for rematch")
 end
 
----@diagnostic disable-next-line: duplicate-set-field
 function bom_match.has_voted_rematch()
     return match.rematch_voted
 end
 
--- ============================================
--- BLIND ENTERED — Notify server, update local state
--- Called from state_events.lua when a new blind starts
--- ============================================
 
 function bom_match.on_blind_entered(ante, blind_type)
     if not bom_match.is_in_match() then return end
 
-    -- FIX de-sync Bug #3: if the phase is stuck in PVP_RESOLVE (missed a state update),
-    -- force-recover to PLAYING so the new blind's transitions work correctly.
-    -- FIX P2#17: emphasize this is a recovery hack — if it ever fires in production,
-    -- a pvp_resolved or match_state_update was lost. Log to disk so the symptom is
-    -- diagnosable instead of silently masked.
     if match.phase == bom_match.PHASE.PVP_RESOLVE then
         mp_log.warn("BOM_MATCH", "blind_entered while stuck in PVP_RESOLVE — force-recovering to PLAYING")
         pcall(function()
@@ -861,7 +758,7 @@ function bom_match.on_blind_entered(ante, blind_type)
                 .. " blind=" .. tostring(blind_type)
                 .. " — server pvp_resolved or state update was likely lost")
         end)
-        match.phase = bom_match.PHASE.PLAYING  -- bypass transition table for recovery
+        match.phase = bom_match.PHASE.PLAYING
         match.end_pvp = false
     end
 
@@ -883,7 +780,6 @@ function bom_match.on_blind_entered(ante, blind_type)
         bom_match.transition(bom_match.PHASE.PLAYING)
     end
 
-    -- Notify server of blind entry (server tracks authoritative PvP state)
     pcall(function()
         if bom_core and bom_core.send then
             bom_core.send({
@@ -894,7 +790,6 @@ function bom_match.on_blind_entered(ante, blind_type)
         end
     end)
 
-    -- Sync to G.GAME
     pcall(function()
         if G and G.GAME then
             G.GAME.mp_in_boss_blind = is_pvp
@@ -905,10 +800,6 @@ function bom_match.on_blind_entered(ante, blind_type)
     end)
 end
 
--- ============================================
--- BLIND DEFEATED — Submit score to server
--- Called from state_events.lua when player beats a blind
--- ============================================
 
 function bom_match.on_blind_defeated(score)
     if not bom_match.is_in_match() then return end
@@ -932,7 +823,6 @@ function bom_match.on_blind_defeated(score)
         bom_match.transition(bom_match.PHASE.PVP_RESOLVE)
     end
 
-    -- Submit score to server (server resolves PvP authoritatively)
     pcall(function()
         if bom_core and bom_core.send then
             bom_core.send({
@@ -945,24 +835,14 @@ function bom_match.on_blind_defeated(score)
         end
     end)
 
-    -- FIX: Bug 2 — Do NOT show "Waiting for opponent to finish..." here.
-    -- bom_pvp_hud.update_hand_played already shows "Waiting for opponent..." when hands run out.
-    -- This second call can fire AFTER on_pvp_resolved() already dismissed the overlay,
-    -- creating a stale popup that never gets removed.
-    -- if is_pvp then ... end
 end
 
--- ============================================
--- GAME OVER — Player failed a blind
--- Submit score 0 to server, then notify server of game over
--- ============================================
 
 function bom_match.on_game_over()
     if not bom_match.is_in_match() then return end
 
     mp_log.info("BOM_MATCH", "game_over: ante=%s blind=%s", tostring(match.current_ante), tostring(match.current_blind))
 
-    -- FEATURE: During PvP blinds, redirect to on_blind_defeated (lose a life, not the match)
     local is_pvp = bom_match.is_blind_pvp(match.current_ante, match.current_blind)
     if is_pvp then
         mp_log.info("BOM_MATCH", "game_over redirected to blind_defeated (PvP — life loss, not match loss)")
@@ -972,19 +852,12 @@ function bom_match.on_game_over()
         return
     end
 
-    -- FIX: Non-PvP blind loss — show LOSE A LIFE cashout window ($10 gift) instead of looping.
-    -- Previous approach only set blind.chips=-1 in update_new_round hook, which could fail
-    -- if to_big() errored, causing end_round → game_over → NEW_ROUND infinite loop.
-    -- Fix: set blind.chips=-1 HERE immediately so end_round never re-fires game_over.
-    -- Set mp_blind_loss_pending so bom_pvp_hud's add_round_eval_row hook shows LOSE A LIFE.
     bom_match.mark_round_lost()
     pcall(function()
         if G and G.GAME and G.GAME.blind then
             G.GAME.blind.chips = -1
         end
     end)
-    -- Notify server of life loss (server deducts life, sends updated lives)
-    -- FEATURE: Include score for Ascension tiebreaking
     pcall(function()
         if bom_core and bom_core.send and not match.match_over then
             local score = 0
@@ -1001,10 +874,6 @@ function bom_match.on_game_over()
             })
         end
     end)
-    -- Redirect to NEW_ROUND: update_new_round hook runs end_round success path
-    -- which properly draws cards, advances blind_state, then sets STATE = ROUND_EVAL.
-    -- The LOSE A LIFE button is created by the add_round_eval_row hook in bom_pvp_hud.
-    -- FIX: Queue state change via event manager instead of setting G.STATE directly mid-frame
     pcall(function()
         if G and G.STATES and G.E_MANAGER then
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
@@ -1014,23 +883,18 @@ l 2
                 func = function()
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 5
+l 4
                     return true
                 end,
             }))
         elseif G and G.STATES then
-            -- Fallback if event manager unavailable
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 446
+l 368
         end
     end)
 end
 
--- ============================================
--- SERVER STATE UPDATE — Authoritative state push from server
--- This is the primary state synchronization mechanism
--- ============================================
 
 function bom_match.on_server_state_update(data)
     if not data then return end
@@ -1039,7 +903,6 @@ function bom_match.on_server_state_update(data)
         tostring(data.phase), tostring(data.currentAnte), tostring(data.currentBlind),
         tostring(data.isPvpBlind), tostring(data.myLives), tostring(data.oppLives), tostring(data.event))
 
-    -- Store server-assigned player ID
     if data.playerId ~= nil then
         match.server_player_id = data.playerId
     end
@@ -1047,11 +910,7 @@ function bom_match.on_server_state_update(data)
         bom_match.set_final_state(data.finalAnte, data.suddenDeath)
     end
 
-    -- Update lives from server (authoritative)
     if data.myLives ~= nil then
-        -- FIX: Don't override local lives if a loss is pending (deferred to button click).
-        -- pvp_loss_pending = PvP nemesis loss waiting for button.
-        -- mp_blind_loss_pending = non-PvP blind loss waiting for "Lose a Life" button.
         local loss_pending = match.pvp_loss_pending
             or (G and G.GAME and G.GAME.mp_blind_loss_pending)
         if loss_pending and not match.pvp_loss_pending and data.myLives < (match.my_lives or 0) then
@@ -1063,7 +922,6 @@ function bom_match.on_server_state_update(data)
             pcall(function()
                 if G and G.GAME then G.GAME.mp_lives = data.myLives end
             end)
-            -- Animate life loss
             if data.myLives < old_lives then
                 pcall(function()
                     if bom_ui and bom_ui.animate_life_loss then
@@ -1085,7 +943,6 @@ function bom_match.on_server_state_update(data)
         end)
     end
 
-    -- Update opponent name
     if data.oppName and data.oppName ~= "" then
         match.opp_name = bom_match.resolve_name(data.oppName, false)
         pcall(function()
@@ -1095,7 +952,6 @@ function bom_match.on_server_state_update(data)
         end)
     end
 
-    -- Update opponent status
     if data.oppStatus then
         match.opp_status = data.oppStatus
         pcall(function()
@@ -1105,7 +961,6 @@ function bom_match.on_server_state_update(data)
         end)
     end
 
-    -- Track opponent blind finished state
     if data.oppBlindFinished ~= nil then
         match.opp_blind_finished = data.oppBlindFinished
         pcall(function()
@@ -1115,8 +970,6 @@ function bom_match.on_server_state_update(data)
         end)
     end
 
-    -- FIX P1#5: pick up own per-blind state and opponent score from server broadcast
-    -- so a reconnecting client can recover full state (these fields were previously omitted).
     if data.myBlindFinished ~= nil then
         match.pvp_submitted = match.pvp_submitted or (data.myBlindFinished == true)
     end
@@ -1132,29 +985,15 @@ function bom_match.on_server_state_update(data)
         end)
     end
 
-    -- Update PvP blind state from server
     if data.isPvpBlind ~= nil then
-        -- FIX: Do NOT set G.GAME.mp_in_boss_blind from server isPvpBlind.
-        -- The server broadcasts isPvpBlind=true when ANY player enters a PvP blind.
-        -- If Player A enters Boss (PvP) while Player B is at Small (non-PvP),
-        -- Player B's mp_in_boss_blind would wrongly become true, causing:
-        -- (1) game.lua evaluate_play forces "use all hands" PvP behavior on Small blind
-        -- (2) state_events.lua end_round suppresses game_over on Small blind
-        -- mp_in_boss_blind is set locally by:
-        --   - state_events.lua new_round: blhash == 'L' check
-        --   - bom_match.on_blind_entered: is_blind_pvp() check
-        -- Phase transition to PVP_BLIND is handled locally in update_draw_to_hand.
     end
 
-    -- Update phase from server
     if data.phase then
         if data.phase == "finished" and not match.match_over then
-            -- Server says match is over
             local result = "lose"
             if data.winner == match.server_player_id then result = "win" end
             bom_match.end_match(result, data.winReason or "server", { from_server = true })
         elseif data.phase == "playing" and match.phase == bom_match.PHASE.PVP_RESOLVE then
-            -- PvP resolved, back to playing
             bom_match.transition(bom_match.PHASE.PLAYING)
             match.pvp_submitted = false
             match.pvp_received = false
@@ -1169,9 +1008,6 @@ function bom_match.on_server_state_update(data)
     end
 end
 
--- ============================================
--- PVP RESOLVED — Server sends authoritative PvP result
--- ============================================
 
 function bom_match.on_pvp_resolved(data)
     if not data then return end
@@ -1179,7 +1015,6 @@ function bom_match.on_pvp_resolved(data)
     pcall(function() bom_pvp_hud._pvp_finished_token = nil end)
     pcall(function() bom_spectate.wait_over() end)
 
-    -- FEATURE: Dismiss PvP waiting overlay
     pcall(function()
         if bom_ui and bom_ui.hide_pvp_waiting then
             bom_ui.hide_pvp_waiting()
@@ -1196,16 +1031,9 @@ function bom_match.on_pvp_resolved(data)
     mp_log.info("BOM_MATCH", "pvp_resolved: result=%s me=%s opp=%s myLives=%s oppLives=%s",
         result, tostring(my_score), tostring(opp_score), tostring(data.myLives), tostring(data.oppLives))
 
-    -- Update lives from server (authoritative)
     if data.myLives ~= nil then
         local old_lives = match.my_lives
         if result == "lose" then
-            -- FIX: Defer life deduction to "Lose a Life" button click.
-            -- Server already deducted in resolvePvp — store the authoritative value
-            -- and apply it when the player clicks the button.
-            -- FIX P2#48: validate that data.myLives is a non-negative finite number.
-            -- A malformed payload (null/string/NaN) would otherwise propagate to
-            -- match.my_lives via the button handler and crash render.
             local new_lives = tonumber(data.myLives)
             local in_blind = false
             pcall(function()
@@ -1255,7 +1083,6 @@ function bom_match.on_pvp_resolved(data)
         if G and G.GAME then G.GAME.mp_pvp_results_seen = (G.GAME.mp_pvp_results_seen or 0) + 1 end
     end)
 
-    -- Track stats
     if result == "win" then
         match.pvp_wins = match.pvp_wins + 1
         local bonus = (bom_party and bom_party.active()) and 0 or bom_match.pvp_win_money()
@@ -1269,7 +1096,6 @@ function bom_match.on_pvp_resolved(data)
 
     pcall(function() if bom_party_run then bom_party_run.apply_rewards(data) end end)
 
-    -- Show PvP result banner
     pcall(function()
         if G.STAGE ~= G.STAGES.RUN then
             return
@@ -1282,34 +1108,18 @@ function bom_match.on_pvp_resolved(data)
         end
     end)
 
-    -- Winner picks sabotage (DISABLED — sabotage system removed for now)
-    -- if result == "win" then
-    --     pcall(function()
-    --         if bom_sabotage and bom_sabotage.show_pick_screen then
-    --             bom_sabotage.show_pick_screen()
-    --         end
-    --     end)
-    -- end
 
-    -- Reset PvP tracking
     match.pvp_submitted = false
     match.pvp_received = false
     match.opp_blind_finished = false
     match.my_score = 0
     match.opp_score = 0
 
-    -- FIX P3#33: removed early bom_match.transition(PHASE.PLAYING) here -- the
-    -- match-ended branch below already handles end_match, and the not-matchEnded
-    -- branch transitions to PLAYING. The duplicate call was a same-phase no-op.
 
-    -- FEATURE: Signal end_pvp for the state machine (Game:update_hand_played)
     match.end_pvp = true
 
     pcall(bom_match.release_unplayed_pvp_blind)
 
-    -- FIX: Bug 3 — Clear pvp_blind_choices so next ante's blind_select re-evaluates fresh
-    -- FIX: Also clear blind.pvp immediately — the Blind:set_blind hook for the NEXT blind
-    -- must not see stale pvp=true from this Nemesis blind.
     pcall(function()
         if G and G.GAME and G.GAME.round_resets then
             G.GAME.round_resets.pvp_blind_choices = nil
@@ -1319,7 +1129,6 @@ function bom_match.on_pvp_resolved(data)
         end
     end)
 
-    -- Check if match ended
     if data.matchEnded then
         local end_result = "lose"
         if data.winner == match.server_player_id then end_result = "win" end
@@ -1335,9 +1144,6 @@ function bom_match.on_pvp_resolved(data)
     end
 end
 
--- ============================================
--- OPPONENT BLIND FINISHED — Server notifies us opponent completed their blind
--- ============================================
 
 function bom_match.on_opponent_blind_finished(data)
     if not data then return end
@@ -1350,7 +1156,6 @@ function bom_match.on_opponent_blind_finished(data)
         match.opp_lives = data.lives
     end
 
-    -- Update opponent panel
     pcall(function()
         if G and G.GAME and G.GAME.mp_opponent_panel then
             G.GAME.mp_opponent_panel.blind_finished = true
@@ -1360,15 +1165,7 @@ function bom_match.on_opponent_blind_finished(data)
     end)
 end
 
--- ============================================
--- DEPRECATED LEGACY STUBS-- These functions existed for the old peer-to-peer server path.
--- Life/match-end management is now fully server-authoritative.
--- Kept as no-op stubs so bom_sync/bom_rewards/bom_events callers don't error.
--- ============================================
 
--- FIX P3#46: downgraded warn -> debug to reduce log spam from legacy callers
--- that haven't been removed yet (bom_sync.resolve_boss_blind, bom_events legacy paths).
--- These no-ops are safe; the warning was alarming readers without indicating a real bug.
 function bom_match.lose_life(reason)
     mp_log.debug("BOM_MATCH", "lose_life() deprecated no-op (server-authoritative). reason=%s", tostring(reason))
 end
@@ -1381,11 +1178,7 @@ function bom_match.on_opponent_eliminated(_data)
     mp_log.debug("BOM_MATCH", "on_opponent_eliminated() deprecated no-op (server-authoritative)")
 end
 
--- ============================================
--- STAGE 4: STATE RESYNC + DESYNC DETECTION
--- ============================================
 
--- Request authoritative state push from server (e.g. after reconnect or desync).
 function bom_match.request_state_sync()
     pcall(function()
         if bom_core and bom_core.send then
@@ -1395,9 +1188,6 @@ function bom_match.request_state_sync()
     end)
 end
 
--- Called when server sends a desync_check message.
--- Compares server-reported lives and ante against local state;
--- requests an authoritative resync if any value is discrepant.
 function bom_match.check_desync(data)
     if not data then return end
     if not bom_match.is_in_match() then return end
@@ -1470,7 +1260,7 @@ function bom_match.apply_sudden_death_label()
         local loc = G and G.localization and G.localization.descriptions and G.localization.descriptions.Blind
         local e = loc and loc["bl_mp_nemesis"]
 r 4 1300 %20%20%20%20%20%20%20%20 -
-l 118
+l 108
         if (match.sudden_death or 0) > 0 then
             e.name = mod_loc("Sudden Death")
             e.text = { mod_loc("Sudden death: score more"), mod_loc("or lose a life") }
@@ -1498,9 +1288,6 @@ function bom_match.apply_sudden_death_blinds()
     end)
 end
 
--- ============================================
--- MATCH END
--- ============================================
 
 function bom_match.end_match(result, reason, opts)
     if match.match_over then return end
@@ -1539,7 +1326,6 @@ function bom_match.end_match(result, reason, opts)
 
     bom_match.restore_fairness()
 
-    -- Notify server
     pcall(function()
         if bom_core and bom_core.send and not (opts and opts.from_server) and not (bom_party and bom_party.active()) then
             bom_core.send({
@@ -1560,7 +1346,6 @@ function bom_match.end_match(result, reason, opts)
         end
     end)
 
-    -- FIX: Award rewards BEFORE disconnect early-return so all paths get them
     pcall(function()
         if bom_rewards and bom_rewards.on_match_end then
             bom_rewards.on_match_end({
@@ -1572,7 +1357,6 @@ function bom_match.end_match(result, reason, opts)
         end
     end)
 
-    -- REMOVED: store_match_debrief and record_game_history (MATCH RESULTS feature gutted)
 
     if bom_rejoin and bom_rejoin.on_match_end_local and bom_rejoin.on_match_end_local(result, reason) then
         return
@@ -1582,12 +1366,8 @@ function bom_match.end_match(result, reason, opts)
         return
     end
 
-    -- Mark that we can rematch (reset vote state)
     match.rematch_voted = false
 
-    -- If we WON (opponent eliminated/quit), force the win screen overlay
-    -- The loser's game already naturally enters GAME_OVER state, but a winner
-    -- in the middle of their run never gets a screen without this.
     if result == "win" and G and G.GAME and G.GAME.multiplayer then
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
@@ -1598,17 +1378,14 @@ l 5
                 local ok, err = pcall(function()
                     if bom_ui and bom_ui.register_funcs then bom_ui.register_funcs() end
 r 4 1381 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 2
+l 1
 
-                    -- Safely remove existing overlay
 r 23 214 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 13
-                        ---@diagnostic disable-next-line: undefined-field
+l 11
                         pcall(function() G.OVERLAY_MENU:remove() end)
                         G.OVERLAY_MENU = nil
                     end
 
-                    -- Show MP win screen (robust, pcall-wrapped internally)
                     local win_def = nil
                     local def_ok, def_err = pcall(function()
                         win_def = bom_ui.create_mp_win()
@@ -1617,11 +1394,10 @@ l 13
                         bom_ui.overlay{
                             definition = win_def,
 r 4 1687 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 7
+l 6
                         }
                     else
                         mp_log.error("BOM_MATCH", "MP win screen failed: %s", tostring(def_err))
-                        -- Fallback: go to menu with debrief
                         G:delete_run()
                         G:main_menu()
                         if bom_match and bom_match.reset then bom_match.reset() end
@@ -1629,7 +1405,7 @@ r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20
 l 1
                             trigger = 'after', delay = 0.6,
 r 13 2241 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 24
+l 20
                             func = function()
                                 pcall(function() bom_ui.show_debrief_popup() end)
                                 return true
@@ -1639,7 +1415,6 @@ l 24
                 end)
                 if not ok then
                     mp_log.error("BOM_MATCH", "ERROR showing win screen: %s", tostring(err))
-                    -- Emergency fallback
                     pcall(function()
                         G:delete_run()
                         G:main_menu()
@@ -1650,9 +1425,6 @@ l 24
         }))
     end
 
-    -- FIX: If we LOST (0 lives), force the lose screen overlay
-    -- The loser's game may not naturally trigger GAME_OVER in all PvP paths,
-    -- so we show an explicit lose screen (mirrors the win screen flow).
     if result == "lose" and G and G.GAME and G.GAME.multiplayer then
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
@@ -1663,16 +1435,14 @@ l 5
                 local ok, err = pcall(function()
                     if bom_ui and bom_ui.register_funcs then bom_ui.register_funcs() end
 r 4 1381 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 2
+l 1
 
-                    -- Safely remove existing overlay
 r 23 214 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 12
+l 11
                         pcall(function() G.OVERLAY_MENU:remove() end)
                         G.OVERLAY_MENU = nil
                     end
 
-                    -- Show MP lose screen
                     local lose_def = nil
                     local def_ok, def_err = pcall(function()
                         lose_def = bom_ui.create_mp_lose()
@@ -1681,11 +1451,10 @@ l 12
                         bom_ui.overlay{
                             definition = lose_def,
 r 4 1687 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 7
+l 6
                         }
                     else
                         mp_log.error("BOM_MATCH", "MP lose screen failed: %s", tostring(def_err))
-                        -- Fallback: go to menu with debrief
                         G:delete_run()
                         G:main_menu()
                         if bom_match and bom_match.reset then bom_match.reset() end
@@ -1693,7 +1462,7 @@ r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20
 l 1
                             trigger = 'after', delay = 0.6,
 r 13 2241 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 265
+l 242
                             func = function()
                                 pcall(function() bom_ui.show_debrief_popup() end)
                                 return true
@@ -1714,9 +1483,6 @@ l 265
     end
 end
 
--- ============================================
--- DISCONNECT
--- ============================================
 
 function bom_match.on_opponent_disconnected()
     if match.disconnect_handled then return end
@@ -1734,13 +1500,8 @@ function bom_match.on_opponent_disconnected()
     end
 end
 
--- ============================================
--- RETURN TO LOBBY — Reset match state but preserve lobby data
--- ============================================
 
----@diagnostic disable-next-line: duplicate-set-field
 function bom_match.return_to_lobby()
-    -- Save lobby data before reset
     local room_code = match.room_code
     local is_host = match.is_host
     local my_name = match.my_name
@@ -1752,10 +1513,8 @@ function bom_match.return_to_lobby()
         was_quick_match = G and G.GAME and G.GAME.bom_quick_match or false
     end)
 
-    -- Full reset
     bom_match.reset()
 
-    -- Restore lobby data
     bom_match.transition(bom_match.PHASE.LOBBY)
     match.room_code = room_code
     match.is_host = is_host
@@ -1767,11 +1526,7 @@ function bom_match.return_to_lobby()
     mp_log.info("BOM_MATCH", "return_to_lobby: room=%s host=%s quickmatch=%s", tostring(room_code), tostring(is_host), tostring(was_quick_match))
 end
 
--- ============================================
--- REMATCH
--- ============================================
 
----@diagnostic disable-next-line: duplicate-set-field
 function bom_match.vote_rematch()
     match.rematch_voted = true
     pcall(function()
@@ -1782,14 +1537,10 @@ function bom_match.vote_rematch()
     mp_log.info("BOM_MATCH", "vote_rematch: sent rematch_vote to server")
 end
 
----@diagnostic disable-next-line: duplicate-set-field
 function bom_match.has_voted_rematch()
     return match.rematch_voted == true
 end
 
--- ============================================
--- BALANCE LIST
--- ============================================
 
 bom_match.BANNED_JOKERS = {
     "j_blueprint", "j_brainstorm", "j_mr_bones", "j_luchador", "j_chicot",
@@ -1808,11 +1559,6 @@ function bom_match.is_card_banned(key)
     return false
 end
 
--- ============================================
--- FEATURE: Session 56 — ENEMY LOCATION TRACKING (ported from BalatroMultiplayer-0.3.3)
--- Sends our current game state to the opponent so they can display it.
--- The server relays set_location unchanged.
--- ============================================
 
 local function blind_name_of(key)
     if type(key) ~= "string" or key == "" then return nil end

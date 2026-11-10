@@ -30,11 +30,9 @@ c 3
 l 1
     if not self.SETTINGS.profile then self.SETTINGS.profile = 1 end
 c 1
-l 7
+l 5
     self.SETTINGS.GAMESPEED = tonumber(self.SETTINGS.GAMESPEED) or 1
 
-    -- Force rumble on for Android/iOS — the old Vibration toggle was removed,
-    -- but saved settings.jkr may still contain rumble=false which blocks haptics
     if (love.system.getOS() == 'Android' or love.system.getOS() == 'iOS') and self.F_RUMBLE then
         self.SETTINGS.rumble = self.F_RUMBLE
     end
@@ -659,8 +657,7 @@ s 1
 r 10 755 %20%20%20%20%20%20%20%20%20%20%20%20 -
 c 7
 s 1
-l 6
-    -- FIX: Sort comparator must satisfy strict weak ordering to avoid infinite loop in table.sort
+l 5
     table.sort(self.P_LOCKED, function (a, b)
         if not a.order then return false end
         if not b.order then return true end
@@ -705,14 +702,11 @@ c 8
 l 1
         reset_start_flags(v)
 c 1
-l 1
-        -- Apply meta.jkr unlock/discover states
 r 10 746 %20%20%20%20%20%20%20%20 -
-l 5
+l 4
             if meta.unlocked[k] ~= nil then v.unlocked = meta.unlocked[k] end
             if not v.discovered and meta.discovered[k] then v.discovered = true end
         end
-        -- Auto-discover any stake that is unlocked
         if v.unlocked then v.discovered = true end
 c 7
 s 1
@@ -788,12 +782,11 @@ l 1
 c 7
 s 1
 e 10 924 %20%20%20%20 - =40,-11,+%5F,=9
-l 8
+l 7
 
     local counted = G.SETTINGS.profile_counters[_profile] or 0
     G.PROFILES[_profile].ver = math.max(G.PROFILES[_profile].ver or 0, counted)
 
-    -- Initialize progression data for this profile
     if _profile == G.SETTINGS.profile and progression_init then
         progression_init()
     end
@@ -970,15 +963,13 @@ l 1
     G.PROGRESS = nil
 e 10 156 %20%20%20%20 - +%47%2E%66%6F%63%75,=2,-6,=9,-1,+%20%3D%20,=23,-1
 r 4 242 %20%20%20%20 -
-l 2
-    -- Force prototype re-creation so previous profile's unlock state doesn't carry over
+l 1
     self.RESET_PROTOTYPES = true
 r 4 244 %20%20%20%20 -
 r 15 2594 %20%20%20%20 -
 r 15 2593 %20%20%20%20 -
-l 7
+l 6
 
-    -- Auto-apply saved custom colors on load
     pcall(function()
         if G.FUNCS and G.FUNCS.apply_custom_colors then
             G.FUNCS.apply_custom_colors()
@@ -1062,15 +1053,12 @@ l 2
         }}})
 
 r 1 112 %20%20%20%20 -
-l 15
+l 12
         no_delete = true,
         blockable = false,
         blocking = false,
         func = (function()
         if G.LOAD_HANDLER.loading then return end
-        -- FIX: Don't reset to main menu if a run is already active.
-        -- This watcher is for startup cloud-load; if G.STAGE==RUN, loading finished
-        -- during an active run (e.g. mid-match) — do NOT interrupt it.
         if G.STAGE == G.STAGES.RUN then return true end
         G:delete_run()
         G:main_menu()
@@ -1101,9 +1089,8 @@ e 10 29 %20%20%20%20%20%20%20%20 - -4,+%47,=27,+%2E%66%6F%72%63%65%64%5F%73%68%6
 l 1
     end
 c 2
-l 5
+l 4
 
-    -- Auto-apply equipped color set on menu load
     pcall(function()
       if auto_apply_color_set then auto_apply_color_set() end
     end)
@@ -1217,10 +1204,9 @@ s 1
 l 1
             hands = 1,
 c 53
-l 22
+l 21
     print("\n=== GAME:START_RUN BEGIN ===")
 
-    -- ULTRA SAFE: Initialize Quest system at run start
     local quest_ok = pcall(function()
         if QuestManager and type(QuestManager) == "table" then
             if QuestManager.init and type(QuestManager.init) == "function" then
@@ -1260,10 +1246,7 @@ l 1
     if saveTable then
 c 9
 s 1
-l 4
-    -- FIX: args.back was passed (e.g. by daily_start_challenge) but never read, so the
-    -- deck from the current Continue run bled in via self.GAME.viewed_back.
-    -- Explicitly honour args.back before falling back to viewed_back.
+l 1
     local selected_back = saveTable and saveTable.BACK.name or (args.challenge and args.challenge.deck and args.challenge.deck.type) or (args.back and args.back.name) or (self.GAME.viewed_back and self.GAME.viewed_back.name) or self.GAME.selected_back and self.GAME.selected_back.name or 'Red Deck'
 c 3
 l 1
@@ -1280,11 +1263,8 @@ s 1
 l 1
         if self.GAME.stake >= 5 then self.GAME.modifiers.ante_shop_tax = true; self.GAME.modifiers.reroll_step = 2 end
 c 3
-l 8
+l 5
 
-        -- Creative Stakes (9-12) modifiers
-        -- FIX: Creative stakes inherit Gold Stake's scaling (3 from stake 6+).
-        -- They do NOT change blind chip requirements — only add unique effects.
         if self.GAME.stake >= 9 then self.GAME.modifiers.booster_minus_choice = true end
         if self.GAME.stake >= 10 then self.GAME.modifiers.boss_additional_effect = true end
         if self.GAME.stake >= 11 then self.GAME.modifiers.random_joker_disable = true end
@@ -1388,15 +1368,13 @@ l 1
 
 c 2
 s 8
-l 13
+l 11
     if not saveTable and cheats_new_run then cheats_new_run() end
 
-    -- Create floating mod menu button (respect disable setting)
     if G.MOD_SETTINGS and G.MOD_SETTINGS.menu and G.MOD_SETTINGS.menu.floating_button and not G.SETTINGS.mod_menu_disabled then
         create_floating_mod_button()
     end
 
-    -- Apply mod menu settings for new runs only (skip for multiplayer — anti-cheat handled by mod_menu_update)
     if not saveTable and G.MOD_SETTINGS and apply_mod_settings_to_run and not (args and args.mp_start) then
         apply_mod_settings_to_run()
     end
@@ -1414,9 +1392,8 @@ l 6
 c 3
 s 2
 c 20
-l 4
+l 3
 
-    -- MOD MENU: Update cheats every frame
     if mod_menu_update then mod_menu_update() end
 
 c 13
@@ -1641,9 +1618,8 @@ r 10 2838 %20%20%20%20%20%20%20%20 -
 l 1
     end
 c 8
-l 10
+l 9
 
-    -- Canvas caching: skip full redraw on alternate frames (reuse previous canvas)
     local _scene_is_stable = not G.OVERLAY_MENU
         and not self.OVERLAY_TUTORIAL
         and not self.screenwipe
@@ -1710,8 +1686,7 @@ s 1
 l 1
             if not v.parent then
 c 7
-l 10
-        -- Off-screen culling: precompute frustum bounds
+l 9
         local _do_cull = G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.perf_offscreen_culling
         local _cull_x_min, _cull_x_max, _cull_y_min, _cull_y_max
         if _do_cull and G.ROOM then
@@ -1722,8 +1697,7 @@ l 10
         end
 
 c 2
-l 9
-                -- Off-screen culling: skip draw for off-screen cards
+l 8
                 local _skip_draw = false
                 if _do_cull and v.VT then
                     local _vx, _vy = v.VT.x, v.VT.y
@@ -1741,9 +1715,7 @@ l 1
             if v.attention_text and not (v.over_overlay and self.OVERLAY_MENU) and v ~= self.debug_tools and v ~= self.online_leaderboard and v ~= self.achievement_notification  then
 c 15
 s 20
-l 4
-        -- FIX: Draw OVERLAY_MENU first, then OVERLAY_TUTORIAL on top.
-        -- Sub-showcases use OVERLAY_TUTORIAL and must appear above menus.
+l 2
     local tut_under = self.OVERLAY_TUTORIAL and self.OVERLAY_MENU and not self.OVERLAY_TUTORIAL.overhaul
     if tut_under then draw_tutorial_overlay(self.OVERLAY_TUTORIAL) end
 c 1
@@ -1789,7 +1761,7 @@ r 10 2908 %20%20%20%20 -
 c 23
 s 1
 l 2
-    end -- end canvas caching block
+    end
 
 c 2
 r 12 115 %20%20%20%20 -
@@ -1815,10 +1787,9 @@ l 3
         G.SHADERS['CRT']:send('glitch_intensity', 0)
 c 3
 s 1
-l 10
+l 9
         G.SHADERS['CRT']:send('hovering', (G.F_MOBILE or love.system.getOS() == 'Android' or love.system.getOS() == 'iOS' or not _G._IS_DESKTOP) and 0 or 1)
 
-        -- Send custom filter parameters to shader
         local filter_type = G.SETTINGS.GRAPHICS.filter_type or 1
         local filter_intensity = (G.SETTINGS.GRAPHICS.filter_intensity or 50) / 100
         local rainbow_speed = (G.SETTINGS.GRAPHICS.rainbow_speed or 50) / 50
@@ -1930,11 +1901,9 @@ l 1
 r 10 1148 %20%20%20%20 -
 c 15
 s 2
-l 5
-        -- FEATURE: PvP blinds — no required score, players must use ALL hands
+l 3
         local is_pvp = G.GAME.multiplayer and G.GAME.mp_in_boss_blind
         if is_pvp then
-            -- PvP: only end when all hands exhausted (score comparison handled by server)
             if G.GAME.current_round.hands_left < 1 then
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
@@ -1944,8 +1913,6 @@ l 1
             end
 c 1
 s 1
-l 1
-            -- Normal: end when score met or hands exhausted
 r 10 3196 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 401 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
@@ -2006,11 +1973,7 @@ c 7
 s 1
 l 1
         }))
-c 12
-l 2
-                -- on_run_lost() is called by the game_over hook (achievements_hooks.lua)
-                -- which wraps create_UIBox_game_over as a backup.
-c 12
+c 24
 s 1
 l 1
 

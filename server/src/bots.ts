@@ -152,7 +152,7 @@ class Worker {
   }
 
   stop(): void {
-    try { this.proc?.kill(); } catch { /* gone */ }
+    try { this.proc?.kill(); } catch {  }
     this.proc = null;
     this.flush();
     this.freeAt = 0;

@@ -25,7 +25,6 @@ for f in "${skip[@]}"; do rm -f "$dest/$f"; done
 mkdir -p "$dest/game"
 cp -r "$patchset/." "$dest/game/"
 cat > "$dest/game/README.md" <<'DOC'
-# The game part of the Overhaul
 
 This folder is the Overhaul's patch set, the same one the launcher applies to your own copy of Balatro.
 

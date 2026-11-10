@@ -1,7 +1,3 @@
--- ============================================
--- BOM_INSANE_INT — Lightweight huge-number display helper for PvP HUD
--- FEATURE: Phase 3 port — formats large scores safely without bigint math
--- ============================================
 
 local bom_insane_int = {}
 

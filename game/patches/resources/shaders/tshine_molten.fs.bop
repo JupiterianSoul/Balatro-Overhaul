@@ -27,11 +27,10 @@ l 1
 {
 r 59 18 %20%20%20%20 -
 r 59 19 %20%20%20%20%20%20%20%20 -
-l 2
+l 4
     }
 
-r 59 22 %20%20%20%20 -
-l 1
+    MY_HIGHP_OR_MEDIUMP float adjusted_dissolve = (dissolve*dissolve*(3.-2.*dissolve))*1.02 - 0.01;
 
 r 59 24 %09 -
 r 59 25 %09 -

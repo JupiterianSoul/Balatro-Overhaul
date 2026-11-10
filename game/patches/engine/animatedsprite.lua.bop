@@ -8,8 +8,7 @@ l 2
     local anim_fps = G.ANIMATION_FPS
     local new_frame = math.floor(anim_fps*(G.TIMERS.REAL - self.offset_seconds))%self.current_animation.frames
 c 10
-l 4
-        -- Background animations off: skip float sinusoidal animation
+l 3
         local _bg = G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.perf_bg_anims
         if _bg == nil then _bg = true end
         if _bg then

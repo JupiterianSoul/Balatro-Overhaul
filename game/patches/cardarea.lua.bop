@@ -18,9 +18,8 @@ l 1
 c 10
 s 1
 r 3 358 %20%20%20%20%20%20%20%20 -
-l 7
+l 6
 
-        -- Quest hook: track joker count for quests
         if QuestManager and QuestManager.on_joker_count_changed then
             pcall(function()
                 QuestManager.on_joker_count_changed(joker_tally)

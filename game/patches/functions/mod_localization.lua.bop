@@ -2,17 +2,10 @@ BOP 1
 eol lf
 final 1
 base 0
-l 6826
-﻿-- ============================================
--- MOD LOCALIZATION SYSTEM v1.0
--- Centralized translation for all mod UI strings
--- Supports: English (default), French, Spanish
--- ============================================
-
--- Translation tables: key = English text, value = translation
+l 6316
+﻿
 local MOD_TRANSLATIONS = {}
 
--- ===== ENGLISH (jd_* keys only — these use internal names, not English text) =====
 MOD_TRANSLATIONS["en-us"] = {
   ["mp_sd_top"] = "SUDDEN",
   ["mp_sd_bottom"] = "DEATH",
@@ -156,7 +149,6 @@ MOD_TRANSLATIONS["en-us"] = {
   ["jd_first_scored"]      = "1st card scored",
 }
 
--- ===== FRENCH =====
 MOD_TRANSLATIONS["fr"] = {
   ["Modded Game"] = "Jeu moddé",
   ["Mods & Workshop"] = "Mods & Atelier",
@@ -288,11 +280,7 @@ MOD_TRANSLATIONS["fr"] = {
   ["Ghost Deck"] = "Jeu fantôme",
   ["Plasma Deck"] = "Jeu plasmique",
 
-  -- ========================
-  -- mod_menu.lua
-  -- ========================
 
-  -- Title & Tabs
   ["MOD MENU v3.0"] = "MENU MOD v3.0",
   ["CHEATS"] = "TRICHES",
   ["JOKERS"] = "JOKERS",
@@ -302,7 +290,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["HANDS"] = "MAINS",
   ["OPTIONS"] = "OPTIONS",
 
-  -- Cheats tab
   ["GOD MODE"] = "MODE DIEU",
   ["ADD $"] = "AJOUTER $",
   ["+HAND"] = "+MAIN",
@@ -320,7 +307,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["-1 HAND"] = "-1 MAIN",
   ["-1 DISC"] = "-1 DÉF.",
 
-  -- Jokers tab
   ["Browse Jokers"] = "Parcourir Jokers",
   ["Edition"] = "Édition",
   ["Base"] = "Base",
@@ -331,7 +317,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["ADD SELECTED JOKERS"] = "AJOUTER JOKERS SÉLECTIONNÉS",
   ["Tap jokers to select/deselect"] = "Toucher pour sélectionner/désélectionner",
 
-  -- Consumables tab
   ["CONSUMABLES"] = "CONSOMMABLES",
   ["Tarot Cards"] = "Cartes Tarot",
   ["Planet Cards"] = "Cartes Planète",
@@ -340,7 +325,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["ADD SELECTED CONSUMABLES"] = "AJOUTER CONSOMMABLES SÉLECTIONNÉS",
   ["Tap cards to select/deselect"] = "Toucher les cartes pour sélectionner/désélectionner",
 
-  -- Cards tab
   ["Browse Cards"] = "Parcourir Cartes",
   ["Qty"] = "Qté",
   ["Enhancements"] = "Améliorations",
@@ -360,18 +344,15 @@ MOD_TRANSLATIONS["fr"] = {
   ["Tap a seal to select it"] = "Toucher un sceau pour le sélectionner",
   ["Tap cards to select, then remove"] = "Toucher les cartes, puis retirer",
 
-  -- Vouchers tab
   ["Browse Vouchers"] = "Parcourir Bons",
   ["ADD VOUCHERS TO RUN"] = "AJOUTER BONS À LA PARTIE",
   ["Tap vouchers to select/deselect"] = "Toucher les bons pour sélectionner/désélectionner",
 
-  -- Poker Hands tab
   ["LEVEL DOWN ALL POKER HANDS"] = "BAISSER TOUTES LES MAINS",
   ["-1 LVL"] = "-1 NIV",
   ["-10 LVL"] = "-10 NIV",
   ["-100 LVL"] = "-100 NIV",
 
-  -- Items tab
   ["ADD JOKERS"] = "AJOUTER JOKERS",
   ["RANDOM"] = "ALÉATOIRE",
   ["LEGEND"] = "LÉGEND.",
@@ -387,7 +368,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["+100 LVL"] = "+100 NIV",
   ["SLOT SLIDERS (amount to add)"] = "CURSEURS EMPLACEMENTS",
 
-  -- New Run tab
   ["ENABLE NEW RUN MODS"] = "ACTIVER MODS PARTIE",
   ["  (set before PLAY)"] = "  (avant de JOUER)",
   ["ACTIVE CHEATS (work immediately):"] = "TRICHES ACTIVES (effet immédiat) :",
@@ -395,7 +375,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Free Shop"] = "Boutique gratuite",
   ["Eternal Jokers"] = "Jokers éternels",
 
-  -- Help tab
   ["Full Guide: Settings -> Guide tab"] = "Guide : Paramètres -> Onglet Guide",
   ["CHEATS TAB:"] = "ONGLET TRICHES :",
   ["GOD MODE - Can't lose, auto-wins blinds"] = "MODE DIEU - Victoire auto pour les blindes",
@@ -416,7 +395,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["FLOATING BUTTON:"] = "BOUTON FLOTTANT :",
   ["Drag to move, tap to open menu"] = "Glisser pour déplacer, toucher pour ouvrir",
 
-  -- Settings tab
   ["MOD MENU OPTIONS"] = "OPTIONS MENU MOD",
   ["Show Float Button"] = "Bouton flottant",
   ["Opacity %"] = "Opacité %",
@@ -425,15 +403,10 @@ MOD_TRANSLATIONS["fr"] = {
   ["Click APPLY to see changes. Drag button to move!"] = "Cliquer APPLIQUER pour voir. Glisser pour déplacer !",
   ["Mod Menu v3.0"] = "Menu Mod v3.0",
 
-  -- Floating button & indicator
   ["MODS"] = "MODS",
   ["MOD USED - NO PROGRESS"] = "MOD UTILISÉ - PAS DE PROGRESSION",
 
-  -- ========================
-  -- mod_guide.lua
-  -- ========================
 
-  -- Tab labels (extracted from "X. Label")
   ["Overview"] = "Aperçu",
   ["Mod Menu"] = "Menu Mod",
   ["Custom Runs"] = "Parties perso",
@@ -449,7 +422,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Deck Creator"] = "Créateur de jeu",
   ["Comments"] = "Commentaires",
 
-  -- Stakes collection tab
   ["STAKES"] = "MISES",
   ["difficulty stakes"] = "mises de difficulté",
   ["Stake Level "] = "Niveau de mise ",
@@ -469,7 +441,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["1 random Joker slot disabled each round."] = "1 emplacement de joker aléatoire désactivé chaque manche.",
   ["Boss Blinds are always Finisher Blinds."] = "Les Blindes Boss sont toujours des Blindes finales.",
 
-  -- Guide page titles
   ["MODDED BALATRO - GUIDE"] = "BALATRO MODDÉ - GUIDE",
   ["MOD MENU"] = "MENU MOD",
   ["CUSTOM RUNS"] = "PARTIES PERSONNALISÉES",
@@ -481,7 +452,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["CREATIVE STAKES (9-12)"] = "MISES CRÉATIVES (9-12)",
   ["DEBUG MODE"] = "MODE DÉBOGAGE",
 
-  -- Guide: Overview
   ["Welcome to the complete mod guide!"] = "Bienvenue dans le guide complet du mod !",
   ["This mod adds progression, quests, cosmetics,"] = "Ce mod ajoute progression, quêtes, cosmétiques,",
   ["achievements, custom runs, and much more."] = "succès, parties perso. et bien plus.",
@@ -498,7 +468,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["* 5 Creative Stakes - Stake levels 9-13"] = "* Mises créatives - Niveaux 9-12",
   ["* Debug Tools - Developer access (PIN required)"] = "* Outils debug - Accès dev. (PIN requis)",
 
-  -- Guide: Mod Menu
   ["HOW TO ACCESS:"] = "COMMENT ACCÉDER :",
   ["- Floating MODS button during a run (top-right)"] = "- Bouton MODS flottant en partie (haut-droite)",
   ["- Or: Options > Mod Menu tab"] = "- Ou : Options > Onglet Menu Mod",
@@ -513,7 +482,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["WARNING: Using cheats marks the run as MODDED."] = "ATTENTION : Les triches marquent la partie MODDÉE.",
   ["Modded runs do NOT earn XP or quest progress!"] = "Les parties moddées ne rapportent PAS d'XP !",
 
-  -- Guide: Custom Runs
   ["- Play menu > 'Custom' tab"] = "- Menu Jouer > Onglet 'Perso.'",
   ["BASIC SETTINGS:"] = "RÉGLAGES DE BASE :",
   ["- Starting hands and discards"] = "- Mains et défausses de départ",
@@ -530,7 +498,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Press START CUSTOM RUN to begin!"] = "- Appuyer LANCER PARTIE PERSO. pour commencer !",
   ["Custom runs do NOT count for progression."] = "Les parties perso. ne comptent PAS pour la progression.",
 
-  -- Guide: Progression
   ["XP SOURCES:"] = "SOURCES D'XP :",
   ["- Win a run: 500-5000 XP (scales with stake)"] = "- Gagner : 500-5000 XP (selon la mise)",
   ["- Complete antes: 50-500 XP each"] = "- Finir des mises initiales : 50-500 XP chacune",
@@ -548,7 +515,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Modded and seeded runs earn ZERO XP!"] = "Les parties moddées/seeded rapportent ZÉRO XP !",
   ["Only clean, unseeded runs count."] = "Seules les parties propres comptent.",
 
-  -- Guide: Quests
   ["QUEST TYPES:"] = "TYPES DE QUÊTES :",
   ["- Daily: 40+ quests, reset every 24 hours"] = "- Quotidiennes : 40+, réinitialisées toutes les 24h",
   ["- Weekly: 30+ quests, reset every 7 days"] = "- Hebdomadaires : 30+, réinitialisées tous les 7 jours",
@@ -565,7 +531,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Claim rewards in the Quests menu!"] = "- Réclamez dans le menu Quêtes !",
   ["Seeded/modded runs don't count!"] = "Les parties seeded/moddées ne comptent pas !",
 
-  -- Guide: Profile
   ["COSMETIC TYPES:"] = "TYPES DE COSMÉTIQUES :",
   ["- Titles: 50+ display names (e.g. 'Legend')"] = "- Titres : 50+ noms (ex. 'Légende')",
   ["- Banners: 30+ profile backgrounds"] = "- Bannières : 30+ arrière-plans",
@@ -581,7 +546,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Change title, banner, badge, and border"] = "- Changer titre, bannière, badge et bordure",
   ["- Cosmetics are saved per profile"] = "- Les cosmétiques sont sauvegardés par profil",
 
-  -- Guide: Shop
   ["CURRENCY: BALACOIN"] = "MONNAIE : BALACOIN",
   ["- Earned from quests, milestones, and wins"] = "- Gagnée via quêtes, jalons et victoires",
   ["- Spent on cosmetic items in the shop"] = "- Dépensée en cosmétiques dans la boutique",
@@ -595,7 +559,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Browse tabs for each cosmetic type"] = "- Parcourir les onglets par type",
   ["- Your Balacoin balance is shown at top"] = "- Votre solde Balacoin est affiché en haut",
 
-  -- Guide: Filters
   ["SCREEN FILTERS:"] = "FILTRES D'ÉCRAN :",
   ["- None: Standard game colors"] = "- Aucun : Couleurs standard",
   ["- Sepia: Vintage brown-toned look"] = "- Sépia : Aspect brun vintage",
@@ -613,7 +576,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["ACCESS:"] = "ACCÈS :",
   ["- Options > Filters tab / Colors tab"] = "- Options > Onglet Filtres / Couleurs",
 
-  -- Guide: Stakes
   ["4 new difficulty tiers beyond Gold Stake!"] = "4 niveaux de difficulté au-delà de la Mise d'or !",
   ["STAKE 9 - CHAOS:"] = "MISE 9 - CHAOS :",
   ["- 2x blind multiplier, win ante 10"] = "- Blinde x2, victoire en mise initiale 10",
@@ -632,7 +594,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Boss Blinds are always Finisher Blinds"] = "- Les Blindes de Boss sont toujours finales",
   ["- Polychrome sticker"] = "- Autocollant Polychrome",
 
-  -- Guide: Debug
   ["WARNING:"] = "ATTENTION :",
   ["Debug mode is for developers only!"] = "Le mode débogage est réservé aux développeurs !",
   ["- Options > Debug tab"] = "- Options > Onglet Débogage",
@@ -649,15 +610,11 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Track in Options > Achievements tab"] = "- Suivre dans Options > Onglet Succès",
   ["- Earn XP and Balacoin for completing them"] = "- Gagnez XP et Balacoin en les complétant",
 
-  -- Guide: UI
   ["MOD GUIDE"] = "GUIDE DU MOD",
   ["Select a topic to learn more"] = "Sélectionnez un sujet pour en savoir plus",
   ["Page not found"] = "Page introuvable",
   ["BACK"] = "RETOUR",
 
-  -- ========================
-  -- quests_ui.lua
-  -- ========================
   ["QUESTS"] = "QUÊTES",
   ["Daily"] = "Quotidien",
   ["Weekly"] = "Hebdomadaire",
@@ -679,10 +636,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["[COMPLETED]"] = "[TERMINÉ]",
   ["[IN PROGRESS]"] = "[EN COURS]",
 
-  -- ========================
-  -- quests.lua — Quest names & descriptions
-  -- ========================
-  -- Daily Easy (new)
   ["Double Trouble"] = "Double Problème",
   ["Play 2 Two Pair hands"] = "Jouer 2 mains Deux Paires",
   ["Triple Threat"] = "Triple Menace",
@@ -691,21 +644,18 @@ MOD_TRANSLATIONS["fr"] = {
   ["Use 5 consumables"] = "Utiliser 5 consommables",
   ["Voucher Finder"] = "Trouveur de Bons",
   ["Use a Voucher"] = "Utiliser un Bon",
-  -- Daily Medium (new)
   ["Straight Flush!"] = "Quinte Flush !",
   ["Play a Straight Flush"] = "Jouer une Quinte Flush",
   ["Growing Savings"] = "Économies Croissantes",
   ["Earn $300 total"] = "Gagner 300$ au total",
   ["Merchant"] = "Marchand",
   ["Sell 8 cards"] = "Vendre 8 cartes",
-  -- Daily Hard (new)
   ["Purple Challenge"] = "Défi Violet",
   ["Win on Purple Stake+"] = "Gagner en Mise Violette+",
   ["Centurion"] = "Centurion",
   ["Play 100 hands"] = "Jouer 100 mains",
   ["Edition Specialist"] = "Spécialiste des Éditions",
   ["Get 3 Edition cards"] = "Obtenir 3 cartes Édition",
-  -- Weekly Medium (new)
   ["Enhancement Pro"] = "Pro de l'Amélioration",
   ["Enhance 15 cards"] = "Améliorer 15 cartes",
   ["Wealth Builder"] = "Bâtisseur de Fortune",
@@ -720,7 +670,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Play 500 hands"] = "Jouer 500 mains",
   ["Joker Maniac"] = "Maniaque des Jokers",
   ["Buy 30 Jokers"] = "Acheter 30 Jokers",
-  -- Weekly Hard (new)
   ["Purple Conqueror"] = "Conquérant Violet",
   ["Win on Purple Stake+"] = "Gagner en Mise Violette+",
   ["High Roller"] = "Flambeur",
@@ -729,7 +678,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Use 80 consumables"] = "Utiliser 80 consommables",
   ["Edition Enthusiast"] = "Passionné d'Éditions",
   ["Get 15 Edition cards"] = "Obtenir 15 cartes Édition",
-  -- Repeatable Low (new)
   ["Enhancer"] = "Améliorateur",
   ["Enhance a card"] = "Améliorer une carte",
   ["Skipper"] = "Passeur",
@@ -740,23 +688,18 @@ MOD_TRANSLATIONS["fr"] = {
   ["Earn $100"] = "Gagner 100$",
   ["Card Player"] = "Joueur de Cartes",
   ["Play 25 hands"] = "Jouer 25 mains",
-  -- Repeatable Medium (new)
   ["Edition Find"] = "Trouvaille Édition",
   ["Get an Edition card"] = "Obtenir une carte Édition",
   ["Voucher Duo"] = "Duo de Bons",
   ["Use 2 Vouchers"] = "Utiliser 2 Bons",
-  -- Weekly Hard (new cont.)
   ["Voucher Hoarder"] = "Accumulateur de coupons",
   ["Use 10 Vouchers"] = "Utiliser 10 Bons",
-  -- Repeatable Medium (new cont.)
   ["Heavy User"] = "Grand Consommateur",
   ["Use 10 consumables"] = "Utiliser 10 consommables",
 
-  -- Tavern hub
   ["TAVERN"] = "TAVERNE",
   ["PROFILE"] = "PROFIL",
   ["SHOP"] = "BOUTIQUE",
-  -- FEATURE: Seed Library
   ["SEED LIBRARY"] = "BIBLIOTHÈQUE DE SEEDS",
   ["Seed Library"] = "Bibliothèque de seeds",
   ["Save and manage your favorite seeds"] = "Gardez et gérez vos seeds préférées",
@@ -788,9 +731,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Customize your profile!"] = "Personnalisez votre profil !",
   ["Buy cosmetics with Balacoin!"] = "Achetez des cosmétiques avec Balacoin !",
 
-  -- ========================
-  -- achievements_ui.lua
-  -- ========================
   ["ACHIEVEMENTS"] = "SUCCÈS",
   ["All"] = "Tout",
   ["Scoring"] = "Score",
@@ -812,10 +752,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["This achievement is a secret..."] = "Ce succès est un secret...",
   ["Unknown achievement"] = "Succès inconnu",
 
-  -- ========================
-  -- progression.lua
-  -- ========================
-  -- Rank names
   ["Novice"] = "Novice",
   ["Apprentice"] = "Apprenti",
   ["Journeyman"] = "Compagnon",
@@ -824,7 +760,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Grandmaster"] = "Grand Maître",
   ["Legend"] = "Légende",
 
-  -- Milestone names
   ["First Victory"] = "Première Victoire",
   ["Seasoned Player"] = "Joueur expérimenté",
   ["Veteran"] = "Vétéran",
@@ -836,13 +771,9 @@ MOD_TRANSLATIONS["fr"] = {
   ["Gold Conqueror"] = "Conquérant de l'Or",
   ["Insanity Master"] = "Maître de la Folie",
 
-  -- Notifications
   ["LEVEL UP!"] = "NIVEAU SUPÉRIEUR !",
   ["MILESTONE: "] = "JALON : ",
 
-  -- ========================
-  -- shop.lua
-  -- ========================
   ["Titles"] = "Titres",
   ["Banners"] = "Bannières",
   ["Borders"] = "Bordures",
@@ -859,9 +790,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["[BUY]"] = "[ACHETER]",
   ["[INSUFFICIENT]"] = "[INSUFFISANT]",
 
-  -- ========================
-  -- custom_runs.lua
-  -- ========================
   ["Custom Run"] = "Partie personnalisée",
   ["Rules"] = "Règles",
   ["Deck"] = "Jeu",
@@ -915,16 +843,10 @@ MOD_TRANSLATIONS["fr"] = {
   ["Chaos: High resources, long game"] = "Chaos : Ressources élevées, partie longue",
   ["Speedrun: Quick win at Ante 4"] = "Speedrun : victoire rapide en mise initiale 4",
 
-  -- ========================
-  -- debug_mode.lua
-  -- ========================
   ["DEBUG"] = "DÉBOGAGE",
   ["Enter 6-digit PIN to unlock"] = "Entrer le PIN à 6 chiffres",
   ["(Hint: Check DEV_CHANGELOG.txt)"] = "(Indice : Voir DEV_CHANGELOG.txt)",
 
-  -- ========================
-  -- UI_definitions.lua (debug tools)
-  -- ========================
   ["While in collection, hover over a card"] = "Dans la collection, survolez une carte",
   ["and press the following keys:"] = "et appuyez sur ces touches :",
   ["[1] Unlock"] = "[1] Débloquer",
@@ -937,7 +859,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Press [8] to toggle cursor"] = "Appuyez sur [8] pour afficher ou masquer le curseur",
   ["Press [9] to toggle all tooltips"] = "Appuyez sur [9] pour afficher ou masquer les infobulles",
 
-  -- UI_definitions.lua (debug tool buttons)
   ["+1 Round"] = "+1 Manche",
   ["+1 Ante"] = "+1 mise initiale",
   ["+1 Hand"] = "+1 Main",
@@ -953,7 +874,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Reset"] = "Réinit.",
   ["Jimbo talk"] = "Jimbo parle",
 
-  -- UI_definitions.lua (settings tabs & options)
   ["Colors"] = "Couleurs",
   ["Jukebox"] = "Jukebox",
   ["Haptic Feedback"] = "Retour haptique",
@@ -1003,9 +923,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["+50000 XP"] = "+50000 XP",
   ["Lock Debug"] = "Verrouiller debug",
 
-  -- ========================
-  -- daily_challenge.lua (modifier names)
-  -- ========================
   ["High Roller"] = "Gros Joueur",
   ["Start with $20"] = "Commencer avec 20$",
   ["Poor Start"] = "Début Difficile",
@@ -1015,20 +932,14 @@ MOD_TRANSLATIONS["fr"] = {
   ["Collector"] = "Collectionneur",
   ["7 Joker slots"] = "7 emplacements Joker",
 
-  -- ========================
-  -- cosmetics.lua (names & descriptions)
-  -- ========================
 
-  -- Profile UI labels
   ["PROFILE CUSTOMIZATION"] = "PERSONNALISATION DU PROFIL",
 
-  -- Title names (milestone)
   ["Beginner"] = "Débutant",
   ["Celestial Being"] = "Être Céleste",
   ["Transcendent"] = "Transcendant",
   ["Immortal"] = "Immortel",
 
-  -- Title names (stake)
   ["Red Conqueror"] = "Conquérant rouge",
   ["Orange Conqueror"] = "Conquérant Orange",
   ["Green Victor"] = "Vainqueur vert",
@@ -1039,17 +950,14 @@ MOD_TRANSLATIONS["fr"] = {
   ["Insanity Victor"] = "Vainqueur de la Folie",
   ["Stakes Master"] = "Maître des mises",
 
-  -- Title names (quest)
   ["Quest Hunter"] = "Chasseur de quêtes",
   ["Daily Warrior"] = "Guerrier Quotidien",
   ["Weekly Champion"] = "Champion hebdomadaire",
   ["Quest Master"] = "Maître des Quêtes",
 
-  -- Title names (achievement)
   ["Achievement Hunter"] = "Chasseur de succès",
   ["Completionist"] = "Complétionniste",
 
-  -- Title names (shop)
   ["The Collector"] = "Le Collectionneur",
   ["The Legend"] = "La Légende",
   ["Card Shark"] = "Requin des Cartes",
@@ -1070,7 +978,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Cosmos"] = "Cosmos",
   ["Nebula"] = "Nébuleuse",
 
-  -- Banner names
   ["Bronze Frame"] = "Cadre Bronze",
   ["Silver Frame"] = "Cadre Argent",
   ["Gold Frame"] = "Cadre Or",
@@ -1093,7 +1000,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Mystic"] = "Mystique",
   ["Void"] = "Vide",
 
-  -- Badge names
   ["Bronze Badge"] = "Badge Bronze",
   ["Silver Badge"] = "Badge Argent",
   ["Gold Badge"] = "Badge Or",
@@ -1118,7 +1024,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Heart"] = "Cœur",
   ["Skull"] = "Crâne",
 
-  -- Border names
   ["Clean"] = "Épuré",
   ["Thick"] = "Épais",
   ["Double"] = "Double",
@@ -1131,7 +1036,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Diamond"] = "Diamant",
   ["Celestial"] = "Céleste",
 
-  -- Cosmetic descriptions
   ["Reach Level 5"] = "Atteindre le niveau 5",
   ["Reach Level 10"] = "Atteindre le niveau 10",
   ["Reach Level 25"] = "Atteindre le niveau 25",
@@ -1250,16 +1154,10 @@ MOD_TRANSLATIONS["fr"] = {
   ["Dark void"] = "Vide sombre",
   ["Star adorned"] = "Orné d'étoiles",
 
-  -- ========================
-  -- MISSING: achievements_ui.lua
-  -- ========================
   ["No achievements found"] = "Aucun succès trouvé",
   ["Unlocked: "] = "Débloqué : ",
   ["Reward: "] = "Récompense : ",
 
-  -- ========================
-  -- MISSING: progression.lua
-  -- ========================
   ["MODS USED - NO PROGRESS"] = "MODS UTILISÉS - PAS DE PROGRESSION",
   ["Lv."] = "Nv.",
   ["XP"] = "XP",
@@ -1281,9 +1179,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Modded and Seeded runs do not earn XP"] = "Les parties moddées/seeded ne rapportent pas d'XP",
   ["Unknown"] = "Inconnu",
 
-  -- ========================
-  -- MISSING: cosmetics.lua
-  -- ========================
   ["Unlocked"] = "Débloqués",
   ["Currently Equipped"] = "Actuellement équipé",
   ["[EQUIPPED]"] = "[ÉQUIPÉ]",
@@ -1300,9 +1195,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["defeats"] = "défaites",
   ["Defeat boss blinds to unlock their badge and title"] = "Vaincre les blindes de boss pour débloquer badge et titre",
 
-  -- ========================
-  -- MISSING: shop.lua
-  -- ========================
   ["Cosmetics not initialized"] = "Cosmétiques non initialisés",
   [" items"] = " objets",
   ["Not initialized"] = "Non initialisé",
@@ -1314,18 +1206,12 @@ MOD_TRANSLATIONS["fr"] = {
   ["START RUN"] = "LANCER LA PARTIE",
   ["SKIP"] = "PASSER",
 
-  -- ========================
-  -- MISSING: custom_runs.lua
-  -- ========================
   ["Common Jokers"] = "Jokers Communs",
   ["Uncommon Jokers"] = "Jokers peu communs",
   ["Rare Jokers"] = "Jokers Rares",
   ["Legendary Jokers"] = "Jokers Légendaires",
   ["Custom"] = "Perso.",
 
-  -- ========================
-  -- MISSING: debug_mode.lua
-  -- ========================
   ["Debug UI Error"] = "Erreur UI Debug",
   ["DEBUG TOOLS"] = "OUTILS DE DÉBOGAGE",
   ["UNLOCK EVERYTHING"] = "TOUT DÉBLOQUER",
@@ -1364,14 +1250,8 @@ MOD_TRANSLATIONS["fr"] = {
   ["ALL BADGES UNLOCKED!"] = "TOUS LES BADGES DÉBLOQUÉS !",
   ["ALL TITLES/BANNERS UNLOCKED!"] = "TOUS LES TITRES/BANNIÈRES DÉBLOQUÉS !",
 
-  -- ========================
-  -- MISSING: UI_definitions.lua
-  -- ========================
   ["Guide"] = "Guide",
 
-  -- ========================
-  -- MISSING: daily_challenge.lua
-  -- ========================
   ["Speed Run"] = "Course rapide",
   ["Only 3 hands per round"] = "Seulement 3 mains par manche",
   ["Many Hands"] = "Beaucoup de Mains",
@@ -1414,7 +1294,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Earn XP, Achievements & Quest progress!"] = "Gagnez de l'XP, des succès et progressez dans les quêtes !",
   ["Earns XP & Quests!"] = "Gagne de l'XP & Quêtes !",
   ["Same worldwide!"] = "Même défi mondial !",
-  -- New modifiers
   ["Generous"] = "Généreux",
   ["Start with $30"] = "Commencer avec 30$",
   ["In Debt"] = "Endetté",
@@ -1436,25 +1315,18 @@ MOD_TRANSLATIONS["fr"] = {
   ["Start at Ante 2"] = "Commencer à la mise initiale 2",
   ["Pricey Rerolls"] = "Relances chères",
   ["Rerolls cost $10"] = "Les relances coûtent 10$",
-  -- New deck names
   ["Zodiac Deck"] = "Jeu Zodiac",
   ["Painted Deck"] = "Jeu peint",
   ["Anaglyph Deck"] = "Jeu anaglyphe",
   ["Plasma Deck"] = "Jeu plasmique",
   ["Erratic Deck"] = "Jeu erratique",
-  -- Stake names
   ["White Stake"] = "Mise blanche",
   ["Red Stake"] = "Mise rouge",
   ["Green Stake"] = "Mise verte",
   ["Black Stake"] = "Mise noire",
-  -- Progression XP note
   ["Modded/Seeded runs don't earn XP (Daily does!)"] = "Les parties moddées ou avec seed ne rapportent pas d'XP (le Quotidien, si !)",
 
-  -- ============================================================
-  -- ACHIEVEMENT NAMES, DESCRIPTIONS, REWARDS & HINTS (103)
-  -- ============================================================
 
-  -- Achievement category names
   ["PROGRESSION"] = "PROGRESSION",
   ["SCORING"] = "SCORE",
   ["JOKER EXPERTISE"] = "EXPERTISE JOKER",
@@ -1466,9 +1338,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["PROFILE ICON COLLECTION ACHIEVEMENTS"] = "SUCCÈS COLLECTION D'ICÔNES",
   ["BOSS BADGE COLLECTION ACHIEVEMENTS"] = "SUCCÈS COLLECTION DE BADGES",
 
-  -- ========================
-  -- PROGRESSION (15)
-  -- ========================
   ["First Steps"] = "Premiers Pas",
   ["Complete Ante 1"] = "Compléter l'Ante 1",
   ["Beginner Badge"] = "Badge Débutant",
@@ -1484,9 +1353,7 @@ MOD_TRANSLATIONS["fr"] = {
   ["Ante Master"] = "Maître de l'Ante",
   ["Reach Ante 10"] = "Atteindre l'Ante 10",
   ["Golden Card Back"] = "Dos de Carte Doré",
-  -- "Legendary" already exists
   ["Complete Ante 12"] = "Compléter l'Ante 12",
-  -- "High Roller" already exists
   ["Ante Conqueror"] = "Conquérant de l'Ante",
   ["Reach Ante 15"] = "Atteindre l'Ante 15",
   ["Conqueror"] = "Conquérant",
@@ -1505,7 +1372,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Win 50 runs"] = "Gagner 50 parties",
   ["Expert"] = "Expert",
   ["Master of Balatro"] = "Maître de Balatro",
-  -- "Win 100 runs" already exists in cosmetics
   ["Master's Deck"] = "Deck du Maître",
   ["Persistent"] = "Persévérant",
   ["Start 100 runs"] = "Lancer 100 parties",
@@ -1514,9 +1380,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Beat 100 blinds"] = "Battre 100 blindes",
   ["Annihilator"] = "Annihilateur",
 
-  -- ========================
-  -- SCORING (16)
-  -- ========================
   ["Highscore 10K"] = "Record 10K",
   ["Score 10,000 chips in one hand"] = "Scorer 10 000 jetons en une main",
   ["10K Badge"] = "Badge 10K",
@@ -1525,7 +1388,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["100K Badge"] = "Badge 100K",
   ["Highscore 1M"] = "Record 1M",
   ["Score 1,000,000 chips in one hand"] = "Scorer 1 000 000 jetons en une main",
-  -- "Millionaire" already exists
   ["Highscore 10M"] = "Record 10M",
   ["Score 10,000,000 chips in one hand"] = "Scorer 10 000 000 jetons en une main",
   ["Ten Millionaire"] = "Multimillionnaire",
@@ -1549,7 +1411,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Straight Flush Badge"] = "Badge Quinte Flush",
   ["Royal Flush"] = "Quinte Flush Royale",
   ["Play a Royal Flush hand"] = "Jouer une main Quinte Flush Royale",
-  -- "Royal" already exists
   ["Full House"] = "Main pleine",
   ["Play a Full House hand"] = "Jouer une main Full",
   ["Full House Badge"] = "Badge Full",
@@ -1561,14 +1422,10 @@ MOD_TRANSLATIONS["fr"] = {
   ["Dealer Badge"] = "Badge Croupier",
   ["Hands Played 1K"] = "1K Mains Jouées",
   ["Play 1000 hands total"] = "Jouer 1000 mains au total",
-  -- "Card Shark" already exists
   ["Perfect Ante"] = "Ante Parfait",
   ["Complete an Ante using only 1 hand per blind"] = "Compléter un Ante avec 1 seule main par blinde",
   ["Perfect"] = "Parfait",
 
-  -- ========================
-  -- JOKER EXPERTISE (12)
-  -- ========================
   ["Jokers Obtained 50"] = "50 Jokers Obtenus",
   ["Obtain 50 Jokers total"] = "Obtenir 50 Jokers au total",
   ["Collector Badge"] = "Badge Collectionneur",
@@ -1577,7 +1434,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Hoarder Badge"] = "Badge Accumulateur",
   ["Joker Full House"] = "Full de Jokers",
   ["Have 5 Jokers at once"] = "Avoir 5 Jokers en même temps",
-  -- "Full House Badge" already defined above
   ["Joker Army"] = "Armée de Jokers",
   ["Have 10 Jokers at once"] = "Avoir 10 Jokers en même temps",
   ["Joker General"] = "Général des Jokers",
@@ -1587,7 +1443,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Legendary Find"] = "Trouvaille Légendaire",
   ["Obtain 5 Legendary Jokers"] = "Obtenir 5 Jokers Légendaires",
   ["Legend Hunter"] = "Chasseur de Légendes",
-  -- "Minimalist" already exists
   ["Win a run with only 1 Joker"] = "Gagner une partie avec 1 seul Joker",
   ["Joker Fan"] = "Fan de Jokers",
   ["Win with 5+ Jokers"] = "Gagner avec 5+ Jokers",
@@ -1604,9 +1459,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Sell 50 Jokers"] = "Vendre 50 Jokers",
   ["Trader Badge"] = "Badge Marchand",
 
-  -- ========================
-  -- DECK MASTERY (15)
-  -- ========================
   ["Red Deck Master"] = "Maître du Deck Rouge",
   ["Win with Red Deck"] = "Gagner avec le Deck Rouge",
   ["Red Deck Badge"] = "Badge Deck Rouge",
@@ -1653,9 +1505,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Win with Erratic Deck"] = "Gagner avec le Deck Erratique",
   ["Erratic Deck Badge"] = "Badge Deck Erratique",
 
-  -- ========================
-  -- CHALLENGE MASTER (12)
-  -- ========================
   ["White Stake Victory"] = "Victoire Mise Blanche",
   ["Win on White Stake"] = "Gagner en Mise Blanche",
   ["White Stake Badge"] = "Badge Mise Blanche",
@@ -1687,13 +1536,9 @@ MOD_TRANSLATIONS["fr"] = {
   ["Win a run in under 10 minutes"] = "Gagner une partie en moins de 10 minutes",
   ["Perfectionist"] = "Perfectionniste",
   ["Win without losing a single blind"] = "Gagner sans perdre une seule blinde",
-  -- "No Discards" already exists
   ["Win without discarding any cards"] = "Gagner sans défausser aucune carte",
   ["Efficient"] = "Efficace",
 
-  -- ========================
-  -- COLLECTION (8)
-  -- ========================
   ["Money $100"] = "Argent 100$",
   ["Have $100 at once"] = "Avoir 100$ en même temps",
   ["Rich Badge"] = "Badge Riche",
@@ -1719,9 +1564,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Use 100 consumables"] = "Utiliser 100 consommables",
   ["Consumer Badge"] = "Badge Consommateur",
 
-  -- ========================
-  -- DAILY CHAMPION (5)
-  -- ========================
   ["Daily Participant"] = "Participant Quotidien",
   ["Complete your first Daily Challenge"] = "Compléter votre premier Défi Quotidien",
   ["Daily Badge"] = "Badge Quotidien",
@@ -1737,9 +1579,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["30-day Daily Challenge streak"] = "Série de 30 jours de Défis Quotidiens",
   ["Daily Champion Back"] = "Dos Champion Quotidien",
 
-  -- ========================
-  -- SECRET (7)
-  -- ========================
   ["Modder"] = "Moddeur",
   ["You found the mod menu!"] = "Vous avez trouvé le menu mod !",
   ["Explore the options..."] = "Explorez les options...",
@@ -1766,9 +1605,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["7-7-7..."] = "7-7-7...",
   ["Lucky"] = "Chanceux",
 
-  -- ========================
-  -- PROFILE ICON COLLECTION (7)
-  -- ========================
   ["First Impression"] = "Première Impression",
   ["Unlock 1 Profile Icon"] = "Débloquer 1 Icône de Profil",
   ["Portrait Starter"] = "Portraitiste Débutant",
@@ -1790,9 +1626,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Unlock all 150 Profile Icons"] = "Débloquer les 150 Icônes de Profil",
   ["Grand Collector"] = "Grand Collectionneur",
 
-  -- ========================
-  -- BOSS BADGE COLLECTION (6)
-  -- ========================
   ["First Trophy"] = "Premier Trophée",
   ["Unlock 1 Boss Badge"] = "Débloquer 1 Badge de Boss",
   ["Trophy Hunter"] = "Chasseur de Trophées",
@@ -1811,9 +1644,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Blind Master"] = "Maître des Blindes",
   ["Unlock all 28 Boss Badges"] = "Débloquer les 28 Badges de Boss",
 
-  -- ============================================================
-  -- QUEST / STATS / SLIDER / JUKEBOX UI STRINGS
-  -- ============================================================
   ["QUEST COMPLETE!"] = "QUÊTE TERMINÉE !",
   ["Quest: "] = "Quête : ",
   [" XP"] = " XP",
@@ -1858,9 +1688,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["(Paused)"] = "(En pause)",
   ["Stopped"] = "Arrêté",
 
-  -- ========================
-  -- Shop & Profile Overhaul
-  -- ========================
   ["PROFILE"] = "PROFIL",
   ["Icon"] = "Icône",
   ["Icon Effect"] = "Effet d'icône",
@@ -1896,17 +1723,14 @@ MOD_TRANSLATIONS["fr"] = {
   ["Unlocked"] = "Débloqué",
   ["Tap to equip"] = "Touchez pour équiper",
   ["Work in Progress"] = "En cours de développement",
-  -- Shop tabs
   ["Icon Effects"] = "Effets d'icône",
   ["Balance"] = "Solde",
   ["BC"] = "BC",
-  -- Rarity names
   ["Common"] = "Commun",
   ["Uncommon"] = "Peu commun",
   ["Rare"] = "Rare",
   ["Epic"] = "Épique",
   ["Legendary"] = "Légendaire",
-  -- Color set names
   ["Ocean"] = "Océan",
   ["Forest"] = "Forêt",
   ["Sunset"] = "Coucher de soleil",
@@ -1950,7 +1774,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Requires all 40 color sets"] = "Nécessite les 40 jeux de couleurs",
   ["Custom RGB sliders"] = "Curseurs RGB personnalisés",
   ["OWNED"] = "POSSÉDÉ",
-  -- Icon effect names
   ["Foil"] = "Brillante",
   ["Holographic"] = "Holographique",
   ["Polychrome"] = "Polychrome",
@@ -1959,14 +1782,12 @@ MOD_TRANSLATIONS["fr"] = {
   ["Rainbow holographic shimmer"] = "Chatoiement holographique arc-en-ciel",
   ["Colorful prismatic effect"] = "Effet prismatique coloré",
   ["Inverted dark energy aura"] = "Aura d'énergie sombre inversée",
-  -- Shop Ash Card sub-tabs
   ["Jokers (must discover + win)"] = "Jokers (découvrir + gagner)",
   ["Enhancements"] = "Améliorations",
   ["Applied to deck cards only"] = "Appliqué aux cartes du jeu",
   ["Not discovered yet"] = "Pas encore découvert",
   ["Need a win with this joker"] = "Victoire requise avec ce joker",
   ["Eligible"] = "Éligible",
-  -- Enhancement names
   ["Bonus"] = "Bonus",
   ["Mult"] = "Multi",
   ["Wild"] = "Sauvage",
@@ -1983,7 +1804,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["No rank, +50 Chips"] = "Pas de rang, +50 Jetons",
   ["$3 on score"] = "3$ au score",
   ["1/5: +20 Mult or $20"] = "1 chance sur 5 : +20 Multi ou 20 $",
-  -- Suit/rank names for Ash Cards
   ["Spades"] = "Piques",
   ["Hearts"] = "Cœurs",
   ["Clubs"] = "Trèfles",
@@ -1991,7 +1811,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["SHOP"] = "BOUTIQUE",
   ["WIP"] = "EN COURS",
   ["Coming soon!"] = "Bientôt disponible !",
-  -- Shop purchase dialogs
   ["CONFIRM PURCHASE"] = "CONFIRMER L'ACHAT",
   ["Do you want to buy this item?"] = "Voulez-vous acheter cet objet ?",
   ["YES"] = "OUI",
@@ -2015,9 +1834,7 @@ MOD_TRANSLATIONS["fr"] = {
   ["Not owned"] = "Non possédé",
   ["FPS Opacity"] = "Opacité FPS",
   ["Reset FPS Position"] = "Réinit. position FPS",
-  -- Quest reroll
   ["Reroll Quests"] = "Relancer les quêtes",
-  -- Achievement names (new 97)
   ["Insanity Victory"] = "Victoire Folie",
   ["Chaos Victory"] = "Victoire Chaos",
   ["Oblivion Victory"] = "Victoire Oubli",
@@ -2113,7 +1930,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Student"] = "Étudiant",
   ["Big Hands"] = "Grandes mains",
   ["VIP"] = "VIP",
-  -- Achievement descriptions (new 97)
   ["Win on Insanity Stake"] = "Gagner en mise Folie",
   ["Win on Chaos Stake"] = "Gagner en mise Chaos",
   ["Win on Oblivion Stake"] = "Gagner en mise Oubli",
@@ -2210,7 +2026,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Open the Mod Guide"] = "Ouvrir le Guide du Mod",
   ["Have a hand size of 12 or more"] = "Avoir une taille de main de 12 ou plus",
   ["Have 10 vouchers redeemed in one run"] = "Utiliser 10 bons dans une partie",
-  -- Secret hints (new)
   ["Four of a kind, but better..."] = "Un carré, mais en mieux...",
   ["No room at the inn..."] = "Plus de place à l'auberge...",
   ["An unlucky number..."] = "Un nombre malchanceux...",
@@ -2227,9 +2042,6 @@ MOD_TRANSLATIONS["fr"] = {
 
   ["- 90 Achievements"] = "- 90 Succès",
 
-  -- ========================
-  -- Guide: Overview (cat 1)
-  -- ========================
   ["BALATRO OVERHAUL"] = "BALATRO OVERHAUL",
   ["Welcome to Balatro Overhaul!"] = "Bienvenue dans Balatro Overhaul !",
   ["FEATURES:"] = "FONCTIONNALITÉS :",
@@ -2246,9 +2058,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Jukebox (Music Select)"] = "- Jukebox (Sélection Musicale)",
   ["- Debug Tools (PIN)"] = "- Outils Debug (PIN)",
 
-  -- ========================
-  -- Guide: Mod Menu (cat 2)
-  -- ========================
   ["Floating MODS button"] = "Bouton MODS flottant",
   ["(top-right) during runs."] = "(haut-droite) pendant les parties.",
   ["Toggle in Game tab."] = "Activer dans l'onglet Jeu.",
@@ -2264,9 +2073,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["MODDED! No XP or"] = "MODDÉE ! Pas de XP ni",
   ["quest progress."] = "progression de quêtes.",
 
-  -- ========================
-  -- Guide: Custom Runs (cat 3)
-  -- ========================
   ["Play > Custom tab"] = "Jouer > Onglet Personnalisé",
   ["> Configure"] = "> Configurer",
   ["- Hands, Discards"] = "- Mains, Défausses",
@@ -2282,9 +2088,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Pick starting jokers"] = "- Choisir les jokers de départ",
   ["No progression!"] = "Pas de progression !",
 
-  -- ========================
-  -- Guide: Progression (cat 4)
-  -- ========================
   ["- Win runs (500-5000)"] = "- Gagner parties (500-5000)",
   ["- Complete antes (50-500)"] = "- Finir des mises initiales (50-500)",
   ["- Play hands (small)"] = "- Jouer mains (petit)",
@@ -2299,9 +2102,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Celestial (highest)"] = "Céleste (le plus haut)",
   ["Modded/seeded = no XP!"] = "Moddé/seeded = pas de XP !",
 
-  -- ========================
-  -- Guide: Quests (cat 5)
-  -- ========================
   ["TYPES:"] = "TYPES :",
   ["- Daily: 41 quests (24h)"] = "- Quotidien : 41 quêtes (24h)",
   ["- Weekly: 30 quests (7d)"] = "- Hebdo : 30 quêtes (7j)",
@@ -2316,9 +2116,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Balacoin: 50 to 500+"] = "- Balacoin : 50 à 500+",
   ["Seeded/modded = none!"] = "Seeded/moddé = rien !",
 
-  -- ========================
-  -- Guide: Profile & Cosmetics (cat 6)
-  -- ========================
   ["- 50+ Titles"] = "- 50+ Titres",
   ["- 30+ Banners"] = "- 30+ Bannières",
   ["- 30+ Badges"] = "- 30+ Badges",
@@ -2329,9 +2126,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Complete achievements"] = "- Compléter succès",
   ["Tavern > Profile tab"] = "Taverne > Onglet Profil",
 
-  -- ========================
-  -- Guide: Shop (cat 7)
-  -- ========================
   ["BALACOIN:"] = "BALACOIN :",
   ["Earned from quests & milestones."] = "Gagné via quêtes & étapes.",
   ["Spent on cosmetics."] = "Dépensé en cosmétiques.",
@@ -2343,9 +2137,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Tavern hub > Shop tab"] = "Taverne > Onglet Boutique",
   ["Balance shown at top."] = "Solde affiché en haut.",
 
-  -- ========================
-  -- Guide: Filters (cat 8)
-  -- ========================
   ["FILTERS:"] = "FILTRES :",
   ["- None: Standard colors"] = "- Aucun : Couleurs standard",
   ["- Sepia: Vintage look"] = "- Sépia : Look vintage",
@@ -2356,9 +2147,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["OPTIONS > Filters tab"] = "OPTIONS > Onglet Filtres",
   ["Options > Graphics for CRT"] = "Options > Graphiques pour CRT",
 
-  -- ========================
-  -- Guide: Creative Stakes (cat 9)
-  -- ========================
   ["5 new difficulty tiers!"] = "5 nouveaux paliers de difficulté !",
   ["9 - INSANITY:"] = "9 - FOLIE :",
   ["2x blind, ante 12, 7x XP"] = "Blinde x2, mise initiale 12, XP x7",
@@ -2376,9 +2164,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["5x blind, ante 16, 20x XP"] = "Blinde x5, mise initiale 16, XP x20",
   ["2-hand cap, debt penalty"] = "Limite 2 mains, pénalité dette",
 
-  -- ========================
-  -- Guide: Debug (cat 10)
-  -- ========================
   ["Developer tools only!"] = "Outils développeur uniquement !",
   ["OPTIONS > Debug tab"] = "OPTIONS > Onglet Debug",
   ["Enter 6-digit PIN via numpad."] = "Entrez le PIN à 6 chiffres.",
@@ -2387,15 +2172,10 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Add XP (+50,000)"] = "- Ajouter XP (+50 000)",
   ["- Lock Debug (re-lock)"] = "- Verrouiller Debug (re-verrouiller)",
 
-  -- ========================
-  -- Guide: New strings (v8.0)
-  -- ========================
 
-  -- Overview additions
   ["- Deck Creator"] = "- Créateur de jeu",
   ["- Jimbo Comments"] = "- Commentaires de Jimbo",
 
-  -- Mod Menu v3.0
   ["7 TABS:"] = "7 ONGLETS :",
   ["CHEATS: Cash, Hands, Discards"] = "TRICHES : Cash, Mains, Défausses",
   ["God Mode, Win Blind, Slots"] = "Mode Dieu, Gagner Blind, Emplacements",
@@ -2406,7 +2186,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["HANDS: Level up hand ranks"] = "MAINS : Améliorer les rangs de mains",
   ["OPTIONS: Settings & toggles"] = "OPTIONS : Réglages & interrupteurs",
 
-  -- Profile (actual tabs)
   ["PROFILE TABS:"] = "ONGLETS DU PROFIL :",
   ["- Colors: equip palettes"] = "- Couleurs : équiper palettes",
   ["- Icon: profile picture"] = "- Icône : photo de profil",
@@ -2416,7 +2195,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["- Jimbo Skin: equip Jimbo"] = "- Skin Jimbo : équiper Jimbo",
   ["EQUIP:"] = "ÉQUIPER :",
 
-  -- Shop (actual tabs)
   ["SHOP TABS:"] = "ONGLETS BOUTIQUE :",
   ["Jimbo Skins: Joker skins"] = "Skins Jimbo : Skins de Jokers",
   ["Common: 5 / Uncommon: 15 BC"] = "Commun : 5 / Peu commun : 15 BC",
@@ -2429,7 +2207,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Foil: 300 / Holo: 600 BC"] = "Brillant : 300 / Holo : 600 BC",
   ["Polychrome: 1200 / Neg: 2400 BC"] = "Polychrome : 1200 / Nég : 2400 BC",
 
-  -- Deck Creator
   ["DECK CREATOR"] = "CRÉATEUR DE JEU",
   ["Tavern > Deck Creator tab"] = "Taverne > Onglet Créateur de jeu",
   ["5 TABS:"] = "5 ONGLETS :",
@@ -2446,7 +2223,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Starting items always spawn."] = "Les objets de départ apparaissent toujours.",
   ["Custom decks saved in profile."] = "Jeux personnalisés sauvegardés dans le profil.",
 
-  -- Jimbo Comments
   ["JIMBO COMMENTS"] = "COMMENTAIRES DE JIMBO",
   ["Your in-run Jimbo quips!"] = "Répliques de Jimbo pendant les parties !",
   ["- Random comments during runs"] = "- Commentaires aléatoires en partie",
@@ -2457,9 +2233,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["NOT IN multiplayer quick match."] = "PAS EN match rapide multijoueur.",
   ["Settings > Jimbo Comments"] = "Paramètres > Commentaires de Jimbo",
 
-  -- ========================
-  -- Mod Menu strings
-  -- ========================
   ["MOD MENU v3.0"] = "MENU MOD v3.0",
   ["CHEATS"] = "TRICHES",
   ["JOKERS"] = "JOKERS",
@@ -2584,9 +2357,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["MODS"] = "MODS",
   ["MOD USED - NO PROGRESS"] = "MOD UTILISÉ - PAS DE PROGRESSION",
 
-  -- ========================
-  -- Quests UI strings
-  -- ========================
   ["Play a run to unlock quests!"] = "Jouez une partie pour débloquer les quêtes !",
   ["Daily"] = "Quotidien",
   ["Weekly"] = "Hebdo",
@@ -2640,9 +2410,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Tap a joker to equip  |  or drag to the frame on the right"] = "Appuyez sur un joker  |  ou glissez vers le cadre",
   ["PROFILE CUSTOMIZATION"] = "PERSONNALISATION DU PROFIL",
 
-  -- ========================
-  -- Shop strings
-  -- ========================
   ["CONFIRM PURCHASE"] = "CONFIRMER L'ACHAT",
   ["Do you want to buy this item?"] = "Voulez-vous acheter cet objet ?",
   ["YES"] = "OUI",
@@ -2658,9 +2425,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Tap a card to purchase"] = "Appuyez sur une carte pour acheter",
   ["Buy all sets first"] = "Achetez d'abord tous les sets",
 
-  -- ========================
-  -- Cosmetics strings
-  -- ========================
   ["Titles"] = "Titres",
   ["Banners"] = "Bannières",
   ["Borders"] = "Bordures",
@@ -2674,9 +2438,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["defeats"] = "défaites",
   ["Defeat boss blinds to unlock their badge and title"] = "Battez les boss pour débloquer leur badge et titre",
 
-  -- ========================
-  -- Progression strings
-  -- ========================
   ["LEVEL UP!"] = "NIVEAU SUPÉRIEUR !",
   ["MILESTONE: "] = "ÉTAPE : ",
   ["MODS USED - NO PROGRESS"] = "MODS UTILISÉS - PAS DE PROGRESSION",
@@ -2698,9 +2459,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["• Gold+ Stakes: 1.5x Bonus"] = "• Mise d'or et au-delà : bonus x1,5",
   ["Modded/Seeded runs don't earn XP (Daily does!)"] = "Les parties moddées ou avec seed ne rapportent pas d'XP (le Quotidien, si !)",
 
-  -- ========================
-  -- Custom Runs strings
-  -- ========================
   ["Bonus"] = "Bonus",
   ["Mult"] = "Multi",
   ["Wild"] = "Sauvage",
@@ -2725,15 +2483,9 @@ MOD_TRANSLATIONS["fr"] = {
   ["Hand Size"] = "Taille Main",
   ["Win Ante"] = "Mise initiale de victoire",
 
-  -- ========================
-  -- Daily Challenge strings
-  -- ========================
   ["DECK SKINS"] = "SKINS DE JEU",
   ["BADGES"] = "BADGES",
 
-  -- ========================
-  -- Multiplayer — bom_ui.lua
-  -- ========================
   ["MATCHMAKING"] = "MATCHMAKING",
   ["Searching for opponent..."] = "Recherche d'adversaire...",
   ["This may take a moment"] = "Cela peut prendre un moment",
@@ -2814,9 +2566,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Leave Lobby"] = "Quitter le salon",
   ["YOU LOSE"] = "VOUS AVEZ PERDU",
 
-  -- ========================
-  -- Multiplayer — bom_pvp_hud.lua
-  -- ========================
   ["Enemy Score"] = "Score ennemi",
   ["Enemy Hands"] = "Mains ennemies",
   ["Score at least"] = "Score minimum",
@@ -2829,9 +2578,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Mods"] = "Mods",
   ["Life"] = "Vie",
 
-  -- ========================
-  -- Multiplayer — bom_lobby_settings.lua
-  -- ========================
   ["Gamemode"] = "Mode de Jeu",
   ["Rival blinds replace Boss blinds starting at Ante 2. Beat your opponent's score or lose a life!"] = "Les blindes Rival remplacent les Blindes Boss dès la mise initiale 2. Battez le score adverse ou perdez une vie !",
   ["ALL blinds are Rival blinds from the start. Pure head-to-head every round!"] = "TOUTES les blindes sont des blindes Rival dès le début. Face-à-face pur chaque manche !",
@@ -2865,13 +2611,7 @@ MOD_TRANSLATIONS["fr"] = {
   ["Tap a joker to add/remove it"] = "Appuyez sur un joker pour l'ajouter/retirer",
   ["Tool Permissions"] = "Permissions Outils",
 
-  -- ========================
-  -- Multiplayer — bom_ui_hud.lua
-  -- ========================
 
-  -- ========================
-  -- Hand Optimizer — hand_optimizer.lua
-  -- ========================
   ["HAND OPTIMIZER"] = "OPTIMISEUR DE MAIN",
   ["Hand Optimizer Settings"] = "Paramètres Optimiseur de Main",
   ["Beginner Mode"] = "Mode Débutant",
@@ -2900,14 +2640,8 @@ MOD_TRANSLATIONS["fr"] = {
   ["on pace - current play is strong enough"] = "en bonne voie - le jeu actuel suffit",
   ["current play is strong enough"] = "le jeu actuel est suffisant",
 
-  -- ========================
-  -- Showcase — What's New
-  -- ========================
   ["What's New"] = "Nouveautés",
 
-  -- ========================
-  -- Mod Guide — mod_guide.lua
-  -- ========================
   ["BALATRO OVERHAUL"] = "BALATRO OVERHAUL",
   ["Welcome to Balatro Overhaul!"] = "Bienvenue dans Balatro Overhaul !",
   ["FEATURES:"] = "FONCTIONNALITÉS :",
@@ -2969,9 +2703,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["ALSO:"] = "AUSSI :",
   ["Settings > Hand Optimizer"] = "Paramètres > Optimiseur de Main",
 
-  -- ========================
-  -- UI Settings & Toggles
-  -- ========================
   ["Language"] = "Langue",
   ["Tutorial"] = "Tutoriel",
   ["Profile"] = "Profil",
@@ -2994,36 +2725,24 @@ MOD_TRANSLATIONS["fr"] = {
   ["Disable Mod Menu"] = "Désactiver le menu mod",
   ["FPS Cap"] = "Limite FPS",
 
-  -- ========================
-  -- Language Selector
-  -- ========================
 
-  -- ========================
-  -- Missing strings (audit 2026-04-17)
-  -- ========================
 
-  -- mod_guide.lua
   ["- Rematch"] = "- Revanche",
 
-  -- debug_mode.lua section headers
   ["-- Shop Content --"] = "-- Contenu boutique --",
   ["-- Stake Win Stickers --"] = "-- Autocollants de victoire --",
 
-  -- debug_mode.lua unlock notifications
   ["ALL COLOR SETS UNLOCKED!"] = "TOUS LES ENSEMBLES DE COULEURS DÉBLOQUÉS !",
   ["ALL DECK STAKE WINS SET!"] = "VICTOIRES DE JEU CONFIGURÉES !",
   ["ALL ENHANCEMENTS UNLOCKED!"] = "TOUTES LES AMÉLIORATIONS DÉBLOQUÉES !",
   ["ALL ICON EFFECTS UNLOCKED!"] = "TOUS LES EFFETS D'ICÔNES DÉBLOQUÉS !",
   ["ALL JOKER STAKE WINS SET!"] = "VICTOIRES DE JOKER CONFIGURÉES !",
 
-  -- debug_mode.lua button labels
   ["Color Sets"] = "Ensembles de couleurs",
   ["Deck Stake Wins"] = "Victoires de jeu",
   ["Joker Stake Wins"] = "Victoires de joker",
 
-  -- cosmetics.lua tab label
   ["Badges"] = "Badges",
-  -- FEATURE: Badge Immunity
   ["Badge Immunity"] = "Immunité aux badges",
   ["BADGE IMMUNITY"] = "IMMUNITÉ DU BADGE",
   ["Badges aren't just cosmetic!"] = "Les badges ne sont pas que cosmétiques !",
@@ -3050,7 +2769,6 @@ MOD_TRANSLATIONS["fr"] = {
 
   ["Change Jimbo's appearance! Only discovered jokers available."] = "Changez l'apparence de Jimbo ! Seuls les jokers découverts sont disponibles.",
 
-  -- mod_menu.lua section headers
   ["CHEATS:"] = "TRICHE :",
   ["COSMETICS:"] = "COSMÉTIQUES :",
   ["EQUIP:"] = "ÉQUIPER :",
@@ -3060,33 +2778,24 @@ MOD_TRANSLATIONS["fr"] = {
   ["RULES:"] = "RÈGLES :",
   ["TOOLS:"] = "OUTILS :",
 
-  -- mod_menu.lua strings
   ["CREATIVE STAKES (9-13)"] = "MISES CRÉATIVES (9-13)",
   ["MOD MENU DISABLED IN MULTIPLAYER"] = "MENU MOD DÉSACTIVÉ EN MULTIJOUEUR",
   ["Multiplayer"] = "Multijoueur",
 
-  -- mod_guide.lua
 
-  -- quests_ui.lua / shop.lua tab labels
   ["Jimbo Skin"] = "Apparence de Jimbo",
   ["Jimbo Skins"] = "Apparences de Jimbo",
 
-  -- UI_definitions.lua
   ["Other"] = "Autre",
   ["Reset Filter"] = "Réinitialiser le filtre",
   ["Display Stake Sticker"] = "Afficher l'autocollant de mise",
   ["VISUAL FILTERS"] = "FILTRES VISUELS",
 
-  -- help text (lowercase variant)
   ["Options > Debug tab"] = "Options > Onglet Débogage",
   ["Options > Filters tab"] = "Options > Onglet Filtres",
 
-  -- daily_challenge.lua modifier
   ["Hand size of 4"] = "Taille de main de 4",
 
-  -- ========================
-  -- joker_display.lua (jd_*)
-  -- ========================
   ["jd_mult"]              = "Multi",
   ["jd_chips"]             = "Jetons",
   ["jd_max_debt"]          = "dette max",
@@ -3225,7 +2934,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["jd_uncommon_jokers"]   = "jokers peu communs",
   ["jd_first_scored"]      = "1ère carte scorée",
 
-  -- Session 152: Missing translations added
   ["- 4 Creative Stakes (9-12)"] = "- 4 Niveaux Créatifs (9-12)",
   ["+1 ANTE"] = "+1 ANTE",
   ["ACHIEVEMENTS"] = "SUCCÈS",
@@ -3276,7 +2984,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Total XP:"] = "XP total :",
   ["Unlocked:"] = "Débloqué :",
 
-  -- Session 209: missing FR translations identified by unwrapped-string audit
   ["Banned Items"]                            = "Objets bannis",
   ["Cards: "]                                 = "Cartes : ",
   ["Choose your language:"]                   = "Choisissez votre langue :",
@@ -3491,7 +3198,6 @@ MOD_TRANSLATIONS["fr"] = {
   ["Your opponent lost the connection. You stopped waiting."] = "Votre adversaire a perdu la connexion. Vous avez cessé d'attendre.",
 }
 
--- ===== SPANISH =====
 MOD_TRANSLATIONS["es"] = {
   ["Modded Game"] = "Juego con mods",
   ["Mods & Workshop"] = "Mods y Taller",
@@ -3623,9 +3329,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Ghost Deck"] = "Baraja fantasma",
   ["Plasma Deck"] = "Baraja plasmática",
 
-  -- ========================
-  -- mod_menu.lua
-  -- ========================
   ["MOD MENU v3.0"] = "MENÚ MOD v3.0",
   ["CHEATS"] = "TRUCOS",
   ["JOKERS"] = "COMODINES",
@@ -3739,9 +3442,6 @@ MOD_TRANSLATIONS["es"] = {
   ["MODS"] = "MODS",
   ["MOD USED - NO PROGRESS"] = "MOD USADO - SIN PROGRESO",
 
-  -- ========================
-  -- mod_guide.lua
-  -- ========================
   ["Overview"] = "General",
   ["Mod Menu"] = "Menú Mod",
   ["Custom Runs"] = "Partidas personalizadas",
@@ -3757,7 +3457,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Deck Creator"] = "Creador de barajas",
   ["Comments"] = "Comentarios",
 
-  -- Stakes collection tab
   ["STAKES"] = "POZOS",
   ["difficulty stakes"] = "pozos de dificultad",
   ["Stake Level "] = "Nivel de pozo ",
@@ -3951,9 +3650,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Page not found"] = "Página no encontrada",
   ["BACK"] = "VOLVER",
 
-  -- ========================
-  -- quests_ui.lua
-  -- ========================
   ["QUESTS"] = "MISIONES",
   ["Daily"] = "Diario",
   ["Weekly"] = "Semanal",
@@ -3975,10 +3671,6 @@ MOD_TRANSLATIONS["es"] = {
   ["[COMPLETED]"] = "[COMPLETADO]",
   ["[IN PROGRESS]"] = "[EN PROGRESO]",
 
-  -- ========================
-  -- quests.lua — Quest names & descriptions
-  -- ========================
-  -- Daily Easy (new)
   ["Double Trouble"] = "Doble Problema",
   ["Play 2 Two Pair hands"] = "Jugar 2 manos de Doble Par",
   ["Triple Threat"] = "Triple Amenaza",
@@ -3987,21 +3679,18 @@ MOD_TRANSLATIONS["es"] = {
   ["Use 5 consumables"] = "Usar 5 consumibles",
   ["Voucher Finder"] = "Buscador de Vales",
   ["Use a Voucher"] = "Usar un Vale",
-  -- Daily Medium (new)
   ["Straight Flush!"] = "¡Escalera de Color!",
   ["Play a Straight Flush"] = "Jugar una Escalera de Color",
   ["Growing Savings"] = "Ahorros Crecientes",
   ["Earn $300 total"] = "Ganar $300 en total",
   ["Merchant"] = "Mercader",
   ["Sell 8 cards"] = "Vender 8 cartas",
-  -- Daily Hard (new)
   ["Purple Challenge"] = "Desafío Púrpura",
   ["Win on Purple Stake+"] = "Ganar en Apuesta Púrpura+",
   ["Centurion"] = "Centurión",
   ["Play 100 hands"] = "Jugar 100 manos",
   ["Edition Specialist"] = "Especialista en Ediciones",
   ["Get 3 Edition cards"] = "Obtener 3 cartas de Edición",
-  -- Weekly Medium (new)
   ["Enhancement Pro"] = "Pro de Mejoras",
   ["Enhance 15 cards"] = "Mejorar 15 cartas",
   ["Wealth Builder"] = "Constructor de Riqueza",
@@ -4016,7 +3705,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Play 500 hands"] = "Jugar 500 manos",
   ["Joker Maniac"] = "Maníaco de Comodines",
   ["Buy 30 Jokers"] = "Comprar 30 Comodines",
-  -- Weekly Hard (new)
   ["Purple Conqueror"] = "Conquistador Púrpura",
   ["High Roller"] = "Gran Apostador",
   ["Score 500K+ ten times"] = "Obtener 500K+ diez veces",
@@ -4024,7 +3712,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Use 80 consumables"] = "Usar 80 consumibles",
   ["Edition Enthusiast"] = "Entusiasta de Ediciones",
   ["Get 15 Edition cards"] = "Obtener 15 cartas de Edición",
-  -- Repeatable Low (new)
   ["Enhancer"] = "Mejorador",
   ["Enhance a card"] = "Mejorar una carta",
   ["Skipper"] = "Saltador",
@@ -4035,22 +3722,18 @@ MOD_TRANSLATIONS["es"] = {
   ["Earn $100"] = "Ganar $100",
   ["Card Player"] = "Jugador de Cartas",
   ["Play 25 hands"] = "Jugar 25 manos",
-  -- Repeatable Medium (new)
   ["Edition Find"] = "Hallazgo de Edición",
   ["Get an Edition card"] = "Obtener una carta de Edición",
   ["Voucher Duo"] = "Dúo de Vales",
   ["Use 2 Vouchers"] = "Usar 2 Vales",
-  -- Weekly Hard (new cont.)
   ["Voucher Hoarder"] = "Acumulador de Vales",
   ["Use 10 Vouchers"] = "Usar 10 Vales",
-  -- Repeatable Medium (new cont.)
   ["Heavy User"] = "Gran Consumidor",
   ["Use 10 consumables"] = "Usar 10 consumibles",
 
   ["TAVERN"] = "TABERNA",
   ["PROFILE"] = "PERFIL",
   ["SHOP"] = "TIENDA",
-  -- FEATURE: Seed Library
   ["SEED LIBRARY"] = "BIBLIOTECA DE CÓDIGOS",
   ["Seed Library"] = "Biblioteca de códigos",
   ["Save and manage your favorite seeds"] = "Guarda y gestiona tus códigos favoritos",
@@ -4082,9 +3765,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Customize your profile!"] = "¡Personaliza tu perfil!",
   ["Buy cosmetics with Balacoin!"] = "¡Compra cosméticos con Balacoin!",
 
-  -- ========================
-  -- achievements_ui.lua
-  -- ========================
   ["ACHIEVEMENTS"] = "LOGROS",
   ["All"] = "Todos",
   ["Scoring"] = "Puntuación",
@@ -4106,9 +3786,6 @@ MOD_TRANSLATIONS["es"] = {
   ["This achievement is a secret..."] = "Este logro es un secreto...",
   ["Unknown achievement"] = "Logro desconocido",
 
-  -- ========================
-  -- progression.lua
-  -- ========================
   ["Novice"] = "Novato",
   ["Apprentice"] = "Aprendiz",
   ["Journeyman"] = "Oficial",
@@ -4129,9 +3806,6 @@ MOD_TRANSLATIONS["es"] = {
   ["LEVEL UP!"] = "¡SUBIDA DE NIVEL!",
   ["MILESTONE: "] = "HITO: ",
 
-  -- ========================
-  -- shop.lua
-  -- ========================
   ["Titles"] = "Títulos",
   ["Banners"] = "Estandartes",
   ["Borders"] = "Bordes",
@@ -4148,9 +3822,6 @@ MOD_TRANSLATIONS["es"] = {
   ["[BUY]"] = "[COMPRAR]",
   ["[INSUFFICIENT]"] = "[INSUFICIENTE]",
 
-  -- ========================
-  -- custom_runs.lua
-  -- ========================
   ["Custom Run"] = "Partida personalizada",
   ["Rules"] = "Reglas",
   ["Deck"] = "Baraja",
@@ -4204,16 +3875,10 @@ MOD_TRANSLATIONS["es"] = {
   ["Chaos: High resources, long game"] = "Caos: Altos recursos, partida larga",
   ["Speedrun: Quick win at Ante 4"] = "Speedrun: victoria rápida en la apuesta inicial 4",
 
-  -- ========================
-  -- debug_mode.lua
-  -- ========================
   ["DEBUG"] = "DEPURACIÓN",
   ["Enter 6-digit PIN to unlock"] = "Introducir PIN de 6 dígitos",
   ["(Hint: Check DEV_CHANGELOG.txt)"] = "(Pista: Ver DEV_CHANGELOG.txt)",
 
-  -- ========================
-  -- UI_definitions.lua
-  -- ========================
   ["While in collection, hover over a card"] = "En la colección, pasa el cursor sobre una carta",
   ["and press the following keys:"] = "y pulsa estas teclas:",
   ["[1] Unlock"] = "[1] Desbloquear",
@@ -4226,7 +3891,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Press [8] to toggle cursor"] = "Pulsa [8] para mostrar u ocultar el cursor",
   ["Press [9] to toggle all tooltips"] = "Pulsa [9] para mostrar u ocultar las descripciones",
 
-  -- UI_definitions.lua (debug tool buttons)
   ["+1 Round"] = "+1 Ronda",
   ["+1 Ante"] = "+1 apuesta inicial",
   ["+1 Hand"] = "+1 Mano",
@@ -4242,7 +3906,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Reset"] = "Reiniciar",
   ["Jimbo talk"] = "Jimbo habla",
 
-  -- UI_definitions.lua (settings tabs & options)
   ["Colors"] = "Colores",
   ["Jukebox"] = "Jukebox",
   ["Haptic Feedback"] = "Respuesta háptica",
@@ -4292,9 +3955,6 @@ MOD_TRANSLATIONS["es"] = {
   ["+50000 XP"] = "+50000 XP",
   ["Lock Debug"] = "Bloquear debug",
 
-  -- ========================
-  -- daily_challenge.lua
-  -- ========================
   ["High Roller"] = "Gran Apostador",
   ["Start with $20"] = "Empezar con $20",
   ["Poor Start"] = "Inicio Pobre",
@@ -4304,9 +3964,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Collector"] = "Coleccionista",
   ["7 Joker slots"] = "7 ranuras de Comodín",
 
-  -- ========================
-  -- cosmetics.lua
-  -- ========================
   ["PROFILE CUSTOMIZATION"] = "PERSONALIZACIÓN DEL PERFIL",
   ["Beginner"] = "Principiante",
   ["Celestial Being"] = "Ser Celestial",
@@ -4405,7 +4062,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Diamond"] = "Diamante",
   ["Celestial"] = "Celestial",
 
-  -- Cosmetic descriptions
   ["Reach Level 5"] = "Alcanzar nivel 5",
   ["Reach Level 10"] = "Alcanzar nivel 10",
   ["Reach Level 25"] = "Alcanzar nivel 25",
@@ -4524,16 +4180,10 @@ MOD_TRANSLATIONS["es"] = {
   ["Dark void"] = "Vacío oscuro",
   ["Star adorned"] = "Adornado con estrellas",
 
-  -- ========================
-  -- MISSING: achievements_ui.lua
-  -- ========================
   ["No achievements found"] = "No se encontraron logros",
   ["Unlocked: "] = "Desbloqueado: ",
   ["Reward: "] = "Recompensa: ",
 
-  -- ========================
-  -- MISSING: progression.lua
-  -- ========================
   ["MODS USED - NO PROGRESS"] = "MODS USADOS - SIN PROGRESO",
   ["Lv."] = "Nv.",
   ["XP"] = "XP",
@@ -4555,9 +4205,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Modded and Seeded runs do not earn XP"] = "Las partidas modificadas/seeded no ganan XP",
   ["Unknown"] = "Desconocido",
 
-  -- ========================
-  -- MISSING: cosmetics.lua
-  -- ========================
   ["Unlocked"] = "Desbloqueados",
   ["Currently Equipped"] = "Actualmente equipado",
   ["[EQUIPPED]"] = "[EQUIPADO]",
@@ -4574,9 +4221,6 @@ MOD_TRANSLATIONS["es"] = {
   ["defeats"] = "derrotas",
   ["Defeat boss blinds to unlock their badge and title"] = "Derrota las ciegas de jefe para desbloquear insignia y título",
 
-  -- ========================
-  -- MISSING: shop.lua
-  -- ========================
   ["Cosmetics not initialized"] = "Cosméticos no inicializados",
   [" items"] = " objetos",
   ["Not initialized"] = "No inicializado",
@@ -4588,18 +4232,12 @@ MOD_TRANSLATIONS["es"] = {
   ["START RUN"] = "INICIAR PARTIDA",
   ["SKIP"] = "SALTAR",
 
-  -- ========================
-  -- MISSING: custom_runs.lua
-  -- ========================
   ["Common Jokers"] = "Comodines Comunes",
   ["Uncommon Jokers"] = "Comodines poco comunes",
   ["Rare Jokers"] = "Comodines Raros",
   ["Legendary Jokers"] = "Comodines Legendarios",
   ["Custom"] = "Perso.",
 
-  -- ========================
-  -- MISSING: debug_mode.lua
-  -- ========================
   ["Debug UI Error"] = "Error UI Debug",
   ["DEBUG TOOLS"] = "HERRAMIENTAS DE DEPURACIÓN",
   ["UNLOCK EVERYTHING"] = "DESBLOQUEAR TODO",
@@ -4638,14 +4276,8 @@ MOD_TRANSLATIONS["es"] = {
   ["ALL BADGES UNLOCKED!"] = "¡TODAS LAS INSIGNIAS DESBLOQUEADAS!",
   ["ALL TITLES/BANNERS UNLOCKED!"] = "¡TODOS LOS TÍTULOS/BANNERS DESBLOQUEADOS!",
 
-  -- ========================
-  -- MISSING: UI_definitions.lua
-  -- ========================
   ["Guide"] = "Guía",
 
-  -- ========================
-  -- MISSING: daily_challenge.lua
-  -- ========================
   ["Speed Run"] = "Carrera rápida",
   ["Only 3 hands per round"] = "Solo 3 manos por ronda",
   ["Many Hands"] = "Muchas Manos",
@@ -4688,7 +4320,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Earn XP, Achievements & Quest progress!"] = "¡Gana XP, logros y progreso en misiones!",
   ["Earns XP & Quests!"] = "¡Gana XP y misiones!",
   ["Same worldwide!"] = "¡Mismo desafío mundial!",
-  -- New modifiers
   ["Generous"] = "Generoso",
   ["Start with $30"] = "Empezar con $30",
   ["In Debt"] = "Endeudado",
@@ -4710,25 +4341,18 @@ MOD_TRANSLATIONS["es"] = {
   ["Start at Ante 2"] = "Empezar en la apuesta inicial 2",
   ["Pricey Rerolls"] = "Cambios caros",
   ["Rerolls cost $10"] = "Los relanzamientos cuestan $10",
-  -- New deck names
   ["Zodiac Deck"] = "Baraja del zodiaco",
   ["Painted Deck"] = "Baraja pintada",
   ["Anaglyph Deck"] = "Baraja anaglifo",
   ["Plasma Deck"] = "Baraja plasmática",
   ["Erratic Deck"] = "Baraja errática",
-  -- Stake names
   ["White Stake"] = "Pozo blanco",
   ["Red Stake"] = "Pozo rojo",
   ["Green Stake"] = "Pozo verde",
   ["Black Stake"] = "Pozo negro",
-  -- Progression XP note
   ["Modded/Seeded runs don't earn XP (Daily does!)"] = "¡Las partidas con mod/semilla no ganan XP (las diarias sí!)",
 
-  -- ============================================================
-  -- ACHIEVEMENT NAMES, DESCRIPTIONS, REWARDS & HINTS (103)
-  -- ============================================================
 
-  -- Achievement category names
   ["PROGRESSION"] = "PROGRESIÓN",
   ["SCORING"] = "PUNTUACIÓN",
   ["JOKER EXPERTISE"] = "MAESTRÍA EN COMODINES",
@@ -4740,7 +4364,6 @@ MOD_TRANSLATIONS["es"] = {
   ["PROFILE ICON COLLECTION ACHIEVEMENTS"] = "LOGROS COLECCIÓN DE ICONOS DE PERFIL",
   ["BOSS BADGE COLLECTION ACHIEVEMENTS"] = "LOGROS COLECCIÓN DE INSIGNIAS DE JEFE",
 
-  -- PROGRESSION (15)
   ["First Steps"] = "Primeros Pasos",
   ["Complete Ante 1"] = "Completar Ante 1",
   ["Beginner Badge"] = "Insignia Principiante",
@@ -4783,7 +4406,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Beat 100 blinds"] = "Superar 100 ciegas",
   ["Annihilator"] = "Aniquilador",
 
-  -- SCORING (16)
   ["Highscore 10K"] = "Récord 10K",
   ["Score 10,000 chips in one hand"] = "Obtener 10.000 fichas en una mano",
   ["10K Badge"] = "Insignia 10K",
@@ -4828,7 +4450,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Complete an Ante using only 1 hand per blind"] = "Completar un Ante usando solo 1 mano por ciega",
   ["Perfect"] = "Perfecto",
 
-  -- JOKER EXPERTISE (12)
   ["Jokers Obtained 50"] = "50 Comodines Obtenidos",
   ["Obtain 50 Jokers total"] = "Obtener 50 Comodines en total",
   ["Collector Badge"] = "Insignia Coleccionista",
@@ -4861,7 +4482,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Sell 50 Jokers"] = "Vender 50 Comodines",
   ["Trader Badge"] = "Insignia Comerciante",
 
-  -- DECK MASTERY (15)
   ["Red Deck Master"] = "Maestro Baraja Roja",
   ["Win with Red Deck"] = "Ganar con Baraja Roja",
   ["Red Deck Badge"] = "Insignia Baraja Roja",
@@ -4908,7 +4528,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Win with Erratic Deck"] = "Ganar con Baraja Errática",
   ["Erratic Deck Badge"] = "Insignia Baraja Errática",
 
-  -- CHALLENGE MASTER (12)
   ["White Stake Victory"] = "Victoria Pozo Blanco",
   ["Win on White Stake"] = "Ganar en Pozo Blanco",
   ["White Stake Badge"] = "Insignia Pozo Blanco",
@@ -4943,7 +4562,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Win without discarding any cards"] = "Ganar sin descartar ninguna carta",
   ["Efficient"] = "Eficiente",
 
-  -- COLLECTION (8)
   ["Money $100"] = "Dinero $100",
   ["Have $100 at once"] = "Tener $100 a la vez",
   ["Rich Badge"] = "Insignia Rico",
@@ -4969,7 +4587,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Use 100 consumables"] = "Usar 100 consumibles",
   ["Consumer Badge"] = "Insignia Consumidor",
 
-  -- DAILY CHAMPION (5)
   ["Daily Participant"] = "Participante Diario",
   ["Complete your first Daily Challenge"] = "Completa tu primer Desafío Diario",
   ["Daily Badge"] = "Insignia Diaria",
@@ -4985,7 +4602,6 @@ MOD_TRANSLATIONS["es"] = {
   ["30-day Daily Challenge streak"] = "Racha de 30 días de Desafío Diario",
   ["Daily Champion Back"] = "Reverso Campeón Diario",
 
-  -- SECRET (7)
   ["Modder"] = "Modder",
   ["You found the mod menu!"] = "¡Encontraste el menú de mods!",
   ["Explore the options..."] = "Explora las opciones...",
@@ -5012,7 +4628,6 @@ MOD_TRANSLATIONS["es"] = {
   ["7-7-7..."] = "7-7-7...",
   ["Lucky"] = "Afortunado",
 
-  -- PROFILE ICON COLLECTION (7)
   ["First Impression"] = "Primera Impresión",
   ["Unlock 1 Profile Icon"] = "Desbloquear 1 Icono de Perfil",
   ["Portrait Starter"] = "Iniciador de Retratos",
@@ -5034,7 +4649,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Unlock all 150 Profile Icons"] = "Desbloquear los 150 Iconos de Perfil",
   ["Grand Collector"] = "Gran Coleccionista",
 
-  -- BOSS BADGE COLLECTION (6)
   ["First Trophy"] = "Primer Trofeo",
   ["Unlock 1 Boss Badge"] = "Desbloquear 1 Insignia de Jefe",
   ["Trophy Hunter"] = "Cazador de Trofeos",
@@ -5052,9 +4666,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Blind Master"] = "Maestro de Ciegas",
   ["Unlock all 28 Boss Badges"] = "Desbloquear las 28 Insignias de Jefe",
 
-  -- ============================================================
-  -- QUEST / STATS / SLIDER / JUKEBOX UI STRINGS
-  -- ============================================================
   ["QUEST COMPLETE!"] = "¡MISIÓN COMPLETADA!",
   ["Quest: "] = "Misión: ",
   [" XP"] = " XP",
@@ -5099,9 +4710,6 @@ MOD_TRANSLATIONS["es"] = {
   ["(Paused)"] = "(Pausado)",
   ["Stopped"] = "Detenido",
 
-  -- ========================
-  -- Shop & Profile Overhaul
-  -- ========================
   ["PROFILE"] = "PERFIL",
   ["Icon"] = "Icono",
   ["Icon Effect"] = "Efecto de icono",
@@ -5137,17 +4745,14 @@ MOD_TRANSLATIONS["es"] = {
   ["Unlocked"] = "Desbloqueado",
   ["Tap to equip"] = "Toca para equipar",
   ["Work in Progress"] = "En desarrollo",
-  -- Shop tabs
   ["Icon Effects"] = "Efectos de icono",
   ["Balance"] = "Saldo",
   ["BC"] = "BC",
-  -- Rarity names
   ["Common"] = "Común",
   ["Uncommon"] = "Poco común",
   ["Rare"] = "Raro",
   ["Epic"] = "Épico",
   ["Legendary"] = "Legendario",
-  -- Color set names
   ["Ocean"] = "Océano",
   ["Forest"] = "Bosque",
   ["Sunset"] = "Atardecer",
@@ -5191,7 +4796,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Requires all 40 color sets"] = "Requiere los 40 conjuntos de colores",
   ["Custom RGB sliders"] = "Deslizadores RGB personalizados",
   ["OWNED"] = "COMPRADO",
-  -- Icon effect names
   ["Foil"] = "Laminada",
   ["Holographic"] = "Holográfica",
   ["Polychrome"] = "Polícroma",
@@ -5200,14 +4804,12 @@ MOD_TRANSLATIONS["es"] = {
   ["Rainbow holographic shimmer"] = "Brillo holográfico arcoíris",
   ["Colorful prismatic effect"] = "Efecto prismático colorido",
   ["Inverted dark energy aura"] = "Aura de energía oscura invertida",
-  -- Shop Ash Card sub-tabs
   ["Jokers (must discover + win)"] = "Comodines (descubrir + ganar)",
   ["Enhancements"] = "Mejoras",
   ["Applied to deck cards only"] = "Solo para cartas de baraja",
   ["Not discovered yet"] = "Aún no descubierto",
   ["Need a win with this joker"] = "Victoria requerida con este comodín",
   ["Eligible"] = "Elegible",
-  -- Enhancement names
   ["Bonus"] = "Bono",
   ["Mult"] = "Multi",
   ["Wild"] = "Versátil",
@@ -5224,7 +4826,6 @@ MOD_TRANSLATIONS["es"] = {
   ["No rank, +50 Chips"] = "Sin rango, +50 Fichas",
   ["$3 on score"] = "$3 al anotar",
   ["1/5: +20 Mult or $20"] = "1 de cada 5: +20 multi o $20",
-  -- Suit/rank names for Ash Cards
   ["Spades"] = "Picas",
   ["Hearts"] = "Corazones",
   ["Clubs"] = "Tréboles",
@@ -5232,7 +4833,6 @@ MOD_TRANSLATIONS["es"] = {
   ["SHOP"] = "TIENDA",
   ["WIP"] = "EN PROGRESO",
   ["Coming soon!"] = "¡Próximamente!",
-  -- Shop purchase dialogs
   ["CONFIRM PURCHASE"] = "CONFIRMAR COMPRA",
   ["Do you want to buy this item?"] = "¿Quieres comprar este objeto?",
   ["YES"] = "SÍ",
@@ -5256,9 +4856,7 @@ MOD_TRANSLATIONS["es"] = {
   ["Not owned"] = "No poseído",
   ["FPS Opacity"] = "Opacidad FPS",
   ["Reset FPS Position"] = "Reiniciar posición FPS",
-  -- Quest reroll
   ["Reroll Quests"] = "Relanzar misiones",
-  -- Achievement names (new 97)
   ["Insanity Victory"] = "Victoria Locura",
   ["Chaos Victory"] = "Victoria Caos",
   ["Oblivion Victory"] = "Victoria Olvido",
@@ -5354,7 +4952,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Student"] = "Estudiante",
   ["Big Hands"] = "Manos grandes",
   ["VIP"] = "VIP",
-  -- Achievement descriptions (new 97)
   ["Win on Insanity Stake"] = "Ganar en apuesta Locura",
   ["Win on Chaos Stake"] = "Ganar en apuesta Caos",
   ["Win on Oblivion Stake"] = "Ganar en apuesta Olvido",
@@ -5451,7 +5048,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Open the Mod Guide"] = "Abrir la Guía del Mod",
   ["Have a hand size of 12 or more"] = "Tener un tamaño de mano de 12 o más",
   ["Have 10 vouchers redeemed in one run"] = "Usar 10 cupones en una partida",
-  -- Secret hints (new)
   ["Four of a kind, but better..."] = "Un póker, pero mejor...",
   ["No room at the inn..."] = "No hay sitio en la posada...",
   ["An unlucky number..."] = "Un número de mala suerte...",
@@ -5468,9 +5064,6 @@ MOD_TRANSLATIONS["es"] = {
 
   ["- 90 Achievements"] = "- 90 Logros",
 
-  -- ========================
-  -- Guide: Overview (cat 1)
-  -- ========================
   ["BALATRO OVERHAUL"] = "BALATRO OVERHAUL",
   ["Welcome to Balatro Overhaul!"] = "¡Bienvenido a Balatro Overhaul!",
   ["FEATURES:"] = "FUNCIONALIDADES:",
@@ -5487,9 +5080,6 @@ MOD_TRANSLATIONS["es"] = {
   ["- Jukebox (Music Select)"] = "- Jukebox (Selección Musical)",
   ["- Debug Tools (PIN)"] = "- Herramientas Debug (PIN)",
 
-  -- ========================
-  -- Guide: Mod Menu (cat 2)
-  -- ========================
   ["Floating MODS button"] = "Botón MODS flotante",
   ["(top-right) during runs."] = "(arriba-derecha) durante partidas.",
   ["Toggle in Game tab."] = "Activar en pestaña Juego.",
@@ -5505,9 +5095,6 @@ MOD_TRANSLATIONS["es"] = {
   ["MODDED! No XP or"] = "¡MODDEDA! Sin XP ni",
   ["quest progress."] = "progreso de misiones.",
 
-  -- ========================
-  -- Guide: Custom Runs (cat 3)
-  -- ========================
   ["Play > Custom tab"] = "Jugar > Pestaña Personalizada",
   ["> Configure"] = "> Configurar",
   ["- Hands, Discards"] = "- Manos, Descartes",
@@ -5523,9 +5110,6 @@ MOD_TRANSLATIONS["es"] = {
   ["- Pick starting jokers"] = "- Elegir jokers iniciales",
   ["No progression!"] = "¡Sin progresión!",
 
-  -- ========================
-  -- Guide: Progression (cat 4)
-  -- ========================
   ["- Win runs (500-5000)"] = "- Ganar partidas (500-5000)",
   ["- Complete antes (50-500)"] = "- Completar apuestas iniciales (50-500)",
   ["- Play hands (small)"] = "- Jugar manos (poco)",
@@ -5540,9 +5124,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Celestial (highest)"] = "Celestial (el más alto)",
   ["Modded/seeded = no XP!"] = "¡Moddedo/seeded = sin XP!",
 
-  -- ========================
-  -- Guide: Quests (cat 5)
-  -- ========================
   ["TYPES:"] = "TIPOS:",
   ["- Daily: 41 quests (24h)"] = "- Diarias: 41 misiones (24h)",
   ["- Weekly: 30 quests (7d)"] = "- Semanales: 30 misiones (7d)",
@@ -5557,9 +5138,6 @@ MOD_TRANSLATIONS["es"] = {
   ["- Balacoin: 50 to 500+"] = "- Balacoin: 50 a 500+",
   ["Seeded/modded = none!"] = "¡Seeded/moddedo = nada!",
 
-  -- ========================
-  -- Guide: Profile & Cosmetics (cat 6)
-  -- ========================
   ["- 50+ Titles"] = "- 50+ Títulos",
   ["- 30+ Banners"] = "- 30+ Estandartes",
   ["- 30+ Badges"] = "- 30+ Insignias",
@@ -5570,9 +5148,6 @@ MOD_TRANSLATIONS["es"] = {
   ["- Complete achievements"] = "- Completar logros",
   ["Tavern > Profile tab"] = "Taberna > pestaña Perfil",
 
-  -- ========================
-  -- Guide: Shop (cat 7)
-  -- ========================
   ["BALACOIN:"] = "BALACOIN:",
   ["Earned from quests & milestones."] = "Ganado en misiones & hitos.",
   ["Spent on cosmetics."] = "Gastado en cosméticos.",
@@ -5584,9 +5159,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Tavern hub > Shop tab"] = "Taberna > pestaña Tienda",
   ["Balance shown at top."] = "Saldo arriba.",
 
-  -- ========================
-  -- Guide: Filters (cat 8)
-  -- ========================
   ["FILTERS:"] = "FILTROS:",
   ["- None: Standard colors"] = "- Ninguno: Colores estándar",
   ["- Sepia: Vintage look"] = "- Sepia: Aspecto vintage",
@@ -5597,9 +5169,6 @@ MOD_TRANSLATIONS["es"] = {
   ["OPTIONS > Filters tab"] = "OPCIONES > Pestaña Filtros",
   ["Options > Graphics for CRT"] = "Opciones > Gráficos para CRT",
 
-  -- ========================
-  -- Guide: Creative Stakes (cat 9)
-  -- ========================
   ["5 new difficulty tiers!"] = "¡5 nuevos niveles de dificultad!",
   ["9 - INSANITY:"] = "9 - LOCURA:",
   ["2x blind, ante 12, 7x XP"] = "Ciega x2, apuesta inicial 12, XP x7",
@@ -5617,9 +5186,6 @@ MOD_TRANSLATIONS["es"] = {
   ["5x blind, ante 16, 20x XP"] = "Ciega x5, apuesta inicial 16, XP x20",
   ["2-hand cap, debt penalty"] = "Límite 2 manos, penalidad deuda",
 
-  -- ========================
-  -- Guide: Debug (cat 10)
-  -- ========================
   ["Developer tools only!"] = "¡Solo herramientas de desarrollo!",
   ["OPTIONS > Debug tab"] = "OPCIONES > Pestaña Debug",
   ["Enter 6-digit PIN via numpad."] = "Introduce el PIN de 6 dígitos.",
@@ -5628,15 +5194,10 @@ MOD_TRANSLATIONS["es"] = {
   ["- Add XP (+50,000)"] = "- Añadir XP (+50.000)",
   ["- Lock Debug (re-lock)"] = "- Bloquear Debug (re-bloquear)",
 
-  -- ========================
-  -- Guide: New strings (v8.0)
-  -- ========================
 
-  -- Overview additions
   ["- Deck Creator"] = "- Creador de barajas",
   ["- Jimbo Comments"] = "- Comentarios de Jimbo",
 
-  -- Mod Menu v3.0
   ["7 TABS:"] = "7 PESTAÑAS:",
   ["CHEATS: Cash, Hands, Discards"] = "TRAMPAS: Efectivo, Manos, Descartes",
   ["God Mode, Win Blind, Slots"] = "Modo Dios, Ganar Blind, Espacios",
@@ -5647,7 +5208,6 @@ MOD_TRANSLATIONS["es"] = {
   ["HANDS: Level up hand ranks"] = "MANOS: Mejorar rangos de manos",
   ["OPTIONS: Settings & toggles"] = "OPCIONES: Ajustes & opciones",
 
-  -- Profile (actual tabs)
   ["PROFILE TABS:"] = "PESTAÑAS DE PERFIL:",
   ["- Colors: equip palettes"] = "- Colores: equipar paletas",
   ["- Icon: profile picture"] = "- Icono: foto de perfil",
@@ -5657,7 +5217,6 @@ MOD_TRANSLATIONS["es"] = {
   ["- Jimbo Skin: equip Jimbo"] = "- Skin Jimbo: equipar Jimbo",
   ["EQUIP:"] = "EQUIPAR:",
 
-  -- Shop (actual tabs)
   ["SHOP TABS:"] = "PESTAÑAS TIENDA:",
   ["Jimbo Skins: Joker skins"] = "Skins de Jimbo: Skins de Comodines",
   ["Common: 5 / Uncommon: 15 BC"] = "Común: 5 / Poco común: 15 BC",
@@ -5670,7 +5229,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Foil: 300 / Holo: 600 BC"] = "Laminada: 300 / Holo: 600 BC",
   ["Polychrome: 1200 / Neg: 2400 BC"] = "Policromático: 1200 / Neg: 2400 BC",
 
-  -- Deck Creator
   ["DECK CREATOR"] = "CREADOR DE BARAJAS",
   ["Tavern > Deck Creator tab"] = "Taberna > pestaña Creador de barajas",
   ["5 TABS:"] = "5 PESTAÑAS:",
@@ -5687,7 +5245,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Starting items always spawn."] = "Los objetos iniciales siempre aparecen.",
   ["Custom decks saved in profile."] = "Barajas personalizadas guardadas en el perfil.",
 
-  -- Jimbo Comments
   ["JIMBO COMMENTS"] = "COMENTARIOS DE JIMBO",
   ["Your in-run Jimbo quips!"] = "¡Ocurrencias de Jimbo en partidas!",
   ["- Random comments during runs"] = "- Comentarios aleatorios en partidas",
@@ -5698,9 +5255,6 @@ MOD_TRANSLATIONS["es"] = {
   ["NOT IN multiplayer quick match."] = "NO en partida rápida multijugador.",
   ["Settings > Jimbo Comments"] = "Configuración > Comentarios de Jimbo",
 
-  -- ========================
-  -- Mod Menu strings
-  -- ========================
   ["MOD MENU v3.0"] = "MENÚ MOD v3.0",
   ["CHEATS"] = "TRAMPAS",
   ["JOKERS"] = "COMODINES",
@@ -5825,9 +5379,6 @@ MOD_TRANSLATIONS["es"] = {
   ["MODS"] = "MODS",
   ["MOD USED - NO PROGRESS"] = "MOD USADO - SIN PROGRESIÓN",
 
-  -- ========================
-  -- Quests UI strings
-  -- ========================
   ["Play a run to unlock quests!"] = "¡Juega una partida para desbloquear misiones!",
   ["Daily"] = "Diarias",
   ["Weekly"] = "Semanales",
@@ -5870,16 +5421,10 @@ MOD_TRANSLATIONS["es"] = {
   ["Tap a joker to equip  |  or drag to the frame on the right"] = "Toca un joker  |  o arrastra al marco",
   ["PROFILE CUSTOMIZATION"] = "PERSONALIZACIÓN DEL PERFIL",
 
-  -- ========================
-  -- Shop extra strings
-  -- ========================
   ["Colors"] = "Colores",
   ["Tap to buy"] = "Toca para comprar",
   ["Tap a card to purchase"] = "Toca una carta para comprar",
 
-  -- ========================
-  -- Cosmetics strings
-  -- ========================
   ["Titles"] = "Títulos",
   ["Banners"] = "Estandartes",
   ["Borders"] = "Bordes",
@@ -5894,9 +5439,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Defeat boss blinds to unlock their badge and title"] = "Derrota jefes para desbloquear su insignia y título",
   ["BADGES"] = "INSIGNIAS",
 
-  -- ========================
-  -- Progression strings
-  -- ========================
   ["LEVEL UP!"] = "¡NIVEL ARRIBA!",
   ["MILESTONE: "] = "HITO: ",
   ["MODS USED - NO PROGRESS"] = "MODS USADOS - SIN PROGRESIÓN",
@@ -5918,9 +5460,6 @@ MOD_TRANSLATIONS["es"] = {
   ["• Gold+ Stakes: 1.5x Bonus"] = "• Apuestas Oro+: 1.5x Bonus",
   ["Modded/Seeded runs don't earn XP (Daily does!)"] = "¡Partidas moddedas/seeded no ganan XP (¡Diaria sí!)",
 
-  -- ========================
-  -- Custom Runs strings
-  -- ========================
   ["Custom Run Builder"] = "Creador de Partida",
   ["Configure rules, deck, shop & jokers"] = "Configurar reglas, baraja, tienda & jokers",
   ["Configure Settings"] = "Ajustes de la sala",
@@ -5938,9 +5477,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Random"] = "Aleatorio",
   ["CONSUMABLES"] = "CONSUMIBLES",
 
-  -- ========================
-  -- Multiplayer — bom_ui.lua
-  -- ========================
   ["MATCHMAKING"] = "EMPAREJAMIENTO",
   ["Searching for opponent..."] = "Buscando oponente...",
   ["This may take a moment"] = "Esto puede tardar un momento",
@@ -6021,9 +5557,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Leave Lobby"] = "Salir de la sala",
   ["YOU LOSE"] = "HAS PERDIDO",
 
-  -- ========================
-  -- Multiplayer — bom_pvp_hud.lua
-  -- ========================
   ["Enemy Score"] = "Puntuación enemiga",
   ["Enemy Hands"] = "Manos enemigas",
   ["Score at least"] = "Puntuación mínima",
@@ -6036,9 +5569,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Mods"] = "Mods",
   ["Life"] = "Vida",
 
-  -- ========================
-  -- Multiplayer — bom_lobby_settings.lua
-  -- ========================
   ["Gamemode"] = "Modo de Juego",
   ["Rival blinds replace Boss blinds starting at Ante 2. Beat your opponent's score or lose a life!"] = "Las ciegas Rival reemplazan a las ciegas jefe desde la apuesta inicial 2. ¡Supera la puntuación rival o pierde una vida!",
   ["ALL blinds are Rival blinds from the start. Pure head-to-head every round!"] = "¡TODAS las ciegas son ciegas Rival desde el inicio. Cara a cara puro cada ronda!",
@@ -6072,9 +5602,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Tap a joker to add/remove it"] = "Toca un joker para añadir/quitar",
   ["Tool Permissions"] = "Permisos de Herramientas",
 
-  -- ========================
-  -- Hand Optimizer — hand_optimizer.lua
-  -- ========================
   ["HAND OPTIMIZER"] = "OPTIMIZADOR DE MANO",
   ["Hand Optimizer Settings"] = "Ajustes Optimizador de Mano",
   ["Beginner Mode"] = "Modo Principiante",
@@ -6103,14 +5630,8 @@ MOD_TRANSLATIONS["es"] = {
   ["on pace - current play is strong enough"] = "en ritmo - la jugada actual es suficiente",
   ["current play is strong enough"] = "la jugada actual es suficiente",
 
-  -- ========================
-  -- Showcase — What's New
-  -- ========================
   ["What's New"] = "Novedades",
 
-  -- ========================
-  -- Mod Guide — mod_guide.lua
-  -- ========================
   ["BALATRO OVERHAUL"] = "BALATRO OVERHAUL",
   ["Welcome to Balatro Overhaul!"] = "¡Bienvenido a Balatro Overhaul!",
   ["FEATURES:"] = "CARACTERÍSTICAS:",
@@ -6172,9 +5693,6 @@ MOD_TRANSLATIONS["es"] = {
   ["ALSO:"] = "TAMBIÉN:",
   ["Settings > Hand Optimizer"] = "Ajustes > Optimizador de Mano",
 
-  -- ========================
-  -- UI Settings & Toggles
-  -- ========================
   ["Language"] = "Idioma",
   ["Tutorial"] = "Tutorial",
   ["Profile"] = "Perfil",
@@ -6197,36 +5715,24 @@ MOD_TRANSLATIONS["es"] = {
   ["Disable Mod Menu"] = "Desactivar menú mod",
   ["FPS Cap"] = "Límite de FPS",
 
-  -- ========================
-  -- Language Selector
-  -- ========================
 
-  -- ========================
-  -- Missing strings (audit 2026-04-17)
-  -- ========================
 
-  -- mod_guide.lua
   ["- Rematch"] = "- Revancha",
 
-  -- debug_mode.lua section headers
   ["-- Shop Content --"] = "-- Contenido tienda --",
   ["-- Stake Win Stickers --"] = "-- Pegatinas de victoria --",
 
-  -- debug_mode.lua unlock notifications
   ["ALL COLOR SETS UNLOCKED!"] = "¡TODOS LOS CONJUNTOS DE COLOR DESBLOQUEADOS!",
   ["ALL DECK STAKE WINS SET!"] = "¡VICTORIAS DE BARAJA Y POZO HECHAS!",
   ["ALL ENHANCEMENTS UNLOCKED!"] = "¡TODAS LAS MEJORAS DESBLOQUEADAS!",
   ["ALL ICON EFFECTS UNLOCKED!"] = "¡TODOS LOS EFECTOS DE ICONOS DESBLOQUEADOS!",
   ["ALL JOKER STAKE WINS SET!"] = "¡VICTORIAS DE COMODÍN CONFIGURADAS!",
 
-  -- debug_mode.lua button labels
   ["Color Sets"] = "Conjuntos de colores",
   ["Deck Stake Wins"] = "Victorias por baraja y pozo",
   ["Joker Stake Wins"] = "Victorias de joker",
 
-  -- cosmetics.lua tab label
   ["Badges"] = "Insignias",
-  -- FEATURE: Badge Immunity
   ["Badge Immunity"] = "Inmunidad de Insignia",
   ["BADGE IMMUNITY"] = "INMUNIDAD DE INSIGNIA",
   ["Badges aren't just cosmetic!"] = "¡Las insignias no son solo cosméticas!",
@@ -6246,7 +5752,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Defeat a boss 10 times to"] = "Derrota a un boss 10 veces para",
   ["unlock its badge."] = "desbloquear su insignia.",
 
-  -- custom_runs.lua
   ["Browse & Add Jokers"] = "Explorar y agregar comodines",
   ["Endless Mode"] = "Modo sin fin",
   ["None selected"] = "Ninguno seleccionado",
@@ -6255,7 +5760,6 @@ MOD_TRANSLATIONS["es"] = {
 
   ["Change Jimbo's appearance! Only discovered jokers available."] = "¡Cambia la apariencia de Jimbo! Solo están disponibles los comodines descubiertos.",
 
-  -- mod_menu.lua section headers
   ["CHEATS:"] = "TRUCOS:",
   ["COSMETICS:"] = "COSMÉTICOS:",
   ["EQUIP:"] = "EQUIPAR:",
@@ -6265,31 +5769,24 @@ MOD_TRANSLATIONS["es"] = {
   ["RULES:"] = "REGLAS:",
   ["TOOLS:"] = "HERRAMIENTAS:",
 
-  -- mod_menu.lua strings
   ["CREATIVE STAKES (9-13)"] = "APUESTAS CREATIVAS (9-13)",
   ["MOD MENU DISABLED IN MULTIPLAYER"] = "MENÚ MOD DESACTIVADO EN MULTIJUGADOR",
   ["Multiplayer"] = "Multijugador",
 
-  -- mod_guide.lua
 
-  -- quests_ui.lua / shop.lua tab labels
   ["Jimbo Skin"] = "Apariencia de Jimbo",
   ["Jimbo Skins"] = "Apariencias de Jimbo",
 
-  -- UI_definitions.lua
   ["Other"] = "Otro",
   ["Reset Filter"] = "Restablecer filtro",
   ["Display Stake Sticker"] = "Mostrar pegatina de pozo",
   ["VISUAL FILTERS"] = "FILTROS VISUALES",
 
-  -- help text (lowercase variant)
   ["Options > Debug tab"] = "Opciones > Pestaña Debug",
   ["Options > Filters tab"] = "Opciones > Pestaña Filtros",
 
-  -- daily_challenge.lua modifier
   ["Hand size of 4"] = "Tamaño de mano de 4",
 
-  -- Session 152: Missing translations added
   ["- 4 Creative Stakes (9-12)"] = "- 4 Apuestas Creativas (9-12)",
   ["+1 ANTE"] = "+1 ANTE",
   ["ACHIEVEMENTS"] = "LOGROS",
@@ -6341,7 +5838,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Total XP:"] = "XP total:",
   ["Unlocked:"] = "Desbloqueado:",
 
-  -- Achievement / hand names (added in Session 209 audit)
   ["Boss Hunter"]              = "Cazador de Bosses",
   ["Five of a Kind"]           = "Repóquer",
   ["Flush Five"]               = "Cinco de color",
@@ -6349,7 +5845,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Reach Ante 5"]             = "Alcanzar el Ante 5",
   ["Win on Gold Stake"]        = "Ganar en pozo de oro",
 
-  -- Joker Display abbreviations (added in Session 209 audit)
   ["jd_mult"]                  = "Multi",
   ["jd_chips"]                 = "Fichas",
   ["jd_max_debt"]              = "deuda máx",
@@ -6488,7 +5983,6 @@ MOD_TRANSLATIONS["es"] = {
   ["jd_uncommon_jokers"]       = "comodines poco comunes",
   ["jd_first_scored"]          = "1ª carta puntuada",
 
-  -- Session 209: missing ES translations for unwrapped-string audit
   ["Banned Items"]                            = "Objetos baneados",
   ["Cards: "]                                 = "Cartas: ",
   ["Choose your language:"]                   = "Elige tu idioma:",
@@ -6703,10 +6197,6 @@ MOD_TRANSLATIONS["es"] = {
   ["Your opponent lost the connection. You stopped waiting."] = "Tu rival perdió la conexión. Dejaste de esperar.",
 }
 
--- ===== LOOKUP FUNCTION =====
--- Call mod_loc("English text") to get translation for current language
--- Falls back to English text if no translation exists
--- PERF: Memoization cache to avoid repeated table lookups
 local _mod_loc_cache = {}
 local _mod_loc_cached_lang = nil
 
@@ -7163,7 +6653,7 @@ SWEEP_TRANSLATIONS.es["BALACOIN:"] = "BALACOIN:"
 for lang, t in pairs(SWEEP_TRANSLATIONS) do
   MOD_TRANSLATIONS[lang] = MOD_TRANSLATIONS[lang] or {}
 r 12 131 %20%20 -
-l 128
+l 122
     if MOD_TRANSLATIONS[lang][k] == nil or MOD_TRANSLATIONS[lang][k] == k then MOD_TRANSLATIONS[lang][k] = v end
   end
 end
@@ -7171,29 +6661,23 @@ end
 function mod_loc(english_text)
   if not english_text then return "" end
   local lang = (G and G.SETTINGS and G.SETTINGS.language) or "en-us"
-  -- Invalidate cache on language change
   if lang ~= _mod_loc_cached_lang then
     _mod_loc_cache = {}
     _mod_loc_cached_lang = lang
   end
-  -- Check cache first
   local cached = _mod_loc_cache[english_text]
   if cached then return cached end
-  -- Compute result
   local result
-  -- Always check the en-us table first for jd_* keys (internal names, not English text)
   if lang == "en-us" then
     local en_t = MOD_TRANSLATIONS["en-us"]
     result = (en_t and en_t[english_text]) or english_text
   else
-    -- Map Spanish variants to single key
     local lookup_lang = lang
     if lang == "es_ES" or lang == "es_419" then lookup_lang = "es" end
     local t = MOD_TRANSLATIONS[lookup_lang]
     if t and t[english_text] then
       result = t[english_text]
     else
-      -- Fallback: check en-us table (handles jd_* keys for non-EN languages missing a key)
       local en_t = MOD_TRANSLATIONS["en-us"]
       result = (en_t and en_t[english_text]) or english_text
     end

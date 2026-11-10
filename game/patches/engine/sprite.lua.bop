@@ -38,10 +38,9 @@ c 4
 s 1
 r 30 88 %20%20%20%20 -
 c 1
-l 17
+l 16
         G.SHADERS.vortex:send('DPI', love.graphics.getDPIScale())
     elseif _perf_shader <= 2 then
-        -- Low/Off shader: minimal sends (skip tilt, hover, cursor)
         local _s = G.SHADERS[_shader or 'dissolve']
         _s:send("dissolve", math.abs(_draw_major.dissolve or 0))
         _s:send("texture_details", self:get_pos_pixel())

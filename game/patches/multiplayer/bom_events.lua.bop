@@ -2,21 +2,12 @@ BOP 1
 eol lf
 final 1
 base 0
-l 618
-﻿-- ============================================
--- MULTIPLAYER EVENTS — Message router & game event hooks
--- Routes incoming server messages to the correct handler module
--- ============================================
-
+l 526
+﻿
 local bom_events = {}
 
--- ============================================
--- INCOMING MESSAGE DISPATCH
--- Maps server message types to handler functions
--- ============================================
 
 local HANDLERS = {
-    -- Room lifecycle
     room_created = function(d)
         pcall(function() bom_rejoin.on_room_seat(d) end)
         pcall(function() bom_room.on_seat(d) end)
@@ -89,7 +80,6 @@ local HANDLERS = {
         bom_core.on_pong()
     end,
 
-    -- Matchmaking
     searching = function(d)
         pcall(function() bom_ui.show_searching_screen() end)
     end,
@@ -97,31 +87,23 @@ local HANDLERS = {
         pcall(function() bom_ui.hide_searching_screen() end)
     end,
 
-    -- Player exchange
     room_joined = function(d)
         pcall(function() bom_room.on_opponent_profile(d) end)
     end,
 
-    -- Lobby: ready state
     ready_state = function(d)
         pcall(function() bom_room.on_opponent_ready(d) end)
     end,
 
-    -- Lobby: match settings (from host)
     match_settings = function(d)
         pcall(function() bom_room.on_settings_received(d) end)
     end,
 
-    -- Match start (from host to joiner)
     match_start = function(d)
-        -- DIAGNOSTIC: No inner pcall — let errors propagate to dispatch’s pcall
-        -- which already logs the error. This way we can see match_start errors.
         bom_room.on_match_start(d)
     end,
 
-    -- ========== SERVER-AUTHORITATIVE MESSAGES ==========
 
-    -- Server pushes full authoritative match state
     match_state_update = function(d)
         pcall(function()
             if bom_match and bom_match.on_server_state_update then
@@ -131,7 +113,6 @@ local HANDLERS = {
         pcall(function() bom_rejoin.on_state_update(d) end)
     end,
 
-    -- Server resolved PvP scoring (authoritative scores + lives)
     pvp_resolved = function(d)
         pcall(function()
             if bom_match and bom_match.on_pvp_resolved then
@@ -140,7 +121,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- FEATURE: Server resolved Ascension mode (compare rounds, determine winner)
     ascension_resolved = function(d)
         pcall(function()
             if not d or not bom_match then return end
@@ -154,7 +134,6 @@ local HANDLERS = {
                     bom_match.end_match("lose", d.reason or "ascension_farthest")
                 end
             else
-                -- Draw
                 if bom_match.end_match then
                     bom_match.end_match("draw", d.reason or "ascension_draw")
                 end
@@ -162,7 +141,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Server notifies us opponent finished their blind
     opponent_blind_finished = function(d)
         pcall(function()
             if bom_match and bom_match.on_opponent_blind_finished then
@@ -171,32 +149,19 @@ local HANDLERS = {
         end)
     end,
 
-    -- ========== LEGACY / PEER-TO-PEER FALLBACK ==========
 
-    -- PvP: blind finished (legacy peer relay path).
-    -- FIX P3#19: server now sends opponent_blind_finished authoritatively.
-    -- Routing this legacy variant to on_opponent_blind_finished risks double-update
-    -- if a buggy server emits both. Reduced to a logged-only no-op.
     blind_finished = function(d)
         mp_log.debug("BOM_EVENTS", "blind_finished (legacy relay, ignored -- server sends opponent_blind_finished)")
     end,
 
-    -- PvP: result confirmation (legacy peer relay path).
-    -- Server now sends pvp_resolved authoritatively; this type should not arrive in production.
-    -- FIX Stage 4: removed deprecated on_opponent_life_update call.
     pvp_result = function(d)
         mp_log.debug("BOM_EVENTS", "pvp_result (legacy relay, ignored -- server sends pvp_resolved)")
     end,
 
-    -- State sync (lives, ante, etc.) from old single-endpoint server.
-    -- FIX P3#20: server now sends match_state_update authoritatively.
-    -- Routing this legacy variant risks racing with the canonical update.
-    -- Reduced to a logged-only no-op.
     state_sync = function(d)
         mp_log.debug("BOM_EVENTS", "state_sync (legacy relay, ignored -- server sends match_state_update)")
     end,
 
-    -- Match finished (opponent declares result) -- fallback path if server state update arrives late
     match_finished = function(d)
         pcall(function()
             if not d or not bom_match then return end
@@ -208,12 +173,10 @@ local HANDLERS = {
         end)
     end,
 
-    -- Legacy: round_end (backward compat with old sync)
     round_end = function(d)
         pcall(function() bom_sync.on_round_end(d) end)
     end,
 
-    -- Legacy: boss_sync (real-time score during boss blind)
     boss_sync = function(d)
         pcall(function()
             if not d or not G or not G.GAME then return end
@@ -229,8 +192,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- FEATURE: Session 57 — PvP blind ready system
-    -- Server sends start_blind when both players are ready
     start_blind = function(d)
         pcall(function()
             mp_log.info("BOM_EVENTS", "start_blind received — starting PvP blind")
@@ -246,8 +207,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- FIX P1#13: server rejected our ready_blind (phase mismatch). Clear local
-    -- ready state so the UI doesn't show "Unready" while the server has us as not-ready.
     ready_blind_rejected = function(d)
         pcall(function()
             mp_log.warn("BOM_EVENTS", "ready_blind_rejected reason=%s", tostring(d and d.reason))
@@ -273,7 +232,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Opponent toggled ready for PvP blind
     opponent_ready_blind = function(d)
         pcall(function()
             mp_log.info("BOM_EVENTS", "opponent_ready_blind received")
@@ -283,7 +241,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Opponent toggled unready for PvP blind
     opponent_unready_blind = function(d)
         pcall(function()
             mp_log.info("BOM_EVENTS", "opponent_unready_blind received")
@@ -293,28 +250,23 @@ local HANDLERS = {
         end)
     end,
 
-    -- Sabotage relay from opponent (DISABLED — sabotage system removed for now)
     sabotage = function(d)
         if d and bom_sabotage and bom_sabotage.receive_heckle then
             pcall(bom_sabotage.receive_heckle, d.sabotage_id)
         end
     end,
 
-    -- FEATURE: Live enemy score update during PvP blind (ported from BalatroMultiplayer-0.3.3)
-    -- Server relays opponent's play_hand as enemy_info
     enemy_info = function(d)
         pcall(function()
             if not d or not G or not G.GAME or not G.GAME.mp_opponent_panel then return end
             local panel = G.GAME.mp_opponent_panel
 
-            -- Update score
             if d.score then
                 local score = tonumber(d.score) or 0
                 panel.score = score
                 panel.score_text = tostring(score)
             end
 
-            -- Update hands left
             if d.hands_left ~= nil then
                 panel.hands_left = tonumber(d.hands_left) or 0
             end
@@ -322,7 +274,6 @@ local HANDLERS = {
             panel.seq = (panel.seq or 0) + 1
             panel.seen = true
 
-            -- Update lives (if sent)
             if d.lives ~= nil then
                 local old_lives = panel.lives or 99
                 panel.lives = tonumber(d.lives) or panel.lives
@@ -336,7 +287,6 @@ local HANDLERS = {
                 end
             end
 
-            -- Juice up HUD
             pcall(function()
                 if bom_pvp_hud and bom_pvp_hud.juice_up_pvp_hud then
                     bom_pvp_hud.juice_up_pvp_hud()
@@ -348,15 +298,12 @@ local HANDLERS = {
         end)
     end,
 
-    -- FEATURE: Server signals end of PvP round (ported from BalatroMultiplayer-0.3.3)
-    -- Sets end_pvp flag so Game:update_hand_played can advance to NEW_ROUND
     end_pvp = function(d)
         pcall(function()
             mp_log.info("BOM_EVENTS", "end_pvp received from server")
             if bom_match and bom_match.set_end_pvp then
                 bom_match.set_end_pvp(true)
             end
-            -- Reset ready state
             if G and G.GAME then
                 G.GAME.mp_blind_ready = false
                 G.GAME.mp_blind_ready_text = mod_loc("Ready")
@@ -364,7 +311,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Taunt relay from opponent
     taunt = function(d)
         pcall(function()
             if d and bom_ui and bom_ui.receive_taunt then
@@ -373,8 +319,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- FEATURE: Session 56 — opponent location update (ported from BalatroMultiplayer-0.3.3)
-    -- Server relays set_location from opponent. Parse and store on opponent panel.
     set_location = function(d)
         pcall(function()
             if not d or not d.location then return end
@@ -386,14 +330,10 @@ local HANDLERS = {
         end)
     end,
 
-    -- Match end (legacy relay).
-    -- FIX Stage 4: removed direct bom_rewards call -- rewards flow through bom_match.end_match,
-    -- which is triggered by match_state_update phase=finished. Direct call here causes double-award.
     match_end = function(d)
         mp_log.debug("BOM_EVENTS", "match_end (legacy, ignored -- rewards handled by bom_match.end_match)")
     end,
 
-    -- Disconnect
     opponent_disconnected = function(d)
         pcall(function()
             require("functions/fast_fs").append("mp_match_debug.txt",
@@ -413,7 +353,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Player left (same as disconnect — other player wins)
     player_left = function(d)
         pcall(function()
             require("functions/fast_fs").append("mp_match_debug.txt",
@@ -428,8 +367,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Opponent left the lobby entirely (they pressed "Leave Lobby")
-    -- Post-match: just go to menu silently. Mid-match: treat as disconnect.
     opponent_left = function(d)
         pcall(function()
             if d and d.gameHistory and bom_ui and bom_ui.update_game_history then
@@ -455,7 +392,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Version mismatch
     version_mismatch = function(d)
         pcall(function()
             local my_ver = (VERSION or "?") .. " (v" .. tostring(MP_PROTOCOL_VERSION or 0) .. ")"
@@ -464,20 +400,12 @@ local HANDLERS = {
         end)
     end,
 
-    -- FEATURE: Match cancelled — pre-Ante 2 disconnect
     match_cancelled = function(d)
         pcall(function()
             require("functions/fast_fs").append("mp_match_debug.txt",
                 "\n[MATCH_CANCELLED] reason=" .. tostring(d and d.reason))
         end)
 
-        -- FIX: Ignore if we're already in an active match (run started or starting).
-        -- The server fires cleanupSocket on transient mobile network blips during
-        -- the match-start transition. If either player's socket briefly drops and
-        -- reconnects, the server still sends match_cancelled — which previously
-        -- kicked the remaining player back to main menu even though the run started
-        -- successfully. The server now sends opponent_disconnected instead (fixed
-        -- in src/index.ts), but guard here as defense-in-depth.
         local _phase = bom_match and bom_match.get_phase and bom_match.get_phase()
         local _in_run = G and G.STAGE and G.STAGE == 2
         local _match_active = _phase and (
@@ -504,7 +432,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- Desync check from server
     desync_check = function(d)
         pcall(function()
             if bom_match and bom_match.check_desync then
@@ -513,56 +440,41 @@ local HANDLERS = {
         end)
     end,
 
-    -- Rematch vote — opponent voted for rematch
     rematch_vote = function(d)
         pcall(function()
-            -- If we already voted, both have voted — server will send rematch_accepted.
-            -- If we haven't voted, show the rematch offer notification.
             if bom_match and bom_match.has_voted_rematch and bom_match.has_voted_rematch() then
-                -- Already voted, waiting for server to confirm
                 mp_log.debug("BOM_EVENTS", "Opponent also voted rematch, waiting for server rematch_accepted")
             else
-                -- Show "Opponent wants a rematch" in the vanilla screen
-                -- (The rematch button in our MP game over/win screen handles voting)
                 mp_log.info("BOM_EVENTS", "Opponent wants rematch")
             end
         end)
     end,
 
-    -- Rematch accepted — server confirms both voted, new seed provided
     rematch_accepted = function(d)
         pcall(function()
             mp_log.info("BOM_EVENTS", "Rematch accepted! Seed: %s", tostring(d and d.seed))
-            -- FEATURE: Store game history for cumulative results screen
             if d and d.gameHistory and bom_ui and bom_ui.update_game_history then
                 bom_ui.update_game_history(d.gameHistory)
             end
-            -- Close game over / win overlay
             if G and G.OVERLAY_MENU then
                 pcall(function() G.FUNCS.exit_overlay_menu() end)
             end
-            -- Destroy old HUD
             if bom_ui then bom_ui.destroy_match_hud() end
-            -- Clear debrief
             if bom_ui then bom_ui._pending_debrief = nil end
-            -- Reinitialize match state (preserves settings, names)
             local seed = d and d.seed or tostring(os.time())
             if bom_match and bom_match.start_match then
                 bom_match.start_match(seed)
             end
-            -- Start new run with rematch seed
             if bom_room and bom_room.do_mp_start_run then
                 bom_room.do_mp_start_run(seed, "rematch")
             end
         end)
     end,
 
-    -- Opponent returned to menu
     opponent_returned_to_menu = function(d)
         mp_log.info("BOM_EVENTS", "Opponent returned to menu (room_closed follows)")
     end,
 
-    -- FEATURE: Phase 4 — receive enemy joker data at end of match
     end_game_jokers = function(d)
         pcall(function()
             if bom_ui and bom_ui.load_end_game_jokers then
@@ -571,7 +483,6 @@ local HANDLERS = {
         end)
     end,
 
-    -- FEATURE: Phase 4 — receive nemesis deck card data
     nemesis_deck_data = function(d)
         pcall(function()
             if bom_ui and bom_ui.on_nemesis_deck_data then
@@ -594,7 +505,6 @@ end
 function bom_events.back_to_lobby_after_results(d)
     pcall(function()
         mp_log.info("BOM_EVENTS", "Opponent returned to lobby")
-        -- FEATURE: Store game history for cumulative results
         if d and d.gameHistory and bom_ui and bom_ui.update_game_history then
             bom_ui.update_game_history(d.gameHistory)
         end
@@ -612,17 +522,15 @@ function bom_events.back_to_lobby_after_results(d)
             local code = G.GAME and G.GAME.bom_room_code
             if bom_ui then bom_ui.destroy_match_hud() end
             G.GAME.multiplayer = nil
-            -- Reset match state but preserve lobby data
             if bom_match and bom_match.return_to_lobby then
                 bom_match.return_to_lobby()
             elseif bom_match and bom_match.reset then
                 bom_match.reset()
             end
             bom_events.apply_lobby_seat(d)
-            -- Close results overlay and go to menu, then show lobby
             pcall(function()
 r 4 1825 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 187
+l 176
             end)
             bom_rejoin.exit_to_menu({ keep_match = true, silent = true, after = function()
                 pcall(function()
@@ -690,7 +598,6 @@ end
 function bom_events.dispatch(data)
     if not data or not data.type then return end
     if PERF_MON and PERF_MON.enabled then PERF_MON.note_mp_message(data.type) end
-    -- DIAGNOSTIC: Log ALL incoming message types to debug file
     if mp_log.enabled and mp_log.enabled("DEBUG") then pcall(function()
         require("functions/fast_fs").append("mp_match_debug.txt",
             "\n[DISPATCH] type=" .. tostring(data.type)
@@ -736,13 +643,11 @@ function bom_events.dispatch(data)
         local ok, err = pcall(handler, data)
         if not ok then
             mp_log.error("BOM_EVENTS", "ERROR handling %s: %s", tostring(data.type), tostring(err))
-            -- DIAGNOSTIC: Write error to debug file so it's visible on device
             pcall(function()
                 local msg = string.format("[DISPATCH ERROR] type=%s err=%s", tostring(data.type), tostring(err))
                 print("[MP_DBG] " .. msg)
                 require("functions/fast_fs").append("mp_match_debug.txt", "\n" .. msg)
             end)
-            -- For match_start errors, crash visibly
             if data.type == "match_start" then
                 error("MATCH_START DISPATCH ERROR: " .. tostring(err))
             end
@@ -752,10 +657,6 @@ function bom_events.dispatch(data)
     end
 end
 
--- ============================================
--- OUTGOING GAME EVENT HOOKS
--- Called from state_events.lua when game events happen during multiplayer
--- ============================================
 
 function bom_events.on_game_event(event, data)
     if not G then return end
@@ -763,7 +664,6 @@ function bom_events.on_game_event(event, data)
     if not G.GAME.multiplayer then return end
 
     if event == "boss_defeated" then
-        -- Boss round complete — use bom_match for PvP resolution
         G.GAME.mp_boss_wins = (G.GAME.mp_boss_wins or 0) + 1
         pcall(function()
             if bom_match and bom_match.on_blind_defeated then
@@ -772,8 +672,6 @@ function bom_events.on_game_event(event, data)
         end)
 
     elseif event == "game_over" then
-        -- Player lost the run
-        -- FEATURE: During PvP blinds, redirect to blind_defeated (submit score, lose a life — not the match)
         local is_pvp = false
         pcall(function()
             if bom_match and bom_match.is_pvp_blind then
@@ -797,7 +695,6 @@ function bom_events.on_game_event(event, data)
         end
 
     elseif event == "blind_entered" then
-        -- A new blind started (called from state_events.lua blind setup)
         pcall(function()
             if bom_match and bom_match.on_blind_entered then
                 local ante = data and data.ante or 1

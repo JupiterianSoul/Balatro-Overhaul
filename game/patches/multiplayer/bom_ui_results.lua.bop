@@ -2,20 +2,13 @@ BOP 1
 eol lf
 final 1
 base 0
-l 87
-﻿-- ============================================
--- BOM_UI_RESULTS â€” PvP results, match debrief, cumulative results, game over/win screens
--- FEATURE: Split from bom_ui.lua for maintainability
--- ============================================
-
+l 68
+﻿
 local M = {}
 
 function M.init(bom_ui)
     local function _show_mp_overlay(ref_name, definition)
         if not G or not G.FUNCS or not G.FUNCS.overlay_menu then return end
-        -- FIX: Don't set G.SETTINGS.paused â€” it suppresses main menu rendering,
-        -- causing a black screen when the debrief overlay appears after returning
-        -- to the main menu. overlay_menu handles its own display.
         bom_ui.overlay({definition = definition})
         G[ref_name] = G.OVERLAY_MENU
     end
@@ -33,10 +26,8 @@ function M.init(bom_ui)
         end
     end
 
-    -- Module-level state (stored on bom_ui table)
     bom_ui._pending_debrief = nil
     bom_ui._game_history = {}
-    -- FEATURE: Phase 4 â€” end-game joker & deck state
     bom_ui._end_joker_data = nil
     bom_ui._end_joker_area = nil
     bom_ui._my_joker_keys = {}
@@ -44,11 +35,6 @@ function M.init(bom_ui)
     bom_ui._end_joker_label = "Enemy Jokers"
     bom_ui._nemesis_deck_data = nil
 
-    -- ============================================
-    -- PVP RESULT BANNER
-    -- FEATURE: Redesigned â€” colored panel (green=win, red=lose, yellow=draw),
-    --          cleaner score comparison, auto-dismiss
-    -- ============================================
 
     function bom_ui.show_pvp_result(result, my_score, opp_score)
         local st = {}
@@ -67,12 +53,8 @@ function M.init(bom_ui)
         })
     end
 
-    -- ============================================
-    -- REMATCH OFFER
-    -- ============================================
 
     function bom_ui.show_rematch_offer()
-        ---@diagnostic disable-next-line: duplicate-set-field
         G.FUNCS.mp_accept_rematch = function()
             _hide_mp_overlay("BOM_REMATCH_OVERLAY")
             pcall(function()
@@ -81,7 +63,6 @@ function M.init(bom_ui)
                 end
             end)
         end
-        ---@diagnostic disable-next-line: duplicate-set-field
         G.FUNCS.mp_decline_rematch = function()
             _hide_mp_overlay("BOM_REMATCH_OVERLAY")
             pcall(function()
@@ -92,7 +73,7 @@ function M.init(bom_ui)
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 45
+l 42
             blocking = false,
             blockable = false,
             func = function()
@@ -123,9 +104,6 @@ l 45
         }))
     end
 
-    -- ============================================
-    -- BOSS BLIND RESULT
-    -- ============================================
 
     function bom_ui.show_boss_result(result)
         local text = mod_loc("Draw!")
@@ -162,7 +140,7 @@ l 20
                 G.BOM_BOSS_TOAST = overlay
 
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 59
+l 51
                     trigger = 'after',
                     delay = 2,
                     func = function()
@@ -175,16 +153,11 @@ l 59
         }))
     end
 
-    -- ============================================
-    -- MATCH DEBRIEF â€” REMOVED (will be rebuilt from scratch)
-    -- Stubs kept so existing call sites don't crash.
-    -- ============================================
 
     function bom_ui.store_match_debrief(result, rewards) end
     function bom_ui.show_debrief_popup() end
     function bom_ui.show_match_results(result, rewards) end
     function bom_ui.hide_match_results()
-        -- Still clean up overlays if any exist
         _hide_mp_overlay("MP_RESULTS_OVERLAY")
         _hide_mp_overlay("MP_DEBRIEF_OVERLAY")
         if G and G.MP_RESULTS_OVERLAY then
@@ -201,9 +174,6 @@ l 59
     function bom_ui.show_cumulative_results() end
     function bom_ui.record_game_history(data) end
 
-    -- ============================================
-    -- MP RETURN TO MENU
-    -- ============================================
 
     function bom_ui.mp_return_to_menu()
         pcall(function()
@@ -256,7 +226,7 @@ l 3
 
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 135
+l 131
                 blocking = false,
                 blockable = false,
                 func = function()
@@ -271,10 +241,6 @@ l 135
         end)
     end
 
-    -- ============================================
-    -- PHASE 4: END-GAME JOKER & DECK VIEWING
-    -- FEATURE: Phase 4 port â€” enemy joker display, nemesis deck overlay, cleanup
-    -- ============================================
 
     function bom_ui.request_end_game_jokers()
         pcall(function()
@@ -523,7 +489,7 @@ l 54
         local t = create_UIBox_generic_options({ back_func = "mp_end_view_back", no_esc = true, contents = contents })
         t.config.id = "mp_end_deck_UI"
 r 4 1381 %20%20%20%20%20%20%20%20 -
-l 166
+l 161
         bom_ui.overlay({ definition = t, config = { no_esc = true } })
     end
 
@@ -554,9 +520,7 @@ l 166
         bom_ui._end_joker_label = "Enemy Jokers"
     end
 
-    -- record_game_history â€” REMOVED (stubbed above)
 
-    -- FEATURE: Extend register_funcs to register Phase 4 end-game G.FUNCS
     do
         local _orig_register = bom_ui.register_funcs
         bom_ui.register_funcs = function()
@@ -604,9 +568,6 @@ l 166
         end
     end
 
-    -- ============================================
-    -- MP GAME OVER / WIN SCREENS
-    -- ============================================
 
     bom_ui._rematch_ui = bom_ui._rematch_ui or { text = "" }
 
@@ -889,7 +850,7 @@ l 1
                 {n=G.UIT.C, config={align = "cm", padding = 0.6}, nodes={
 r 7 297 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 15 2792 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 25
+l 23
                     }},
                 }},
                 {n=G.UIT.C, config={align = "cm", padding = 0.1}, nodes={t.nodes[1]}},
@@ -899,7 +860,6 @@ l 25
         return t
     end
 
-    -- FIX: Mirror You Win layout â€” red background, YOU LOSE text
     function bom_ui.create_mp_game_over(opts)
         return results_def("over", opts)
     end
@@ -908,7 +868,6 @@ l 25
         return results_def("win", opts)
     end
 
-    -- FIX: Explicit YOU LOSE screen for when player reaches 0 lives
     function bom_ui.create_mp_lose(opts)
         return results_def("lose", opts)
     end

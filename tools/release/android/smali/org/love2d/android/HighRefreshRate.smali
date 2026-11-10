@@ -3,13 +3,11 @@
 .source "HighRefreshRate.java"
 
 
-# static fields
 .field private static appliedModeHz:F
 
 .field private static appliedSurfaceHz:F
 
 
-# direct methods
 .method static constructor <clinit>()V
     .locals 1
 
@@ -28,18 +26,12 @@
     return-void
 .end method
 
-# ============================================================
-# apply(Activity) — Set preferredDisplayModeId to highest Hz
-# Called from GameActivity.onCreate()
-# API 23+ required for Display.Mode / getSupportedModes
-# ============================================================
 .method public static apply(Landroid/app/Activity;)V
     .locals 12
     .param p0, "activity"
 
     const-string v0, "HighRefreshRate"
 
-    # Check API >= 23 (Marshmallow) for Display.Mode support
     sget v1, Landroid/os/Build$VERSION;->SDK_INT:I
     const/16 v2, 0x17    # 23
     if-ge v1, v2, :cond_api_ok
@@ -50,21 +42,16 @@
 
     :cond_api_ok
     :try_start_0
-    # Get the Window
     invoke-virtual {p0}, Landroid/app/Activity;->getWindow()Landroid/view/Window;
     move-result-object v1
 
-    # Get the Display from WindowManager
     invoke-virtual {p0}, Landroid/app/Activity;->getWindowManager()Landroid/view/WindowManager;
     move-result-object v2
     invoke-interface {v2}, Landroid/view/WindowManager;->getDefaultDisplay()Landroid/view/Display;
     move-result-object v2
-    # v2 = Display
 
-    # Log current refresh rate
     invoke-virtual {v2}, Landroid/view/Display;->getRefreshRate()F
     move-result v3
-    # v3 = currentHz
 
     new-instance v4, Ljava/lang/StringBuilder;
     invoke-direct {v4}, Ljava/lang/StringBuilder;-><init>()V
@@ -77,12 +64,9 @@
     move-result-object v4
     invoke-static {v0, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    # Get supported modes: Display.getSupportedModes() -> Display.Mode[]
     invoke-virtual {v2}, Landroid/view/Display;->getSupportedModes()[Landroid/view/Display$Mode;
     move-result-object v4
-    # v4 = Display.Mode[] modes
 
-    # Find mode with highest refresh rate
     const/4 v5, 0x0         # bestHz = 0.0f
     const/4 v6, -0x1        # bestModeId = -1
 
@@ -93,14 +77,11 @@
     if-ge v8, v7, :loop_end
 
     aget-object v9, v4, v8
-    # v9 = modes[i]
 
-    # Log each mode
     invoke-virtual {v9}, Landroid/view/Display$Mode;->getModeId()I
     move-result v10
     invoke-virtual {v9}, Landroid/view/Display$Mode;->getRefreshRate()F
     move-result v11
-    # v10 = modeId, v11 = modeHz
 
     new-instance v3, Ljava/lang/StringBuilder;
     invoke-direct {v3}, Ljava/lang/StringBuilder;-><init>()V
@@ -126,7 +107,6 @@
     move-result-object v3
     invoke-static {v0, v3}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    # Compare: if modeHz > bestHz, update
     cmpg-float v3, v11, v5
     if-lez v3, :cond_not_best
 
@@ -139,12 +119,10 @@
 
     :loop_end
 
-    # If we found a mode with > 60 Hz, apply it
     const/high16 v2, 0x42700000    # 60.0f
     cmpg-float v3, v5, v2
     if-lez v3, :cond_no_high_hz
 
-    # Set preferredDisplayModeId on WindowManager.LayoutParams
     invoke-virtual {v1}, Landroid/view/Window;->getAttributes()Landroid/view/WindowManager$LayoutParams;
     move-result-object v2
 
@@ -198,11 +176,6 @@
 .end method
 
 
-# ============================================================
-# applySurface(Surface) — Call Surface.setFrameRate(120, 0)
-# Called from SDLSurface.surfaceChanged() after surface is ready
-# API 30+ required for Surface.setFrameRate()
-# ============================================================
 .method public static applySurface(Landroid/view/Surface;)V
     .locals 5
     .param p0, "surface"
@@ -215,7 +188,6 @@
     return-void
 
     :cond_surface_ok
-    # Check API >= 30 (Android 11) for Surface.setFrameRate()
     sget v1, Landroid/os/Build$VERSION;->SDK_INT:I
     const/16 v2, 0x1e    # 30
     if-ge v1, v2, :cond_api30_ok
@@ -234,9 +206,6 @@
 
     :cond_api30_ok
     :try_start_0
-    # Surface.setFrameRate(float frameRate, int compatibility)
-    # frameRate = 120.0f
-    # compatibility = FRAME_RATE_COMPATIBILITY_DEFAULT = 0
     const/high16 v1, 0x42f00000    # 120.0f
     const/4 v2, 0x0                # FRAME_RATE_COMPATIBILITY_DEFAULT
 
@@ -269,9 +238,6 @@
 .end method
 
 
-# ============================================================
-# getAppliedModeHz() — Returns the Hz applied via preferredDisplayModeId
-# ============================================================
 .method public static getAppliedModeHz()F
     .locals 1
 
@@ -280,9 +246,6 @@
 .end method
 
 
-# ============================================================
-# getAppliedSurfaceHz() — Returns the Hz applied via setFrameRate
-# ============================================================
 .method public static getAppliedSurfaceHz()F
     .locals 1
 

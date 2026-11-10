@@ -322,7 +322,7 @@ local function gemini_copy()
     local src = pseudorandom_element(pool, pseudoseed('mp_gemini'))
     if not src then return end
 r 1 112 %20%20%20%20 -
-l 83
+l 81
         func = function()
             local copy = copy_card(src, nil)
             copy:set_edition({ negative = true }, true)
@@ -382,7 +382,6 @@ local function install_hooks()
     end
 
     local orig_set_cost = Card.set_cost
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.set_cost = function(self)
         local r = orig_set_cost(self)
         if self and self.ability and G.GAME and G.GAME.modifiers then
@@ -395,7 +394,6 @@ local function install_hooks()
     end
 
     local orig_open = Card.open
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.open = function(self, ...)
         local r = orig_open(self, ...)
         if mods().mp_cobalt and self and self.ability and self.ability.set == 'Booster' and G.GAME.pack_choices then

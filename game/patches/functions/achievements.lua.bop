@@ -2,16 +2,8 @@ BOP 1
 eol lf
 final 1
 base 0
-l 327
--- ============================================
--- ACHIEVEMENTS SYSTEM for Balatro v10.0
--- Production-ready achievement tracking with rewards
--- PROTOCOL: Full null-safety, error handling, performance
--- ============================================
+l 295
 
--- ============================================
--- CONSTANTS
--- ============================================
 
 local MAX_ITERATIONS = 1000
 local SAVE_INTERVAL = 60
@@ -20,9 +12,6 @@ local MAX_TRACKED = 3
 local ITEMS_PER_PAGE = 6
 local CHECK_INTERVAL = 1.0
 
--- ============================================
--- MODULE STATE
--- ============================================
 
 local SAVE_TIMER = 0
 local CHECK_TIMER = 0
@@ -56,9 +45,6 @@ local ACHIEVEMENT_CATEGORIES = {
     "Secret"
 }
 
--- ============================================
--- ACHIEVEMENT MANAGER CLASS
--- ============================================
 
 AchievementManager = AchievementManager or {}
 AchievementManager.achievements = {}
@@ -78,9 +64,6 @@ AchievementManager.popup_timer = 0
 AchievementManager.popup_duration = POPUP_DURATION
 AchievementManager.initialized = false
 
--- ============================================
--- SAFE ACCESS HELPERS
--- ============================================
 
 local function safe_get_player_ach(achievement_id)
     if not achievement_id then return nil end
@@ -113,9 +96,6 @@ local function safe_get_game_value(path, default)
     return current
 end
 
--- ============================================
--- INITIALIZATION
--- ============================================
 
 function AchievementManager.init()
     if AchievementManager.initialized then return true end
@@ -169,10 +149,6 @@ function AchievementManager.init()
 end
 
 function AchievementManager.reload_for_profile()
-    -- Do NOT save old profile data here — the profile may have been deleted/reset
-    -- and saving would re-create the file with stale unlocked achievements.
-    -- The old profile's data was already saved during normal gameplay.
-    -- Reset and reload for the new profile
     pcall(function()
         AchievementManager.initialized = false
         AchievementManager.player_data = nil
@@ -190,9 +166,6 @@ function AchievementManager.delete_profile_data(profile_number)
     print("[ACHIEVEMENTS] Deleted data for profile " .. tostring(profile_number))
 end
 
--- ============================================
--- DEFINITIONS LOADER
--- ============================================
 
 function AchievementManager.load_definitions()
     if AchievementManager.achievements then
@@ -225,7 +198,6 @@ function AchievementManager.load_definitions()
         AchievementManager.player_data.stats.total_achievements = AchievementManager.count_achievements()
     end
 
-    -- Merge mod achievements into the global vanilla achievements table so they appear as normal achievements
     pcall(function()
         if G and type(G.ACHIEVEMENTS) == 'table' and ACHIEVEMENT_DEFINITIONS and type(ACHIEVEMENT_DEFINITIONS) == 'table' then
             for i = 1, #ACHIEVEMENT_DEFINITIONS do
@@ -240,9 +212,6 @@ function AchievementManager.load_definitions()
     end)
 end
 
--- ============================================
--- SAVE/LOAD SYSTEM
--- ============================================
 
 function AchievementManager.get_save_path()
     local profile = (G and G.SETTINGS and G.SETTINGS.profile) or 1
@@ -282,7 +251,6 @@ function AchievementManager.load_data()
         if info then
             local contents = love.filesystem.read(save_path)
             if contents and type(contents) == "string" and #contents > 0 then
-                -- FIX: Use sandboxed load instead of raw loadstring (prevents code injection from tampered saves)
                 local func = loadstring(contents)
                 if func then
                     setfenv(func, {})
@@ -331,7 +299,7 @@ function AchievementManager.serialize(tbl, indent, depth)
     parts[#parts+1] = "{\n"
 
 r 12 326 %20%20%20%20 -
-l 131
+l 118
         iterations = iterations + 1
         if iterations > MAX_ITERATIONS then break end
 
@@ -371,9 +339,6 @@ l 131
     return table.concat(parts)
 end
 
--- ============================================
--- ACHIEVEMENT CHECKING & UNLOCKING
--- ============================================
 
 function AchievementManager.check_all_achievements()
     if not AchievementManager.initialized then return end
@@ -391,7 +356,6 @@ function AchievementManager.check_achievement(achievement_id)
     if not achievement_id then return false end
     if not AchievementManager.achievements then return false end
 
-    -- Block achievement progress during modded runs
     if G and G.GAME and G.GAME.modded_run then return false end
 
     local achievement = AchievementManager.achievements[achievement_id]
@@ -401,7 +365,6 @@ function AchievementManager.check_achievement(achievement_id)
     if not player_ach then return false end
     if player_ach.unlocked then return true end
 
-    -- Check unlock condition function if present
     if achievement.unlock_condition and type(achievement.unlock_condition) == "function" then
         local success, result = pcall(achievement.unlock_condition)
         if success and result then
@@ -410,7 +373,6 @@ function AchievementManager.check_achievement(achievement_id)
         end
     end
 
-    -- Check progress-based unlock
     local progress_required = achievement.progress_required or 1
     local current_progress = player_ach.progress or 0
     if progress_required > 0 and current_progress >= progress_required then
@@ -425,7 +387,6 @@ function AchievementManager.unlock_achievement(achievement_id)
     if not achievement_id then return false end
     if not AchievementManager.achievements then return false end
 
-    -- Block achievement unlocks during modded runs
     if G and G.GAME and G.GAME.modded_run then return false end
 
     local achievement = AchievementManager.achievements[achievement_id]
@@ -435,12 +396,10 @@ function AchievementManager.unlock_achievement(achievement_id)
     if not player_ach then return false end
     if player_ach.unlocked then return false end
 
-    -- Mark as unlocked
     player_ach.unlocked = true
     player_ach.unlock_date = os.time() or 0
     player_ach.progress = achievement.progress_required or 1
 
-    -- Update stats
     if AchievementManager.player_data and AchievementManager.player_data.stats then
         AchievementManager.player_data.stats.last_unlock = achievement_id
         if not AchievementManager.player_data.stats.first_achievement_date then
@@ -448,27 +407,22 @@ function AchievementManager.unlock_achievement(achievement_id)
         end
     end
 
-    -- Queue popup
     if UNLOCK_QUEUE and type(UNLOCK_QUEUE) == "table" then
         table.insert(UNLOCK_QUEUE, achievement_id)
     end
 
-    -- Grant reward
     pcall(function() AchievementManager.grant_reward(achievement) end)
 
-    -- Save immediately
     AchievementManager.save_data()
 
-    -- Mirror into vanilla achievements table for seamless UI/platform integration
     pcall(function()
         if G then
             G.SETTINGS = G.SETTINGS or {}
 r 13 1682 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 264
+l 242
             G.SETTINGS.ACHIEVEMENTS_EARNED[achievement_id] = true
             if not G.ACHIEVEMENTS and fetch_achievements then fetch_achievements() end
             if G.ACHIEVEMENTS then
-                -- Map rarity to vanilla tier (1=Legendary,2=Rare,3=Common)
                 local tier = (achievement.rarity == 'Legendary') and 1 or (achievement.rarity == 'Rare') and 2 or 3
                 G.ACHIEVEMENTS[achievement_id] = G.ACHIEVEMENTS[achievement_id] or {order = achievement.order or 999, tier = tier, earned = true}
                 G.ACHIEVEMENTS[achievement_id].earned = true
@@ -522,16 +476,12 @@ function AchievementManager.grant_reward(achievement)
     end)
 end
 
--- ============================================
--- PROGRESS TRACKING
--- ============================================
 
 function AchievementManager.update_progress(achievement_id, value, increment)
     if not achievement_id then return end
     if not value or type(value) ~= "number" then return end
     if not AchievementManager.initialized then return end
     if not AchievementManager.achievements then return end
-    -- FIX: Block progress accumulation during modded runs (prevents carryover into next clean run)
     if G and G.GAME and G.GAME.modded_run then return end
 
     local achievement = AchievementManager.achievements[achievement_id]
@@ -548,7 +498,6 @@ function AchievementManager.update_progress(achievement_id, value, increment)
         player_ach.progress = math.max(current, value)
     end
 
-    -- Check for unlock
     local progress_required = achievement.progress_required or 1
     if progress_required > 0 and player_ach.progress >= progress_required then
         AchievementManager.unlock_achievement(achievement_id)
@@ -575,9 +524,6 @@ function AchievementManager.get_progress_percent(achievement_id)
     return math.min(100, (current / required) * 100)
 end
 
--- ============================================
--- QUERY FUNCTIONS
--- ============================================
 
 function AchievementManager.get_achievement(achievement_id)
     if not achievement_id then return nil end
@@ -623,9 +569,6 @@ function AchievementManager.count_unlocked()
     return count
 end
 
--- ============================================
--- STATISTICS
--- ============================================
 
 function AchievementManager.update_stats()
     if not AchievementManager.player_data then return end
@@ -671,14 +614,10 @@ function AchievementManager.get_category_stats()
     return stats
 end
 
--- ============================================
--- POPUP SYSTEM (VANILLA STYLE)
--- ============================================
 
 function AchievementManager.update_popup(dt)
     if not dt or type(dt) ~= "number" then return end
 
-    -- Update current popup timer
     if AchievementManager.show_popup then
         AchievementManager.popup_timer = (AchievementManager.popup_timer or 0) - dt
         if AchievementManager.popup_timer <= 0 then
@@ -686,7 +625,6 @@ function AchievementManager.update_popup(dt)
         end
     end
 
-    -- Show next queued popup
     if not AchievementManager.show_popup and UNLOCK_QUEUE and #UNLOCK_QUEUE > 0 then
         local achievement_id = table.remove(UNLOCK_QUEUE, 1)
         if achievement_id then
@@ -706,31 +644,26 @@ function AchievementManager.show_unlock_popup(achievement_id)
     AchievementManager.show_popup = true
     AchievementManager.popup_timer = POPUP_DURATION
 
-    -- Use vanilla notify_alert popup system
     pcall(function()
         if not G then return end
         if not notify_alert then return end
 
-        -- Register the achievement name in localization temporarily
         if G.localization and G.localization.misc then
             G.localization.misc.achievement_names = G.localization.misc.achievement_names or {}
             G.localization.misc.achievement_names[achievement_id] = AchievementManager.get_display_name(achievement)
         end
 
-        -- Play sound
         if play_sound then
             play_sound('highlight1', 1.2, 0.6)
         end
 
-        -- Call vanilla notify_alert
         notify_alert(achievement_id, 'achievement')
     end)
 
-    -- Auto-dismiss after duration
     pcall(function()
         if G and G.E_MANAGER and Event then
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 792
+l 719
                 trigger = 'after',
                 delay = POPUP_DURATION,
                 func = function()
@@ -748,9 +681,6 @@ function AchievementManager.dismiss_popup()
     AchievementManager.popup_timer = 0
 end
 
--- ============================================
--- UPDATE LOOP
--- ============================================
 
 function AchievementManager.update(dt)
     if not AchievementManager.initialized then
@@ -762,17 +692,14 @@ function AchievementManager.update(dt)
 
     if Overhaul and Overhaul.stats and Overhaul.stats.tick then pcall(Overhaul.stats.tick, dt) end
 
-    -- Update popup
     pcall(function() AchievementManager.update_popup(dt) end)
 
-    -- Periodic check (throttled)
     CHECK_TIMER = (CHECK_TIMER or 0) + dt
     if CHECK_TIMER >= CHECK_INTERVAL then
         CHECK_TIMER = 0
         pcall(function() AchievementManager.check_all_achievements() end)
     end
 
-    -- Periodic save
     SAVE_TIMER = (SAVE_TIMER or 0) + dt
     if SAVE_TIMER >= SAVE_INTERVAL then
         SAVE_TIMER = 0
@@ -780,9 +707,6 @@ function AchievementManager.update(dt)
     end
 end
 
--- ============================================
--- EVENT HOOKS
--- ============================================
 
 function AchievementManager.on_hand_played(hand_data)
     if not AchievementManager.initialized then return end
@@ -799,19 +723,15 @@ function AchievementManager.on_hand_played(hand_data)
             chips = math.max(chips, G.GAME.chips or 0)
         end
 
-        -- Update stats
         if AchievementManager.player_data and AchievementManager.player_data.stats then
             local stats = AchievementManager.player_data.stats
             stats.total_hands_played = (stats.total_hands_played or 0) + 1
             stats.highest_score = math.max(stats.highest_score or 0, chips)
         end
 
-        -- Score achievements
 
-        -- Hand type achievements
         if hand_name == "Flush Five" then
             AchievementManager.update_progress("play_flush_five", 1)
-            -- Secret: Flush Five of all face/royal cards (id >= 11)
             if G and G.play and G.play.cards and #G.play.cards >= 5 then
                 local all_royal = true
                 for _, c in ipairs(G.play.cards) do
@@ -835,14 +755,12 @@ function AchievementManager.on_hand_played(hand_data)
             AchievementManager.update_progress("play_full_house", 1)
         end
 
-        -- Hand count achievements
         AchievementManager.update_progress("hands_played_100", 1, true)
         AchievementManager.update_progress("hands_played_500", 1, true)
         AchievementManager.update_progress("hands_played_1000", 1, true)
         AchievementManager.update_progress("hands_played_5000", 1, true)
         AchievementManager.update_progress("hands_played_10000", 1, true)
 
-        -- New hand type tracking (cumulative)
         if hand_name == "Pair" then AchievementManager.update_progress("play_pair_100", 1, true) end
         if hand_name == "Two Pair" then AchievementManager.update_progress("play_two_pair_50", 1, true) end
         if hand_name == "Three of a Kind" then AchievementManager.update_progress("play_three_kind_50", 1, true) end
@@ -851,11 +769,9 @@ function AchievementManager.on_hand_played(hand_data)
         if hand_name == "Flush" then AchievementManager.update_progress("play_flush_25", 1, true) end
         if hand_name == "Full House" then AchievementManager.update_progress("play_full_house_25", 1, true) end
 
-        -- High Card Hero: track per-blind if only High Card played
         if not AchievementManager._blind_hand_types then AchievementManager._blind_hand_types = {} end
         table.insert(AchievementManager._blind_hand_types, hand_name)
 
-        -- Overkill & Close Call: check blind requirement vs score
         if G and G.GAME and G.GAME.blind and G.GAME.blind.chips then
             local blind_req = G.GAME.blind.chips or 0
             if blind_req > 0 and chips >= blind_req then
@@ -869,7 +785,6 @@ function AchievementManager.on_hand_played(hand_data)
             end
         end
 
-        -- Secret: All aces hand (check played cards)
         if G and G.play and G.play.cards and #G.play.cards >= 4 then
             local ace_count = 0
             local face_count = 0
@@ -894,7 +809,6 @@ function AchievementManager.on_hand_played(hand_data)
             end
         end
 
-        -- Secret: Baker's Dozen (13 cards in hand)
         if G and G.hand and G.hand.cards and #G.hand.cards == 13 then
             AchievementManager.update_progress("secret_13_cards", 1)
         end
@@ -922,7 +836,6 @@ function AchievementManager.on_ante_complete(ante_number)
             ante = G.GAME.round_resets.ante or ante
         end
 
-        -- Update stats
         if AchievementManager.player_data and AchievementManager.player_data.stats then
             AchievementManager.player_data.stats.highest_ante =
                 math.max(AchievementManager.player_data.stats.highest_ante or 0, ante)
@@ -930,7 +843,6 @@ function AchievementManager.on_ante_complete(ante_number)
 
         AchievementManager.on_ante_progress(ante - 1, ante)
 
-        -- Capture starting dollars for the new ante (for bankrupt_swing detection)
         if G and G.GAME then
             AchievementManager._ante_start_dollars = G.GAME.dollars or 0
         end
@@ -947,7 +859,6 @@ end
 
 function AchievementManager.on_blind_complete()
     if not AchievementManager.initialized then return end
-    -- FIX: Block during modded runs
     if G and G.GAME and G.GAME.modded_run then return end
     pcall(function()
         if AchievementManager.player_data and AchievementManager.player_data.stats then
@@ -959,7 +870,6 @@ function AchievementManager.on_blind_complete()
         AchievementManager.update_progress("blinds_beaten_500", 1, true)
         AchievementManager.update_progress("blinds_beaten_1000", 1, true)
 
-        -- Boss blind tracking
         if G and G.GAME and G.GAME.blind and G.GAME.blind.config and G.GAME.blind.config.blind then
             local blind_key = G.GAME.blind.config.blind
             if blind_key and blind_key.boss then
@@ -968,11 +878,9 @@ function AchievementManager.on_blind_complete()
             end
         end
 
-        -- Track perfect ante: all 3 blinds in an ante beaten with exactly 1 hand each
         if G and G.GAME and G.GAME.current_round then
             local hands_this_blind = G.GAME.current_round.hands_played or 0
 
-            -- Initialize tracking for this ante
             if not AchievementManager._perfect_ante_tracker then
                 AchievementManager._perfect_ante_tracker = {ante = 0, blinds_perfect = 0}
             end
@@ -982,18 +890,15 @@ function AchievementManager.on_blind_complete()
                 current_ante = G.GAME.round_resets.ante or 0
             end
 
-            -- Reset tracker if ante changed
             if current_ante ~= AchievementManager._perfect_ante_tracker.ante then
                 AchievementManager._perfect_ante_tracker = {ante = current_ante, blinds_perfect = 0}
             end
 
-            -- Count this blind if beaten with exactly 1 hand
             if hands_this_blind == 1 then
                 AchievementManager._perfect_ante_tracker.blinds_perfect =
                     AchievementManager._perfect_ante_tracker.blinds_perfect + 1
             end
 
-            -- Award only when all 3 blinds in the ante were beaten with 1 hand each
             if AchievementManager._perfect_ante_tracker.blinds_perfect >= 3 then
                 AchievementManager.update_progress("perfect_ante", 1)
                 AchievementManager._perfect_ante_tracker.blinds_perfect = 0
@@ -1004,12 +909,10 @@ function AchievementManager.on_blind_complete()
             AchievementManager.update_progress("secret_lucky_7", 1)
         end
 
-        -- Secret: Broke achievement (win blind with $0)
         if G and G.GAME and (G.GAME.dollars or 0) == 0 then
             AchievementManager.update_progress("secret_zero_dollars", 1)
         end
 
-        -- High Card Hero: check if all hands this blind were High Card
         if AchievementManager._blind_hand_types and #AchievementManager._blind_hand_types > 0 then
             local all_high = true
             for _, hn in ipairs(AchievementManager._blind_hand_types) do
@@ -1021,7 +924,6 @@ function AchievementManager.on_blind_complete()
         end
         AchievementManager._blind_hand_types = {}
 
-        -- Secret: Last Card Standing (win blind with only 1 card total in deck areas)
         if G then
             local total = 0
             if G.deck and G.deck.cards then total = total + #G.deck.cards end
@@ -1057,11 +959,9 @@ end
 
 function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
     if not AchievementManager.initialized then return end
-    -- FIX: Block during modded runs (checked from captured was_modded in hook, but guard here too)
     if G and G.GAME and G.GAME.modded_run then return end
     pcall(function()
         if won then
-            -- Update win stats
             if AchievementManager.player_data and AchievementManager.player_data.stats then
                 local stats = AchievementManager.player_data.stats
                 stats.total_wins = (stats.total_wins or 0) + 1
@@ -1070,7 +970,6 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                 end
             end
 
-            -- Win achievements
             AchievementManager.update_progress("first_win", 1)
             AchievementManager.update_progress("wins_10", 1, true)
             AchievementManager.update_progress("wins_50", 1, true)
@@ -1079,25 +978,22 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                 AchievementManager.on_ante_progress(G.GAME.win_ante or 8, safe_get_game_value("round_resets.ante", 0))
             end
 
-            -- Speed run achievements
             if run_time and type(run_time) == "number" and run_time > 0 and not G.GAME.seeded then
-                if run_time < 900 then -- Under 15 minutes
+                if run_time < 900 then
                     AchievementManager.update_progress("speed_runner", 1)
                 end
                 if run_time < 1200 then
                     AchievementManager.update_progress("speed_20", 1)
                 end
-                if run_time < 600 then -- Under 10 minutes
+                if run_time < 600 then
                     AchievementManager.update_progress("speed_demon", 1)
                 end
             end
 
-            -- Deck mastery achievements
             if deck_key and type(deck_key) == "string" then
                 AchievementManager.update_progress("deck_win_" .. deck_key, 1)
             end
 
-            -- Stake achievements
             local stake = 1
             if G and G.GAME then stake = G.GAME.stake or 1 end
             if stake >= 1 then AchievementManager.update_progress("stake_white", 1) end
@@ -1113,7 +1009,6 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
             if stake >= 11 then AchievementManager.update_progress("stake_oblivion", 1) end
             if stake >= 12 then AchievementManager.update_progress("stake_transcendent", 1) end
 
-            -- Creative stakes counter (track unique creative stakes won)
             if stake >= 9 then
                 if not AchievementManager.player_data.stats then AchievementManager.player_data.stats = {} end
                 if not AchievementManager.player_data.stats.creative_stakes_won then
@@ -1126,7 +1021,6 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                 AchievementManager.update_progress("creative_all_stakes", count)
             end
 
-            -- Challenge achievements
             if G.GAME.challenge and G.GAME.challenge ~= "" then
                 local cid = G.GAME.challenge
                 local st = AchievementManager.player_data.stats
@@ -1144,17 +1038,14 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                 if cid == "c_alchemist_1" then AchievementManager.update_progress("challenge_alchemist", 1) end
             end
 
-            -- Win streak
             local hs = G.PROFILES and G.PROFILES[G.SETTINGS.profile] and G.PROFILES[G.SETTINGS.profile].high_scores
             AchievementManager._win_streak = hs and hs.current_streak and tonumber(hs.current_streak.amt) or ((AchievementManager._win_streak or 0) + 1)
             AchievementManager.update_progress("win_streak_5", AchievementManager._win_streak)
 
-            -- Secret: Debt Victory (win while in debt)
             if G.GAME.dollars and G.GAME.dollars < 0 then
                 AchievementManager.update_progress("secret_negative_win", 1)
             end
 
-            -- All planet/tarot types in one run
             if AchievementManager._run_planets_used then
                 local planet_count = 0
                 for _ in pairs(AchievementManager._run_planets_used) do planet_count = planet_count + 1 end
@@ -1170,7 +1061,6 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                 end
             end
 
-            -- Joker count achievements
             if G and G.jokers and G.jokers.cards then
                 local count = #G.jokers.cards
                 if count == 0 then
@@ -1182,7 +1072,6 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                     AchievementManager.update_progress("win_5_jokers", 1)
                 end
 
-                -- Check common-only win
                 local all_common = true
                 for _, joker in ipairs(G.jokers.cards) do
                     if joker.config and joker.config.center then
@@ -1198,7 +1087,6 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                 end
             end
 
-            -- Secret: Classic deck (exactly 52 cards total in all areas)
             if G then
                 local total_cards = 0
                 if G.deck and G.deck.cards then total_cards = total_cards + #G.deck.cards end
@@ -1211,10 +1099,6 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                 end
             end
 
-            -- Perfectionist (no skipped blinds - won every blind faced)
-            -- In Balatro, losing a blind = game over, so if you won, all blinds were beaten.
-            -- Redefine: win run without ever using a discard (same as no_discards but also a "clean run")
-            -- Actually: Perfectionist = win run with 0 blinds skipped (fought every blind)
             if G and G.GAME then
                 local skips = 0
                 if G.GAME.blind_states then
@@ -1222,21 +1106,16 @@ function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
                         if state == "Skipped" then skips = skips + 1 end
                     end
                 end
-                -- If no skips across the whole run, that's harder to track
-                -- Use round_resets.blind_states for current ante only
-                -- Better: track skipped blinds cumulatively (already counted in G.GAME.skips)
                 local total_skips = G.GAME.skips or 0
                 if total_skips == 0 then
                     AchievementManager.update_progress("perfectionist", 1)
                 end
             end
 
-            -- No discards win (use our tracked counter)
             if (AchievementManager._run_discards or 0) == 0 then
                 AchievementManager.update_progress("no_discards_win", 1)
             end
         else
-            -- Run lost — reset win streak
             AchievementManager._win_streak = 0
         end
 
@@ -1256,14 +1135,12 @@ function AchievementManager.on_joker_added(joker)
         AchievementManager.update_progress("jokers_obtained_100", 1, true)
         AchievementManager.update_progress("jokers_obtained_500", 1, true)
 
-        -- Check current joker count
         if G and G.jokers and G.jokers.cards then
             local count = #G.jokers.cards
             AchievementManager.update_progress("joker_5_at_once", count)
             AchievementManager.update_progress("joker_10_at_once", count)
             AchievementManager.update_progress("joker_20_at_once", count)
 
-            -- Count legendary jokers and edition types
             local legendary_count = 0
             local editions_seen = {}
             local rarities_seen = {}
@@ -1283,7 +1160,6 @@ function AchievementManager.on_joker_added(joker)
             AchievementManager.update_progress("all_legendary", legendary_count)
             AchievementManager.update_progress("full_legendary_5", legendary_count)
 
-            -- Edition achievements
             local edition_count = 0
             for _ in pairs(editions_seen) do edition_count = edition_count + 1 end
             AchievementManager.update_progress("edition_variety", edition_count)
@@ -1293,13 +1169,11 @@ function AchievementManager.on_joker_added(joker)
             if editions_seen["holo"] then AchievementManager.update_progress("holographic_joker", 1) end
             if editions_seen["foil"] then AchievementManager.update_progress("foil_joker", 1) end
 
-            -- Rainbow: all 4 rarities at once (1=Common, 2=Uncommon, 3=Rare, 4=Legendary)
             if rarities_seen[1] and rarities_seen[2] and rarities_seen[3] and rarities_seen[4] then
                 AchievementManager.update_progress("secret_rainbow", 1)
             end
         end
 
-        -- Check if legendary joker
         if joker and type(joker) == "table" and joker.config and joker.config.center then
             if joker.config.center.rarity == 4 then
                 AchievementManager.update_progress("legendary_obtained", 1, true)
@@ -1337,34 +1211,28 @@ function AchievementManager.on_money_change(amount)
         if G and G.GAME then
             local total = G.GAME.dollars or 0
 
-            -- Update highest money stat
             if AchievementManager.player_data and AchievementManager.player_data.stats then
                 AchievementManager.player_data.stats.highest_money =
                     math.max(AchievementManager.player_data.stats.highest_money or 0, total)
             end
 
-            -- Money achievements
             AchievementManager.update_progress("money_100", total)
             AchievementManager.update_progress("money_500", total)
             AchievementManager.update_progress("money_1000", total)
             AchievementManager.update_progress("money_2000", total)
             AchievementManager.update_progress("money_5000", total)
 
-            -- Secret: $999
             if total >= 999 then
                 AchievementManager.update_progress("secret_999_dollars", 1)
             end
 
-            -- Secret: In the Red (debt)
             if total < 0 then
                 AchievementManager.update_progress("secret_debt", 1)
             end
 
-            -- Bankrupt swing: track if we went from 100+ to 0 within this ante
             if AchievementManager._ante_start_dollars and AchievementManager._ante_start_dollars >= 100 and total <= 0 then
                 AchievementManager.update_progress("bankrupt_swing", 1)
             end
-            -- Track spending for big_spender
             if amount and type(amount) == "number" and amount < 0 then
                 AchievementManager.update_progress("big_spender", math.abs(amount), true)
             end
@@ -1381,7 +1249,6 @@ function AchievementManager.on_voucher_used(voucher_key)
         end
         AchievementManager.update_progress("vouchers_used", 1, true)
 
-        -- Check voucher count for secret_10_vouchers
         if G and G.GAME and G.GAME.used_vouchers then
             local voucher_count = 0
             for _ in pairs(G.GAME.used_vouchers) do voucher_count = voucher_count + 1 end
@@ -1403,18 +1270,15 @@ function AchievementManager.on_consumable_used(consumable_type, consumable_key)
         AchievementManager.update_progress("consumables_500", 1, true)
         AchievementManager.update_progress("consumables_1000", 1, true)
 
-        -- Track by consumable type
         if consumable_type == "Tarot" then
             AchievementManager.update_progress("tarots_50", 1, true)
             AchievementManager.update_progress("tarots_200", 1, true)
-            -- Track unique tarot types used this run
             if consumable_key and AchievementManager._run_tarots_used then
                 AchievementManager._run_tarots_used[consumable_key] = true
             end
         elseif consumable_type == "Planet" then
             AchievementManager.update_progress("planets_50", 1, true)
             AchievementManager.update_progress("planets_200", 1, true)
-            -- Track unique planet types used this run
             if consumable_key and AchievementManager._run_planets_used then
                 AchievementManager._run_planets_used[consumable_key] = true
             end
@@ -1498,7 +1362,6 @@ function AchievementManager.check_periodic()
     pcall(function()
         if not G then return end
 
-        -- Hours played tracking
         if AchievementManager.player_data and AchievementManager.player_data.stats then
             local od = Overhaul and Overhaul.stats and Overhaul.stats.data()
             local play_time = math.max(AchievementManager.player_data.stats.total_play_time or 0, od and od.time or 0)
@@ -1507,7 +1370,6 @@ function AchievementManager.check_periodic()
             AchievementManager.update_progress("hours_played_100", play_time)
         end
 
-        -- Secret: Full consumable slots
         if G.consumeables and G.consumeables.cards and G.consumeables.config then
             local max_slots = G.consumeables.config.card_limit or 2
             if #G.consumeables.cards >= max_slots and max_slots >= 2 then
@@ -1515,16 +1377,14 @@ function AchievementManager.check_periodic()
             end
         end
 
-        -- Secret: Max hand size (>= 12)
         if G.hand and G.hand.config and G.hand.config.card_limit then
             if G.hand.config.card_limit >= 12 then
                 AchievementManager.update_progress("secret_max_hand_size", 1)
             end
         end
 
-        -- Enhancement variety: check for 7 different enhancement types at once
 r 3 4751 %20%20%20%20%20%20%20%20 -
-l 283
+l 278
             local enhancements = {}
             local gold_count, steel_count, glass_count = 0, 0, 0
             for _, c in ipairs(G.playing_cards) do
@@ -1550,7 +1410,6 @@ l 283
             if glass_count >= 5 then AchievementManager.update_progress("glass_card_5", glass_count) end
         end
 
-        -- Daily quest sweep: check if all daily quests are completed
         if QuestManager and QuestManager.quest_data and QuestManager.quest_data.daily then
             local all_done = true
             local daily_count = 0
@@ -1565,7 +1424,6 @@ l 283
             end
         end
 
-        -- Quest streak tracking
         if QuestManager and QuestManager.quest_data then
             local streak = QuestManager.quest_data.daily_streak or 0
             if streak > 0 then
@@ -1575,9 +1433,6 @@ l 283
     end)
 end
 
--- ============================================
--- HELPER FUNCTIONS
--- ============================================
 
 function AchievementManager.get_rarity_color(rarity)
     if not rarity then return RARITY_COLORS.Common end

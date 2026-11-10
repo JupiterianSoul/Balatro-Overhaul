@@ -2,24 +2,18 @@ BOP 1
 eol lf
 final 1
 base 0
-l 15
--- ============================================
--- BOM_UI_LOBBY — Full lobby UI with tabbed options, player panels, start/ready
--- FEATURE: Phase 2 port — Ported from BalatroMultiplayer v0.3.3 lobby UI
--- Adapted to bom_* architecture with bom_match/bom_room/bom_core networking
--- ============================================
+l 9
 
 local M = {}
 
 function M.init(bom_ui)
     require("multiplayer.bom_lobby_leave")
-    -- ── Overlay helpers ────────────────────────────────────────────────────
 
     local function _show_mp_overlay(ref_name, definition)
         if not G or not G.FUNCS or not G.FUNCS.overlay_menu then return end
         G.SETTINGS = G.SETTINGS or {}
 r 4 1381 %20%20%20%20%20%20%20%20 -
-l 127
+l 116
         bom_ui.overlay({definition = definition})
         G[ref_name] = G.OVERLAY_MENU
     end
@@ -44,16 +38,12 @@ l 127
         end
     end
 
-    -- ── Reusable separator ─────────────────────────────────────────────────
-    -- FIX: match quests_ui divider sizing
 
     local function _sep()
         return { n = G.UIT.R, config = { align = "cm", minh = 0.02,
             minw = (rawget(_G, "UIK") and UIK.portrait() and 7.6 or 9.8), colour = G.C.L_BLACK, padding = 0.02 }, nodes = {} }
     end
 
-    -- ── Disableable UI helpers (ported from reference _common/) ────────────
-    -- These gate interactivity on is_host so guests see read-only controls
 
     local function _is_host()
         local ok, result = pcall(function()
@@ -63,7 +53,6 @@ l 127
     end
 
 
-    -- Option cycle that locks to current value for non-host
     local function disableable_option_cycle(args)
         local enabled = _is_host()
         local raw_options = args.options or {}
@@ -86,8 +75,6 @@ l 127
 
         local current_option = args.current_option or 1
 
-        -- FIX: Resolve server-side keys/strings/numbers into a valid visible option so
-        -- private room settings never render blank on first draw or after sync updates.
         local numeric_index = tonumber(current_option)
         if numeric_index and options[numeric_index] ~= nil then
             current_option = numeric_index
@@ -125,7 +112,6 @@ l 127
     end
 
 
-    -- ── Settings sync helper ───────────────────────────────────────────────
 
     local function update_setting(key, value)
         pcall(function()
@@ -135,9 +121,6 @@ l 127
         end)
     end
 
-    -- ============================================
-    -- SEARCHING SCREEN (Quick Match)
-    -- ============================================
 
     function bom_ui.show_searching_screen()
         if not G then return end
@@ -149,7 +132,7 @@ l 127
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 43
+l 40
             blocking = false,
             blockable = false,
             func = function()
@@ -180,9 +163,6 @@ l 43
         _hide_mp_overlay("MP_SEARCHING_OVERLAY")
     end
 
-    -- ============================================
-    -- WAITING SCREEN (Creating private room)
-    -- ============================================
 
     function bom_ui.show_waiting_screen()
         if not G then return end
@@ -195,7 +175,7 @@ l 43
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 43
+l 40
             blocking = false,
             blockable = false,
             func = function()
@@ -223,9 +203,6 @@ l 43
         _hide_mp_overlay("MP_WAITING_OVERLAY")
     end
 
-    -- ============================================
-    -- ROOM CODE DISPLAY (Host waits with code visible)
-    -- ============================================
 
     function bom_ui.show_room_code(code)
         if not G then return end
@@ -241,7 +218,7 @@ l 43
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 54
+l 51
             blocking = false,
             blockable = false,
             func = function()
@@ -280,9 +257,6 @@ l 54
         _hide_mp_overlay("BOM_ROOM_CODE_OVERLAY")
     end
 
-    -- ============================================
-    -- MATCH STARTING SCREEN (legacy redirect)
-    -- ============================================
 
     function bom_ui.show_match_starting()
         bom_ui.hide_searching_screen()
@@ -321,7 +295,7 @@ l 21
 
                 local overlay_ref = G.MP_MATCH_START_OVERLAY
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 440
+l 409
                     trigger = 'after',
                     delay = 2,
                     func = function()
@@ -336,12 +310,8 @@ l 440
         }))
     end
 
-    -- ============================================
-    -- PLAYER PANEL — Bordered card with name + ready state
-    -- ============================================
 
     local function player_panel(panel_label, player_name, is_ready, emote_id, showcase)
-        -- FIX: Lobby scale multiplier (+40%)
         local LS = 1.4
         local border_col = is_ready and G.C.GREEN or G.C.JOKER_GREY
         local ready_text = mod_loc(is_ready and "READY" or "WAITING")
@@ -376,9 +346,6 @@ l 440
         }}
     end
 
-    -- ============================================
-    -- PLAYERS SECTION — Both players side by side
-    -- ============================================
 
     local function create_players_section(state)
         local my_name  = state.my_name  or "You"
@@ -399,12 +366,8 @@ l 440
         }}
     end
 
-    -- ============================================
-    -- ROOM CODE BUTTONS — Code display + Copy
-    -- ============================================
 
     local function create_code_buttons(room_code, visibility)
-        -- FIX: Lobby scale multiplier (+40%)
         local LS = 1.4
         if visibility == "public" then
             return { n = G.UIT.R, config = { align = "cm", padding = 0.04*LS }, nodes = {
@@ -426,9 +389,6 @@ l 440
         }}
     end
 
-    -- ============================================
-    -- START / READY BUTTON — Both players get READY; Host also gets START
-    -- ============================================
 
     local BOT_LEVEL_NAMES = {"Easy", "Medium", "Hard"}
     local BOT_LEVEL_KEYS = {"easy", "medium", "hard"}
@@ -529,9 +489,6 @@ l 440
         end
         return grid_row(nodes)
     end
-    -- ============================================
-    -- LOBBY STATUS — Warnings row
-    -- ============================================
 
     local function create_lobby_status(state)
         local warnings = {}
@@ -563,10 +520,6 @@ l 440
         return { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = warning_nodes }
     end
 
-    -- ============================================
-    -- LOBBY SETTINGS — "Configure Settings" button (host) or "Jokers" button (guest if allowed)
-    -- FEATURE: Replaced old gamemode-only cycle with full 5-tab settings overlay
-    -- ============================================
 
     local function rules_parts(s)
         local parts = {}
@@ -633,12 +586,10 @@ l 440
     end
 
     local function create_lobby_gameplay_inline(state)
-        -- FIX: Lobby scale multiplier (+40%)
         local LS = 1.4
         local s = state.settings or {}
         local is_host = state.is_host
 
-        -- Show current gamemode name as info text for both players
         local mode_name = "Rivals"
         pcall(function()
             if bom_gamemodes and bom_gamemodes.get then
@@ -650,7 +601,6 @@ l 440
 
         local nodes = {}
 
-        -- Current gamemode display
         nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03*LS}, nodes = {
             {n = G.UIT.T, config = {text = mod_loc("Mode: "), scale = 0.35*LS, colour = G.C.UI.TEXT_LIGHT}},
             {n = G.UIT.T, config = {id = 'bom_lobby_mode', text = mode_name, scale = 0.35*LS, colour = G.C.GOLD, shadow = true}},
@@ -711,10 +661,6 @@ l 440
         return {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = nodes}
     end
 
-    -- ============================================
-    -- MATCH LOBBY — Main lobby screen
-    -- Layout: Status → Code → Players → Settings → Ready
-    -- ============================================
 
     function bom_ui.show_lobby()
         if not G then return end
@@ -728,10 +674,8 @@ l 440
         _forget_mp_overlay("MP_MATCH_START_OVERLAY")
         _forget_mp_overlay("BOM_LOBBY_OVERLAY")
 
-        -- ── Core Callbacks ─────────────────────────────────────────────────
 
         G.FUNCS.mp_lobby_ready = function()
-            -- DIAGNOSTIC: No pcall — let errors crash visibly
             if bom_room and bom_room.toggle_ready then bom_room.toggle_ready() end
         end
 
@@ -760,15 +704,13 @@ l 440
             end)
         end
 
-        -- ── Build and show ───────────────────────────────────────────────
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 87
+l 73
             blocking = false,
             blockable = false,
             func = function()
-                -- Gather state
                 local state = {}
                 pcall(function()
                     if bom_match and bom_match.get_state then
@@ -781,34 +723,26 @@ l 87
 
                 local is_host = state.is_host
 
-                -- FIX: Lobby scale multiplier (+40%)
                 local LS = 1.4
 
-                -- Build full lobby definition
                 local definition = create_UIBox_generic_options({ back_func = "bom_lobby_back", contents = {
-                    -- Header + Room code on one row
                     { n = G.UIT.R, config = { align = "cm", padding = 0.04*LS }, nodes = {
                         { n = G.UIT.T, config = { text = mod_loc("MATCH LOBBY"), scale = 0.52*LS,
                             colour = G.C.GOLD, shadow = true } },
                     }},
 
-                    -- Status warnings
                     create_lobby_status(state),
 
-                    -- Room code + copy (compact)
                     create_code_buttons(state.room_code, state.visibility),
 
-                    -- Players (compact)
                     create_players_section(state),
 
                     _sep(),
 
-                    -- FEATURE: Configure Settings button (host) or Jokers button (guest if allowed)
                     { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
                         create_lobby_gameplay_inline(state),
                     }},
 
-                    -- FIX: Ready + Start buttons (Start only shown for host)
                     create_start_ready_button(state),
                 }})
 
@@ -822,15 +756,11 @@ l 87
         _hide_mp_overlay("BOM_LOBBY_OVERLAY")
     end
 
-    -- ============================================
-    -- QUICK MATCH LOBBY — Simple ready screen, no settings
-    -- ============================================
 
     function bom_ui.show_quick_match_lobby()
         if not G then return end
         if not G.FUNCS then return end
 
-        -- Clean up pre-lobby overlays
         bom_ui.hide_searching_screen()
         bom_ui.hide_room_code()
         pcall(function() bom_ui.hide_waiting_screen() end)
@@ -839,7 +769,6 @@ l 87
         pcall(function() bom_lobby_leave.register() end)
 
         G.FUNCS.mp_lobby_ready = function()
-            -- DIAGNOSTIC: No pcall — let errors crash visibly
             if bom_room and bom_room.toggle_ready then bom_room.toggle_ready() end
         end
 
@@ -854,7 +783,7 @@ l 87
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 125
+l 114
             blocking = false,
             blockable = false,
             func = function()
@@ -868,25 +797,15 @@ l 125
                 local my_name  = state.my_name  or "Player 1"
                 local opp_name = state.opp_name or "Player 2"
 
-                -- NOTE: Auto-start intentionally NOT done here.
-                -- start_match() must never be called from inside a running event:
-                -- do_mp_start_run() calls G.E_MANAGER:clear_queue() which removes
-                -- the current event from the queue, causing the event manager to
-                -- then accidentally table.remove() Event A (delete_run) instead.
-                -- Auto-start is handled by bom_room.on_opponent_ready() and
-                -- bom_room.toggle_ready(), which run outside the event loop.
 
                 local definition = create_UIBox_generic_options({ back_func = "bom_lobby_back", contents = {
-                    -- Title
                     { n = G.UIT.R, config = { align = "cm", padding = 0.1 }, nodes = {
                         { n = G.UIT.T, config = { text = mod_loc(state.ranked == true and "RANKED MATCH" or "QUICK MATCH"), scale = 0.5,
                             colour = G.C.GOLD, shadow = true } },
                     }},
                     { n = G.UIT.R, config = { align = "cm", minh = 0.1 }, nodes = {} },
-                    -- Players
                     create_players_section(state),
                     { n = G.UIT.R, config = { align = "cm", minh = 0.15 }, nodes = {} },
-                    -- Ready / Unready button (both players see this)
                     (function()
                         local is_ready = state.my_ready
                         local ready_label = mod_loc(is_ready and "UNREADY" or "READY")
@@ -916,7 +835,6 @@ l 125
         }))
     end
 
-    -- ── Lobby refresh helpers (called by bom_room when state changes) ──────
 
     function bom_ui.update_lobby_ready()
         pcall(function()

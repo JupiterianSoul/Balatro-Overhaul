@@ -122,12 +122,8 @@ l 3
                 end)
 c 1
 s 1
-l 6
+l 2
             end
-            -- FIX (V2.130): return card for BOTH Rare and Uncommon Tag.
-            -- Previously `return card` was inside the Uncommon Tag branch,
-            -- so Rare Tag returned nil → create_card_for_shop fell through
-            -- and spawned an extra regular joker overlapping the rare one.
             return card
 c 3
 s 1

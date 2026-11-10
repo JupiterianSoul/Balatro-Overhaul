@@ -507,7 +507,7 @@ l 5
             c:add_to_deck()
             G.consumeables:emplace(c)
 r 3 1057 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 74
+l 70
             return true
         end,
     }))
@@ -520,7 +520,6 @@ local function install_hooks()
     R.hooked = true
 
     local orig_calc = Card.calculate_joker
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.calculate_joker = function(self, context)
         if self and self.ability and context and not self.debuff then
             local name = self.ability.name
@@ -552,7 +551,6 @@ local function install_hooks()
     end
 
     local orig_set_ability = Card.set_ability
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.set_ability = function(self, center, initial, delay_sprites)
         local r = orig_set_ability(self, center, initial, delay_sprites)
         if ACTIVE.j_todo_list and self.ability and self.ability.name == 'To Do List' and G.GAME and G.GAME.hands then
@@ -562,7 +560,6 @@ local function install_hooks()
     end
 
     local orig_eor = Card.get_end_of_round_effect
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.get_end_of_round_effect = function(self, context)
         if ACTIVE.Blue and self.seal == 'Blue' and not self.debuff then
             self.seal = nil
@@ -577,14 +574,13 @@ local function install_hooks()
     end
 
     local orig_use = Card.use_consumeable
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.use_consumeable = function(self, area, copier)
         local name = self.ability and self.ability.name
         if (name == 'Ouija' and ACTIVE.c_ouija) or (name == 'Wraith' and ACTIVE.c_wraith) then
             stop_use()
 r 3 1093 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 3 1094 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 101
+l 98
             local used = copier or self
             if name == 'Ouija' then use_ouija(self, used) else use_wraith(used) end
             return nil
@@ -593,7 +589,6 @@ l 101
     end
 
     local orig_can_use = Card.can_use_consumeable
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.can_use_consumeable = function(self, any_state, skip_check)
         local r = orig_can_use(self, any_state, skip_check)
         if r and ACTIVE.c_ouija and self.ability and self.ability.name == 'Ouija' then
@@ -603,14 +598,12 @@ l 101
     end
 
     local orig_set_cost = Card.set_cost
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.set_cost = function(self)
         if self and self.ability and self.ability.mp_full_price then self.ability.couponed = nil end
         return orig_set_cost(self)
     end
 
     local orig_gen_ui = Card.generate_UIBox_ability_table
-    ---@diagnostic disable-next-line: duplicate-set-field
     Card.generate_UIBox_ability_table = function(self, vars_only, ...)
         local pk = self and self.mp_rw_preview
         if pk and not ACTIVE[pk] and DEFS[pk] then

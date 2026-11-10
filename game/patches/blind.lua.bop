@@ -15,8 +15,7 @@ s 1
 l 1
             if loc_target then
 c 35
-l 12
-        -- Apocalypse Stake (10+): Boss blinds gain additional random suit debuff
+l 11
         pcall(function()
             if self.boss and G.GAME.modifiers and G.GAME.modifiers.boss_additional_effect then
                 local suits = {'Hearts', 'Diamonds', 'Clubs', 'Spades'}
@@ -29,8 +28,7 @@ l 12
         end)
 
 c 10
-l 7
-        -- Calculate blind chips with creative stake multiplier
+l 6
         local creative_mult = 1
         if get_creative_blind_multiplier then
             creative_mult = get_creative_blind_multiplier()

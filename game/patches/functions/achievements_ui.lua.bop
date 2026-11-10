@@ -2,36 +2,24 @@ BOP 1
 eol lf
 final 1
 base 0
-l 584
--- ============================================
--- ACHIEVEMENTS UI for Balatro v10.0
--- VANILLA-PERFECT UI - Uses exact Balatro patterns
--- SAFE: All G access is null-checked
--- ============================================
+l 566
 
--- ============================================
--- CONSTANTS
--- ============================================
 
-local PAGE_SIZE = 8  -- 4 columns x 2 rows grid (Voucher pattern)
+local PAGE_SIZE = 8
 local MAX_ITERATIONS = 1000
 
 local function ach_rows()
     return (rawget(_G, 'PORTRAIT') and PORTRAIT.on()) and 4 or 2
 end
 
--- Rarity colors matching vanilla palette
 local RARITY_COLORS = {
-    Common = {0.65, 0.65, 0.65, 1},      -- Gray
-    Rare = {0.3, 0.5, 0.9, 1},           -- Blue
-    Epic = {0.6, 0.3, 0.8, 1},           -- Purple
-    Legendary = {1, 0.75, 0.2, 1},       -- Gold
-    Secret = {0.8, 0.2, 0.2, 1}          -- Red
+    Common = {0.65, 0.65, 0.65, 1},
+    Rare = {0.3, 0.5, 0.9, 1},
+    Epic = {0.6, 0.3, 0.8, 1},
+    Legendary = {1, 0.75, 0.2, 1},
+    Secret = {0.8, 0.2, 0.2, 1}
 }
 
--- ============================================
--- SAFE HELPERS
--- ============================================
 
 local function safe_get_color(rarity)
     if not rarity then return RARITY_COLORS.Common end
@@ -44,7 +32,6 @@ local function safe_get_ach_display(ach, unlocked)
     local name = mod_loc(ach.name or "???")
     local desc = mod_loc(ach.description or "")
     
-    -- Secret achievement handling
     if ach.is_secret and not unlocked then
         name = mod_loc("???")
         desc = mod_loc(ach.secret_hint or "This achievement is a secret...")
@@ -561,9 +548,6 @@ function create_UIBox_achievements_main()
     return t
 end
 
--- ============================================
--- ACHIEVEMENT DETAIL POPUP (Vanilla tooltip pattern)
--- ============================================
 
 function create_achievement_detail_popup(achievement_id)
     if not G then return nil end
@@ -584,25 +568,20 @@ function create_achievement_detail_popup(achievement_id)
     local display_name, display_desc = safe_get_ach_display(ach, unlocked)
     local rar_col = safe_get_color(ach.rarity)
     
-    -- Build detail nodes
     local detail_nodes = {
-        -- Achievement name
 r 15 723 %20%20%20%20%20%20%20%20 -
-l 3
+l 2
             {n=G.UIT.T, config={text = display_name, scale = 0.5, colour = unlocked and G.C.GOLD or G.C.WHITE, shadow = true}}
         }},
-        -- Rarity (colored text only)
 r 15 71 %20%20%20%20%20%20%20%20 -
-l 97
+l 85
             {n=G.UIT.T, config={text = mod_loc(ach.rarity or "Common"), scale = 0.35, colour = rar_col}}
         }},
-        -- Description
         {n=G.UIT.R, config={align = "cm", padding = 0.1, maxw = 4}, nodes={
             {n=G.UIT.T, config={text = display_desc, scale = 0.3, colour = G.C.UI.TEXT_LIGHT}}
         }}
     }
     
-    -- Progress bar if tracked
     if ach.is_tracked and not unlocked then
         local pct = math.min(1, progress / (ach.progress_required or 1))
         table.insert(detail_nodes, {n=G.UIT.R, config={align = "cm", padding = 0.1}, nodes={
@@ -615,7 +594,6 @@ l 97
         }})
     end
     
-    -- Unlock date if unlocked
     if unlocked and player_ach and player_ach.unlock_date then
         local date_str = nil
         pcall(function()
@@ -628,7 +606,6 @@ l 97
         end
     end
     
-    -- Reward if unlocked
     if unlocked and ach.reward_data and ach.reward_data.name then
         table.insert(detail_nodes, {n=G.UIT.R, config={align = "cm", padding = 0.08}, nodes={
             {n=G.UIT.T, config={text = mod_loc("Reward: ")..mod_loc(ach.reward_data.name), scale = 0.28, colour = G.C.GOLD}}
@@ -638,9 +615,6 @@ l 97
     return {n=G.UIT.ROOT, config={align = "cm", r = 0.1, colour = G.C.BLACK, padding = 0.15, outline = 1, outline_colour = rar_col}, nodes=detail_nodes}
 end
 
--- ============================================
--- RARITY LEGEND
--- ============================================
 
 function create_rarity_legend()
     if not G then return nil end
@@ -658,15 +632,11 @@ function create_rarity_legend()
     return {n=G.UIT.R, config={align = "cm", padding = 0.1, colour = G.C.L_BLACK, r = 0.08}, nodes=legend_nodes}
 end
 
--- ============================================
--- HOOK INTO OPTIONS MENU
--- ============================================
 
 local function add_achievements_button()
     if not G then return end
     if not G.FUNCS then return end
     
-    -- Open achievements menu function
     local function open_from(back, tab)
         if G.SETTINGS then G.SETTINGS.paused = true end
         AU.back = back
@@ -683,7 +653,6 @@ local function add_achievements_button()
     G.FUNCS.open_mp_achievements = function(e) open_from("mp_stats", "Multiplayer") end
 end
 
--- Initialize
 local init_success = pcall(add_achievements_button)
 if not init_success then
     print("[ACHIEVEMENTS UI] Failed to add button hook")

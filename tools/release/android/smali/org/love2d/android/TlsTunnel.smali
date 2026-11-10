@@ -2,7 +2,6 @@
 .super Ljava/lang/Thread;
 .source "TlsTunnel.java"
 
-# annotations
 .annotation system Ldalvik/annotation/MemberClasses;
     value = {
         Lorg/love2d/android/TlsTunnel$PipeThread;
@@ -10,7 +9,6 @@
 .end annotation
 
 
-# static fields
 .field private static final TAG:Ljava/lang/String; = "TlsTunnel"
 
 .field private static final PORT:I = 0xad5c
@@ -20,7 +18,6 @@
 .field private client:Ljava/net/Socket;
 
 
-# direct methods
 .method public constructor <init>(Ljava/net/Socket;)V
     .locals 0
 
@@ -40,9 +37,6 @@
 .end method
 
 
-# ============================================
-# startTunnel() — called from PlatformActivity.onCreate
-# ============================================
 .method public static synchronized startTunnel()V
     .locals 2
 
@@ -78,10 +72,6 @@
 .end method
 
 
-# ============================================
-# readLine(InputStream) — read one line byte-by-byte
-# Returns null if empty
-# ============================================
 .method private static readLine(Ljava/io/InputStream;)Ljava/lang/String;
     .locals 3
 
@@ -136,10 +126,6 @@
 .end method
 
 
-# ============================================
-# pipe(InputStream, OutputStream) — copy bytes until EOF
-# package-private static so PipeThread can call it
-# ============================================
 .method static pipe(Ljava/io/InputStream;Ljava/io/OutputStream;)V
     .locals 3
 
@@ -171,9 +157,6 @@
 .end method
 
 
-# ============================================
-# run() — main server loop (accepts connections, handles TLS relay)
-# ============================================
 .method public run()V
     .locals 12
 
@@ -189,7 +172,6 @@
 
     :server_mode
 
-    # --- Create ServerSocket on 127.0.0.1:44380 ---
     :try_start_bind
     new-instance v0, Ljava/net/ServerSocket;
 
@@ -207,7 +189,6 @@
     :try_end_bind
     .catch Ljava/io/IOException; {:try_start_bind .. :try_end_bind} :catch_bind
 
-    # v0 = serverSocket
     new-instance v1, Ljava/lang/StringBuilder;
 
     invoke-direct {v1}, Ljava/lang/StringBuilder;-><init>()V
@@ -253,7 +234,6 @@
 
     return-void
 
-    # --- Accept loop ---
     :accept_loop
     invoke-virtual {p0}, Ljava/lang/Thread;->isInterrupted()Z
 
@@ -331,7 +311,6 @@
 
     invoke-static {v10, v3}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    # v1 = local socket
     invoke-virtual {v1}, Ljava/net/Socket;->getInputStream()Ljava/io/InputStream;
 
     move-result-object v3
@@ -340,14 +319,11 @@
 
     move-result-object v4
 
-    # v3 = localIn, v4 = localOut
 
-    # --- Read target: "host:port" ---
     invoke-static {v3}, Lorg/love2d/android/TlsTunnel;->readLine(Ljava/io/InputStream;)Ljava/lang/String;
 
     move-result-object v5
 
-    # v5 = target string
     if-eqz v5, :bad_target
 
     const-string v6, ":"
@@ -377,7 +353,6 @@
 
     return-void
 
-    # --- Parse host:port ---
     :parse_target
     const/16 v6, 0x3a
 
@@ -385,14 +360,12 @@
 
     move-result v6
 
-    # v6 = colonIdx
     const/4 v7, 0x0
 
     invoke-virtual {v5, v7, v6}, Ljava/lang/String;->substring(II)Ljava/lang/String;
 
     move-result-object v7
 
-    # v7 = host
 
     add-int/lit8 v8, v6, 0x1
 
@@ -408,9 +381,7 @@
 
     move-result v8
 
-    # v7 = host (String), v8 = port (int)
 
-    # --- Log TLS connect ---
     new-instance v5, Ljava/lang/StringBuilder;
 
     invoke-direct {v5}, Ljava/lang/StringBuilder;-><init>()V
@@ -433,7 +404,6 @@
 
     invoke-static {v10, v5}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    # --- Open SSLSocket ---
     invoke-static {}, Ljavax/net/ssl/SSLSocketFactory;->getDefault()Ljavax/net/SocketFactory;
 
     move-result-object v5
@@ -446,10 +416,8 @@
 
     check-cast v2, Ljavax/net/ssl/SSLSocket;
 
-    # v2 = remote SSLSocket
     invoke-virtual {v2}, Ljavax/net/ssl/SSLSocket;->startHandshake()V
 
-    # --- Send OK back to Lua ---
     const-string v5, "OK\n"
 
     const-string v6, "UTF-8"
@@ -462,7 +430,6 @@
 
     invoke-virtual {v4}, Ljava/io/OutputStream;->flush()V
 
-    # --- Log TLS established ---
     new-instance v5, Ljava/lang/StringBuilder;
 
     invoke-direct {v5}, Ljava/lang/StringBuilder;-><init>()V
@@ -485,7 +452,6 @@
 
     invoke-static {v10, v5}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    # --- Start downstream pipe thread (remote→local) ---
     invoke-virtual {v2}, Ljavax/net/ssl/SSLSocket;->getInputStream()Ljava/io/InputStream;
 
     move-result-object v5
@@ -496,14 +462,12 @@
 
     invoke-virtual {v6}, Ljava/lang/Thread;->start()V
 
-    # --- Upstream pipe in this thread (local→remote) ---
     invoke-virtual {v2}, Ljavax/net/ssl/SSLSocket;->getOutputStream()Ljava/io/OutputStream;
 
     move-result-object v5
 
     invoke-static {v3, v5}, Lorg/love2d/android/TlsTunnel;->pipe(Ljava/io/InputStream;Ljava/io/OutputStream;)V
 
-    # --- Upstream done, close remote to unblock downstream ---
     invoke-virtual {v2}, Ljavax/net/ssl/SSLSocket;->close()V
 
     const-wide/16 v8, 0x1388
@@ -518,7 +482,6 @@
     :catch_nfe
     move-exception v5
 
-    # NumberFormatException on port parse — send error and close
     :try_start_nfe
     const-string v6, "ERROR:bad_port\n"
 
@@ -562,7 +525,6 @@
     invoke-static {v10, v5}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     :finally_block
-    # Close local socket
     if-eqz v1, :skip_local_close
 
     :try_start_close_local
@@ -573,7 +535,6 @@
     :catch_close_local
     :skip_local_close
 
-    # Close remote socket
     if-eqz v2, :skip_remote_close
 
     :try_start_close_remote

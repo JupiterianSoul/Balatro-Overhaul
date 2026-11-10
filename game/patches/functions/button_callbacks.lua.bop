@@ -115,8 +115,7 @@ l 1
 c 1
 r 4 57 %20%20%20%20%20%20%20%20 -
 r 4 58 %20%20%20%20%20%20%20%20 -
-l 2
-      -- FIX: Block continuing a multiplayer run — MP runs are not resumable
+l 1
       elseif G.SAVED_GAME.GAME and G.SAVED_GAME.GAME.multiplayer then
 c 30
 e 4 218 %20%20%20%20%20%20 - -3,=20,-1,=19,-4,+%6F%72%20%31
@@ -125,12 +124,10 @@ s 1
 r 4 296 %20%20%20%20%20%20 -
 c 4
 e 4 296 %20%20%20%20%20%20 - =29,+%2E%64%65%6C%65%74%65%64,=3,-2,+%6E%69%6C
-l 3
-      -- Force prototype tables to be re-created from clean definitions
-      -- (otherwise the `= self.X or {...}` pattern reuses the old profile's unlocked state)
+l 1
       G.RESET_PROTOTYPES = true
 c 1
-l 21
+l 19
       pcall(function()
           if AchievementManager and AchievementManager.reload_for_profile then
               AchievementManager.reload_for_profile()
@@ -141,13 +138,11 @@ l 21
               ProfileRewardsManager.reload_for_profile()
           end
       end)
-      -- Reset manager init flags so they re-initialize for the new profile
       pcall(function()
         if AshCardManager then AshCardManager.initialized_profile = nil end
         if ShopManager then ShopManager.initialized_profile = nil end
         if BoosterManager then BoosterManager.initialized_profile = nil end
       end)
-      -- Reset colors: apply new profile's equipped color set or restore defaults
       pcall(function()
         if reset_colors_to_default then reset_colors_to_default() end
         if auto_apply_color_set then auto_apply_color_set() end
@@ -172,7 +167,7 @@ e 4 289 %20%20%20%20 - =5,+%6D%6F%64%5F,=53
 e 4 290 %20%20%20%20 - =5,+%6D%6F%64%5F,=53
 e 4 291 %20%20%20%20 - =5,+%6D%6F%64%5F,=62
 e 4 292 %20%20%20%20 - =5,+%6D%6F%64%5F,=40
-l 23
+l 21
     pcall(function()
         if AchievementManager and AchievementManager.delete_profile_data then
             AchievementManager.delete_profile_data(G.focused_profile)
@@ -183,13 +178,11 @@ l 23
             ProfileRewardsManager.reload_for_profile()
         end
     end)
-    -- Reset manager init flags so they re-initialize for the new/reset profile
     pcall(function()
       if AshCardManager then AshCardManager.initialized_profile = nil end
       if ShopManager then ShopManager.initialized_profile = nil end
       if BoosterManager then BoosterManager.initialized_profile = nil end
     end)
-    -- Reset colors to defaults (deleted profile's color set should not persist)
     pcall(function()
       if reset_colors_to_default then reset_colors_to_default() end
     end)
@@ -236,12 +229,9 @@ c 34
 s 1
 r 4 465 %20%20 -
 c 2
-l 19
+l 16
 end
 
--- FIX: Block MP-gated settings from being re-enabled during a multiplayer match.
--- Wraps toggle_button so hand optimizer and score preview cannot be toggled on
--- when the host has disabled them in match settings.
 local _orig_toggle_button = G.FUNCS.toggle_button
 G.FUNCS.toggle_button = function(e)
   if G.GAME and G.GAME.multiplayer and G.GAME.mp_settings and e.config.ref_table then
@@ -301,7 +291,7 @@ l 1
 
 c 133
 s 1
-l 117
+l 96
   G.SETTINGS.GAMESPEED = tonumber(args.to_val) or G.SETTINGS.GAMESPEED or 1
 end
 
@@ -311,19 +301,14 @@ G.FUNCS.change_score_speed = function(args)
   G:save_settings()
 end
 
--- Filter type selection callback
 G.FUNCS.change_filter_type = function(args)
   G.SETTINGS.GRAPHICS.filter_type = args.to_key
 end
 
--- Apply filter button callback
 G.FUNCS.apply_filter = function(e)
-  -- Filter is applied in game.lua draw function based on G.SETTINGS.GRAPHICS.filter_type
-  -- This just confirms the selection is saved
   G.SETTINGS.GRAPHICS.filter_applied = true
 end
 
--- Reset filter button callback
 G.FUNCS.reset_filter = function(e)
   G.SETTINGS.GRAPHICS.filter_type = 1
   G.SETTINGS.GRAPHICS.filter_intensity = 50
@@ -331,12 +316,8 @@ G.FUNCS.reset_filter = function(e)
   G.SETTINGS.GRAPHICS.filter_applied = false
 end
 
--- Apply custom colors for chips and mult (button callback)
 G.FUNCS.apply_custom_colors = function(e)
-  -- In-place update: modify table contents rather than replacing the table,
-  -- so existing UI nodes that hold a reference see the change immediately.
   local function ic(t,a,b,c) t[1]=a; t[2]=b; t[3]=c; t[4]=1 end
-  -- Apply Blue color
   if G.SETTINGS.GRAPHICS.blue_r then
     local r = (G.SETTINGS.GRAPHICS.blue_r or 0) / 255
     local g = (G.SETTINGS.GRAPHICS.blue_g or 157) / 255
@@ -345,7 +326,6 @@ G.FUNCS.apply_custom_colors = function(e)
     ic(G.C.CHIPS,    r, g, b)
     ic(G.C.UI_CHIPS, r, g, b)
   end
-  -- Apply Red color
   if G.SETTINGS.GRAPHICS.red_r then
     local r = (G.SETTINGS.GRAPHICS.red_r or 254) / 255
     local g = (G.SETTINGS.GRAPHICS.red_g or 95) / 255
@@ -355,7 +335,6 @@ G.FUNCS.apply_custom_colors = function(e)
     ic(G.C.XMULT,   r, g, b)
     ic(G.C.UI_MULT, r, g, b)
   end
-  -- Apply Green color
   if G.SETTINGS.GRAPHICS.green_r then
     local r = (G.SETTINGS.GRAPHICS.green_r or 75) / 255
     local g = (G.SETTINGS.GRAPHICS.green_g or 194) / 255
@@ -364,43 +343,33 @@ G.FUNCS.apply_custom_colors = function(e)
     ic(G.C.CHANCE,     r, g, b)
     ic(G.C.PALE_GREEN, r * 0.85, g * 0.85, b * 0.85)
   end
-  -- Apply Yellow color (also affects GOLD, ORANGE, MONEY, IMPORTANT, FILTER)
   if G.SETTINGS.GRAPHICS.yellow_r then
     local r = (G.SETTINGS.GRAPHICS.yellow_r or 255) / 255
     local g = (G.SETTINGS.GRAPHICS.yellow_g or 255) / 255
     local b = (G.SETTINGS.GRAPHICS.yellow_b or 0) / 255
     ic(G.C.YELLOW, r, g, b)
-    -- Derive GOLD as a slightly muted/warm version
     ic(G.C.GOLD, r * 0.92, g * 0.75, b * 0.35 + 0.1)
-    -- Derive ORANGE as a warmer/saturated version
     ic(G.C.ORANGE, math.min(r, 1), g * 0.64, b * 0.05)
-    -- Money follows gold-ish warmth
     ic(G.C.MONEY, r * 0.95, g * 0.73, b * 0.35 + 0.05)
     ic(G.C.IMPORTANT, math.min(r, 1), g * 0.6, b * 0.05)
     ic(G.C.FILTER,    math.min(r, 1), g * 0.6, b * 0.05)
   end
 end
 
--- Reset colors to defaults (button callback)
 G.FUNCS.reset_custom_colors = function(e)
-  -- Default Blue: 009dff = 0, 157, 255
   G.SETTINGS.GRAPHICS.blue_r = 0
   G.SETTINGS.GRAPHICS.blue_g = 157
   G.SETTINGS.GRAPHICS.blue_b = 255
-  -- Default Red: FE5F55 = 254, 95, 85
   G.SETTINGS.GRAPHICS.red_r = 254
   G.SETTINGS.GRAPHICS.red_g = 95
   G.SETTINGS.GRAPHICS.red_b = 85
-  -- Default Green: 4BC292 = 75, 194, 146
   G.SETTINGS.GRAPHICS.green_r = 75
   G.SETTINGS.GRAPHICS.green_g = 194
   G.SETTINGS.GRAPHICS.green_b = 146
-  -- Default Yellow: FFFF00 = 255, 255, 0
   G.SETTINGS.GRAPHICS.yellow_r = 255
   G.SETTINGS.GRAPHICS.yellow_g = 255
   G.SETTINGS.GRAPHICS.yellow_b = 0
 
-  -- Apply the reset colors in-place (keeps existing UI references valid)
   local function ic(t,a,b,c) t[1]=a; t[2]=b; t[3]=c; t[4]=1 end
   local function ihex(t, hex) local _c = HEX(hex); t[1]=_c[1]; t[2]=_c[2]; t[3]=_c[3]; t[4]=_c[4] end
   ic(G.C.BLUE,      0, 157/255, 1)
@@ -420,9 +389,8 @@ G.FUNCS.reset_custom_colors = function(e)
   ihex(G.C.IMPORTANT, 'ff9a00')
   ihex(G.C.FILTER,    'ff9a00')
 c 22
-l 15
+l 13
 
--- Performance Mode toggle — applies fixed preset: shader off, 75% resolution, GC tuning
 G.FUNCS.toggle_performance_mode = function()
   local _g = G.SETTINGS.GRAPHICS
   PERF_OPTS.apply_mode(_g.performance_mode)
@@ -434,14 +402,12 @@ G.FUNCS.toggle_performance_mode = function()
   end
 end
 
--- Performance Settings overlay
 G.FUNCS.open_performance_settings = function(e)
 r 4 1382 %20%20 -
-l 37
+l 36
     definition = create_UIBox_performance_settings(),
     config = {offset = {x=0,y=10}}
   }
-  -- FEATURE: Sub-showcase on first visit to Performance Settings
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_perf_settings then
       G.FUNCS.trigger_sub_showcase_perf_settings()
@@ -476,7 +442,7 @@ function create_UIBox_performance_settings()
 
   return create_UIBox_generic_options({back_func = 'settings', contents = {
 r 15 71 %20%20%20%20 -
-l 62
+l 61
       {n=G.UIT.T, config={text = mod_loc("PERFORMANCE SETTINGS"), scale = 0.5, colour = G.C.ORANGE}}
     }},
     {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
@@ -486,7 +452,6 @@ l 62
   }})
 end
 
--- Performance settings callbacks
 G.FUNCS.change_perf_resolution = function(args)
   G.SETTINGS.GRAPHICS.perf_resolution = args.to_key
   G:save_settings()
@@ -580,8 +545,7 @@ end
 
 c 1
 s 1
-l 3
-  -- Use filtered collab IDs if available (from custom_deck_tab filter)
+l 2
   local collab_list = (G._filtered_collab_ids and G._filtered_collab_ids[args.cycle_config.curr_suit]) or G.COLLABS.options[args.cycle_config.curr_suit]
   G.SETTINGS.CUSTOM_DECK.Collabs[args.cycle_config.curr_suit] = collab_list[args.to_key] or 'default'
 c 1
@@ -702,12 +666,11 @@ G.FUNCS.ui_size_slide = function(rt)
   G.UI_SIZE_PENDING = true
 c 47
 s 1
-l 3
+l 10
   if args.raw then
     args.caps = hook_config.all_caps
   else
-r 4 977 %20%20%20%20 -
-l 6
+    args.caps = args.caps or G.CONTROLLER.capslock or hook_config.all_caps
   end
   local composed = G.CONTROLLER.text_input_composed
   if args.physical and composed and #args.key == 1 then
@@ -779,9 +742,8 @@ s 2
 r 4 1254 %20%20 -
 r 4 1218 %20%20%20%20 -
 c 12
-l 4
+l 3
 G.FUNCS.open_guide_overlay = G.FUNCS.open_guide_overlay or function(e)
-  -- Defined in mod_guide.lua; fallback no-op
 end
 
 c 1
@@ -789,8 +751,7 @@ s 2
 r 4 1269 %20%20 -
 r 4 1218 %20%20%20%20 -
 c 8
-l 2
--- Profile Icon page cycling (2 rows x 4 cards, Booster Packs pattern)
+l 1
 G.FUNCS.profile_icon_page = function(args)
 r 4 603 %20%20 -
 l 16
@@ -974,17 +935,15 @@ s 1
 l 1
 
 c 21
-l 2
--- FEATURE: Lobby Info button callback (multiplayer in-game)
+l 1
 G.FUNCS.mp_lobby_info = function(e)
 r 4 1381 %20%20 -
 r 4 1382 %20%20 -
-l 7
+l 6
     definition = G.UIDEF.mp_lobby_info(),
   }
 end
 
--- FEATURE: Lobby Info button visibility — show only during multiplayer matches
 G.FUNCS.mp_lobby_info_visible = function(e)
   if G.GAME and G.GAME.multiplayer then
 r 4 101 %20%20%20%20 -
@@ -1000,7 +959,7 @@ r 4 2647 %20%20%20%20 -
 l 1
     e.config.hover = false
 r 4 58 %20%20%20%20 -
-l 14
+l 12
     e.config.minh = 0
     e.config.minw = 0
     e.config.padding = 0
@@ -1008,8 +967,6 @@ l 14
   end
 end
 
--- FIX: Inner text nodes of the Lobby Info button also need to be hidden in solo,
--- otherwise "Lobby" / "Info" still render even though the row is transparent.
 G.FUNCS.mp_lobby_info_text_visible = function(e)
   if G.GAME and G.GAME.multiplayer then
     e.config.colour = G.C.UI.TEXT_LIGHT
@@ -1045,16 +1002,14 @@ end
 c 2
 r 15 2313 %20%20 -
 c 4
-l 6
-  -- FEATURE: Sub-showcase on first visit to Settings
+l 5
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_settings then
       G.FUNCS.trigger_sub_showcase_settings()
     end
   end)
 c 21
-l 6
-  -- FEATURE: Sub-showcase on first visit
+l 5
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_collection then
       G.FUNCS.trigger_sub_showcase_collection()
@@ -1071,12 +1026,11 @@ r 4 1382 %20%20 -
 l 1
     definition = create_UIBox_your_collection_stakes(),
 c 116
-l 2
--- FEATURE: Multiplayer Stats window (replaces Other Stats)
+l 1
 G.FUNCS.mp_stats = function(e)
 r 4 1381 %20%20 -
 r 4 1382 %20%20 -
-l 82
+l 74
     definition = create_UIBox_mp_stats()
   }
 end
@@ -1085,7 +1039,6 @@ function create_UIBox_mp_stats()
   local profile = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
   local progression = profile and profile.progression or {}
 
-  -- All values start at 0 if not yet tracked
   local mp_matches = progression.mp_total_matches or 0
   local mp_wins    = progression.mp_match_wins or 0
   local mp_losses  = math.max(0, mp_matches - mp_wins)
@@ -1096,7 +1049,6 @@ function create_UIBox_mp_stats()
   local pvp_wins   = progression.mp_pvp_wins_total or 0
   local pvp_losses = progression.mp_pvp_losses_total or 0
 
-  -- Stat row: label on left, value on right
   local function stat_row(label, value, val_col)
     val_col = val_col or G.C.GOLD
     return {n=G.UIT.R, config={align="cm", padding=0.045, r=0.06, colour=G.C.L_BLACK, minw=8}, nodes={
@@ -1109,12 +1061,10 @@ function create_UIBox_mp_stats()
     }}
   end
 
-  -- Thin section divider
   local function divider()
     return {n=G.UIT.R, config={align="cm", minw=8.5, minh=0.015, colour={1,1,1,0.12}}, nodes={}}
   end
 
-  -- Greyed section header
   local function section_header(txt)
     return {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
       {n=G.UIT.T, config={text=txt, scale=0.26, colour=G.C.UI.TEXT_INACTIVE, shadow=true}}
@@ -1122,11 +1072,9 @@ function create_UIBox_mp_stats()
   end
 
   return create_UIBox_generic_options({back_func='high_scores', contents={
-    -- Title
     {n=G.UIT.R, config={align="cm", padding=0.07}, nodes={
       {n=G.UIT.T, config={text=mod_loc("MULTIPLAYER STATS"), scale=0.5, colour=G.C.GOLD, shadow=true}}
     }},
-    -- Main panel
     {n=G.UIT.R, config={align="cm", padding=0.05, r=0.1, colour=G.C.BLACK, emboss=0.05, minw=8.8, minh=5.5}, nodes={
       {n=G.UIT.C, config={align="tm", padding=0.06}, nodes={
         section_header("MATCH RECORD"),
@@ -1139,14 +1087,12 @@ function create_UIBox_mp_stats()
         divider(),
         section_header("NEMESIS BLINDS (PvP)"),
         divider(),
-        -- Two big numbers side by side for Nemesis W/L
         {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
           {n=G.UIT.C, config={align="cm", padding=0.1, minw=4}, nodes={
             {n=G.UIT.T, config={text=mod_loc("WON"), scale=0.25, colour=G.C.UI.TEXT_INACTIVE, shadow=true}},
             {n=G.UIT.R, config={align="cm", minh=0.04}, nodes={}},
             {n=G.UIT.T, config={text=tostring(pvp_wins),   scale=0.6, colour=G.C.GREEN, shadow=true}},
           }},
-          -- Vertical divider
           {n=G.UIT.C, config={align="cm", colour={1,1,1,0.15}, minw=0.02, minh=1.4}, nodes={}},
           {n=G.UIT.C, config={align="cm", padding=0.1, minw=4}, nodes={
             {n=G.UIT.T, config={text=mod_loc("LOST"), scale=0.25, colour=G.C.UI.TEXT_INACTIVE, shadow=true}},
@@ -1177,12 +1123,11 @@ l 1
 r 4 1640 %20%20%20%20%20%20 -
 r 4 1641 %20%20%20%20%20%20%20%20 -
 c 6
-l 6
+l 5
     end
   end
 end
 
--- Achievement list page change (like challenge_list_page)
 G.FUNCS.change_ach_list_page = function(args)
 r 4 603 %20%20 -
 r 23 214 %20%20 -
@@ -1223,17 +1168,15 @@ c 26
 s 1
 r 4 871 %20%20%20%20 -
 c 5
-l 14
+l 12
 G.FUNCS.refresh_haptic_settings = function()
   if G.save_settings then G:save_settings() end
   if G.OVERLAY_MENU and UIK and UIK.refresh then UIK.refresh() end
 end
 
--- FIX: Haptic intensity slider preview — vibrate when user drags slider
 G.FUNCS.haptic_intensity_preview = function(rt)
   pcall(function()
     if not G or not G.SETTINGS or not G.SETTINGS.haptic_feedback then return end
-    -- Trigger a medium (level 2) preview buzz so user feels the current intensity
     haptic_buzz(2)
   end)
 end
@@ -1277,16 +1220,13 @@ l 1
       blockable = true,
 c 17
 s 1
-l 19
+l 16
   end
 end
 
--- FEATURE: Replay run on the same seed + stake so the player can retry a lost/won run.
--- The seed and stake are captured into G.ARGS.replay_run when the game over / win screen opens.
 G.FUNCS.replay_run = function(e)
   local saved = G.ARGS and G.ARGS.replay_run
   if not saved then
-    -- Fallback: G.GAME still accessible (e.g. called from win screen before wipe)
     if G.GAME and G.GAME.pseudorandom then
       saved = {
         seed  = G.GAME.pseudorandom.seed,
@@ -1453,9 +1393,8 @@ c 3
 s 1
 r 4 2302 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 18
-l 6
+l 5
 
-    -- Quest hook: track cards sold
     if QuestManager and QuestManager.on_card_sold then
       pcall(function() QuestManager.on_card_sold() end)
     end
@@ -1480,8 +1419,7 @@ c 5
 s 1
 r 4 2385 %20%20 -
 c 63
-l 7
-            -- Quest hook: track joker bought
+l 6
             if QuestManager and QuestManager.on_joker_bought then
               pcall(function()
                 local is_legendary = c1.config and c1.config.center and c1.config.center.rarity == 4
@@ -1492,8 +1430,7 @@ c 6
 s 1
 r 3 1800 %20%20%20%20%20%20%20%20%20%20 -
 c 9
-l 2
-          -- Haptic: shop purchase (medium)
+l 1
           pcall(function() haptic_buzz(2) end)
 c 7
 s 1
@@ -1574,9 +1511,8 @@ c 33
 l 1
     if blind_choice_off_deck(e) then return end
 c 2
-l 6
+l 5
 
-    -- Quest hook: track blinds skipped
     if QuestManager and QuestManager.on_blind_skipped then
       pcall(function() QuestManager.on_blind_skipped() end)
     end
@@ -1611,9 +1547,8 @@ c 3
 s 1
 r 4 2859 %20%20%20%20 -
 c 4
-l 6
+l 5
 
-    -- Quest hook: track shop rerolls
     if QuestManager and QuestManager.on_shop_reroll then
       pcall(function() QuestManager.on_shop_reroll() end)
     end
@@ -1639,8 +1574,7 @@ r 4 2949 %20%20%20%20%20%20 -
 c 8
 s 1
 r 4 2958 - -
-l 19
-  -- Check if player has boosters and this is a new run (not a restart or loaded save)
+l 17
   local is_restart = e and e.config and e.config.id == 'restart_button'
   local is_resume = args and args.savetext
   local is_mp_start = args and args.mp_start
@@ -1657,7 +1591,6 @@ l 19
   end
 
   if show_boosters then
-    -- Show booster selection popup, then start run after confirmation
     G._pending_run_args = args
 r 4 1381 %20%20%20%20 -
 l 1
@@ -1721,30 +1654,27 @@ c 14
 l 1
       if not G.screenwipe then return true end
 c 19
-l 7
+l 5
 
--- ===== V10.5 CUSTOM CALLBACKS =====
 
--- Change guide page
 G.FUNCS.change_guide_page = function(e)
   if e and e.config and e.config.args and e.config.args.page then
     G.SETTINGS.guide_page = e.config.args.page
 r 4 1382 %20%20%20%20 -
-l 8
+l 7
       definition = create_UIBox_generic_options({back_func = 'options'}),
       config = {offset = {x=0,y=10}}
     }
   end
 end
 
--- Open debug PIN entry
 G.FUNCS.open_debug_pin = function(e)
 r 4 1381 %20%20 -
 l 2
   local success, err = pcall(function()
     if create_UIBox_debug_pin then
 r 4 1382 %20%20%20%20%20%20 -
-l 11
+l 10
         definition = create_UIBox_debug_pin()
       }
     end
@@ -1752,16 +1682,14 @@ l 11
   if not success then print("[DEBUG] Error: " .. tostring(err)) end
 end
 
--- Open achievements menu
 G.FUNCS.open_achievements_menu = function(e)
   if not create_UIBox_achievements_main then return end
   if Overhaul and Overhaul.achievements_ui then Overhaul.achievements_ui.back = 'exit_overlay_menu' end
 r 4 1381 %20%20 -
 r 4 1382 %20%20 -
-l 12
+l 10
     definition = create_UIBox_achievements_main()
   }
-  -- FEATURE: Sub-showcase on first visit
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_achievements then
       G.FUNCS.trigger_sub_showcase_achievements()
@@ -1769,6 +1697,5 @@ l 12
   end)
 end
 
--- open_progression_screen defined in progression.lua
 
 end

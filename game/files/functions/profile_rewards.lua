@@ -1,18 +1,8 @@
--- ============================================
--- PROFILE REWARDS SYSTEM for Balatro V2
--- Deck Unlocks, Profile Icons
--- All data is per-profile (tied to G.SETTINGS.profile)
--- ============================================
 
 local MAX_ITERATIONS = 1000
 
--- ============================================
--- DECK SKIN DEFINITIONS (24 collabs, 6 per suit)
--- key = collab ID from G.COLLABS.options
--- ============================================
 
 local DECK_UNLOCKS = {
-  -- SPADES (collab_TW, collab_CYP, collab_SK, collab_DS, collab_AC, collab_STP)
   {id = "collab_TW",  suit = "Spades",   name = "The Witcher",       description = "Win 3 runs (Monster Slayer)",              unlock_type = "wins",   unlock_value = 3},
   {id = "collab_CYP", suit = "Spades",   name = "Cyberpunk 2077",    description = "Earn $300+ in a single run",               unlock_type = "money",  unlock_value = 300},
   {id = "collab_SK",  suit = "Spades",   name = "Shovel Knight",     description = "Win with Black Deck (dig deep)",           unlock_type = "win_deck", unlock_value = "b_black"},
@@ -20,7 +10,6 @@ local DECK_UNLOCKS = {
   {id = "collab_AC",  suit = "Spades",   name = "Assassin's Creed",  description = "Win 5 runs in a row (streak)",             unlock_type = "streak", unlock_value = 5},
   {id = "collab_STP", suit = "Spades",   name = "Slay the Princess", description = "Buy from shop in TAVERN",                  unlock_type = "shop",   price = 1500},
 
-  -- HEARTS (collab_AU, collab_TBoI, collab_CL, collab_D2, collab_CR, collab_BUG)
   {id = "collab_AU",   suit = "Hearts",  name = "Among Us",          description = "Win without using any Joker abilities",     unlock_type = "win_no_joker", unlock_value = 1},
   {id = "collab_TBoI", suit = "Hearts",  name = "The Binding of Isaac", description = "Use 20 consumables in one run",          unlock_type = "consumables", unlock_value = 20},
   {id = "collab_CL",   suit = "Hearts",  name = "Cult of the Lamb",  description = "Reach Level 15",                           unlock_type = "level",  unlock_value = 15},
@@ -28,7 +17,6 @@ local DECK_UNLOCKS = {
   {id = "collab_CR",   suit = "Hearts",  name = "Critical Role",     description = "Score 100,000+ chips in a single hand",    unlock_type = "hand_score", unlock_value = 100000},
   {id = "collab_BUG",  suit = "Hearts",  name = "Bugsnax",           description = "Discover 100 items in Collection",         unlock_type = "discover", unlock_value = 100},
 
-  -- CLUBS (collab_VS, collab_STS, collab_PC, collab_WF, collab_FO, collab_DBD)
   {id = "collab_VS",  suit = "Clubs",    name = "Vampire Survivors",  description = "Win 10 runs (survive the night)",         unlock_type = "wins",   unlock_value = 10},
   {id = "collab_STS", suit = "Clubs",    name = "Slay the Spire",     description = "Win with Red Deck and Blue Deck",         unlock_type = "win_decks", unlock_value = {"b_red","b_blue"}},
   {id = "collab_PC",  suit = "Clubs",    name = "Potion Craft",       description = "Use 50 Tarot cards total",                unlock_type = "career_stat", stat = "c_tarots_bought", unlock_value = 50},
@@ -36,7 +24,6 @@ local DECK_UNLOCKS = {
   {id = "collab_FO",  suit = "Clubs",    name = "Vault-Tec",          description = "Earn $500+ in a single run (hoard caps)",  unlock_type = "money",  unlock_value = 500},
   {id = "collab_DBD", suit = "Clubs",    name = "Dead by Daylight",   description = "Win on Ante 10+ (escape the trial)",      unlock_type = "high_ante", unlock_value = 10},
 
-  -- DIAMONDS (collab_DTD, collab_SV, collab_EG, collab_XR, collab_C7, collab_R)
   {id = "collab_DTD", suit = "Diamonds", name = "Dave the Diver",     description = "Win with Yellow Deck (dive for gold)",    unlock_type = "win_deck", unlock_value = "b_yellow"},
   {id = "collab_SV",  suit = "Diamonds", name = "Stardew Valley",     description = "Earn $200+ in a single run (farming)",    unlock_type = "money",  unlock_value = 200},
   {id = "collab_EG",  suit = "Diamonds", name = "Enter the Gungeon",  description = "Win 5 runs (clear the dungeon)",          unlock_type = "wins",   unlock_value = 5},
@@ -46,9 +33,6 @@ local DECK_UNLOCKS = {
 }
 
 
--- ============================================
--- PROFILE REWARDS MANAGER
--- ============================================
 
 ProfileRewardsManager = ProfileRewardsManager or {}
 ProfileRewardsManager.initialized = false
@@ -65,17 +49,14 @@ function ProfileRewardsManager.init()
 
   if not profile.progression then profile.progression = {} end
 
-  -- Deck unlocks: table of collab IDs that are unlocked
   if not profile.progression.unlocked_decks then
     profile.progression.unlocked_decks = {}
   end
   pcall(ProfileRewardsManager.unlock_all_decks, profile)
 
-  -- Profile icon: joker key (e.g. "j_joker") or nil
   if not profile.progression.equipped_icon then
     profile.progression.equipped_icon = nil
   end
-  -- Table of joker keys unlocked as icons (won with that joker)
   if not profile.progression.unlocked_icons then
     profile.progression.unlocked_icons = {}
   end
@@ -90,9 +71,6 @@ function ProfileRewardsManager.reload_for_profile()
   ProfileRewardsManager.init()
 end
 
--- ============================================
--- DECK UNLOCK FUNCTIONS
--- ============================================
 
 function ProfileRewardsManager.is_deck_unlocked(collab_id)
   if not ProfileRewardsManager.init() then return false end
@@ -108,7 +86,6 @@ function ProfileRewardsManager.is_deck_unlocked(collab_id)
 end
 
 function ProfileRewardsManager.unlock_deck(collab_id)
-  -- ANTI-CHEAT: block all deck unlocks during modded runs
   if G and G.GAME and G.GAME.modded_run then return false end
   if not ProfileRewardsManager.init() then return false end
   if ProfileRewardsManager.is_deck_unlocked(collab_id) then return false end
@@ -153,7 +130,6 @@ function ProfileRewardsManager.get_unlocked_deck_count()
 end
 
 function ProfileRewardsManager.check_deck_unlocks()
-  -- ANTI-CHEAT: skip evaluation during modded runs
   if G and G.GAME and G.GAME.modded_run then return end
   if not ProfileRewardsManager.init() then return end
   if not G.PROFILES or not G.SETTINGS or not G.SETTINGS.profile then return end
@@ -253,8 +229,6 @@ function ProfileRewardsManager.check_deck_unlocks()
           end
         end)
       elseif deck.unlock_type == "win_no_joker" then
-        -- This unlock is event-driven: checked at win_game() in state_events.lua
-        -- Cannot be checked retrospectively from profile data
         should_unlock = false
       elseif deck.unlock_type == "consumables" then
         pcall(function()
@@ -290,9 +264,6 @@ function ProfileRewardsManager.check_deck_unlocks()
   end
 end
 
--- ============================================
--- PROFILE ICON FUNCTIONS (Joker-based)
--- ============================================
 
 function ProfileRewardsManager.is_icon_unlocked(joker_key)
   if not ProfileRewardsManager.init() then return false end
@@ -307,7 +278,6 @@ function ProfileRewardsManager.is_icon_unlocked(joker_key)
 end
 
 function ProfileRewardsManager.unlock_icon(joker_key)
-  -- ANTI-CHEAT: block icon unlocks during modded runs
   if G and G.GAME and G.GAME.modded_run then return false end
   if not ProfileRewardsManager.init() then return false end
   if ProfileRewardsManager.is_icon_unlocked(joker_key) then return false end
@@ -319,7 +289,6 @@ function ProfileRewardsManager.unlock_icon(joker_key)
   pcall(function() G:save_settings() end)
   print("[PROFILE_REWARDS] Icon unlocked: " .. tostring(joker_key))
 
-  -- Check icon collection achievements
   pcall(function()
     if AchievementManager and AchievementManager.check_achievement then
       local count = #profile.progression.unlocked_icons
@@ -362,9 +331,7 @@ function ProfileRewardsManager.get_unlocked_icon_count()
   return #profile.progression.unlocked_icons
 end
 
--- Check joker_usage wins table and unlock icons for any joker you've won with
 function ProfileRewardsManager.check_icon_unlocks()
-  -- ANTI-CHEAT: skip evaluation during modded runs
   if G and G.GAME and G.GAME.modded_run then return end
   if not ProfileRewardsManager.init() then return end
 
@@ -391,9 +358,6 @@ function ProfileRewardsManager.check_icon_unlocks()
   end
 end
 
--- ============================================
--- EXPORTS
--- ============================================
 
 if Game and Game.load_profile and not ProfileRewardsManager.load_wrapped then
   ProfileRewardsManager.load_wrapped = true

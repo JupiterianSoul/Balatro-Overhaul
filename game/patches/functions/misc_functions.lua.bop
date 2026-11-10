@@ -168,8 +168,7 @@ c 6
 s 1
 r 12 731 %20%20%20%20%20%20%20%20 -
 c 37
-l 2
-  -- Jukebox: silence game music when custom playlist is active
+l 1
   if G.JUKEBOX_ACTIVE or G.MG_MUSIC then desired_track = '' end
 c 38
 s 1
@@ -235,17 +234,14 @@ c 2
 s 1
 c 77
 s 1
-l 2
-  -- ANTI-CHEAT: Block profile high-score writes when run is modded (mod menu / custom run / custom deck)
+l 1
   if G.GAME.modded_run then return end
 r 12 1023 %20%20 -
 c 11
-l 2
-  -- ANTI-CHEAT: Block joker usage stickers when run is modded
+l 1
   if G and G.GAME and G.GAME.modded_run then return end
 c 13
-l 2
-  -- ANTI-CHEAT: Block joker win stickers (gold sticker per-stake) when run is modded
+l 1
   if G and G.GAME and G.GAME.modded_run then return end
 c 13
 s 2
@@ -257,16 +253,13 @@ s 1
 l 1
       if type(k) == 'number' and G.sticker_map[k] then _w = math.max(k, _w) end
 c 8
-l 2
-  -- ANTI-CHEAT: Block joker loss tracking when run is modded
+l 1
   if G and G.GAME and G.GAME.modded_run then return end
 c 12
-l 2
-  -- ANTI-CHEAT: Block deck usage tracking when run is modded
+l 1
   if G and G.GAME and G.GAME.modded_run then return end
 c 12
-l 2
-  -- ANTI-CHEAT: Block deck win sticker (per-stake trophy) when run is modded
+l 1
   if G and G.GAME and G.GAME.modded_run then return end
 c 15
 s 1
@@ -289,8 +282,7 @@ s 1
 l 1
       if type(k) == 'number' and G.sticker_map[k] then _w = math.max(k, _w) end
 c 6
-l 2
-  -- ANTI-CHEAT: Block deck loss tracking when run is modded
+l 1
   if G and G.GAME and G.GAME.modded_run then return end
 c 24
 s 1
@@ -386,19 +378,12 @@ l 1
   if _depth > 0 then
 c 17
 s 1
-l 3
+l 2
   if (G.GAME.seeded and not G.GAME.daily) or G.GAME.challenge then return end
-  -- ANTI-CHEAT: block career stat increments during modded runs
   if G.GAME.modded_run then return end
 c 2
-l 17
+l 11
 
-  -- QUEST TRACKING: canonical sources only (no duplicates)
-  -- hands_played / cards_discarded only — all other stats have canonical sources elsewhere:
-  --   money_earned  → common_events.lua on_money_earned (inside ease_dollars Event)
-  --   wins/runs     → state_events.lua QuestManager.on_run_won()
-  --   tarot/planet  → achievements_hooks.lua Card.use_consumeable hook (use != buy)
-  --   losses        → game.lua direct on_run_lost() + game_over hook backup
   pcall(function()
     if QuestManager then
       if stat == "c_hands_played" then
@@ -469,21 +454,16 @@ e 12 1518 %20%20 - =49,-9,+%42%4C,=1,-1,+%43,=1
 c 64
 s 39
 c 68
-l 28
-  -- FIX: Resolve #N# or Steamodded #<s>N# / #<plural,singular>N# variable references
-  -- Cryptid localization uses #<s>1# ("Chip#<s>1#" → "Chip" or "Chips") which vanilla
-  -- loc_parse_string stores as {"<s>1"}.  tonumber("<s>1") == nil → "ERROR" without this.
+l 23
   local function _resolve_var(vars, ref)
     if type(vars) ~= 'table' then vars = {} end
     local n = tonumber(ref)
     if n then return vars[n] or 'ERROR' end
-    -- Single-suffix form: #<s>1# → "" (singular) or "s" (plural)
     local suffix, si = ref:match("^<([^,>]+)>(%d+)$")
     if suffix then
       local v = vars[tonumber(si)]
       return (not v or tonumber(v) == 1) and '' or suffix
     end
-    -- Two-form: #<ies,y>1# → "ies" (plural) or "y" (singular)
     local pl, sg, pi = ref:match("^<([^,>]+),([^>]+)>(%d+)$")
     if pl then
       local v = vars[tonumber(pi)]
@@ -537,9 +517,8 @@ s 1
 l 1
         if G.F_MOBILE then desc_scale = desc_scale * ((args.type == 'tutorial' and 1.5) or 1.45) end
 c 67
-l 2
+l 1
   elseif _stake == 9 then
-    -- Chaos Stake - chip with foil effect
 r 12 1822 %20%20%20%20 -
 r 12 1823 %20%20%20%20%20%20 -
 r 12 1824 %20%20%20%20%20%20 -
@@ -547,11 +526,10 @@ r 12 1825 %20%20%20%20%20%20 -
 l 1
 
 r 12 1827 %20%20%20%20%20%20 -
-l 4
+l 3
       Sprite.draw_shader(_sprite, 'foil', nil, _sprite.ARGS.send_to_shader)
     end
   elseif _stake == 10 then
-    -- Apocalypse Stake - unique base chip + holographic shimmer
 r 12 1822 %20%20%20%20 -
 r 12 1823 %20%20%20%20%20%20 -
 l 1
@@ -560,11 +538,10 @@ r 12 1825 %20%20%20%20%20%20 -
 l 1
 
 r 12 1827 %20%20%20%20%20%20 -
-l 4
+l 3
       Sprite.draw_shader(_sprite, 'holo', nil, _sprite.ARGS.send_to_shader)
     end
   elseif _stake == 11 then
-    -- Oblivion Stake - black chip with negative void effect
 r 12 1822 %20%20%20%20 -
 r 12 1823 %20%20%20%20%20%20 -
 l 1
@@ -573,12 +550,11 @@ r 12 1825 %20%20%20%20%20%20 -
 l 1
 
 r 12 1827 %20%20%20%20%20%20 -
-l 5
+l 4
       Sprite.draw_shader(_sprite, 'negative', nil, _sprite.ARGS.send_to_shader)
       Sprite.draw_shader(_sprite, 'negative', nil, _sprite.ARGS.send_to_shader)
     end
   elseif _stake == 12 then
-    -- Transcendent Stake - gold chip with polychrome rainbow
 r 12 1822 %20%20%20%20 -
 r 12 1823 %20%20%20%20%20%20 -
 l 1
@@ -598,10 +574,10 @@ c 17
 s 1
 l 5
     G.C.GOLD,
-    HEX('1a3a6b'),   -- 9  Chaos (dark blue)
-    HEX('8b0000'),   -- 10 Apocalypse (dark red)
-    G.C.BLACK,       -- 11 Oblivion (black)
-    HEX('e8d5b7'),   -- 12 Transcendent (ivory/light gold)
+    HEX('1a3a6b'),
+    HEX('8b0000'),
+    G.C.BLACK,
+    HEX('e8d5b7'),
 c 1
 s 1
 l 1

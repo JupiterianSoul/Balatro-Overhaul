@@ -2,19 +2,12 @@ BOP 1
 eol lf
 final 1
 base 0
-l 95
--- ============================================
--- BOM_UI_HUD — Opponent panel, lives/score rendering, in-game HUD, drag handlers
--- FEATURE: Split from bom_ui.lua for maintainability
--- ============================================
+l 85
 
 local M = {}
 
 function M.init(bom_ui)
 
-    -- ============================================
-    -- OPPONENT PANEL (persistent HUD during match)
-    -- ============================================
 
     function bom_ui.build_opponent_panel(opponent_data)
         if not G then return end
@@ -38,7 +31,7 @@ function M.init(bom_ui)
             highest_score = bom_insane_int and bom_insane_int.empty and bom_insane_int.empty() or 0,
             hands_used = 0,
             hands_left = 0,
-            location = "...",  -- FEATURE: Session 56 — enemy location (updated live)
+            location = "...",
         }
     end
 
@@ -93,9 +86,6 @@ function M.init(bom_ui)
         end
     end
 
-    -- ============================================
-    -- LIFE LOSS ANIMATION
-    -- ============================================
 
     function bom_ui.animate_life_loss()
 r 1 112 %20%20%20%20%20%20%20%20 -
@@ -128,7 +118,7 @@ l 26
                 G.BOM_LIFE_TOAST = overlay
 
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 707
+l 702
                     trigger = 'after',
                     delay = 1.5,
                     func = function()
@@ -141,12 +131,8 @@ l 707
         }))
     end
 
-    -- ============================================
-    -- IN-GAME HUD STUBS
-    -- FIX: Draggable HUD panel removed. Data layer (mp_opponent_panel) kept above.
-    -- ============================================
 
-    function bom_ui.create_match_hud() -- FIX: Draggable HUD panel removed
+    function bom_ui.create_match_hud()
     end
 
 
@@ -158,7 +144,6 @@ l 707
     end
 
     function bom_ui.refresh_match_hud()
-        -- FIX: No-op stub. Draggable HUD panel removed.
         if not G or not G.GAME or not G.GAME.multiplayer then
             bom_ui.destroy_match_hud()
         end

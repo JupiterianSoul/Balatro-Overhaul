@@ -4,6 +4,17 @@ What each version brings to players. The game shows this file in About > Changel
 
 Format: `## version | date`, then one `### en`, `### fr` and `### es` block per version (the text after the language code is the version's title). Lines starting with `+ ` are the big lines: they come first, and the first five are the ones the What's new window shows. Lines starting with `- ` are the rest. A line can start with `{card_key}` (for example `{j_hologram}`) to show that card as a small icon, then a short title in square brackets (for example `[Random deck]`), shown in gold above the line. The game reads its own copy, assets/CHANGELOG.md; keep tools/release/CHANGELOG.md the same.
 
+## 2.0.3 | 2026-11-10
+
+### en Overhaul 2.0.3 (pre-release)
++ [Multiplayer] The ONLINE / OFFLINE label in the menus now checks the server for real. It used to say OFFLINE everywhere outside a lobby or a match, even when the servers were up.
+
+### fr Overhaul 2.0.3 (préversion)
++ [Multijoueur] L'indicateur EN LIGNE / HORS LIGNE des menus vérifie maintenant vraiment le serveur. Il affichait HORS LIGNE partout en dehors d'un salon ou d'un match, même quand les serveurs étaient actifs.
+
+### es Overhaul 2.0.3 (versión preliminar)
++ [Multijugador] El indicador EN LÍNEA / SIN CONEXIÓN de los menús ahora comprueba el servidor de verdad. Antes ponía SIN CONEXIÓN fuera de una sala o partida, incluso con los servidores activos.
+
 ## 2.0.2 | 2026-11-10
 
 ### en Overhaul 2.0.2 (pre-release)

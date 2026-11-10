@@ -2,16 +2,8 @@ BOP 1
 eol lf
 final 1
 base 0
-l 208
-﻿-- ============================================
--- BALACOIN SHOP for Balatro V10.5
--- 2 Tabs: Colors, Icon Effects
--- Rarity-based economy with Balacoin currency
--- REWRITE: V2.0 - Instant refresh, confirmation dialogs,
---   paginated colors, overlay ash card, proper prices
--- ============================================
-
--- ===== SHOP CONSTANTS =====
+l 192
+﻿
 
 local SHOP_CONFIG = {
   currency_name = "Balacoin",
@@ -19,7 +11,6 @@ local SHOP_CONFIG = {
   items_per_page = 6,
 }
 
--- ===== SHOP MANAGER =====
 
 ShopManager = {
   initialized_profile = nil,
@@ -51,7 +42,6 @@ function ShopManager.get_balance()
 end
 
 function ShopManager.add_balacoin(amount)
-  -- ANTI-CHEAT: do not award Balacoin during modded runs
   if G and G.GAME and G.GAME.modded_run then return false end
   if not ShopManager.init() then return false end
   if not amount or amount <= 0 then return false end
@@ -99,7 +89,6 @@ function ShopManager.purchase(item_id, category, price)
   return success, msg
 end
 
--- ===== SHOP UI STATE =====
 
 local ShopUI = {
   color_rarity_page = 1,
@@ -107,9 +96,6 @@ local ShopUI = {
   jimbo_skin_page = 1,
 }
 
--- ===== JIMBO SKIN SYSTEM =====
--- Skins are keyed by joker center key (e.g. 'j_jolly'). Only discovered jokers appear.
--- Prices scale by rarity: Common=5, Uncommon=15, Rare=30, Legendary=60
 local JIMBO_SKIN_PRICES = { [1]=5, [2]=15, [3]=30, [4]=60 }
 
 local function jimbo_skin_price(center)
@@ -135,7 +121,6 @@ function JimboSkinManager_is_owned(key)
     owned._set = {}
     for _, v in ipairs(owned) do owned._set[v] = true end
   end
-  -- Default joker skin is always owned
   if key == 'j_joker' then return true end
   return owned._set[key] == true
 end
@@ -146,7 +131,7 @@ function JimboSkinManager_buy(key, price)
   if not ShopManager.spend_balacoin(price) then return false end
   local profile = G.PROFILES[G.SETTINGS.profile]
   table.insert(profile.progression.owned_jimbo_skins, key)
-  profile.progression.owned_jimbo_skins._set = nil -- invalidate cache
+  profile.progression.owned_jimbo_skins._set = nil
   pcall(function() if G and G.save_progress then G:save_progress() end end)
   return true
 end
@@ -187,7 +172,7 @@ end
 function JimboSkinManager_owned_count()
   if not JimboSkinManager_init() then return 0 end
   local profile = G.PROFILES[G.SETTINGS.profile]
-  return #(profile.progression.owned_jimbo_skins) + 1 -- +1 for default j_joker
+  return #(profile.progression.owned_jimbo_skins) + 1
 end
 
 local COLOR_PAGES = {
@@ -207,12 +192,11 @@ local function rarity_colour(rarity)
   return G.C[c] or G.C.WHITE
 end
 
--- ===== INSTANT REFRESH =====
 
 local function refresh_shop()
   pcall(function()
 r 23 214 %20%20%20%20 -
-l 14
+l 13
       local of = G.OVERLAY_MENU
       G.OVERLAY_MENU = nil
       of:remove()
@@ -223,7 +207,6 @@ l 14
   end)
 end
 
--- ===== PURCHASE CONFIRMATION DIALOG =====
 
 local function show_purchase_confirm(item_name, item_price, on_confirm)
   pcall(function()
@@ -256,7 +239,7 @@ l 8
           {n=G.UIT.T, config={text = SHOP_CONFIG.currency_icon .. " " .. item_price, scale = 0.38, colour = G.C.MONEY}}
         }},
 r 15 2760 %20%20%20%20%20%20%20%20 -
-l 26
+l 25
           {n=G.UIT.C, config={align = "cm", padding = 0.05, r = 0.1, colour = G.C.GREEN, hover = true,
             button = "shop_confirm_yes", minw = 2.5, minh = 0.6, emboss = 0.05}, nodes={
             {n=G.UIT.T, config={text = mod_loc("YES"), scale = 0.4, colour = G.C.WHITE}}
@@ -278,7 +261,6 @@ G.FUNCS.shop_confirm_yes = function(e)
   G._shop_confirm_callback = nil
   G._shop_confirm_item_name = nil
   G._shop_confirm_item_price = nil
-  -- Check balance before executing purchase
   if item_price and ShopManager and ShopManager.get_balance then
     local balance = ShopManager.get_balance()
     if balance < item_price then
@@ -325,7 +307,7 @@ G.FUNCS.shop_confirm_no = function(e)
   G._shop_confirm_item_price = nil
   pcall(function()
 r 23 214 %20%20%20%20 -
-l 19
+l 18
       local of = G.OVERLAY_MENU
       G.OVERLAY_MENU = nil
       of:remove()
@@ -336,7 +318,6 @@ l 19
   end)
 end
 
--- ===== MAIN SHOP MENU =====
 
 function create_UIBox_shop_menu()
   ShopManager.init()
@@ -355,7 +336,7 @@ l 7
         }},
       }},
 r 15 71 %20%20%20%20%20%20 -
-l 137
+l 134
         create_tabs({
           tabs = {
             {label = mod_loc("Jimbo Skins"), chosen = (ShopUI.active_tab or 1) == 1,
@@ -374,7 +355,6 @@ l 137
   })
 end
 
--- ===== COLORS TAB (Paginated by rarity) =====
 
 function create_shop_colors_tab()
   local page = ShopUI.color_rarity_page or 1
@@ -484,17 +464,15 @@ function create_shop_colors_tab()
   }}
 end
 
--- ===== ICON EFFECTS TAB (Edition-style cards) =====
 
 function create_shop_icon_effects_tab()
   local balance = ShopManager.get_balance()
 
-  -- Create CardArea matching Editions collection tab
   G.shop_icon_area = CardArea(
     G.ROOM.T.x + 0.2*G.ROOM.T.w/2, G.ROOM.T.h,
     4.5*G.CARD_W, 1.03*G.CARD_H,
 r 15 3628 %20%20%20%20 -
-l 57
+l 54
 
   local edition_map = {
     {id="foil",        key="foil",        shader="foil"},
@@ -513,7 +491,6 @@ l 57
     card:set_edition({[em.key] = true}, true, true)
     card:start_materialize(nil, i > 1)
 
-    -- Find matching shop entry for this effect
     local eff_data = nil
     for _, eff in ipairs(SHOP_ICON_EFFECTS) do
       if eff.id == em.id then eff_data = eff; break end
@@ -525,7 +502,6 @@ l 57
     local _eff_price = eff_data and eff_data.price or 0
     local _eff_name = eff_data and eff_data.name or em.id
 
-    -- Click to buy (same pattern as profile icon equip)
     card.states.click.can = true
     local function _buy_action()
       if owned then return end
@@ -539,7 +515,6 @@ l 57
     card.click = _buy_action
     card.single_tap = _buy_action
 
-    -- Hover popup with name + status
     local popup_status = owned and mod_loc("OWNED") or
       (can_afford and mod_loc("Tap to buy") or (SHOP_CONFIG.currency_icon .. " " .. _eff_price))
     local popup_colour = owned and G.C.GREEN or (can_afford and G.C.BLUE or G.C.UI.TEXT_INACTIVE)
@@ -553,7 +528,7 @@ l 57
     }
     card.hover = function()
 r 2 429 %20%20%20%20%20%20 -
-l 36
+l 35
         if not card.hovering and card.states.visible then
           card.hovering = true
           card:juice_up(0.05, 0.02)
@@ -587,18 +562,16 @@ l 36
   }}
 end
 
--- ===== BUTTON CALLBACKS =====
 
 G.FUNCS.open_shop_menu = function(e)
 r 4 1381 %20%20 -
-l 272
+l 268
   local ok, err = pcall(function()
     ShopManager.init()
     pcall(function() AshCardManager.init() end)
     G.FUNCS.overlay_menu{definition = create_UIBox_shop_menu()}
   end)
   if not ok then print("[SHOP] Error: " .. tostring(err)) end
-  -- FEATURE: Sub-showcase on first visit
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_shop then
       G.FUNCS.trigger_sub_showcase_shop()
@@ -608,12 +581,12 @@ end
 
 G.FUNCS.shop_color_prev = function(e)
   ShopUI.color_rarity_page = math.max(1, (ShopUI.color_rarity_page or 1) - 1)
-  ShopUI.active_tab = 2  -- FIX: Stay on Colors tab when paginating
+  ShopUI.active_tab = 2
   refresh_shop()
 end
 G.FUNCS.shop_color_next = function(e)
   ShopUI.color_rarity_page = math.min(#COLOR_PAGES, (ShopUI.color_rarity_page or 1) + 1)
-  ShopUI.active_tab = 2  -- FIX: Stay on Colors tab when paginating
+  ShopUI.active_tab = 2
   refresh_shop()
 end
 
@@ -647,7 +620,6 @@ G.FUNCS.shop_buy_item = function(e)
   end)
 end
 
--- ===== BALACOIN REWARDS =====
 
 function award_balacoin_reward(amount, source)
   if ShopManager.add_balacoin(amount) then
@@ -662,7 +634,6 @@ function get_balacoin_display()
   return SHOP_CONFIG.currency_icon .. " " .. balance
 end
 
--- ===== BOOSTER SYSTEM =====
 
 local SHOP_BOOSTERS = {
   {id = "xp_boost_1", name = "XP Boost I", description = "+50% XP earned this run", price = 200, category = "booster", effects = {xp_mult = 1.5}},
@@ -787,7 +758,6 @@ function BoosterManager.get_booster_info(booster_id)
   return nil
 end
 
--- ===== BOOSTER SHOP / SELECTION UI =====
 
 G.FUNCS.shop_buy_booster = function(e)
   if not e or not e.config or not e.config.ref_table then return end
@@ -877,7 +847,7 @@ G.FUNCS.booster_skip_and_start = function(e)
   G._booster_selection = {}
   pcall(function() BoosterManager.clear_active() end)
 r 4 1375 %20%20 -
-l 36
+l 33
   local args = G._pending_run_args; G._pending_run_args = nil
   G.SETTINGS.paused = true; G.E_MANAGER:clear_queue(); G.FUNCS.wipe_on()
   G.E_MANAGER:add_event(Event({no_delete = true, func = function() G:delete_run(); return true end}))
@@ -885,7 +855,6 @@ l 36
   G.FUNCS.wipe_off()
 end
 
--- ===== JIMBO SKINS TAB (CardArea grid, paginated, tap-to-buy) =====
 
 function create_shop_jimbo_skins_tab()
   ShopUI.active_tab = 1
@@ -901,7 +870,6 @@ function create_shop_jimbo_skins_tab()
     }}
   end
 
-  -- Filter to discovered jokers only
   local discovered = {}
   for _, center in ipairs(joker_pool) do
     if center.discovered then
@@ -913,7 +881,6 @@ function create_shop_jimbo_skins_tab()
   local num_rows = 2
   local items_per_page = cards_per_row * num_rows
 
-  -- Build CardArea rows
 r 15 489 %20%20 -
 l 7
   G.shop_jimbo_skin_collection = {}
@@ -924,7 +891,7 @@ l 7
       1.03*G.CARD_H,
       {card_limit = cards_per_row, type = 'title', highlight_limit = 0, collection = true})
 r 15 3255 %20%20%20%20 -
-l 38
+l 37
       {n=G.UIT.R, config={align="cm", padding=0, no_fill=true}, nodes={
         {n=G.UIT.O, config={object = G.shop_jimbo_skin_collection[j]}}
       }})
@@ -943,7 +910,6 @@ l 38
   local equipped = JimboSkinManager_get_equipped()
   local owned_count = JimboSkinManager_owned_count()
 
-  -- Populate cards for current page
   local function populate_skin_page(page_idx)
     for j = 1, num_rows do
       for i = #G.shop_jimbo_skin_collection[j].cards, 1, -1 do
@@ -964,7 +930,7 @@ l 38
             G.shop_jimbo_skin_collection[j].T.y,
             G.CARD_W, G.CARD_H, nil, center)
 r 15 3603 %20%20%20%20%20%20%20%20%20%20 -
-l 48
+l 44
 
           local owned = JimboSkinManager_is_owned(center.key)
           local is_equipped = eq and center.key == eq
@@ -974,15 +940,12 @@ l 48
           local _price = price
           local _name = center.name or center.key
 
-          -- Tap to buy or info
           card.states.click.can = true
           local function _skin_action()
-            if is_equipped then return end -- already equipped, no action
+            if is_equipped then return end
             if owned then
-              -- Already owned, equip it from shop? No, equip is in profile. Just show info.
               return
             end
-            -- Not owned: purchase flow
             show_purchase_confirm(_name, _price, function()
               local ok = JimboSkinManager_buy(_key, _price)
               if ok then pcall(function() play_sound('sell', 1.0, 0.5) end) end
@@ -992,7 +955,6 @@ l 48
           card.click = _skin_action
           card.single_tap = _skin_action
 
-          -- Hover popup
           local popup_status, popup_colour
           if is_equipped then
             popup_status = mod_loc("EQUIPPED"); popup_colour = G.C.GOLD
@@ -1060,14 +1022,13 @@ end
 
 G.FUNCS.shop_jimbo_skin_page = function(args)
 r 4 603 %20%20 -
-l 28
+l 27
   ShopUI.jimbo_skin_page = args.cycle_config.current_option or 1
   if G._shop_jimbo_skin_populate then
     pcall(function() G._shop_jimbo_skin_populate(ShopUI.jimbo_skin_page) end)
   end
 end
 
--- ===== EXPORTS =====
 _G.SHOP_CONFIG = SHOP_CONFIG
 _G.ShopManager = ShopManager
 _G.ShopUI = ShopUI

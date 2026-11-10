@@ -2,20 +2,15 @@ BOP 1
 eol lf
 final 1
 base 0
-l 145
+l 131
 local function dc_dir()
     local L = rawget(_G, "MODLOADER")
     return (L and L.modded) and "modded_deck_creator" or "deck_creator"
 end
 
--- FEATURE: Deck Creator - Persistence Layer
--- Ported from Balatro-DeckCreator-1.2.2 (Persistence.lua)
--- Save path changed from "Mods/Deck Creator/Custom Decks/" to "deck_creator/"
--- Stripped of Steamodded/Balamod/DeckCreatorLoader dependencies
 
 DeckCreatorPersistence = {}
 
--- Custom Lua table serializer (handles nested tables, booleans, numbers, strings)
 local function serializeDeck(val, depth)
     depth = depth or 0
     local indent = string.rep("  ", depth)
@@ -45,10 +40,8 @@ local function serializeDeck(val, depth)
     end
 end
 
--- Save all custom decks to file
 function DeckCreatorPersistence.saveAllDecks()
     local ok, err = pcall(function()
-        -- Ensure directory exists
         love.filesystem.createDirectory(dc_dir())
 
         local allDecks = {}
@@ -68,9 +61,7 @@ function DeckCreatorPersistence.saveAllDecks()
     end
 end
 
--- Load all custom deck lists from file
 function DeckCreatorPersistence.loadAllDeckLists()
-    -- FIX: Clear in-memory list before reload to prevent duplication on repeated calls
     DeckCreatorUtils.customDeckList = {}
     local ok, err = pcall(function()
         if not love.filesystem.getInfo(dc_dir()) then
@@ -86,7 +77,6 @@ function DeckCreatorPersistence.loadAllDeckLists()
                 local fileContent = love.filesystem.read(filePath)
 
                 if fileContent and fileContent ~= "" then
-                    -- FIX: Sandbox loadstring to prevent code injection from tampered deck files
                     local loadFunc = loadstring("return " .. fileContent)
                     if loadFunc then
                         setfenv(loadFunc, {})
@@ -118,7 +108,6 @@ function DeckCreatorPersistence.loadAllDeckLists()
     end
 end
 
--- Refresh the G.P_CENTERS and G.P_CENTER_POOLS.Back tables with custom decks
 function DeckCreatorPersistence.refreshDeckList()
     if not G then return end
     if not G.P_CENTERS then return end
@@ -126,7 +115,6 @@ function DeckCreatorPersistence.refreshDeckList()
     if not G.P_CENTER_POOLS.Back then return end
 
     local ok, err = pcall(function()
-        -- Remove deleted/disabled custom decks from G.P_CENTERS
         for slug, _ in pairs(DeckCreatorUtils.deletedSlugs) do
             if G.P_CENTERS[slug] then
                 G.P_CENTERS[slug] = nil
@@ -138,7 +126,6 @@ function DeckCreatorPersistence.refreshDeckList()
             end
         end
 
-        -- Remove all existing custom decks from pool
         local newPool = {}
         for _, back in ipairs(G.P_CENTER_POOLS.Back) do
             if not (back.config and back.config.customDeck) then
@@ -146,10 +133,9 @@ function DeckCreatorPersistence.refreshDeckList()
             end
         end
 
-        -- Also remove from G.P_CENTERS
         local toRemove = {}
 r 3 229 %20%20%20%20%20%20%20%20 -
-l 183
+l 176
             if v.config and v.config.customDeck and not DeckCreatorUtils.deletedSlugs[k] then
                 toRemove[#toRemove + 1] = k
             end
@@ -158,10 +144,8 @@ l 183
             G.P_CENTERS[k] = nil
         end
 
-        -- Min ID for custom decks (vanilla has 16 backs)
         local minId = 17
 
-        -- Add custom decks
         for _, customDeck in ipairs(DeckCreatorUtils.customDeckList) do
             if customDeck and customDeck.slug then
                 local slug = customDeck.slug
@@ -186,14 +170,12 @@ l 183
                     newPool[#newPool + 1] = entry
                     minId = minId + 1
 
-                    -- Set up localization
                     if G.localization and G.localization.descriptions and G.localization.descriptions.Back then
                         local descTable = DeckCreatorPersistence.describe(customDeck.config or {})
                         G.localization.descriptions.Back[slug] = {
                             name = customDeck.name,
                             text = descTable
                         }
-                        -- Generate parsed text
                         if G.localization.descriptions.Back[slug] then
                             local loc = G.localization.descriptions.Back[slug]
                             loc.text_parsed = {}
@@ -217,11 +199,9 @@ l 183
     end
 end
 
--- Load Red Seal messages (embedded defaults for Android)
 function DeckCreatorPersistence.loadRedSealMessages()
     DeckCreatorUtils.redSealMessages = {}
 
-    -- Try loading from file first
     local ok, _ = pcall(function()
         local content = love.filesystem.read("deck_creator/Red_Seal_Messages.txt")
         if content and content ~= "" then
@@ -233,7 +213,6 @@ function DeckCreatorPersistence.loadRedSealMessages()
         end
     end)
 
-    -- If no file or empty, use embedded defaults
     if #DeckCreatorUtils.redSealMessages == 0 then
         DeckCreatorUtils.redSealMessages = {
             "Again!", "Once more!", "Encore!", "Replay!",

@@ -2,29 +2,20 @@ BOP 1
 eol lf
 final 1
 base 0
-l 92
-﻿-- ============================================
--- MULTIPLAYER SYNC — State serialization, real-time boss sync, send/receive
--- Now delegates PvP resolution to bom_match
--- ============================================
-
+l 79
+﻿
 local bom_sync = {}
 
 local boss_sync_timer = 0
--- ARCH: Sync interval sourced from mp_config
 local BOSS_SYNC_INTERVAL = mp_config and mp_config.BOSS_SYNC_INTERVAL or 2
 local MAX_ITERATIONS = 100
 
--- ============================================
--- UPDATE LOOP — Called every frame during multiplayer
--- ============================================
 
 function bom_sync.update(dt)
     if not G then return end
     if not G.GAME then return end
     if not G.GAME.multiplayer then return end
 
-    -- Real-time score sync during PvP blind (every 2 seconds)
     local in_pvp = false
     if bom_match and bom_match.is_pvp_blind then
         local ok, r = pcall(bom_match.is_pvp_blind)
@@ -37,7 +28,6 @@ function bom_sync.update(dt)
         boss_sync_timer = boss_sync_timer + (dt or 0)
         if boss_sync_timer >= BOSS_SYNC_INTERVAL then
             boss_sync_timer = 0
-            -- Performance Mode disables real-time boss sync
             if not G.GAME.performance_mode then
                 pcall(function() bom_sync.send_boss_sync() end)
             end
@@ -45,9 +35,6 @@ function bom_sync.update(dt)
     end
 end
 
--- ============================================
--- SEND ROUND END — Summarize state after completing a round
--- ============================================
 
 function bom_sync.send_round_end()
     if not G then return end
@@ -96,7 +83,7 @@ function bom_sync.send_round_end()
 
     pcall(function()
 r 13 2531 %20%20%20%20%20%20%20%20 -
-l 147
+l 127
             data.joker_count = #G.jokers.cards
         end
     end)
@@ -104,9 +91,6 @@ l 147
     bom_core.send(data)
 end
 
--- ============================================
--- SEND BOSS SYNC — Real-time score during PvP blinds
--- ============================================
 
 function bom_sync.send_boss_sync()
     if not G then return end
@@ -145,9 +129,6 @@ function bom_sync.send_boss_sync()
     bom_core.send(data)
 end
 
--- ============================================
--- RECEIVE ROUND END — Update opponent panel with their state
--- ============================================
 
 function bom_sync.on_round_end(data)
     if not G then return end
@@ -160,16 +141,13 @@ function bom_sync.on_round_end(data)
         end
     end)
 
-    -- Update opponent lives in match state
     pcall(function()
         if bom_match and data.lives then
             bom_match.on_opponent_life_update(data.lives)
         end
     end)
 
-    -- Legacy fallback: if bom_match is not handling PvP, resolve old way
     if G.GAME.mp_boss_result_pending then
-        -- Check if bom_match is in PvP resolve mode
         local in_pvp_resolve = false
         pcall(function()
             if bom_match and bom_match.get_phase then
@@ -178,7 +156,6 @@ function bom_sync.on_round_end(data)
         end)
 
         if not in_pvp_resolve then
-            -- Old-style resolution for backward compat
             pcall(function()
                 bom_sync.resolve_boss_blind(data.score or 0)
             end)
@@ -186,10 +163,6 @@ function bom_sync.on_round_end(data)
     end
 end
 
--- ============================================
--- RESOLVE BOSS BLIND — Legacy score comparison (kept for backward compat)
--- New code should use bom_match.resolve_pvp() instead
--- ============================================
 
 function bom_sync.resolve_boss_blind(opponent_score)
     if not G then return end
@@ -199,7 +172,6 @@ function bom_sync.resolve_boss_blind(opponent_score)
     local my_score = G.GAME.chips or 0
 
     if my_score > opponent_score then
-        -- We won the boss blind
         pcall(function()
             if bom_ui and bom_ui.show_boss_result then
                 bom_ui.show_boss_result("win")
@@ -211,7 +183,6 @@ function bom_sync.resolve_boss_blind(opponent_score)
             end
         end)
     elseif my_score < opponent_score then
-        -- We lost the boss blind
         pcall(function()
             if bom_ui and bom_ui.show_boss_result then
                 bom_ui.show_boss_result("lose")
@@ -225,7 +196,6 @@ function bom_sync.resolve_boss_blind(opponent_score)
             end
         end)
     else
-        -- Draw
         pcall(function()
             if bom_ui and bom_ui.show_boss_result then
                 bom_ui.show_boss_result("draw")
@@ -234,9 +204,6 @@ function bom_sync.resolve_boss_blind(opponent_score)
     end
 end
 
--- ============================================
--- RESET — Clean up between matches
--- ============================================
 
 function bom_sync.reset()
     boss_sync_timer = 0

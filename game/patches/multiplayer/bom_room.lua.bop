@@ -2,25 +2,16 @@ BOP 1
 eol lf
 final 1
 base 0
-l 185
-﻿-- ============================================
--- MULTIPLAYER ROOM — Room creation, join by code, Quick Match, cancel,
--- lobby system with ready state and match settings
--- ============================================
-
+l 173
+﻿
 local bom_room = {}
 
--- FIX: _mp_dbg was removed in a prior session but call sites were not cleaned up.
--- Redefine as a thin wrapper so existing calls are safe without crashing.
 local function _mp_dbg(msg)
     if mp_log and mp_log.info then
         mp_log.info("BOM_ROOM_DBG", msg)
     end
 end
 
--- ============================================
--- CREATE ROOM (Private Match)
--- ============================================
 
 local function my_profile_name()
     local name = nil
@@ -91,9 +82,6 @@ function bom_room.on_room_list(data)
     pcall(function() if bom_browse then bom_browse.on_list(data, rtt) end end)
 end
 
--- ============================================
--- JOIN ROOM (By Code)
--- ============================================
 
 function bom_room.join(code, opts)
     if not bom_core then return end
@@ -225,7 +213,7 @@ l 12
         { n = G.UIT.R, config = { align = "cm", minh = 0.8, padding = 0.1 }, nodes = {
             create_text_input({
 r 15 5387 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 570
+l 505
                 ref_table = profile, ref_value = 'name', extended_corpus = true, keyboard_offset = 2,
             }),
         }},
@@ -249,9 +237,6 @@ function bom_room.on_name_refused(d)
     bom_room.show_name_prompt((d.reason == "default" or d.reason == "bad_name") and d.reason or "taken", d.name, bom_room.retry)
 end
 
--- ============================================
--- SERVER CALLBACKS
--- ============================================
 
 function bom_room.on_room_created(data)
     if not G then return end
@@ -352,9 +337,6 @@ function bom_room.on_guest_left(data)
     end)
 end
 
--- ============================================
--- QUICK MATCH
--- ============================================
 
 function bom_room.find_match()
     if not G then return end
@@ -363,7 +345,6 @@ function bom_room.find_match()
         G.GAME.bom_quick_match = true
     end
     bom_core.connect(function()
-        -- Hide connecting screen, show searching screen
         pcall(function() if bom_ui and bom_ui.hide_connecting_screen then bom_ui.hide_connecting_screen() end end)
         bom_core.send({ type = "find_match", version = bom_room.game_version(), name = my_profile_name() })
         pcall(function()
@@ -390,11 +371,7 @@ function bom_room.cancel_search()
     end)
 end
 
--- ============================================
--- ROOM READY — Exchange profiles, enter lobby
--- ============================================
 
--- Helper: build local player profile table
 local function build_player_profile()
     local player_profile = { name = "Player", rank = 1, equipped_icon = nil, equipped_title = nil }
     pcall(function()
@@ -461,7 +438,6 @@ function bom_room.on_room_ready(data)
         return
     end
 
-    -- FIX: preserve existing host state if older servers don't send `host`
     local is_host = false
     pcall(function()
         if data and type(data.host) == 'boolean' then
@@ -483,13 +459,11 @@ function bom_room.on_room_ready(data)
     end)
     pcall(function() if bom_browse then bom_browse.close_state() end end)
 
-    -- FIX: Send our name to the server immediately so it's available before match starts
     pcall(function()
         local my_name = bom_match and bom_match.get_state() and bom_match.get_state().my_name or "Player"
         bom_core.send({ type = "player_name", name = my_name })
     end)
 
-    -- Send our profile + protocol version to opponent
     local player_profile = build_player_profile()
     bom_core.send({
         type = "room_joined",
@@ -506,7 +480,6 @@ function bom_room.on_room_ready(data)
 
     pcall(function()
         if bom_ui and bom_ui.hide_searching_screen then bom_ui.hide_searching_screen() end
-        -- FEATURE: Quick Match uses simple ready screen, Create/Join uses full lobby
         if G.GAME and G.GAME.bom_quick_match and bom_ui.show_quick_match_lobby then
             bom_ui.show_quick_match_lobby()
         elseif bom_ui and bom_ui.show_lobby then
@@ -515,23 +488,18 @@ function bom_room.on_room_ready(data)
     end)
 end
 
--- ============================================
--- OPPONENT PROFILE RECEIVED — Show lobby with opponent info
--- ============================================
 
 function bom_room.on_opponent_profile(data)
     if not G then return end
     if not G.GAME then return end
     if not data or not data.player then return end
 
-    -- Protocol version check (MP_PROTOCOL_VERSION)
     local their_mp_ver = data.mp_version or 0
     local my_mp_ver = MP_PROTOCOL_VERSION or 0
     mp_log.info("BOM_ROOM", "on_opponent_profile: my_mp_ver=%s their_mp_ver=%s", tostring(my_mp_ver), tostring(their_mp_ver))
 
     if their_mp_ver ~= my_mp_ver then
         mp_log.warn("BOM_ROOM", "VERSION MISMATCH: %s vs %s", tostring(my_mp_ver), tostring(their_mp_ver))
-        -- Notify opponent about the mismatch so both sides see the error
         pcall(function()
             if bom_core and bom_core.send then
                 bom_core.send({ type = "version_mismatch", version = VERSION or "unknown", mp_version = my_mp_ver })
@@ -550,7 +518,6 @@ function bom_room.on_opponent_profile(data)
 
     G.GAME.mp_opponent = data.player
 
-    -- Register opponent in match state
     pcall(function()
         if bom_match and bom_match.set_opponent then
             bom_match.set_opponent(data.player.name, data.version)
@@ -566,7 +533,6 @@ function bom_room.on_opponent_profile(data)
         end
     end)
 
-    -- If we haven't sent our profile yet (host in private room), send it now
     pcall(function()
         local state = bom_match and bom_match.get_state()
         if state and not state.profile_sent then
@@ -581,14 +547,7 @@ function bom_room.on_opponent_profile(data)
         end
     end)
 
-    -- FIX: Quick Match host fallback REMOVED.
-    -- It caused both players to think they were host, leading to double start_match() calls
-    -- and do_mp_start_run() being invoked twice (which wipes Event A / delete_run from the
-    -- event queue via the clear_queue() collision described in show_quick_match_lobby).
-    -- The server correctly assigns host via room_ready {host: true/false} for both Quick Match
-    -- and Private Match. No client-side tiebreaker is needed.
 
-    -- Show lobby UI (respect Quick Match flag)
     pcall(function()
         if G.OVERLAY_MENU and G.BOM_LOBBY_OVERLAY and G.OVERLAY_MENU ~= G.BOM_LOBBY_OVERLAY then return end
         if not (G.STAGE == G.STAGES.MAIN_MENU and bom_match.get_phase() == bom_match.PHASE.LOBBY) then return end
@@ -600,9 +559,6 @@ function bom_room.on_opponent_profile(data)
     end)
 end
 
--- ============================================
--- READY STATE — Toggle ready in lobby
--- ============================================
 
 function bom_room.toggle_ready()
     mp_log.debug("BOM_ROOM", "toggle_ready called")
@@ -614,12 +570,9 @@ function bom_room.toggle_ready()
     mp_log.debug("BOM_ROOM", "Setting ready=%s (is_host=%s)", tostring(new_ready), tostring(state.is_host))
     bom_match.set_ready(new_ready)
 
-    -- Check if we can start FIRST — if so, go directly to start_match
-    -- without rebuilding lobby UI (avoids overlay teardown issues)
     local can = bom_match.can_start()
     mp_log.debug("BOM_ROOM", "can_start=%s my_ready=%s opp_ready=%s", tostring(can), tostring(state.my_ready), tostring(state.opp_ready))
     if can then
-        -- FIX: Phase guard — only start if still in lobby (prevents double start_match)
         local phase = bom_match.get_phase and bom_match.get_phase()
         if phase == bom_match.PHASE.LOBBY then
             bom_room.start_match()
@@ -629,7 +582,6 @@ function bom_room.toggle_ready()
         return
     end
 
-    -- Only update lobby UI if NOT starting match
     pcall(function()
         if bom_ui and bom_ui.update_lobby_ready then
             bom_ui.update_lobby_ready()
@@ -646,11 +598,9 @@ function bom_room.on_opponent_ready(data)
         end
     end)
 
-    -- Check if we can start FIRST
     local can = bom_match and bom_match.can_start()
     mp_log.debug("BOM_ROOM", "After opponent ready: can_start=%s", tostring(can))
     if can then
-        -- FIX: Phase guard — only start if still in lobby (prevents double start_match)
         local phase = bom_match.get_phase and bom_match.get_phase()
         if phase == bom_match.PHASE.LOBBY then
             bom_room.start_match()
@@ -660,7 +610,6 @@ function bom_room.on_opponent_ready(data)
         return
     end
 
-    -- Only update lobby UI if NOT starting match
     pcall(function()
         if bom_ui and bom_ui.update_lobby_ready then
             bom_ui.update_lobby_ready()
@@ -668,9 +617,6 @@ function bom_room.on_opponent_ready(data)
     end)
 end
 
--- ============================================
--- MATCH SETTINGS — Host configures in lobby
--- ============================================
 
 function bom_room.update_setting(key, value)
     if not bom_match then return end
@@ -714,21 +660,6 @@ function bom_room.on_settings_received(data)
     end)
 end
 
--- ============================================
--- START MATCH — Core run-start logic
--- FIX: Use vanilla G.FUNCS.start_run (matches reference BalatroMultiplayer mod).
--- The vanilla function provides wipe_on/wipe_off which:
---   1. Locks controller (G.CONTROLLER.locks.wipe = true) — prevents input
---   2. Creates screen-covering overlay — hides transition
---   3. Properly sequences delete_run → G:start_run → wipe removal
--- Previous approaches (direct event queuing, custom wipe) all failed because
--- without the controller lock, touch/back input during the 2-frame STATE=-1
--- gap between delete_run and start_run could trigger exit_overlay_menu or
--- options(), sending the player back to main menu.
--- After the vanilla flow queues its events, we append our MP-specific events
--- (apply_to_game, apply_bans, apply_lobby_settings) which run AFTER the run
--- is fully created.
--- ============================================
 
 function bom_room.init()
     if bom_room._ban_hook or not (Back and Back.apply_to_run) then return end
@@ -756,7 +687,6 @@ local function do_mp_start_run(seed, is_host_str)
     local tag = "BOM_ROOM:" .. (is_host_str or "?")
     mp_log.info(tag, "do_mp_start_run begin, seed=%s", tostring(seed))
 
-    -- Read lobby settings before starting
     local stake = 1
     pcall(function()
         if bom_match and bom_match.get_settings then
@@ -770,9 +700,6 @@ local function do_mp_start_run(seed, is_host_str)
         end
     end)
 
-    -- STEP 1: Use vanilla G.FUNCS.start_run (wipe_on → delete_run → G:start_run → wipe_off)
-    -- mp_start=true skips the BoosterManager popup
-    -- FIX pixel-perfect: set flag BEFORE start_run so HUD builder inserts Lobby Info row.
     pcall(function()
         if bom_match and bom_match.set_starting_mp_run then
             bom_match.set_starting_mp_run()
@@ -791,14 +718,10 @@ local function do_mp_start_run(seed, is_host_str)
     end)
     G.FUNCS.start_run(nil, { seed = seed, stake = stake, mp_start = true })
 
-    -- STEP 2: Append MP-specific events AFTER the vanilla flow.
-    -- These run after G:start_run has created the fresh game state.
-    -- All have no_delete=true to survive clear_queue inside G:delete_run.
 
-    -- Apply MP flags (G.GAME.multiplayer, lives, mode, etc.)
 r 1 112 %20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20 -
-l 13
+l 12
         no_delete = true,
         func = function()
             mp_log.info(tag, "apply_to_game executing")
@@ -811,7 +734,6 @@ l 13
         end
     }))
 
-    -- Apply bans (removes banned jokers/vouchers/tags per gamemode)
 r 1 112 %20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20 -
 l 17
@@ -834,7 +756,7 @@ l 17
 
 r 1 112 %20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20 -
-l 114
+l 96
         no_delete = true,
         func = function()
             pcall(function()
@@ -847,7 +769,6 @@ l 114
     mp_log.info(tag, "do_mp_start_run complete — vanilla start_run + MP events queued")
 end
 
--- Expose for rematch flow
 bom_room.do_mp_start_run = do_mp_start_run
 
 function bom_room.start_match()
@@ -858,7 +779,6 @@ function bom_room.start_match()
     local seed = bom_match.new_match_seed and bom_match.new_match_seed() or tostring(os.time())
     mp_log.info("BOM_ROOM", "seed=%s", tostring(seed))
 
-    -- Notify opponent that match is starting (include player_name for server tracking)
     local my_name = "Player"
     pcall(function()
         if bom_match and bom_match.get_state then
@@ -876,38 +796,28 @@ function bom_room.start_match()
         end
     end)
 
-    -- Initialize internal match state (NOT G.GAME — that gets wiped)
     pcall(function()
         if bom_match and bom_match.start_match then
             bom_match.start_match(seed)
         end
     end)
 
-    -- Load daily modifier
     pcall(function()
         if bom_daily and bom_daily.fetch then bom_daily.fetch() end
     end)
 
-    -- FIX: Do NOT call exit_overlay_menu here.
-    -- The vanilla G.FUNCS.start_run → wipe_on → delete_run handles overlay removal.
 
-    -- Start the run via vanilla G.FUNCS.start_run + MP events
     _mp_dbg("start_match: calling do_mp_start_run(host)")
     do_mp_start_run(seed, "host")
     _mp_dbg("start_match: do_mp_start_run returned OK")
 end
 
--- ============================================
--- MATCH START RECEIVED — Non-host receives match_start
--- ============================================
 
 function bom_room.on_match_start(data)
     _mp_dbg("on_match_start CALLED")
     mp_log.info("BOM_ROOM", "on_match_start received")
     if not G then _mp_dbg("on_match_start: G is nil!"); mp_log.error("BOM_ROOM", "G is nil in on_match_start"); return end
     if not data then _mp_dbg("on_match_start: data is nil!"); mp_log.error("BOM_ROOM", "data is nil in on_match_start"); return end
-    -- FIX: Phase guard — only process if still in lobby (prevents double do_mp_start_run
-    -- if server re-sends match_start or if Quick Match double-host sent two match_start msgs)
     local _phase = bom_match and bom_match.get_phase and bom_match.get_phase()
     if _phase and _phase ~= bom_match.PHASE.LOBBY then
         mp_log.warn("BOM_ROOM", "on_match_start: ignoring duplicate — phase=%s", tostring(_phase))
@@ -917,7 +827,6 @@ function bom_room.on_match_start(data)
     local seed = data.seed or tostring(os.time())
     mp_log.info("BOM_ROOM", "match_start seed=%s", tostring(seed))
 
-    -- Apply host's settings
     if data.settings then
         pcall(function()
             if bom_match and bom_match.on_settings_received then
@@ -926,22 +835,17 @@ function bom_room.on_match_start(data)
         end)
     end
 
-    -- Initialize internal match state
     pcall(function()
         if bom_match and bom_match.start_match then
             bom_match.start_match(seed)
         end
     end)
 
-    -- Load daily modifier
     pcall(function()
         if bom_daily and bom_daily.fetch then bom_daily.fetch() end
     end)
 
-    -- FIX: Do NOT call exit_overlay_menu here.
-    -- The vanilla G.FUNCS.start_run → wipe_on → delete_run handles overlay removal.
 
-    -- Start the run via vanilla G.FUNCS.start_run + MP events
     _mp_dbg("on_match_start: calling do_mp_start_run(joiner)")
     do_mp_start_run(seed, "joiner")
     _mp_dbg("on_match_start: do_mp_start_run returned OK")

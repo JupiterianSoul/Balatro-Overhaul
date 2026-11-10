@@ -20,12 +20,10 @@ s 1
 l 1
             col = G.C.RED
 c 2
-l 6
-          -- Quest hook: track money earned
+l 4
           if QuestManager and QuestManager.on_money_earned then
             pcall(function() QuestManager.on_money_earned(mod) end)
           end
-          -- Haptic: money gained (light)
           pcall(function() haptic_buzz(1) end)
 c 10
 s 1
@@ -40,9 +38,8 @@ s 1
 l 1
           scale = 0.8,
 c 35
-l 6
+l 5
 
-          -- Quest hook: track ante reached
           if mod > 0 and QuestManager and QuestManager.on_ante_reached then
             pcall(function() QuestManager.on_ante_reached(G.GAME.round_resets.ante) end)
           end
@@ -95,24 +92,19 @@ l 1
         if not silent then
 c 13
 s 1
-l 3
-    -- Haptic: hand level up (medium)
+l 2
     if not instant and amount > 0 then pcall(function() haptic_buzz(2) end) end
     if not instant then
 c 26
-l 17
-    -- PERF: Skip queued intermediate score counter updates when animations disabled
-    -- The mandatory final update_hand_text uses config.immediate=true and is always kept
+l 13
     if not config.immediate and not config.sound and
        G.SETTINGS and G.SETTINGS.skip_score_animation then
-        -- Update game state directly so the final display renders correct values
         if G.GAME and G.GAME.current_round and G.GAME.current_round.current_hand then
             if vals.chips ~= nil then G.GAME.current_round.current_hand.chips = vals.chips end
             if vals.mult  ~= nil then G.GAME.current_round.current_hand.mult  = vals.mult  end
         end
         return
     end
-    -- PERF: Also skip when event queue is saturated (only if Auto-Skip Heavy Scoring is enabled)
     if not config.immediate and not config.sound and
        G.SETTINGS and G.SETTINGS.perf_heavy_scoring and
        G.E_MANAGER and #G.E_MANAGER.queues.base > 200 then
@@ -220,13 +212,8 @@ c 3
 s 1
 r 13 742 %20%20%20%20%20%20%20%20 -
 c 6
-l 18
--- ============================================
--- CROSS-PROFILE DATA SHARING
--- ============================================
+l 12
 
--- Merges unlock/discover states from ALL profiles' meta.jkr into the current
--- item prototypes. After this, any item unlocked on ANY profile is unlocked everywhere.
 function merge_all_profile_unlocks()
     if not G or not G.FILES then return end
     local current = G.SETTINGS and G.SETTINGS.profile or 1
@@ -237,47 +224,41 @@ function merge_all_profile_unlocks()
                 local mu = meta.unlocked or {}
                 local md = meta.discovered or {}
                 local ma = meta.alerted or {}
-                -- Merge into P_CENTERS
                 if G.P_CENTERS then
 r 3 229 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 7
+l 6
                         if mu[k] and not v.unlocked then v.unlocked = true end
                         if md[k] and not v.discovered then v.discovered = true end
                         if ma[k] and v.discovered then v.alerted = true end
                     end
                 end
-                -- Merge into P_BLINDS
                 if G.P_BLINDS then
 r 2 703 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 6
+l 5
                         if md[k] and not v.discovered then v.discovered = true end
                         if ma[k] and v.discovered then v.alerted = true end
                     end
                 end
-                -- Merge into P_TAGS
                 if G.P_TAGS then
 r 15 3917 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 6
+l 5
                         if md[k] and not v.discovered then v.discovered = true end
                         if ma[k] and v.discovered then v.alerted = true end
                     end
                 end
-                -- Merge into P_SEALS
                 if G.P_SEALS then
 r 13 683 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 187
+l 165
                         if md[k] and not v.discovered then v.discovered = true end
                         if ma[k] and v.discovered then v.alerted = true end
                     end
                 end
-                -- Merge into P_STAKES
                 if G.P_STAKES then
                     for k, v in pairs(G.P_STAKES) do
                         if mu[k] and not v.unlocked then v.unlocked = true; v.discovered = true end
                         if md[k] and not v.discovered then v.discovered = true end
                     end
                 end
-                -- Merge deck_usage (stake wins) into current profile
                 if G.PROFILES and G.PROFILES[p] and G.PROFILES[p].deck_usage
                    and G.PROFILES[current] then
                     G.PROFILES[current].deck_usage = G.PROFILES[current].deck_usage or {}
@@ -297,19 +278,15 @@ l 187
             end
         end
     end
-    -- Save the merged state so it persists
     pcall(function() G:save_progress() end)
 end
 
--- Copies mod progression data (XP, level, balacoin, quests, cosmetics) from
--- profile 1 to a target profile if the target has no progression data yet.
 function copy_progression_from_main(target_profile)
     if not G or not G.PROFILES then return end
-    if target_profile == 1 then return end  -- profile 1 is the source
+    if target_profile == 1 then return end
     local source = G.PROFILES[1]
     local target = G.PROFILES[target_profile]
     if not source or not target then return end
-    -- Only copy if target has no progression data (fresh profile)
     if target.progression and target.progression.xp and target.progression.xp > 0 then return end
     if source.progression then
         target.progression = copy_table(source.progression)
@@ -319,7 +296,6 @@ function copy_progression_from_main(target_profile)
     end
 end
 
--- Saves the icon frame position offset (relative to ROOM_ATTACH top-left) to a per-profile file.
 function save_icon_frame_pos(ox, oy)
     pcall(function()
         local profile_num = (G.SETTINGS and G.SETTINGS.profile) or 1
@@ -330,7 +306,6 @@ function save_icon_frame_pos(ox, oy)
     end)
 end
 
--- Loads the saved icon frame position offset; returns {x, y} table or nil.
 function load_icon_frame_pos()
     local result = nil
     pcall(function()
@@ -353,7 +328,6 @@ function load_icon_frame_pos()
     return result
 end
 
--- Creates/rebuilds the draggable icon frame UIBox. Called by set_main_menu_UI and cosmetics equip.
 function setup_profile_icon_frame()
     pcall(function()
         if G.PROFILE_ICON_FRAME then
@@ -362,19 +336,17 @@ function setup_profile_icon_frame()
         end
         if not G.UIDEF or not G.UIDEF.profile_icon_frame or not G.ROOM_ATTACH then return end
 
-        -- Step 1: Create the UIBox with initial tli alignment to get a valid position
         G.PROFILE_ICON_FRAME = UIBox{
             definition = G.UIDEF.profile_icon_frame(),
             config = {align="tli", offset = {x=0, y=0}, major = G.ROOM_ATTACH, bond = 'Weak'}
         }
         G.PROFILE_ICON_FRAME:align_to_major()
 
-        -- Step 2: Calculate initial position (saved or top-left corner)
         local rx, ry = G.ROOM_ATTACH.T.x, G.ROOM_ATTACH.T.y
         local rw, rh = G.ROOM_ATTACH.T.w, G.ROOM_ATTACH.T.h
         local fw = G.PROFILE_ICON_FRAME.T.w
         local fh = G.PROFILE_ICON_FRAME.T.h
-        local pos_x, pos_y = rx, ry  -- default: top-left
+        local pos_x, pos_y = rx, ry
 
         local saved = load_icon_frame_pos()
         if saved then
@@ -385,26 +357,17 @@ function setup_profile_icon_frame()
             if clear_y then pos_y = math.max(pos_y, clear_y) end
         end
 
-        -- Step 3: Hard-set the position
         G.PROFILE_ICON_FRAME.T.x = pos_x
         G.PROFILE_ICON_FRAME.T.y = pos_y
         G.PROFILE_ICON_FRAME.VT.x = pos_x
         G.PROFILE_ICON_FRAME.VT.y = pos_y
 
-        -- Step 4: Switch to Major role so move_with_major() never runs.
-        -- This is the KEY fix: as Minor, move_with_major overwrites T.x/T.y every
-        -- frame, fighting with drag(). As Major, only move_xy() runs (smoothing VT
-        -- towards T), so drag() can freely set T.x/T.y.
         G.PROFILE_ICON_FRAME.role.role_type = 'Major'
         G.PROFILE_ICON_FRAME.role.major = nil
 
-        -- Step 5: Enable dragging on UIBox
         G.PROFILE_ICON_FRAME.states.drag.can = true
         G.PROFILE_ICON_FRAME.states.collide.can = true
 
-        -- Step 6: Enable collide + can_drag on ALL child UIElements and sprites
-        -- (controller collision hits UIElements, not the UIBox; can_drag() must
-        -- return the UIBox so the whole frame moves together)
         local _frame_box = G.PROFILE_ICON_FRAME
         local function _enable_drag_recursive(elem)
             if not elem then return end
@@ -429,12 +392,10 @@ function setup_profile_icon_frame()
         end
         _enable_drag_recursive(G.PROFILE_ICON_FRAME.UIRoot)
 
-        -- Step 7: Override drag (no boundary clamping)
         G.PROFILE_ICON_FRAME.drag = function(self, offset)
             Moveable.drag(self, offset)
         end
 
-        -- Step 8: Override stop_drag to save final position
         G.PROFILE_ICON_FRAME.stop_drag = function(self)
             Node.stop_drag(self)
             local _rx = G.ROOM_ATTACH and G.ROOM_ATTACH.T.x or 0
@@ -464,27 +425,22 @@ c 1
 s 14
 c 1
 s 1
-l 4
-    -- Create profile icon frame (cosmetic overlay, separate from profile button)
+l 3
     setup_profile_icon_frame()
     pcall(function() if CrashReports and CrashReports.send_pending then CrashReports.send_pending() end end)
 
 c 1
-l 7
+l 6
 
-    -- FEATURE: First-launch language selector + showcase
     pcall(function()
         if G.FUNCS.check_first_launch then
             G.FUNCS.check_first_launch()
         end
     end)
 c 3
-l 5
-    -- PERF: Skip ALL floating score text when animations disabled or event queue saturated
-    -- With 5+ jokers this function runs 100+ times per hand — skipping keeps the render thread clear
+l 2
     if (G.SETTINGS and G.SETTINGS.skip_score_animation) or
        (G.SETTINGS and G.SETTINGS.perf_heavy_scoring and G.E_MANAGER and #G.E_MANAGER.queues.base > 150) then
-        -- Still process any playing cards created by this effect (e.g. Joker that creates cards)
 r 13 922 %20%20%20%20%20%20%20%20 -
 r 13 923 %20%20%20%20%20%20%20%20%20%20%20%20 -
 l 3
@@ -525,9 +481,7 @@ c 6
 l 1
         if not text or text == '' then return end
 c 17
-l 7
-    -- FIX: Respect Score Speed setting for card eval popups
-    -- FEATURE: Skip Score Animation — force delay to 0 when skip is enabled
+l 5
     if G.SETTINGS and G.SETTINGS.skip_score_animation then
         delay = 0
     else
@@ -538,16 +492,14 @@ s 1
 r 13 885 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 9
 s 1
-l 2
-                -- PERF: Cap jiggle (instant path) to prevent screen shake spiral with many jokers
+l 1
                 G.ROOM.jiggle = math.min(G.ROOM.jiggle + 0.7, 5)
 c 9
 s 1
 r 13 885 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 c 9
 s 1
-l 2
-                        -- PERF: Cap jiggle to prevent screen shake from spiralling with many jokers
+l 1
                         G.ROOM.jiggle = math.min(G.ROOM.jiggle + 0.7, 5)
 c 6
 s 1
@@ -609,7 +561,7 @@ l 1
                 haptic_buzz(2)
 c 62
 s 1
-l 22
+l 20
 
     local pad = G.CONTROLLER.GAMEPAD and G.CONTROLLER.GAMEPAD.object
     local rumble_on = G.F_RUMBLE and G.SETTINGS.rumble
@@ -618,7 +570,7 @@ l 22
         pad:setVibration(strength, strength)
     elseif rumble_on and love.system.getOS() == 'Android' and G.SETTINGS.haptic_feedback and (G.HAPTIC_LEVEL or 0) > 0 then
         local _intensity = (G.SETTINGS.haptic_intensity or 50) / 100
-        local _durations = {0.015, 0.03, 0.06, 0.1} -- light, medium, heavy, rigid
+        local _durations = {0.015, 0.03, 0.06, 0.1}
         local _dur = (_durations[G.HAPTIC_LEVEL] or 0.03) * (0.3 + _intensity * 1.4)
         pcall(function() love.system.vibrate(_dur) end)
         G.HAPTIC_LEVEL = 0
@@ -626,8 +578,6 @@ l 22
     G.VIBRATION = 0
 end
 
--- Haptic feedback helper: trigger a vibration at a specific intensity level
--- level: 1=light (tap), 2=medium (score), 3=heavy (win), 4=rigid (big moment)
 function haptic_buzz(level)
     if not G or not G.SETTINGS then return end
     if not G.SETTINGS.haptic_feedback then return end
@@ -1017,16 +967,14 @@ s 1
 l 1
 
 c 1
-l 2
-    -- Transcendent Stake (12+): Boss blinds are always finisher (showdown)
+l 1
     local force_showdown = G.GAME.modifiers and G.GAME.modifiers.boss_always_finisher
 c 1
 s 6
-l 4
+l 3
         if not v.boss or v.in_pool == false then
         else
             if force_showdown then
-                -- Only allow showdown bosses
 r 13 351 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 13 2354 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1

@@ -2,19 +2,15 @@ BOP 1
 eol lf
 final 1
 base 0
-l 10
--- MOD MENU v3.0 for Balatro Overhaul
--- FEATURE: Complete rework — Cheats, Jokers, Consumables, Cards, Vouchers, Poker Hands, Options
+l 6
 
--- Global mod settings table
 G.MOD_SETTINGS = G.MOD_SETTINGS or {
-  -- Pre-run settings (applied when starting a new run)
   pre_run = {
     enabled = false,
     starting_money = 4,
     joker_slots = 5,
 r 12 1877 %20%20%20%20 -
-l 93
+l 88
     hand_size = 8,
     hands_per_round = 4,
     discards_per_round = 3,
@@ -25,7 +21,6 @@ l 93
     all_eternal = false,
   },
 
-  -- In-run temp values for sliders
   in_run = {
     god_mode = false,
     add_hands = 1,
@@ -37,16 +32,13 @@ l 93
     card_quantity = 1,
   },
 
-  -- Menu settings
   menu = {
     floating_button = true,
     floating_opacity = 70,
   },
 
-  -- Floating button position (above deck area)
   float_pos = {x = 0, y = 5.5},
 
-  -- Runtime flags
   runtime = {
     free_rerolls_active = false,
     free_shop_active = false,
@@ -54,17 +46,16 @@ l 93
   }
 }
 
--- FEATURE: Mod menu browse/select state
 G.MOD_MENU_STATE = G.MOD_MENU_STATE or {
-  selected_jokers = {},       -- {key = true} map
-  selected_edition = 'base',  -- base/foil/holo/polychrome/negative
-  selected_consumables = {},  -- {key = true} map
+  selected_jokers = {},
+  selected_edition = 'base',
+  selected_consumables = {},
   consumable_negative = false,
-  selected_cards = {},        -- {{suit='H', rank='A'}, ...}
+  selected_cards = {},
   selected_enhancement = 'c_base',
-  selected_seal = nil,        -- nil/'Red'/'Blue'/'Gold'/'Purple'
-  selected_vouchers = {},     -- {key = true} map
-  active_tab = 1,             -- track which tab to return to on back
+  selected_seal = nil,
+  selected_vouchers = {},
+  active_tab = 1,
 }
 
 local _mp_mod_violation_pending = false
@@ -109,18 +100,14 @@ local function _mod_menu_multiplayer_violation(reason)
   pcall(function()
     if G and G.OVERLAY_MENU and G.FUNCS and G.FUNCS.exit_overlay_menu then
 r 4 1375 %20%20%20%20%20%20 -
-l 35
+l 31
     end
   end)
 
-  -- FIX: Do not redirect to main menu if a run is currently starting (STATE==-1)
-  -- or if we are already in a run (STAGE==RUN). The caller (apply_mod_settings_to_run)
-  -- fires during Game:start_run before G.STATE is set properly.
   local stage = G and G.STAGE or 0
   local state  = G and G.STATE  or 0
   local stages_run = G and G.STAGES and G.STAGES.RUN or 2
   if stage == stages_run or state == -1 then
-    -- Already in or entering a run -- just disable cheats, don't kick to menu
     return true
   end
 
@@ -176,7 +163,7 @@ l 27
         pcall(function()
           if G and G.OVERLAY_MENU and G.FUNCS and G.FUNCS.exit_overlay_menu then
 r 4 1375 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 43
+l 42
           end
         end)
 
@@ -200,7 +187,6 @@ l 43
   return true
 end
 
--- ===== FULL SCREEN MOD MENU WITH TABS =====
 
 local function _mm_cell(node, w, h)
   return {n=G.UIT.C, config={align = "cm", minw = w, minh = h}, nodes={node}}
@@ -221,7 +207,7 @@ function create_UIBox_mod_menu_fullscreen()
     back_func = 'mod_menu_back',
     contents = {
 r 15 71 %20%20%20%20%20%20 -
-l 417
+l 399
         {n=G.UIT.T, config={text = mod_loc("CHEATS"), scale = 0.45, colour = G.C.GOLD}}
       }},
       {n=G.UIT.R, config={align = "cm", padding = 0.02, minw = _mm_port() and 7.6 or 14, minh = 4.2}, nodes={
@@ -271,10 +257,8 @@ l 417
   })
 end
 
--- ===== TAB: CHEATS (v3.0 — 3-column layout: sliders | positive | negative, 30% bigger) =====
 G.UIDEF.mod_tab_cheats = function()
   local settings = G.MOD_SETTINGS.in_run
-  -- Button size: 30% increase
   local bw = 2.85
   local bh = 0.78
   local bs = 0.47
@@ -351,7 +335,6 @@ G.UIDEF.mod_tab_cheats = function()
   }}
 end
 
--- ===== TAB: JOKERS (browse, select edition, add to hand) =====
 G.UIDEF.mod_tab_jokers = function()
   local state = G.MOD_MENU_STATE
   local sel_count = 0
@@ -383,7 +366,6 @@ G.UIDEF.mod_tab_jokers = function()
   }}
 end
 
--- ===== TAB: CONSUMABLES (tarots, planets, spectral + negative toggle + add) =====
 G.UIDEF.mod_tab_consumables = function()
   local state = G.MOD_MENU_STATE
   local sel_count = 0
@@ -419,7 +401,6 @@ G.UIDEF.mod_tab_consumables = function()
   }}
 end
 
--- ===== TAB: CARDS (browse by suit, quantity, enhancement, seal, preview, add, remove) =====
 G.UIDEF.mod_tab_cards = function()
   local state = G.MOD_MENU_STATE
   local settings = G.MOD_SETTINGS.in_run
@@ -458,7 +439,6 @@ G.UIDEF.mod_tab_cards = function()
     {n=G.UIT.R, config={align = "cm", padding = 0.026}, nodes={
       {n=G.UIT.T, config={text = mod_loc("CARDS"), scale = 0.52, colour = G.C.CHIPS}}
     }},
-    -- Two columns: left (Browse/Remove/ADD/Slider), right (Enhancements/Seals/Editions/Preview)
     {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
       _mm_cell(UIBox_button({label = {mod_loc("Browse Cards")}, button = 'mod_browse_cards', colour = G.C.BLUE, minw = cb, minh = 0.85, scale = 0.49}), cc, 0.95),
       _mm_cell(UIBox_button({label = {mod_loc("Enhancements")}, button = 'mod_browse_enhancements', colour = G.C.GREEN, minw = cb, minh = 0.85, scale = 0.49}), cc, 0.95),
@@ -467,12 +447,10 @@ G.UIDEF.mod_tab_cards = function()
       _mm_cell(UIBox_button({label = {mod_loc("Remove Cards")}, button = 'mod_remove_cards_browse', colour = G.C.RED, minw = cb, minh = 0.85, scale = 0.49}), cc, 0.95),
       _mm_cell(UIBox_button({label = {mod_loc("Seals")}, button = 'mod_browse_seals', colour = G.C.SECONDARY_SET.Spectral, minw = cb, minh = 0.85, scale = 0.49}), cc, 0.95),
     }},
-    -- FEATURE: Editions button (between Seals and Card Preview)
     {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
       _mm_cell(UIBox_button({label = {mod_loc("ADD CARDS")}, button = 'mod_add_selected_cards', colour = G.C.GREEN, minw = cb, minh = 0.91, scale = 0.52}), cc, 0.95),
       _mm_cell(UIBox_button({label = {mod_loc("Editions")}, button = 'mod_browse_editions', colour = G.C.SECONDARY_SET.Celestial, minw = cb, minh = 0.85, scale = 0.49}), cc, 0.95),
     }},
-    -- FEATURE: Slider moved directly under ADD CARDS button
     {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
       _mm_cell(create_slider({label = mod_loc("Qty"), w = qw, h = 0.52, ref_table = settings, ref_value = 'card_quantity', min = 1, max = 25}), cc, 1.3),
       _mm_cell(UIBox_button({label = {mod_loc("Card Preview")}, button = 'mod_card_preview', colour = G.C.ORANGE, minw = cb, minh = 0.85, scale = 0.49}), cc, 1.3),
@@ -483,7 +461,6 @@ G.UIDEF.mod_tab_cards = function()
   }}
 end
 
--- ===== TAB: VOUCHERS (browse, select, add to run) =====
 G.UIDEF.mod_tab_vouchers = function()
   local state = G.MOD_MENU_STATE
   local sel_count = 0
@@ -506,7 +483,6 @@ G.UIDEF.mod_tab_vouchers = function()
   }}
 end
 
--- ===== TAB: POKER HANDS (+/- level all hands) =====
 G.UIDEF.mod_tab_poker_hands = function()
   local hw = _mm_port() and 3.55 or 3.9
   return {n=G.UIT.ROOT, config={align = "cm", padding = 0.065, colour = G.C.CLEAR, minw = _mm_w(), minh = 4.16}, nodes={
@@ -514,7 +490,6 @@ G.UIDEF.mod_tab_poker_hands = function()
       {n=G.UIT.T, config={text = mod_loc("POKER HANDS"), scale = 0.52, colour = G.C.MULT}}
     }},
     {n=G.UIT.R, config={align = "tm", padding = 0.04}, nodes={
-      -- Column 1: Level UP
       {n=G.UIT.C, config={align = "cm", padding = 0.04}, nodes={
         {n=G.UIT.R, config={align = "cm", padding = 0.026}, nodes={
           {n=G.UIT.T, config={text = mod_loc("LEVEL UP"), scale = 0.455, colour = G.C.MULT}}
@@ -529,7 +504,6 @@ G.UIDEF.mod_tab_poker_hands = function()
           UIBox_button({label = {mod_loc("+100 LVL")}, button = 'mod_level_all_hands_100', colour = G.C.MULT, minw = hw, minh = 0.91, scale = 0.52}),
         }},
       }},
-      -- Column 2: Level DOWN
       {n=G.UIT.C, config={align = "cm", padding = 0.04}, nodes={
         {n=G.UIT.R, config={align = "cm", padding = 0.026}, nodes={
           {n=G.UIT.T, config={text = mod_loc("LEVEL DOWN"), scale = 0.455, colour = G.C.RED}}
@@ -548,7 +522,6 @@ G.UIDEF.mod_tab_poker_hands = function()
   }}
 end
 
--- ===== TAB: SETTINGS =====
 G.UIDEF.mod_tab_settings = function()
   local settings = G.MOD_SETTINGS.menu
   local port = _mm_port()
@@ -574,7 +547,6 @@ G.UIDEF.mod_tab_settings = function()
       UIBox_button({label = {mod_loc("APPLY & REFRESH")}, button = 'mod_refresh_float', colour = G.C.BLUE, minw = sbw, minh = 0.85, scale = 0.455}),
       UIBox_button({label = {mod_loc("RESET POSITION")}, button = 'mod_reset_float_pos', colour = G.C.RED, minw = sbw, minh = 0.85, scale = 0.455}),
     }},
-    -- FEATURE: Deck Creator shortcut
     {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
       UIBox_button({label = {mod_loc("DECK CREATOR")}, button = 'dc_open_deck_creator', colour = G.C.GREEN, minw = sbw, minh = 0.85, scale = 0.455}),
     }},
@@ -584,8 +556,6 @@ G.UIDEF.mod_tab_settings = function()
   }}
 end
 
--- FEATURE: Helper for card selection with visual feedback (matching custom_runs.lua system)
--- Sets card.highlighted for Y-offset visual + juice_up animation + single_tap for Android touch
 local function _mod_setup_card_select(card, selection_table, key)
   card.states.click.can = true
   local _toggle = function()
@@ -606,7 +576,6 @@ local function _mod_setup_card_select(card, selection_table, key)
   end
 end
 
--- Helper for playing card selection (array-based, suit+rank)
 local function _mod_setup_playing_card_select(card, suit, rank)
   card.states.click.can = true
   local _toggle = function()
@@ -635,26 +604,23 @@ local function _mod_setup_playing_card_select(card, suit, rank)
   end
 end
 
--- ===== CALLBACK FUNCTIONS =====
 
 G.FUNCS.mod_menu_back = function(e)
   G.MOD_MENU_STATE.active_tab = 1
 r 4 1375 %20%20 -
-l 9
+l 8
 end
 
 G.FUNCS.open_mod_menu_fullscreen = function(e)
-  -- FIX: Block mod menu during multiplayer
   if G.GAME and G.GAME.multiplayer then return end
   if G.STAGE == G.STAGES.RUN and not cheats_allowed_in_run() then
     cheats_off_notice()
     return
   end
 r 4 1382 %20%20 -
-l 17
+l 15
     definition = create_UIBox_mod_menu_fullscreen()
   }
-  -- FEATURE: Sub-showcase on first visit
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_modmenu then
       G.FUNCS.trigger_sub_showcase_modmenu()
@@ -663,23 +629,20 @@ l 17
 end
 
 G.FUNCS.open_mod_menu_inrun = function(e)
-  -- FIX: Block mod menu during multiplayer
   if G.GAME and G.GAME.multiplayer then return end
   if not cheats_allowed_in_run() then
     cheats_off_notice()
     return
   end
 r 4 1382 %20%20 -
-l 56
+l 51
     definition = create_UIBox_mod_menu_fullscreen()
   }
 end
 
--- ===== CHEAT CALLBACKS =====
 
 G.FUNCS.mod_add_money = function(e)
   if G.GAME then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added money") end
 
     local amount = math.floor(G.MOD_SETTINGS.in_run.add_money or 100)
@@ -690,7 +653,6 @@ end
 
 G.FUNCS.mod_do_add_hands = function(e)
   if G.GAME and G.GAME.current_round then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added hands") end
 
     local amount = math.floor(G.MOD_SETTINGS.in_run.add_hands or 1)
@@ -701,7 +663,6 @@ end
 
 G.FUNCS.mod_do_add_discards = function(e)
   if G.GAME and G.GAME.current_round then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added discards") end
 
     local amount = math.floor(G.MOD_SETTINGS.in_run.add_discards or 1)
@@ -723,27 +684,24 @@ end
 
 G.FUNCS.mod_win_blind = function(e)
   if G.GAME and G.GAME.blind and G.GAME.blind.chips then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Win blind cheat") end
 
     G.GAME.chips = G.GAME.blind.chips
 r 3 598 %20%20%20%20 -
-l 9
+l 8
   end
 end
 
 G.FUNCS.mod_increase_ante = function(e)
   if G.GAME then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Increased ante") end
 
     ease_ante(1)
 r 3 598 %20%20%20%20 -
-l 115
+l 108
   end
 end
 
--- FEATURE: New negative cheat callbacks
 G.FUNCS.mod_decrease_ante = function(e)
   if G.GAME then
     if mark_run_as_modded then mark_run_as_modded("Decreased ante") end
@@ -801,11 +759,9 @@ G.FUNCS.mod_do_remove_discard = function(e)
   end
 end
 
--- ===== SLOT CALLBACKS =====
 
 G.FUNCS.mod_do_add_joker_slots = function(e)
   if G.GAME and G.GAME.round_resets then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added joker slots") end
 
     local amount = math.floor(G.MOD_SETTINGS.in_run.add_joker_slots or 1)
@@ -819,7 +775,6 @@ end
 
 G.FUNCS.mod_do_add_consumable_slots = function(e)
   if G.GAME and G.GAME.round_resets then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added consumable slots") end
 
     local amount = math.floor(G.MOD_SETTINGS.in_run.add_consumable_slots or 1)
@@ -833,7 +788,6 @@ end
 
 G.FUNCS.mod_do_add_hand_size = function(e)
   if G.GAME and G.GAME.round_resets then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added hand size") end
 
     local amount = math.floor(G.MOD_SETTINGS.in_run.add_hand_size or 1)
@@ -845,11 +799,9 @@ G.FUNCS.mod_do_add_hand_size = function(e)
   end
 end
 
--- ===== JOKER CALLBACKS =====
 
 G.FUNCS.mod_add_random_joker = function(e)
   if G.GAME and G.jokers then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added joker") end
 
     if #G.jokers.cards < G.jokers.config.card_limit then
@@ -861,14 +813,13 @@ l 2
       card:add_to_deck()
 r 3 1420 %20%20%20%20%20%20 -
 r 3 598 %20%20%20%20%20%20 -
-l 14
+l 13
     end
   end
 end
 
 G.FUNCS.mod_add_legendary = function(e)
   if G.GAME and G.jokers then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added legendary") end
 
     if #G.jokers.cards < G.jokers.config.card_limit then
@@ -882,14 +833,13 @@ l 2
       card:add_to_deck()
 r 3 1420 %20%20%20%20%20%20 -
 r 3 598 %20%20%20%20%20%20 -
-l 10
+l 9
     end
   end
 end
 
 G.FUNCS.mod_add_negative_joker = function(e)
   if G.GAME and G.jokers then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added negative joker") end
 
     local card = create_card('Joker', G.jokers, nil, nil, nil, nil, nil)
@@ -902,64 +852,17 @@ l 2
     card:add_to_deck()
 r 3 1420 %20%20%20%20 -
 r 3 598 %20%20%20%20 -
-l 13
+l 11
   end
 end
 
--- ===== CONSUMABLE CALLBACKS =====
 
 G.FUNCS.mod_add_soul = function(e)
   if G.GAME and G.consumeables then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Added Soul") end
 
     if #G.consumeables.cards < G.consumeables.config.card_limit then
       local card = create_card('Spectral', G.consumeables, nil, nil, nil, nil, 'c_soul')
-      card:add_to_deck()
-r 1 191 %20%20%20%20%20%20 -
-r 3 598 %20%20%20%20%20%20 -
-l 12
-    end
-  end
-end
-
-G.FUNCS.mod_add_blackhole = function(e)
-  if G.GAME and G.consumeables then
-    -- Anti-cheat: Mark run as modded
-    if mark_run_as_modded then mark_run_as_modded("Added Black Hole") end
-
-    if #G.consumeables.cards < G.consumeables.config.card_limit then
-      local card = create_card('Spectral', G.consumeables, nil, nil, nil, nil, 'c_black_hole')
-      card:add_to_deck()
-r 1 191 %20%20%20%20%20%20 -
-r 3 598 %20%20%20%20%20%20 -
-l 12
-    end
-  end
-end
-
-G.FUNCS.mod_add_aura = function(e)
-  if G.GAME and G.consumeables then
-    -- Anti-cheat: Mark run as modded
-    if mark_run_as_modded then mark_run_as_modded("Added Aura") end
-
-    if #G.consumeables.cards < G.consumeables.config.card_limit then
-      local card = create_card('Spectral', G.consumeables, nil, nil, nil, nil, 'c_aura')
-      card:add_to_deck()
-r 1 191 %20%20%20%20%20%20 -
-r 3 598 %20%20%20%20%20%20 -
-l 12
-    end
-  end
-end
-
-G.FUNCS.mod_add_cryptid = function(e)
-  if G.GAME and G.consumeables then
-    -- Anti-cheat: Mark run as modded
-    if mark_run_as_modded then mark_run_as_modded("Added Cryptid") end
-
-    if #G.consumeables.cards < G.consumeables.config.card_limit then
-      local card = create_card('Spectral', G.consumeables, nil, nil, nil, nil, 'c_cryptid')
       card:add_to_deck()
 r 1 191 %20%20%20%20%20%20 -
 r 3 598 %20%20%20%20%20%20 -
@@ -968,11 +871,51 @@ l 11
   end
 end
 
--- ===== LEVEL UP HANDS =====
+G.FUNCS.mod_add_blackhole = function(e)
+  if G.GAME and G.consumeables then
+    if mark_run_as_modded then mark_run_as_modded("Added Black Hole") end
+
+    if #G.consumeables.cards < G.consumeables.config.card_limit then
+      local card = create_card('Spectral', G.consumeables, nil, nil, nil, nil, 'c_black_hole')
+      card:add_to_deck()
+r 1 191 %20%20%20%20%20%20 -
+r 3 598 %20%20%20%20%20%20 -
+l 11
+    end
+  end
+end
+
+G.FUNCS.mod_add_aura = function(e)
+  if G.GAME and G.consumeables then
+    if mark_run_as_modded then mark_run_as_modded("Added Aura") end
+
+    if #G.consumeables.cards < G.consumeables.config.card_limit then
+      local card = create_card('Spectral', G.consumeables, nil, nil, nil, nil, 'c_aura')
+      card:add_to_deck()
+r 1 191 %20%20%20%20%20%20 -
+r 3 598 %20%20%20%20%20%20 -
+l 11
+    end
+  end
+end
+
+G.FUNCS.mod_add_cryptid = function(e)
+  if G.GAME and G.consumeables then
+    if mark_run_as_modded then mark_run_as_modded("Added Cryptid") end
+
+    if #G.consumeables.cards < G.consumeables.config.card_limit then
+      local card = create_card('Spectral', G.consumeables, nil, nil, nil, nil, 'c_cryptid')
+      card:add_to_deck()
+r 1 191 %20%20%20%20%20%20 -
+r 3 598 %20%20%20%20%20%20 -
+l 9
+    end
+  end
+end
+
 
 G.FUNCS.mod_level_all_hands = function(e)
   if G.GAME and G.GAME.hands then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Leveled hands") end
 
 r 3 313 %20%20%20%20 -
@@ -980,13 +923,12 @@ l 2
       level_up_hand(nil, k, true, 1)
     end
 r 3 598 %20%20%20%20 -
-l 8
+l 7
   end
 end
 
 G.FUNCS.mod_level_all_hands_10 = function(e)
   if G.GAME and G.GAME.hands then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Leveled hands x10") end
 
 r 3 313 %20%20%20%20 -
@@ -994,13 +936,12 @@ l 2
       level_up_hand(nil, k, true, 10)
     end
 r 3 598 %20%20%20%20 -
-l 8
+l 7
   end
 end
 
 G.FUNCS.mod_level_all_hands_100 = function(e)
   if G.GAME and G.GAME.hands then
-    -- Anti-cheat: Mark run as modded
     if mark_run_as_modded then mark_run_as_modded("Leveled hands x100") end
 
 r 3 313 %20%20%20%20 -
@@ -1008,11 +949,10 @@ l 2
       level_up_hand(nil, k, true, 100)
     end
 r 3 598 %20%20%20%20 -
-l 7
+l 6
   end
 end
 
--- FEATURE: De-level poker hands callbacks
 G.FUNCS.mod_delevel_all_hands = function(e)
   if G.GAME and G.GAME.hands then
     if mark_run_as_modded then mark_run_as_modded("De-leveled hands") end
@@ -1039,16 +979,14 @@ G.FUNCS.mod_delevel_all_hands_100 = function(e)
   if G.GAME and G.GAME.hands then
     if mark_run_as_modded then mark_run_as_modded("De-leveled hands x100") end
 r 3 313 %20%20%20%20 -
-l 34
+l 32
       level_up_hand(nil, k, true, -100)
     end
     play_sound('button')
   end
 end
 
--- ===== SETTINGS CALLBACKS =====
 
--- ===== JOKERS TAB: BROWSE / EDITION / ADD CALLBACKS =====
 
 G.FUNCS.mod_edition_cycle = function(args)
   if not args or not args.to_key then return end
@@ -1084,12 +1022,11 @@ l 6
       {card_limit = cards_per_row, type = 'title', highlight_limit = 0, collection = true})
 r 15 3255 %20%20%20%20 -
 r 15 3546 %20%20%20%20%20%20 -
-l 22
+l 20
         {n=G.UIT.O, config={object = G.mod_browse_collection[j]}}
       }})
   end
 
-  -- Store pool ref for pagination
   G._mod_browse_joker_pool = joker_pool
   G._mod_browse_joker_rows = num_rows
   G._mod_browse_joker_cols = cards_per_row
@@ -1099,7 +1036,6 @@ l 22
     table.insert(page_options, localize('k_page')..' '..tostring(i)..'/'..tostring(pages))
   end
 
-  -- Populate first page
   for j = 1, num_rows do
     for i = 1, cards_per_row do
       local idx = i + (j-1)*cards_per_row
@@ -1135,8 +1071,7 @@ end
 
 G.FUNCS.mod_browse_back_jokers = function(e)
 r 4 1375 %20%20 -
-l 8
-  -- Reopen mod menu to refresh selected count
+l 7
   G.E_MANAGER:add_event(Event({trigger='after', delay=0.15, func=function()
     pcall(function() G.FUNCS.open_mod_menu_inrun() end)
     return true
@@ -1194,23 +1129,20 @@ G.FUNCS.mod_add_selected_jokers = function(e)
       end
       card:add_to_deck()
 r 3 1420 %20%20%20%20%20%20 -
-l 26
+l 23
       added = added + 1
     end
   end
 
-  -- FIX: Don't clear selection so user can click ADD multiple times
   if added > 0 then play_sound('timpani') end
 end
 
--- ===== CONSUMABLES TAB: BROWSE / ADD CALLBACKS =====
 
 local function _mod_browse_consumable_type(pool_name, back_func_name)
   G.MOD_MENU_STATE.selected_consumables = {}
   local pool = {}
   if G.P_CENTER_POOLS and G.P_CENTER_POOLS[pool_name] then
     for _, center in ipairs(G.P_CENTER_POOLS[pool_name]) do
-      -- FIX: Cheat menu shows all items regardless of discovery state
       table.insert(pool, center)
     end
   end
@@ -1231,7 +1163,7 @@ l 6
       {card_limit = cards_per_row, type = 'title', highlight_limit = 0, collection = true})
 r 15 3255 %20%20%20%20 -
 r 15 3546 %20%20%20%20%20%20 -
-l 21
+l 20
         {n=G.UIT.O, config={object = G.mod_browse_collection[j]}}
       }})
   end
@@ -1245,7 +1177,6 @@ l 21
     table.insert(page_options, localize('k_page')..' '..tostring(i)..'/'..tostring(pages))
   end
 
-  -- Populate first page
   for j = 1, num_rows do
     for i = 1, cards_per_row do
       local idx = i + (j-1)*cards_per_row
@@ -1353,25 +1284,21 @@ G.FUNCS.mod_add_selected_consumables = function(e)
       end
       card:add_to_deck()
 r 1 191 %20%20%20%20%20%20 -
-l 16
+l 12
       added = added + 1
     end
   end
 
-  -- FIX: Don't clear selection so user can click ADD multiple times
   if added > 0 then play_sound('timpani') end
 end
 
--- ===== CARDS TAB: BROWSE / ENHANCEMENT / SEAL / PREVIEW / ADD / REMOVE =====
 
 G.FUNCS.mod_browse_cards = function(e)
   G.MOD_MENU_STATE.active_tab = 4
   G.MOD_MENU_STATE.selected_cards = {}
-  -- FEATURE: Enable drag-to-select for this browse window
   if DRAG_SELECT then DRAG_SELECT.set_browse_mode(true) end
-  -- Open a window with 4 suit tabs
 r 4 1382 %20%20 -
-l 24
+l 23
     definition = create_UIBox_generic_options({back_func = 'mod_browse_back_cards', contents = {
       {n=G.UIT.R, config={align = "cm", padding = 0.02, minw = _mm_port() and 9.2 or 12, minh = 3.5}, nodes={
         create_tabs({
@@ -1393,12 +1320,10 @@ function _mod_card_suit_tab(suit)
   local cards_per_row = 4
   local num_rows = 2
   local items_per_page = cards_per_row * num_rows
-  -- Last page may have fewer cards (13 cards total: 8 + 5, or page1=8, page2=5)
   local pages = math.max(1, math.ceil(#ranks / items_per_page))
 
 r 15 489 %20%20 -
-l 8
-  -- Use a suit-specific collection key to avoid collision
+l 7
   local coll_key = '_mod_suit_' .. suit
   G[coll_key] = {}
   for j = 1, num_rows do
@@ -1408,12 +1333,11 @@ l 8
       {card_limit = cards_per_row, type = 'title', highlight_limit = 0, collection = true})
 r 15 3255 %20%20%20%20 -
 r 15 3546 %20%20%20%20%20%20 -
-l 27
+l 25
         {n=G.UIT.O, config={object = G[coll_key][j]}}
       }})
   end
 
-  -- Store refs for pagination
   G._mod_card_suit = suit
   G._mod_card_ranks = ranks
   G._mod_card_coll_key = coll_key
@@ -1425,7 +1349,6 @@ l 27
     table.insert(page_options, localize('k_page')..' '..tostring(i)..'/'..tostring(pages))
   end
 
-  -- Populate first page
   for j = 1, num_rows do
     for i = 1, cards_per_row do
       local idx = i + (j-1)*cards_per_row
@@ -1492,7 +1415,7 @@ l 28
           local card = Card(G[coll_key][j].T.x + G[coll_key][j].T.w/2,
             G[coll_key][j].T.y, G.CARD_W, G.CARD_H, front, G.P_CENTERS.c_base)
 r 15 3603 %20%20%20%20%20%20%20%20%20%20 -
-l 33
+l 29
           _mod_setup_playing_card_select(card, suit, rank)
           G[coll_key][j]:emplace(card)
         end
@@ -1502,11 +1425,7 @@ l 33
 end
 
 G.FUNCS.mod_browse_back_cards = function(e)
-  -- FEATURE: Disable drag-to-select when leaving any browse window
   if DRAG_SELECT then DRAG_SELECT.set_browse_mode(false) end
-  -- FIX: Clear stale single_tap/click/highlighted on collection display cards so they
-  -- cannot receive touch events from DRAG_SELECT._update_browse after the window closes.
-  -- Covers both mod_browse_cards (G._mod_suit_X) and mod_remove_cards_browse (G.mod_browse_collection).
   pcall(function()
     for _, suit in ipairs({'H','D','S','C'}) do
       local area = G['_mod_suit_'..suit]
@@ -1527,7 +1446,7 @@ G.FUNCS.mod_browse_back_cards = function(e)
     end
   end)
 r 4 1375 %20%20 -
-l 12
+l 11
   G.E_MANAGER:add_event(Event({trigger='after', delay=0.15, func=function()
     pcall(function() G.FUNCS.open_mod_menu_inrun() end)
     return true
@@ -1536,15 +1455,13 @@ end
 
 G.FUNCS.mod_browse_enhancements = function(e)
   G.MOD_MENU_STATE.active_tab = 4
-  -- Open enhancement selection window
   local enhancements = {'c_base', 'm_bonus', 'm_mult', 'm_wild', 'm_glass', 'm_steel', 'm_stone', 'm_gold', 'm_lucky'}
   local enh_names = {"None", "Bonus", "Mult", "Wild", "Glass", "Steel", "Stone", "Gold", "Lucky"}
 
 r 15 489 %20%20 -
-l 9
+l 8
   G.mod_browse_collection = {}
   local row_limits = _mm_port() and {3, 3, 3} or {4, 5}
-  -- 2 rows: 4 + 5
   for j = 1, #row_limits do
     local limit = row_limits[j]
     G.mod_browse_collection[j] = CardArea(
@@ -1553,12 +1470,11 @@ l 9
       {card_limit = limit, type = 'title', highlight_limit = 0})
 r 15 3255 %20%20%20%20 -
 r 15 3546 %20%20%20%20%20%20 -
-l 21
+l 19
         {n=G.UIT.O, config={object = G.mod_browse_collection[j]}}
       }})
   end
 
-  -- Row 1: first 4, Row 2: next 5
   local offset = 0
   for j = 1, #row_limits do
     for i = 1, row_limits[j] do
@@ -1574,7 +1490,6 @@ l 21
           G.MOD_MENU_STATE.selected_enhancement = _enh
           pcall(function() play_sound('highlight1') end)
           card:juice_up(0.3, 0.3)
-          -- Auto-close and return to mod menu
 r 4 1375 %20%20%20%20%20%20%20%20%20%20 -
 l 13
           G.E_MANAGER:add_event(Event({trigger='after', delay=0.15, func=function()
@@ -1648,7 +1563,7 @@ l 2
       }},
 r 15 3893 %20%20%20%20%20%20 -
 r 15 2387 %20%20%20%20%20%20%20%20 -
-l 17
+l 16
           {n=G.UIT.O, config={object = G.mod_browse_collection[1]}}
         }}
       }},
@@ -1656,7 +1571,6 @@ l 17
   }
 end
 
--- FEATURE: Editions browser for Cards tab
 G.FUNCS.mod_browse_editions = function(e)
   G.MOD_MENU_STATE.active_tab = 4
   local editions = {'base', 'foil', 'holo', 'polychrome', 'negative'}
@@ -1705,7 +1619,7 @@ l 2
       }},
 r 15 3893 %20%20%20%20%20%20 -
 r 15 2387 %20%20%20%20%20%20%20%20 -
-l 33
+l 32
           {n=G.UIT.O, config={object = G.mod_browse_collection[1]}}
         }}
       }},
@@ -1730,7 +1644,6 @@ G.FUNCS.mod_card_preview = function(e)
     end
   end
 
-  -- Show up to 10 preview cards
   local show_count = math.min(#preview_cards, 10)
   G.mod_browse_collection = {}
   G.mod_browse_collection[1] = CardArea(
@@ -1752,7 +1665,7 @@ l 9
       {card_limit = math.min(show_count - 5, 5), type = 'title', highlight_limit = 0})
 r 15 3255 %20%20%20%20 -
 r 15 2387 %20%20%20%20%20%20 -
-l 25
+l 24
         {n=G.UIT.O, config={object = G.mod_browse_collection[2]}}
       }})
   end
@@ -1768,7 +1681,6 @@ l 25
     if state.selected_seal then
       card:set_seal(state.selected_seal, true, true)
     end
-    -- FEATURE: Apply edition to preview cards
     if state.selected_edition and state.selected_edition ~= 'base' then
       card:set_edition({[state.selected_edition] = true}, true, true)
     end
@@ -1815,12 +1727,11 @@ G.FUNCS.mod_add_selected_cards = function(e)
       local front = G.P_CARDS[card_key]
       if front then
 r 3 1207 %20%20%20%20%20%20%20%20 -
-l 8
+l 7
         local card = Card(G.deck.T.x, G.deck.T.y, G.CARD_W, G.CARD_H, front, enhancement, {playing_card = G.playing_card})
         if state.selected_seal then
           card:set_seal(state.selected_seal, true, true)
         end
-        -- FEATURE: Apply selected edition to added cards
         if edition_key and edition_key ~= 'base' then
           card:set_edition({[edition_key] = true}, true, true)
         end
@@ -1829,26 +1740,23 @@ l 1
         G.deck:emplace(card)
 r 3 2588 %20%20%20%20%20%20%20%20 -
 r 3 1210 %20%20%20%20%20%20%20%20 -
-l 20
+l 17
         added = added + 1
       end
     end
   end
 
-  -- FIX: Don't clear selection so user can click ADD multiple times
   if added > 0 then play_sound('timpani') end
 end
 
 G.FUNCS.mod_remove_cards_browse = function(e)
   G.MOD_MENU_STATE.active_tab = 4
-  -- FEATURE: Enable drag-to-select for this browse window
   if DRAG_SELECT then DRAG_SELECT.set_browse_mode(true) end
   if not G.GAME or not G.deck then
     pcall(function() play_sound('cancel') end)
     return
   end
 
-  -- Build a view of the current full deck
   local deck_cards = {}
 r 3 4751 %20%20 -
 l 13
@@ -1874,7 +1782,7 @@ l 6
       (cards_per_row + 0.25)*G.CARD_W*1.05, 1.03*G.CARD_H*1.05,
       {card_limit = cards_per_row, type = 'title', highlight_limit = 0})
 r 15 3255 %20%20%20%20 -
-l 32
+l 31
       {n=G.UIT.R, config={align = "cm", padding = 0.05, no_fill = true}, nodes={
         {n=G.UIT.O, config={object = G.mod_browse_collection[j]}}
       }})
@@ -1889,7 +1797,6 @@ l 32
     table.insert(page_options, localize('k_page')..' '..tostring(i)..'/'..tostring(pages))
   end
 
-  -- Populate first page
   for j = 1, num_rows do
     for i = 1, cards_per_row do
       local idx = i + (j-1)*cards_per_row
@@ -1931,7 +1838,7 @@ end
 
 G.FUNCS.mod_remove_card_page = function(args)
 r 4 603 %20%20 -
-l 75
+l 71
   if not G.mod_browse_collection or not G._mod_remove_deck_cards then return end
   local deck_cards = G._mod_remove_deck_cards
   local num_rows = G._mod_remove_rows or 2
@@ -1973,7 +1880,6 @@ G.FUNCS.mod_do_remove_selected_cards = function(e)
   local deck_cards = G._mod_remove_deck_cards
   local removed = 0
 
-  -- Remove in reverse order to preserve indices
   local indices = {}
   for idx, _ in pairs(G._mod_remove_selected) do
     table.insert(indices, idx)
@@ -1983,14 +1889,12 @@ G.FUNCS.mod_do_remove_selected_cards = function(e)
   for _, idx in ipairs(indices) do
     local target = deck_cards[idx]
     if target then
-      -- Find and remove from playing_cards
       for pi = #G.playing_cards, 1, -1 do
         if G.playing_cards[pi] == target then
           table.remove(G.playing_cards, pi)
           break
         end
       end
-      -- Remove from its area
       if target.area then
         target.area:remove_card(target)
       end
@@ -2006,9 +1910,8 @@ G.FUNCS.mod_do_remove_selected_cards = function(e)
 
   if removed > 0 then
     play_sound('tarot2')
-    -- Close and return
 r 4 1375 %20%20%20%20 -
-l 27
+l 26
     G.E_MANAGER:add_event(Event({trigger='after', delay=0.15, func=function()
       pcall(function() G.FUNCS.open_mod_menu_inrun() end)
       return true
@@ -2016,7 +1919,6 @@ l 27
   end
 end
 
--- ===== VOUCHERS TAB: BROWSE / ADD CALLBACKS =====
 
 G.FUNCS.mod_browse_vouchers = function(e)
   G.MOD_MENU_STATE.active_tab = 5
@@ -2046,7 +1948,7 @@ l 6
       {card_limit = cards_per_row, type = 'voucher', highlight_limit = 0, collection = true})
 r 15 3255 %20%20%20%20 -
 r 15 3546 %20%20%20%20%20%20 -
-l 21
+l 20
         {n=G.UIT.O, config={object = G.mod_browse_collection[j]}}
       }})
   end
@@ -2060,7 +1962,6 @@ l 21
     table.insert(page_options, localize('k_page')..' '..tostring(i)..'/'..tostring(pages))
   end
 
-  -- Populate first page
   for j = 1, num_rows do
     for i = 1, cards_per_row do
       local idx = i + (j-1)*cards_per_row
@@ -2128,7 +2029,7 @@ l 21
         local card = Card(G.mod_browse_collection[j].T.x + G.mod_browse_collection[j].T.w/2,
           G.mod_browse_collection[j].T.y, G.CARD_W, G.CARD_H, nil, center)
 r 15 3603 %20%20%20%20%20%20%20%20 -
-l 35
+l 32
         _mod_setup_card_select(card, G.MOD_MENU_STATE.selected_vouchers, center.key)
         G.mod_browse_collection[j]:emplace(card)
       end
@@ -2145,9 +2046,7 @@ G.FUNCS.mod_add_selected_vouchers = function(e)
   for key, _ in pairs(state.selected_vouchers) do
     local center = G.P_CENTERS[key]
     if center then
-      -- Mark voucher as used
       G.GAME.used_vouchers[key] = true
-      -- Create a temporary card to apply the voucher effects
       local card = Card(G.play and G.play.T.x or 0, G.play and G.play.T.y or 0,
         G.CARD_W, G.CARD_H, nil, center)
       pcall(function()
@@ -2158,7 +2057,6 @@ G.FUNCS.mod_add_selected_vouchers = function(e)
     end
   end
 
-  -- FIX: Don't clear selection so user can click ADD multiple times
   if added > 0 then play_sound('timpani') end
 end
 
@@ -2176,13 +2074,12 @@ G.FUNCS.mod_reset_float_pos = function(e)
   pcall(function() G:save_settings() end)
   remove_floating_mod_button()
 r 3 4157 %20%20 -
-l 126
+l 111
     create_floating_mod_button()
   end
   play_sound('button')
 end
 
--- ===== APPLY PRE-RUN MOD SETTINGS =====
 
 function apply_mod_settings_to_run()
   if not G.MOD_SETTINGS or not G.MOD_SETTINGS.pre_run or not G.MOD_SETTINGS.pre_run.enabled then
@@ -2195,57 +2092,47 @@ function apply_mod_settings_to_run()
 
   local settings = G.MOD_SETTINGS.pre_run
 
-  -- FIX: Mark run as modded when pre-run settings are applied (anti-cheat)
   if mark_run_as_modded then
     mark_run_as_modded("Pre-run mod settings applied")
   end
 
-  -- Apply starting money
   if settings.starting_money and settings.starting_money ~= 4 then
     G.GAME.dollars = settings.starting_money
   end
 
-  -- Apply joker slots
   if settings.joker_slots and settings.joker_slots ~= 5 then
     G.GAME.round_resets.joker_slots = settings.joker_slots
     if G.jokers then G.jokers.config.card_limit = settings.joker_slots end
   end
 
-  -- Apply consumable slots
   if settings.consumable_slots and settings.consumable_slots ~= 2 then
     G.GAME.round_resets.consumable_slots = settings.consumable_slots
     if G.consumeables then G.consumeables.config.card_limit = settings.consumable_slots end
   end
 
-  -- Apply hand size
   if settings.hand_size and settings.hand_size ~= 8 then
     G.GAME.round_resets.hand_size = settings.hand_size
     if G.hand then G.hand.config.card_limit = settings.hand_size end
   end
 
-  -- Apply hands per round
   if settings.hands_per_round and settings.hands_per_round ~= 4 then
     G.GAME.round_resets.hands = settings.hands_per_round
     G.GAME.current_round.hands_left = settings.hands_per_round
   end
 
-  -- Apply discards per round
   if settings.discards_per_round and settings.discards_per_round ~= 3 then
     G.GAME.round_resets.discards = settings.discards_per_round
     G.GAME.current_round.discards_left = settings.discards_per_round
   end
 
-  -- Apply interest cap
   if settings.interest_cap and settings.interest_cap ~= 25 then
     G.GAME.interest_cap = settings.interest_cap
   end
 
-  -- Apply win ante
   if settings.win_ante and settings.win_ante ~= 8 then
     G.GAME.win_ante = settings.win_ante
   end
 
-  -- Copy pre-run settings to runtime
   if settings.free_rerolls then
     G.MOD_SETTINGS.runtime.free_rerolls_active = true
   end
@@ -2261,12 +2148,10 @@ function apply_mod_settings_to_run()
   print("[MOD MENU] Pre-run mods applied!")
 end
 
--- ===== MOD MENU UPDATE HOOK - Called from Game:update =====
 
 function mod_menu_update()
   if not G.GAME then return end
 
-  -- Anti-cheat: If in multiplayer, enforce mods are disabled
   if G.GAME.multiplayer then
     local mods_active = false
     pcall(function()
@@ -2282,7 +2167,6 @@ function mod_menu_update()
       _mod_menu_multiplayer_violation("Detected active mod cheat state in multiplayer")
       return
     end
-    -- Remove floating mod button in multiplayer
     if G.MOD_FLOATING_BUTTON then
       pcall(function() remove_floating_mod_button() end)
     end
@@ -2300,12 +2184,10 @@ function mod_menu_update()
     return
   end
 
-  -- GOD MODE - Always have enough chips to win
   if G.MOD_SETTINGS.in_run.god_mode then
     if not G.GAME.modded_run and mark_run_as_modded then mark_run_as_modded("God mode") end
 r 4 1900 %20%20%20%20 -
-l 144
-      -- Keep chips at least equal to blind requirement
+l 137
       if G.GAME.chips < G.GAME.blind.chips then
         if G.GAME.current_round and G.GAME.current_round.hands_left <= 0 then
           G.GAME.chips = G.GAME.blind.chips
@@ -2314,25 +2196,21 @@ l 144
     end
   end
 
-  -- FREE REROLLS - Keep reroll cost at 0
   if G.MOD_SETTINGS.runtime.free_rerolls_active then
     if G.GAME.current_round then
       G.GAME.current_round.reroll_cost = 0
     end
   end
 
-  -- FREE SHOP - Keep discount at 100%
   if G.MOD_SETTINGS.runtime.free_shop_active then
     G.GAME.discount_percent = 100
   end
 
-  -- MODDED INDICATOR - Show when run is modded
   if G.GAME.modded_run and not G.MODDED_INDICATOR and G.STAGE == G.STAGES.RUN then
     pcall(create_modded_indicator)
   end
 end
 
--- ===== FLOATING MOD BUTTON =====
 
 function cheats_allowed_in_run()
   local g = G and G.GAME
@@ -2432,13 +2310,11 @@ local function _cheats_btn_keep_on_screen(box)
 end
 
 function create_floating_mod_button()
-  -- Remove existing button first
   if G.MOD_FLOATING_BUTTON then
     G.MOD_FLOATING_BUTTON:remove()
     G.MOD_FLOATING_BUTTON = nil
   end
 
-  -- Don't create if disabled or in multiplayer
   if not G.MOD_SETTINGS.menu.floating_button then return end
   if G.SETTINGS.mod_menu_disabled then return end
   if G.GAME and G.GAME.multiplayer then return end
@@ -2450,7 +2326,7 @@ function create_floating_mod_button()
   G.MOD_FLOATING_BUTTON = UIBox{
     definition = {n=G.UIT.ROOT, config={align = "cm", colour = {0.9, 0.7, 0.1, opacity}, r = 0.15, padding = 0.12, minw = thumb and 1.9 or 1.4, minh = thumb and 1.15 or 0.9}, nodes={
 r 7 297 %20%20%20%20%20%20 -
-l 179
+l 174
         {n=G.UIT.T, config={text = mod_loc("CHEATS"), scale = thumb and 0.6 or 0.5, colour = G.C.WHITE, shadow = true}}
       }}
     }},
@@ -2494,7 +2370,6 @@ function remove_floating_mod_button()
   end
 end
 
--- Hook into the click system for the floating button
 local _orig_UIBox_click = UIBox.click
 if _orig_UIBox_click then
   UIBox.click = function(self)
@@ -2506,7 +2381,6 @@ if _orig_UIBox_click then
   end
 end
 
--- ===== MODDED RUN INDICATOR =====
 
 function create_modded_indicator()
   remove_modded_indicator()
@@ -2519,7 +2393,6 @@ function remove_modded_indicator()
   G.MODDED_INDICATOR = nil
 end
 
--- Check and show modded indicator periodically
 G.FUNCS.check_modded_indicator = function(e)
   if not G or not G.GAME then return end
   if G.STAGE ~= G.STAGES.RUN then
@@ -2531,14 +2404,12 @@ G.FUNCS.check_modded_indicator = function(e)
   end
 end
 
--- Hook mark_run_as_modded to show indicator immediately
 local _orig_mark_modded = _G.mark_run_as_modded
 _G.mark_run_as_modded = function(reason)
   if _orig_mark_modded then _orig_mark_modded(reason) end
   pcall(create_modded_indicator)
 end
 
--- FIX: Guard every actionable mod-menu callback in multiplayer, including direct callback invocation.
 local function _wrap_mod_menu_multiplayer_guards()
   local wrapped_callbacks = {}
   local blocked_callbacks = {

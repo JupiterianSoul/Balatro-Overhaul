@@ -1,6 +1,3 @@
-// Balatro Overhaul � Multiplayer Server with Authoritative Match State
-// Server maintains full match state, resolves PvP, tracks lives, declares winners.
-// ARCH: Stage 1 � input validation, rate limiting, room TTL, structured logging, PvP timeout
 
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -17,10 +14,6 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-// ============================================
-// STRUCTURED LOGGING
-// Stage 1: Replace ad-hoc console.log with tagged, levelled logger
-// ============================================
 
 const LOG_LEVEL = process.env.LOG_LEVEL || 'INFO';
 const LOG_LEVELS = { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 };
@@ -37,17 +30,12 @@ function log(level, tag, msg, extra) {
   }
 }
 
-// ============================================
-// CONSTANTS
-// ============================================
 
-// FIX P1#43: bumped from 30 to 60 — play_hand bursts during multi-card chains were
-// being rate-limited, dropping the hands_left==0 end-of-PvP signal and causing timeouts.
 const RATE_LIMIT_MSG_PER_SEC    = 60;
 const RATE_LIMIT_CREATE_PER_MIN = 5;
 const ROOM_TTL_MS               = 30 * 60 * 1000;
 const ROOM_CLEANUP_INTERVAL_MS  = 60 * 1000;
-const PVP_TIMEOUT_MS            = 180 * 1000; // FIX: Bug 2 — increased from 60s to 180s; timer now starts at actual blind start (handleReadyBlind)
+const PVP_TIMEOUT_MS            = 180 * 1000;
 const MAX_MESSAGE_BYTES         = 4096;
 const READY_UNREADY_DEBOUNCE_MS = 900;
 
@@ -55,18 +43,10 @@ const VALID_SCORE_MAX = 1e15;
 const VALID_ANTE_MAX  = 20;
 const VALID_LIVES_MAX = 20;
 
-// FIX P2#11: cap gameHistory size to bound bandwidth and serialization cost
-// across long rematch chains.
 const MAX_GAME_HISTORY = 50;
 
-// FIX P2#28: server protocol version. Bumped on breaking message-shape changes.
-// Clients send their MP_PROTOCOL_VERSION in room_joined / ready_state; the server
-// rejects mismatches so unknown message types don't silently no-op.
 const SERVER_PROTOCOL_VERSION = 1;
 
-// ============================================
-// DATA STRUCTURES
-// ============================================
 
 const rooms = {};
 let queue = [];
@@ -76,9 +56,6 @@ function generateCode() {
   return Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-// ============================================
-// MATCH STATE MODEL � Server-authoritative
-// ============================================
 
 function createMatchState(settings) {
   const lives = (settings && settings.starting_lives) || 4;
@@ -117,9 +94,6 @@ function isBlindPvp(match, ante, blindType) {
   return false;
 }
 
-// ============================================
-// ROOM OBJECT
-// ============================================
 
 function createRoom(code) {
   return {
@@ -164,9 +138,6 @@ function relay(socket, raw) {
   });
 }
 
-// FIX P2#27: relay only known client→client types. Prevents a client from
-// fabricating server-only event types (e.g. pvp_resolved, match_state_update,
-// rematch_accepted) and forwarding them to its opponent.
 const RELAYABLE_TYPES = new Set([
   'sabotage', 'taunt', 'set_location',
 ]);
@@ -179,9 +150,6 @@ function touchRoom(room) {
   room.lastActivity = Date.now();
 }
 
-// ============================================
-// BROADCAST � Push authoritative state to each player
-// ============================================
 
 function broadcastMatchState(room, extra) {
   if (!room || !room.match) return;
@@ -200,7 +168,6 @@ function broadcastMatchState(room, extra) {
       isPvpBlind: m.isPvpBlind,
       myLives: m.players[i].lives,
       myStatus: m.players[i].status,
-      // FIX P1#5: include own per-blind fields so reconnecting clients can recover full state
       myScore: m.players[i].score,
       myBlindFinished: m.players[i].blindFinished,
       oppName: m.players[opp].name,
@@ -214,9 +181,6 @@ function broadcastMatchState(room, extra) {
   }
 }
 
-// ============================================
-// PVP RESOLUTION � Authoritative score comparison
-// ============================================
 
 function clearPvpTimer(room) {
   if (room.pvpTimer) { clearTimeout(room.pvpTimer); room.pvpTimer = null; }
@@ -271,14 +235,11 @@ function resolvePvp(room) {
 
   m.players[0].score = null; m.players[0].blindFinished = false;
   m.players[1].score = null; m.players[1].blindFinished = false;
-  // FIX: Sync — clear ready state after PvP resolves. Without this, a stale `true`
-  // could leak into the next PvP blind and cause auto-start when only one player clicks ready.
   m.blindReady = [false, false];
   m.blindReadyAt = [0, 0];
   if (!matchEnded) m.phase = 'playing';
 }
 
-// Stage 1: PvP timeout � auto-resolve if a player never submits after 60s
 function schedulePvpTimeout(room) {
   clearPvpTimer(room);
   room.pvpTimer = setTimeout(() => {
@@ -291,18 +252,12 @@ function schedulePvpTimeout(room) {
   }, PVP_TIMEOUT_MS);
 }
 
-// FIX P2#7: extend the PvP timeout when a player shows activity (sends play_hand).
-// Some boss-blind scoring chains exceed 3 minutes; without this, an actively
-// playing client gets force-lost while their opponent waits.
 function extendPvpTimeoutOnActivity(room) {
   if (!room || !room.match || room.match.phase !== 'pvp_pending') return;
   if (!room.pvpTimer) return;
   schedulePvpTimeout(room);
 }
 
-// ============================================
-// STAGE 1: INPUT VALIDATION
-// ============================================
 
 const ALLOWED_TYPES = new Set([
   'create_room', 'join_room', 'find_match', 'cancel_search',
@@ -311,15 +266,10 @@ const ALLOWED_TYPES = new Set([
   'blind_entered', 'blind_finished', 'game_over', 'life_lost', 'match_finished',
   'request_state', 'boss_sync', 'rematch_vote',
   'return_to_lobby', 'leave_lobby', 'return_to_menu',
-  // Heartbeat
   'ping',
-  // FEATURE: Stage 4 — sabotage + taunt relay
   'sabotage', 'taunt',
-  // FEATURE: Session 56 — enemy location broadcast
   'set_location',
-  // FEATURE: Session 57 — PvP blind ready system
   'ready_blind', 'unready_blind',
-  // FEATURE: Session 57b — live score relay during PvP
   'play_hand',
 ]);
 
@@ -335,7 +285,6 @@ function isStringOfLength(v, max) {
   return typeof v === 'string' && v.length > 0 && v.length <= max;
 }
 
-// Returns null if valid, or a string describing the problem
 function validateMessage(msg, byteLength) {
   if (byteLength > MAX_MESSAGE_BYTES)      return `oversized: ${byteLength} bytes`;
   if (!msg || typeof msg !== 'object')     return 'not an object';
@@ -355,8 +304,6 @@ function validateMessage(msg, byteLength) {
   if (msg.type === 'blind_entered') {
     if (msg.ante  !== undefined && !isIntInRange(msg.ante, 1, VALID_ANTE_MAX))
       return `blind_entered: invalid ante`;
-    // FIX P3#23: client always sends single-char blind code ("S"/"B"/"L").
-    // Tightened from 2 to 1 to reject malformed payloads.
     if (msg.blind !== undefined && !isStringOfLength(msg.blind, 1))
       return 'blind_entered: invalid blind';
   }
@@ -370,10 +317,8 @@ function validateMessage(msg, byteLength) {
     const s = msg.settings;
     if (s.starting_lives !== undefined && !isIntInRange(s.starting_lives, 1, VALID_LIVES_MAX))
       return `match_settings: invalid starting_lives`;
-    // FIX P1#26 + audit#2: include 'showdown' and 'faceoff' (createMatchState references them)
     if (s.mode !== undefined && !['attrition', 'vanilla', 'ruleset', 'showdown', 'faceoff'].includes(s.mode))
       return `match_settings: unknown mode`;
-    // FIX P1#26: validate other settings that drive server-side PvP gating.
     if (s.pvp_start_round !== undefined && !isIntInRange(s.pvp_start_round, 1, VALID_ANTE_MAX))
       return 'match_settings: invalid pvp_start_round';
     if (s.showdown_starting_antes !== undefined && !isIntInRange(s.showdown_starting_antes, 1, VALID_ANTE_MAX))
@@ -383,7 +328,6 @@ function validateMessage(msg, byteLength) {
     if (s.ante_timer_base !== undefined && !isIntInRange(s.ante_timer_base, 10, 3600))
       return 'match_settings: invalid ante_timer_base';
   }
-  // FIX P1#26: validate play_hand payload (was unvalidated, accepting any types).
   if (msg.type === 'play_hand') {
     if (msg.score !== undefined) {
       const sc = (typeof msg.score === 'number') ? msg.score : parseFloat(msg.score);
@@ -400,14 +344,11 @@ function validateMessage(msg, byteLength) {
     if (msg.name !== undefined && !isStringOfLength(msg.name, 32))
       return 'player_name: invalid name';
   }
-  // FIX P2#28: validate protocol version on lobby exchange messages. Mismatched
-  // clients fail-fast here instead of later via silent unknown-type drops.
   if ((msg.type === 'room_joined' || msg.type === 'ready_state') && msg.mp_version !== undefined) {
     if (typeof msg.mp_version !== 'number' || msg.mp_version !== SERVER_PROTOCOL_VERSION) {
       return `protocol_version_mismatch: server=${SERVER_PROTOCOL_VERSION} client=${msg.mp_version}`;
     }
   }
-  // FEATURE: Stage 4 — validate relay-only message payloads
   if (msg.type === 'sabotage') {
     if (msg.sabotage_id !== undefined && !isStringOfLength(msg.sabotage_id, 64))
       return 'sabotage: invalid sabotage_id';
@@ -416,7 +357,6 @@ function validateMessage(msg, byteLength) {
     if (msg.title !== undefined && !isStringOfLength(msg.title, 64))
       return 'taunt: invalid title';
   }
-  // FEATURE: Session 56 — validate set_location payload
   if (msg.type === 'set_location') {
     if (!msg.location || !isStringOfLength(msg.location, 128))
       return 'set_location: invalid location';
@@ -425,15 +365,11 @@ function validateMessage(msg, byteLength) {
   return null;
 }
 
-// ============================================
-// STAGE 1: RATE LIMITING
-// ============================================
 
 function createRateLimiter() {
   return { msgCount: 0, msgWindowStart: Date.now(), createCount: 0, createWindowStart: Date.now() };
 }
 
-// Returns true if the socket is over quota
 function isRateLimited(rl, isCreate) {
   const now = Date.now();
   if (now - rl.msgWindowStart > 1000) { rl.msgCount = 0; rl.msgWindowStart = now; }
@@ -447,9 +383,6 @@ function isRateLimited(rl, isCreate) {
   return false;
 }
 
-// ============================================
-// STAGE 1: ROOM TTL + CLEANUP
-// ============================================
 
 function destroyRoom(code, reason) {
   const room = rooms[code];
@@ -467,9 +400,6 @@ const roomCleanupInterval = setInterval(() => {
   }
 }, ROOM_CLEANUP_INTERVAL_MS);
 
-// ============================================
-// CLEANUP ON DISCONNECT
-// ============================================
 
 function cleanupSocket(socket) {
   queue = queue.filter(s => s !== socket);
@@ -514,9 +444,6 @@ function cleanupSocket(socket) {
   delete rooms[code];
 }
 
-// ============================================
-// MESSAGE HANDLERS � Stage 1: one function per message type
-// ============================================
 
 function handleCreateRoom(socket) {
   let code = generateCode();
@@ -539,7 +466,6 @@ function handleJoinRoom(socket, msg) {
   room.sockets.push(socket);
   socket.roomCode = code;
   touchRoom(room);
-  // FIX: send per-player host flags so exactly one client becomes host in lobby
   sendTo(room.sockets[0], { type: 'room_ready', code, host: true });
   sendTo(room.sockets[1], { type: 'room_ready', code, host: false });
   log('INFO', 'ROOM', `Joined ${code}`);
@@ -556,7 +482,6 @@ function handleFindMatch(socket) {
     rooms[code]  = room;
     socket.roomCode = code;
     opp.roomCode    = code;
-    // FIX: send per-player host flags for quick matches too
     sendTo(room.sockets[0], { type: 'room_ready', code, host: true });
     sendTo(room.sockets[1], { type: 'room_ready', code, host: false });
     log('INFO', 'MATCH', `Quick match ${code}`);
@@ -571,9 +496,6 @@ function handleCancelSearch(socket) {
   sendTo(socket, { type: 'search_cancelled' });
 }
 
-// FIX: relay lobby profile exchange and ready-state updates between players.
-// FIX P1#49: strip server-only fields (host, code) from the relayed payload so a
-// malicious client cannot spoof host status to its opponent.
 function handleRoomJoined(socket, msg) {
   const room = rooms[socket.roomCode];
   if (!room) return;
@@ -644,12 +566,6 @@ function handleBlindEntered(socket, msg, raw) {
   const newAnte  = msg.ante  || m.currentAnte;
   const newBlind = msg.blind || m.currentBlind;
 
-  // FIX: Sync — only react to a blind_entered when the (ante, blind) actually changes.
-  // Both clients send blind_entered when they enter a blind; if the second arrival
-  // (from a laggy client) hits the server AFTER the first client has already submitted
-  // blind_finished, the old code reset blindFinished/score back to defaults, wiping
-  // the authoritative score. The PvP timeout would then fire with both scores at 0,
-  // resulting in a draw and no life loss — the exact "no one loses a life" symptom.
   if (newAnte === m.currentAnte && newBlind === m.currentBlind && m.phase !== 'lobby') {
     log('DEBUG', 'BLIND', `Duplicate blind_entered ignored ante=${newAnte} blind=${newBlind} room=${room.code}`);
     relay(socket, raw);
@@ -660,8 +576,6 @@ function handleBlindEntered(socket, msg, raw) {
   m.currentBlind = newBlind;
   m.isPvpBlind   = isBlindPvp(m, m.currentAnte, m.currentBlind);
 
-  // FIX: Sync — ALWAYS clear ready state on any blind entry (not only PvP).
-  // Prevents stale `blindReady[i]=true` from a prior round from auto-starting the next PvP blind.
   m.blindReady = [false, false];
   m.blindReadyAt = [0, 0];
 
@@ -669,7 +583,6 @@ function handleBlindEntered(socket, msg, raw) {
     m.phase = 'pvp_pending';
     m.players[0].blindFinished = false; m.players[0].score = null;
     m.players[1].blindFinished = false; m.players[1].score = null;
-    // FIX: Bug 2 — timeout now scheduled in handleReadyBlind (when play actually starts)
   }
 
   touchRoom(room);
@@ -685,10 +598,6 @@ function handleBlindFinished(socket, msg) {
   const pid = getPlayerId(room, socket);
   if (pid < 0) return;
 
-  // FIX: Session 61 — reject stale blind_finished from a prior ante/blind.
-  // If play_hand (hands_left=0) fired resolvePvp and the phase changed away from pvp_pending,
-  // a late blind_finished sent afterward could corrupt blindFinished for the *next* PvP round
-  // if it arrives after blind_entered has reset the state.
   if (msg.ante !== undefined && Number(msg.ante) !== Number(m.currentAnte)) {
     log('DEBUG', 'SCORE', `P${pid} blind_finished stale ante=${msg.ante} vs current=${m.currentAnte}, ignored`);
     return;
@@ -740,12 +649,6 @@ function handleLifeLost(socket, msg, raw) {
   const pid = getPlayerId(room, socket);
   if (pid < 0) return;
 
-  // FIX P1#35 + audit#1: accept client-driven life decrement for NON-PvP losses.
-  // Server authoritatively decrements PvP losses in resolvePvp; for ordinary blind
-  // losses (where client's bom_lose_life_button decremented locally), we trust the
-  // client only to decrease lives by exactly 1 and only when not in a PvP blind.
-  // This prevents the desync where the next broadcastMatchState reverts the client
-  // to its pre-loss life count.
   const cur     = m.players[pid].lives;
   const claimed = Number(msg && msg.lives);
   let accepted  = false;
@@ -759,7 +662,6 @@ function handleLifeLost(socket, msg, raw) {
     accepted = true;
     log('INFO', 'LIFE_LOST', `P${pid} non-PvP life decrement accepted: ${cur} -> ${claimed} room=${room.code}`);
 
-    // Check elimination
     if (m.players[pid].lives <= 0 && m.phase !== 'finished') {
       m.players[pid].status = 'eliminated';
       m.winner    = pid === 0 ? 1 : 0;
@@ -814,9 +716,6 @@ function handleRematchVote(socket) {
   const pid = getPlayerId(room, socket);
   if (pid < 0) return;
 
-  // FIX P1#9: only accept rematch_vote when the match has actually finished.
-  // Otherwise a buggy/malicious client could trigger createMatchState mid-match,
-  // wiping the live game state.
   if (!room.match || room.match.phase !== 'finished') {
     log('WARN', 'REMATCH', `P${pid} rematch_vote rejected — match not finished (phase=${room.match && room.match.phase})`);
     return;
@@ -842,9 +741,7 @@ function handleRematchVote(socket) {
     }
     room.match        = match;
     room.rematchVotes = [false, false];
-    // FIX P2#10: reset inLobby flags so post-rematch state branches don't see stale values.
     room.inLobby      = [false, false];
-    // FIX P2#11: cap gameHistory so long rematch chains don't grow unbounded.
     if (room.gameHistory && room.gameHistory.length > MAX_GAME_HISTORY) {
       room.gameHistory = room.gameHistory.slice(-MAX_GAME_HISTORY);
     }
@@ -899,34 +796,21 @@ function handleLeaveLobby(socket) {
   socket.roomCode = null;
 }
 
-// FEATURE: Stage 4 — relay sabotage and taunt to opponent
 function handleSabotage(socket, msg, raw) { safeRelay(socket, msg, raw); }
 function handleTaunt(socket, msg, raw)    { safeRelay(socket, msg, raw); }
 
-// FEATURE: Session 57b — live score relay during PvP blind
-// Client sends play_hand with score + hands_left; server relays as enemy_info to opponent.
-// FIX: When hands_left == 0, also send end_pvp back to the sender so they can advance
-// independently (matching reference mod pattern), and mark them as blind_finished so
-// resolvePvp fires as soon as both players are done.
 function handlePlayHand(socket, msg) {
   const room = rooms[socket.roomCode];
   if (!room || !room.match) return;
   const opp = getOpponentSocket(room, socket);
   const pid = getPlayerId(room, socket);
-  // Also store on match state for resolvePvp
-  // FIX: Sync — do NOT overwrite the authoritative score after blind_finished has been
-  // recorded. play_hand carries intermediate per-hand chip totals; if a stale play_hand
-  // arrives AFTER blind_finished, the old code would clobber the final score with the
-  // partial score, corrupting the PvP winner determination.
   if (pid >= 0 && room.match.players[pid] && !room.match.players[pid].blindFinished) {
     room.match.players[pid].score = parseFloat(msg.score) || 0;
   }
-  // FIX P2#7: extend PvP timeout on player activity so long scoring chains aren't force-lost.
   extendPvpTimeoutOnActivity(room);
   if (opp) {
     sendTo(opp, {
       type: 'enemy_info',
-      // FIX P2#14: normalize score to a number so clients don't have to coerce.
       score: parseFloat(msg.score) || 0,
       hands_left: (typeof msg.hands_left === 'number') ? msg.hands_left
                 : (parseInt(msg.hands_left) || 0),
@@ -934,17 +818,11 @@ function handlePlayHand(socket, msg) {
     });
   }
 
-  // FIX: When player has 0 hands left in a PvP blind, treat it as blind completion.
-  // Send end_pvp back to THIS player so they can advance immediately without waiting.
-  // Also mark blind_finished so resolvePvp fires when both are done.
   const handsLeft = (typeof msg.hands_left === 'number') ? msg.hands_left
                   : (parseInt(msg.hands_left) || 0);
   const m = room.match;
   if (handsLeft === 0 && pid >= 0 && m.isPvpBlind && m.phase === 'pvp_pending') {
-    // FIX: Bug 1 — removed premature end_pvp send here. P1 now waits in HAND_PLAYED
-    // until pvp_resolved fires (when BOTH players finish), avoiding the cash-out popup.
 
-    // Mark blind_finished (idempotent) and resolve if both done
     if (!m.players[pid].blindFinished) {
       m.players[pid].blindFinished = true;
       touchRoom(room);
@@ -956,8 +834,6 @@ function handlePlayHand(socket, msg) {
   }
 }
 
-// FEATURE: Session 57 — PvP blind ready system
-// When both players send ready_blind, server sends start_blind to both
 function handleReadyBlind(socket) {
   const room = rooms[socket.roomCode];
   if (!room || !room.match) return;
@@ -965,15 +841,8 @@ function handleReadyBlind(socket) {
   const pid = getPlayerId(room, socket);
   if (pid < 0) return;
 
-  // FIX: Sync — only accept ready_blind during a PvP pending phase. A client that
-  // sends ready_blind early (before blind_entered registered) or stale (after the
-  // blind already resolved) could otherwise pre-mark itself as ready and cause
-  // auto-start when its opponent later sends a real ready_blind.
   if (m.phase !== 'pvp_pending' || !m.isPvpBlind) {
     log('DEBUG', 'PVP', `P${pid} ready_blind rejected — phase=${m.phase} isPvp=${m.isPvpBlind}`);
-    // FIX P1#13: notify the client that their ready was rejected so they can clear
-    // their visual ready state. Otherwise the UI shows "Unready" while server has
-    // them as not-ready, blocking match progression.
     sendTo(socket, { type: 'ready_blind_rejected', reason: 'phase_mismatch' });
     return;
   }
@@ -981,7 +850,6 @@ function handleReadyBlind(socket) {
   if (!m.blindReady) m.blindReady = [false, false];
   if (!m.blindReadyAt) m.blindReadyAt = [0, 0];
 
-  // FIX P1#12: debounce ready_blind to match unready_blind — drop double-tap duplicates.
   const nowReady = Date.now();
   if (m.blindReady[pid] && m.blindReadyAt[pid] && (nowReady - m.blindReadyAt[pid]) < READY_UNREADY_DEBOUNCE_MS) {
     log('DEBUG', 'PVP', `Ignored fast duplicate ready from P${pid} in ${room.code}`);
@@ -993,16 +861,13 @@ function handleReadyBlind(socket) {
   touchRoom(room);
   log('INFO', 'PVP', `P${pid} ready for blind in ${room.code}`);
 
-  // Notify opponent that we're ready
   const opp = getOpponentSocket(room, socket);
   if (opp) sendTo(opp, { type: 'opponent_ready_blind' });
 
-  // If both ready, start the blind
   if (m.blindReady[0] && m.blindReady[1]) {
     m.blindReady = [false, false];
     m.blindReadyAt = [0, 0];
     log('INFO', 'PVP', `Both ready — sending start_blind in ${room.code}`);
-    // FIX: Bug 2 — start the timeout when play actually begins (not at blind_entered)
     schedulePvpTimeout(room);
     sendToRoom(room, { type: 'start_blind' });
   }
@@ -1018,7 +883,6 @@ function handleUnreadyBlind(socket) {
   if (!m.blindReady) m.blindReady = [false, false];
   if (!m.blindReadyAt) m.blindReadyAt = [0, 0];
 
-  // FIX: Ignore accidental immediate unready after ready (double-tap / duplicate click bounce)
   const now = Date.now();
   if (m.blindReady[pid] && m.blindReadyAt[pid] && (now - m.blindReadyAt[pid]) < READY_UNREADY_DEBOUNCE_MS) {
     log('DEBUG', 'PVP', `Ignored fast unready from P${pid} in ${room.code}`);
@@ -1056,7 +920,6 @@ function handleReturnToMenu(socket) {
   socket.roomCode = null;
 }
 
-// Stage 1: Dispatch table � O(1) lookup replaces 400-line if/else chain
 const HANDLERS = {
   create_room:     handleCreateRoom,
   join_room:       handleJoinRoom,
@@ -1086,9 +949,6 @@ const HANDLERS = {
   return_to_menu:  handleReturnToMenu,
 };
 
-// ============================================
-// MESSAGE ROUTING
-// ============================================
 
 wss.on('connection', (socket) => {
   socket.isAlive = true;
@@ -1097,10 +957,6 @@ wss.on('connection', (socket) => {
   socket.on('pong', () => { socket.isAlive = true; });
 
   socket.on('message', (raw) => {
-    // FIX: Reset heartbeat on ANY received message, not just WS-level pong.
-    // The TLS tunnel may delay or drop WS-level pong frames, but application
-    // messages prove the connection is alive. Without this, the heartbeat
-    // kills active connections after 10-20s, causing match_cancelled.
     socket.isAlive = true;
 
     const byteLength = Buffer.byteLength(raw);
@@ -1136,14 +992,8 @@ wss.on('connection', (socket) => {
   });
 });
 
-// Heartbeat — FIX: increased from 10s to 30s for mobile network resilience.
-// Combined with socket.isAlive=true on message receipt, this ensures active
-// connections are never killed by the heartbeat.
-// FIX P2#30: lobby-idle clients (waiting for opponent, not sending app messages
-// and possibly with TLS pong dropped) need a longer keepalive than active clients.
 const heartbeatInterval = setInterval(() => {
   wss.clients.forEach(socket => {
-    // FIX P2#30: lobby-idle sockets get 2 missed pings before termination instead of 1.
     const inActiveMatch = socket.roomCode
       && rooms[socket.roomCode]
       && rooms[socket.roomCode].match
@@ -1174,7 +1024,6 @@ server.listen(PORT, '0.0.0.0', () => {
   log('INFO', 'SERVER', `Balatro MP server on 0.0.0.0:${PORT} [AUTHORITATIVE][Stage 1]`);
 });
 
-// ARCH: Export pure functions for unit testing
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { createMatchState, isBlindPvp, createRoom, generateCode, validateMessage, isRateLimited, server, wss };
 }

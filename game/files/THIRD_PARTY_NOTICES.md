@@ -16,10 +16,27 @@ The Balatro Overhaul is free software under the GNU GPL v3 (see [LICENSE](LICENS
 | LOVE 11.5 | The LOVE Development Team | zlib and others | The game engine and its libraries. |
 | [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector) | ethangreen-dev | MIT | The Overhaul reads mods made for Lovely. The loader itself is the Overhaul's own code. |
 
+## Files that contain code ported from other projects
+
+Changed from the originals: ported to the Overhaul's engine and structure, with Steamodded dependencies removed where needed, and extended. All of these projects are GPL v3, and so are these files.
+
+Ported from Balatro Multiplayer 0.3.3 (Virtualized and the BMP team):
+`assets/multiplayer/bom_events.lua`, `bom_gamemodes.lua`, `bom_match.lua`, `bom_nemesis.lua`, `bom_pvp_hud.lua`, `bom_room.lua`, `bom_ui_lobby.lua`, `mp_config.lua`, and the multiplayer parts of `assets/functions/state_events.lua`.
+
+Ported from Balatro-DeckCreator 1.2.2 (adambennett):
+`assets/functions/deck_creator_utils.lua`, `deck_creator_card_utils.lua`, `deck_creator_persistence.lua`, `deck_creator_hooks.lua`, `deck_creator_gui.lua`, `deck_creator_data.lua`, `deck_creator_locale.lua`.
+
+Follows Cryptid's logic (MathIsFun_ and the Cryptid team): the random-value functions in `assets/functions/deck_creator_hooks.lua`.
+
+Steamodded is in `assets/smods`, modified, with the list of changes in `assets/smods/OVERHAUL_CHANGES.md`.
+
 ## Not included
 
 Balatro belongs to LocalThunk and Playstack. None of its files are in this repository or in the releases: the Overhaul builds from your own copy.
 
+## Removed
+
+The Joker Info overlay, which followed the layout of nh6574's JokerDisplay, was removed from the Overhaul at the author's request.
 
 ## Mods listed in the Workshop
 

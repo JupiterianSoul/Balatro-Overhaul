@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 169
+l 156
 ﻿local MP = {}
 local function try_require(path)
     local ok, result = pcall(require, path)
@@ -15,16 +15,13 @@ local function try_require(path)
     return result
 end
 
--- ARCH: Load config + logging FIRST so all modules can use them
 mp_config = try_require("multiplayer.mp_config")
 mp_log    = try_require("multiplayer.mp_log")
 mp_log.set_level(mp_config.LOG_LEVEL)
 
--- Load AndroidWS bridge FIRST and register as global
 local aws = try_require("multiplayer.android_ws")
 AndroidWS = aws
 AndroidWS.init()
--- Load all multiplayer modules
 MP.core       = try_require("multiplayer.bom_core")
 MP.insane_int = try_require("multiplayer.bom_insane_int")
 MP.gamemodes  = try_require("multiplayer.bom_gamemodes")
@@ -92,7 +89,6 @@ MP.mode_content = try_require("functions.modes.mode_content")
 bom_mode_content = MP.mode_content
 MP.swap_mode = try_require("functions.modes.swap_mode")
 bom_swap = MP.swap_mode
--- Expose as globals for cross-module references
 bom_core       = MP.core
 bom_insane_int = MP.insane_int
 bom_gamemodes  = MP.gamemodes
@@ -120,19 +116,15 @@ bom_spectate   = MP.spectate
 function MP.init()
     if MP.daily and MP.daily.load then MP.daily.load() end
 
-    -- REMOVED: mp_pending_result.jkr disk loading (MATCH RESULTS feature gutted)
 
-    -- FEATURE: Phase 3 runtime init — Nemesis blind registration + PvP HUD helpers
     if MP.nemesis and MP.nemesis.init then MP.nemesis.init() end
     if MP.pvp_hud and MP.pvp_hud.init then MP.pvp_hud.init() end
-    -- FEATURE: Phase 5 runtime init — register first multiplayer custom object batch
     if MP.custom_objects and MP.custom_objects.init then MP.custom_objects.init() end
     if MP.reworks and MP.reworks.init then pcall(MP.reworks.init) end
     if MP.decks and MP.decks.init then pcall(MP.decks.init) end
     if MP.stakes and MP.stakes.init then pcall(MP.stakes.init) end
     if MP.room and MP.room.init then pcall(MP.room.init) end
 
-    -- Register G.FUNCS callbacks now that G exists
     if MP.ui and MP.ui.register_funcs then MP.ui.register_funcs() end
     if MP.spectate and MP.spectate.register_funcs then MP.spectate.register_funcs() end
     if MP.rejoin and MP.rejoin.init then pcall(MP.rejoin.init) end
@@ -163,31 +155,23 @@ function MP.init()
     if MP.collection and MP.collection.init then pcall(MP.collection.init) end
     if MP.mods and MP.mods.init then pcall(MP.mods.init) end
 
-    -- Game over / win buttons are patched directly in UI_definitions.lua for MP.
-    -- Keep runtime init focused on gameplay hooks only.
 
-    -- Hook go_to_menu for MP leave detection: when a player quits to menu
-    -- during an MP match, notify the opponent immediately.
     pcall(function()
         if G.FUNCS and G.FUNCS.go_to_menu then
             local _original_go_to_menu = G.FUNCS.go_to_menu
-            ---@diagnostic disable-next-line: duplicate-set-field
 r 4 2981 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 63
+l 59
                 pcall(function()
                     if G and G.GAME and G.GAME.multiplayer and bom_rejoin and bom_rejoin.on_quit_to_menu
                         and bom_rejoin.on_quit_to_menu() then
                         return
                     end
                     if G and G.GAME and G.GAME.multiplayer then
-                        -- Send return_to_menu so server notifies opponent
                         if bom_core and bom_core.send then
                             bom_core.send({ type = "return_to_menu" })
                         end
-                        -- Clean up MP state
                         if bom_ui then bom_ui.destroy_match_hud() end
                         G.GAME.multiplayer = nil
-                        -- Disconnect (we're leaving, not staying in lobby)
                         if bom_core and bom_core.disconnect then bom_core.disconnect() end
                         if bom_match and bom_match.reset then bom_match.reset() end
                     end
@@ -201,7 +185,6 @@ l 63
     if MP.replay and MP.replay.init then pcall(MP.replay.init) end
     if MP.playback and MP.playback.init then pcall(MP.playback.init) end
 
-    -- Do NOT auto-connect; connection happens when user enters lobby
 end
 function MP.update(dt)
     if AndroidWS then AndroidWS.poll() end

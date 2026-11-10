@@ -5,14 +5,8 @@ base 8
 c 1
 s 60
 c 676
-l 11
-    -- =========================================
-    -- NEW MODDED CHALLENGES (21-30)
-    -- FEATURE: Reworked all challenges for balance and proper restrictions (Session 151)
-    -- =========================================
+l 5
     {
-        -- Bankruptcy: Zero economy run — no income, no interest, start broke
-        -- Strategy: rely entirely on free tags and voucher-less play
         name = 'Bankruptcy',
         id = 'c_bankruptcy_1',
         rules = {
@@ -53,7 +47,7 @@ l 5
                 {id = 'j_rough_gem'},
 r 8 90 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 8 91 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 19
+l 17
                 {id = 'c_temperance'},
             },
             banned_tags = {
@@ -65,8 +59,6 @@ l 19
         }
     },
     {
-        -- The Gauntlet: Extreme precision — 2 hands, 1 discard, but strong joker support
-        -- FIX: Was 1 hand + 0 discards = impossible. Now 2 hands + 1 discard with Blueprint
         name = 'The Gauntlet',
         id = 'c_gauntlet_1',
         rules = {
@@ -100,7 +92,7 @@ l 3
                 {id = 'j_merry_andy'},
                 {id = 'j_drunkard'},
 r 8 616 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 18
+l 16
             },
             banned_tags = {
             },
@@ -111,8 +103,6 @@ l 18
         }
     },
     {
-        -- Tiny Hands: Small hand size but high mult joker to compensate
-        -- FIX: Was 3 hand size + no jokers = impossible first blind. Now starts with Fibonacci
         name = 'Tiny Hands',
         id = 'c_tiny_hands_1',
         rules = {
@@ -141,7 +131,7 @@ l 4
                 {id = 'j_juggler'},
 r 8 306 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 8 616 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 30
+l 29
                 {id = 'j_stuntman'},
             },
             banned_tags = {
@@ -152,7 +142,6 @@ l 30
         }
     },
     {
-        -- Heavy Hitter: Face cards only, 3 hands, 0 discards — Baron provides consistent mult
         name = 'Heavy Hitter',
         id = 'c_heavy_hitter_1',
         rules = {
@@ -194,13 +183,11 @@ l 2
             },
             banned_other = {
 r 8 249 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 12
+l 10
             }
         }
     },
     {
-        -- Glass Cannon: All glass cards + Glass Joker, high risk high reward
-        -- Properly bans all enhancement-changing consumables that would remove glass
         name = 'Glass Cannon',
         id = 'c_glass_cannon_1',
         rules = {
@@ -240,7 +227,7 @@ l 1
                 {id = 'j_vampire'},
 r 8 512 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 8 459 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 15
+l 13
                 {id = 'v_illusion'},
             },
             banned_tags = {
@@ -250,8 +237,6 @@ l 15
         }
     },
     {
-        -- The Collector: Fill 10 joker slots — all eternal, 0 discards, learn to adapt
-        -- Bans discard-related jokers since 0 discards
         name = 'The Collector',
         id = 'c_collector_1',
         rules = {
@@ -273,7 +258,7 @@ l 14
         },
         deck = {
 r 8 46 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 38
+l 36
         },
         restrictions = {
             banned_cards = {
@@ -292,8 +277,6 @@ l 38
         }
     },
     {
-        -- Wildcard: All wild cards, Smeared Joker — flushes are trivial, but scoring is the challenge
-        -- Bans Vampire (would strip wild), bans enhancement tarots that overwrite wild
         name = 'Wildcard',
         id = 'c_wildcard_1',
         rules = {
@@ -321,7 +304,7 @@ l 6
                 {id = 'c_magician'},
                 {id = 'c_chariot'},
 r 8 499 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 19
+l 16
                 {id = 'c_empress'},
                 {id = 'c_devil'},
                 {id = 'c_tower'},
@@ -334,9 +317,6 @@ l 19
         }
     },
     {
-        -- Speed Run: Race to Ante 8 — lots of hands but tiny economy and forced fast play
-        -- FIX: Reworked from old nonsensical version. Now: 5 hands, 1 discard, no money generation,
-        -- forced to play efficiently with Splash joker (all cards count in scoring)
         name = 'Speed Run',
         id = 'c_speed_run_1',
         rules = {
@@ -382,7 +362,7 @@ r 8 92 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
                 {id = 'j_golden'},
 r 8 95 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 17
+l 15
                 {id = 'j_rocket'},
             },
             banned_tags = {
@@ -394,8 +374,6 @@ l 17
         }
     },
     {
-        -- The Alchemist: Consumables-only strategy, no shop jokers, rely on tarots/planets/spectrals
-        -- Properly bans all joker acquisition methods
         name = 'The Alchemist',
         id = 'c_alchemist_1',
         rules = {
@@ -452,13 +430,11 @@ l 4
             },
             banned_other = {
 r 8 732 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 25
+l 23
             }
         }
     },
     {
-        -- Duality: Two suits only (Hearts + Spades), hand size 4 — must build flushes/pairs from limited pool
-        -- Bans standard packs that would add other suits, bans cards that add non-H/S cards
         name = 'Duality',
         id = 'c_duality_1',
         rules = {

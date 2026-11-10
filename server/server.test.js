@@ -1,20 +1,12 @@
-// ARCH: Server unit tests using Node built-in test runner (node:test)
-// Run: node --test server.test.js
-// Run: npm test
 
 const { describe, it, after } = require('node:test');
 const assert = require('node:assert/strict');
 
-// server.js starts listening on require — use a unique port to avoid conflicts
-process.env.PORT = '0';  // port 0 = OS picks a free port
+process.env.PORT = '0';
 const { createMatchState, isBlindPvp, createRoom, generateCode, validateMessage, isRateLimited, server, wss } = require('./server.js');
 
-// Close the HTTP + WS servers after all tests so the process exits cleanly
 after(() => { wss.close(); server.close(); });
 
-// ============================================
-// createMatchState
-// ============================================
 describe('createMatchState', () => {
   it('returns default state with no settings', () => {
     const m = createMatchState();
@@ -44,9 +36,6 @@ describe('createMatchState', () => {
   });
 });
 
-// ============================================
-// isBlindPvp
-// ============================================
 describe('isBlindPvp', () => {
   it('returns false in vanilla mode always', () => {
     const m = createMatchState({ mode: 'vanilla' });
@@ -58,7 +47,7 @@ describe('isBlindPvp', () => {
     const m = createMatchState({ mode: 'attrition' });
     m.pvpStartAnte = 1;
     assert.equal(isBlindPvp(m, 2, 'L'), true);
-    assert.equal(isBlindPvp(m, 1, 'L'), false);  // not > pvpStartAnte
+    assert.equal(isBlindPvp(m, 1, 'L'), false);
   });
 
   it('returns false for non-L blinds in attrition', () => {
@@ -69,14 +58,11 @@ describe('isBlindPvp', () => {
 
   it('handles showdown mode', () => {
     const m = createMatchState({ mode: 'showdown' });
-    assert.equal(isBlindPvp(m, 3, 'S'), true);   // ante > 2
-    assert.equal(isBlindPvp(m, 2, 'L'), false);   // ante not > 2
+    assert.equal(isBlindPvp(m, 3, 'S'), true);
+    assert.equal(isBlindPvp(m, 2, 'L'), false);
   });
 });
 
-// ============================================
-// createRoom
-// ============================================
 describe('createRoom', () => {
   it('creates room with expected structure', () => {
     const r = createRoom('ABCD');
@@ -89,9 +75,6 @@ describe('createRoom', () => {
   });
 });
 
-// ============================================
-// generateCode
-// ============================================
 describe('generateCode', () => {
   it('returns a 4-character string', () => {
     const code = generateCode();
@@ -112,9 +95,6 @@ describe('generateCode', () => {
   });
 });
 
-// ============================================
-// validateMessage — Stage 1 input validation
-// ============================================
 describe('validateMessage', () => {
   it('accepts a valid create_room message', () => {
     assert.equal(validateMessage({ type: 'create_room' }, 20), null);
@@ -163,7 +143,6 @@ describe('validateMessage', () => {
     assert.ok(err && err.includes('mode'), `expected mode error, got: ${err}`);
   });
 
-  // Stage 4: sabotage + taunt relay validation
   it('accepts valid sabotage', () => {
     assert.equal(validateMessage({ type: 'sabotage', sabotage_id: 'sleep' }, 40), null);
   });
@@ -183,9 +162,6 @@ describe('validateMessage', () => {
   });
 });
 
-// ============================================
-// isRateLimited — Stage 1 rate limiting
-// ============================================
 describe('isRateLimited', () => {
   it('allows messages under the per-second limit', () => {
     const rl = { msgCount: 0, msgWindowStart: Date.now(), createCount: 0, createWindowStart: Date.now() };

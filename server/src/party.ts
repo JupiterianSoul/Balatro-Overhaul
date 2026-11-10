@@ -1316,7 +1316,7 @@ export function handleRejoinMsg(ws: WS, msg: Msg, type: 'check_rejoin' | 'rejoin
   if (old && old !== ws) {
     detach(p, pid);
     D.sendTo(old, { type: 'session_replaced' });
-    try { old.close(4000, 'session_replaced'); } catch { /* closed */ }
+    try { old.close(4000, 'session_replaced'); } catch {  }
   }
   attach(p, pid, ws);
   scheduleHold(p);

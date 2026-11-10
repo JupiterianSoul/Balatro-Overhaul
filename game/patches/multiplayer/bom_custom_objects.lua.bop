@@ -675,7 +675,7 @@ local function mp_joker_calc(self, key, context)
             local h, d = shortcut_status(self)
             if h > 0 or d > 0 then
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 165
+l 161
                     func = function()
                         if h > 0 then ease_hands_played(h) end
                         if d > 0 then ease_discard(d, nil, true) end
@@ -783,7 +783,6 @@ local function patch_card_behavior()
         if not O.set_ability_wrapped then
             O.set_ability_wrapped = true
             local original_set_ability = Card.set_ability
-            ---@diagnostic disable-next-line: duplicate-set-field
             Card.set_ability = function(self, center, ...)
                 local r = original_set_ability(self, center, ...)
                 local k = self.config and self.config.center_key
@@ -794,7 +793,6 @@ local function patch_card_behavior()
             end
         end
         local original_load = Card.load
-        ---@diagnostic disable-next-line: duplicate-set-field
         Card.load = function(self, cardTable, other_card)
             pcall(function()
                 local sf = cardTable and cardTable.save_fields
@@ -813,7 +811,6 @@ local function patch_card_behavior()
 
     pcall(function()
         local original_update = Card.update
-        ---@diagnostic disable-next-line: duplicate-set-field
         Card.update = function(self, dt)
             if not self or not self.ability then return end
             original_update(self, dt)
@@ -833,7 +830,6 @@ local function patch_card_behavior()
 
     pcall(function()
         local original_calculate_joker = Card.calculate_joker
-        ---@diagnostic disable-next-line: duplicate-set-field
         Card.calculate_joker = function(self, context)
             if self and self.ability and self.ability.mp_sticker_unreliable and G and G.GAME and G.GAME.current_round then
                 if (G.GAME.current_round.hands_left or 0) == 0 and not self.ability.mp_phantom then return nil end
@@ -842,7 +838,7 @@ local function patch_card_behavior()
             local ret = original_calculate_joker(self, context)
             if key and DEFS[key] and context then
 r 3 1094 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 51
+l 49
                 local ok, r = pcall(mp_joker_calc, self, key, context)
                 if ok then ret = r or ret elseif mp_log then mp_log.warn('BOM_OBJECTS', 'joker calc failed: %s', tostring(r)) end
             end
@@ -863,7 +859,6 @@ l 51
 
     pcall(function()
         local original_dollar_bonus = Card.calculate_dollar_bonus
-        ---@diagnostic disable-next-line: duplicate-set-field
         Card.calculate_dollar_bonus = function(self)
             if key_of(self) == 'j_mp_envy' then
                 if self.debuff or not mp_jokers_on() then return nil end
@@ -877,7 +872,6 @@ l 51
 
     pcall(function()
         local original_generate_ui = Card.generate_UIBox_ability_table
-        ---@diagnostic disable-next-line: duplicate-set-field
         Card.generate_UIBox_ability_table = function(self, vars_only, ...)
             if vars_only then return original_generate_ui(self, vars_only, ...) end
             local ui = nil
@@ -922,7 +916,7 @@ l 25
                     specific_vars = v
                 end
 r 15 1170 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 66
+l 63
                 for _, b in ipairs(build_custom_badges(card) or {}) do
                     local dup = false
                     for _, x in ipairs(badges) do if x == b then dup = true end end
@@ -935,7 +929,6 @@ l 66
 
     pcall(function()
         local original_set_cost = Card.set_cost
-        ---@diagnostic disable-next-line: duplicate-set-field
         Card.set_cost = function(self)
             original_set_cost(self)
             if self and self.ability and self.ability.mp_sticker_persistent then
@@ -947,7 +940,6 @@ l 66
 
     pcall(function()
         local original_sell_card = Card.sell_card
-        ---@diagnostic disable-next-line: duplicate-set-field
         Card.sell_card = function(self)
             local is_persistent = self and self.ability and self.ability.mp_sticker_persistent
             local persistent_price = is_persistent and (self.ability.mp_sell_price or self.sell_cost or 0) or 0
@@ -988,7 +980,6 @@ l 66
     pcall(function()
         if G and G.FUNCS and G.FUNCS.can_sell_card then
             local original_can_sell_card = G.FUNCS.can_sell_card
-            ---@diagnostic disable-next-line: duplicate-set-field
 r 4 2122 %20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
                 if e and e.config and e.config.ref_table and e.config.ref_table.ability and e.config.ref_table.ability.mp_sticker_persistent then

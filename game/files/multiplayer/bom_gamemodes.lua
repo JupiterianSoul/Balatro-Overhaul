@@ -1,15 +1,6 @@
--- ============================================
--- MULTIPLAYER GAMEMODES - Ported from BalatroMultiplayer v0.3.3
--- Defines gameplay rules for nemesis, faceoff, ascension.
--- Each gamemode specifies: PvP blind logic, banned items, lives, info.
--- No SMODS dependency - plain Lua tables.
--- ============================================
 
 local bom_gamemodes = {}
 
--- ============================================
--- GAMEMODE REGISTRY
--- ============================================
 
 bom_gamemodes.registry = {}
 
@@ -35,7 +26,6 @@ function bom_gamemodes.get_all_keys()
     return keys
 end
 
--- FEATURE: Display list for lobby UI - returns { {key=..., name=...}, ... }
 function bom_gamemodes.get_display_list()
     local list = {}
     for k, gm in pairs(bom_gamemodes.registry) do
@@ -55,12 +45,6 @@ function bom_gamemodes.rule_text(key)
     return gm and gm.rule or nil
 end
 
--- ============================================
--- GAMEMODE: NEMESIS
--- Standard competitive mode. Ante 1 is solo; Ante 2+ boss blinds are PvP.
--- 4 lives, last player standing wins.
--- (Formerly "Attrition")
--- ============================================
 
 bom_gamemodes.register({
     key = "nemesis",
@@ -109,12 +93,6 @@ bom_gamemodes.register({
     },
 })
 
--- ============================================
--- GAMEMODE: FACEOFF
--- ALL blinds become PvP after a configurable ante threshold.
--- Higher pressure, every blind is Nemesis past the threshold.
--- (Formerly "Showdown")
--- ============================================
 
 bom_gamemodes.register({
     key = "faceoff",
@@ -160,14 +138,6 @@ bom_gamemodes.register({
     },
 })
 
--- ============================================
--- GAMEMODE: ASCENSION
--- No PvP blinds. Both players play independently.
--- The player who reaches the farthest round wins.
--- If tied on round, the player with the highest score on their
--- latest blind wins. No win screen after beating a boss - the match
--- continues until one player loses.
--- ============================================
 
 bom_gamemodes.register({
     key = "ascension",
@@ -178,11 +148,11 @@ bom_gamemodes.register({
     default_lives = 1,
 
     is_blind_pvp = function(self, ante, blind, settings)
-        return false  -- No PvP in Ascension
+        return false
     end,
 
     get_blinds_by_ante = function(self, ante, settings)
-        return nil, nil, nil  -- All vanilla blinds
+        return nil, nil, nil
     end,
 
     banned_jokers = {},
@@ -193,32 +163,25 @@ bom_gamemodes.register({
     banned_blinds = {},
 })
 
--- ============================================
--- HELPERS
--- ============================================
 
--- Get the active gamemode object for the current match
 function bom_gamemodes.get_active()
     if not bom_match then return nil end
     local mode = bom_match.get_mode()
     return bom_gamemodes.registry[mode]
 end
 
--- Check if the current blind is PvP using the active gamemode
 function bom_gamemodes.is_blind_pvp(ante, blind, settings)
     local gm = bom_gamemodes.get_active()
     if not gm or not gm.is_blind_pvp then return false end
     return gm:is_blind_pvp(ante, blind, settings)
 end
 
--- Get blind overrides for the current gamemode
 function bom_gamemodes.get_blinds_by_ante(ante, settings)
     local gm = bom_gamemodes.get_active()
     if not gm or not gm.get_blinds_by_ante then return nil, nil, nil end
     return gm:get_blinds_by_ante(ante, settings)
 end
 
--- Apply gamemode-specific banned items to G.GAME.banned_keys
 function bom_gamemodes.apply_bans()
     local gm = bom_gamemodes.get_active()
     if not gm then return end
@@ -245,11 +208,10 @@ function bom_gamemodes.apply_bans()
     mp_log.info("BOM_GAMEMODES", "applied bans for gamemode: %s", gm.key)
 end
 
--- Get default lives for the active gamemode
 function bom_gamemodes.get_default_lives()
     local gm = bom_gamemodes.get_active()
     if gm and gm.default_lives then return gm.default_lives end
-    return 4  -- fallback
+    return 4
 end
 
 return bom_gamemodes

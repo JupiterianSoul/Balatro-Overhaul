@@ -42,8 +42,7 @@ c 26
 s 1
 r 3 1986 %20%20%20%20%20%20%20%20 -
 c 17
-l 2
-    -- FIX: Guard nil FRAME — defensive against partially-initialized Moveables
+l 1
     if not self.FRAME then return end
 c 10
 s 1

@@ -2,12 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 12
--- ============================================
--- BOM_UI_OVERLAYS — Sabotage picker, taunts, disconnect banners, error dialog,
---                   version mismatch, connecting screen, cleanup
--- FEATURE: Split from bom_ui.lua for maintainability
--- ============================================
+l 7
 
 local M = {}
 
@@ -16,7 +11,7 @@ function M.init(bom_ui)
         if not G or not G.FUNCS or not G.FUNCS.overlay_menu then return end
         G.SETTINGS = G.SETTINGS or {}
 r 4 1381 %20%20%20%20%20%20%20%20 -
-l 34
+l 30
         bom_ui.overlay({definition = definition})
         G[ref_name] = G.OVERLAY_MENU
     end
@@ -34,10 +29,6 @@ l 34
         end
     end
 
-    -- ============================================
-    -- SABOTAGE PICKER SCREEN
-    -- FEATURE: Redesigned — card-style bordered columns, name + description + PICK button
-    -- ============================================
 
     function bom_ui.show_sabotage_picker(picks, on_chosen)
         if not G then return end
@@ -53,13 +44,12 @@ l 34
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 63
+l 55
             blocking = false,
             blockable = false,
             func = function()
                 if G.BOM_SABOTAGE_OVERLAY then return true end
 
-                -- Build card-style column for each sabotage option
                 local card_nodes = {}
                 for i, pick in ipairs(picks) do
                     card_nodes[#card_nodes + 1] = {
@@ -67,20 +57,16 @@ l 63
                             colour = G.C.PURPLE, r = 0.09, minw = 2.2 }, nodes = {
                         { n = G.UIT.C, config = { align = "cm", padding = 0.07,
                             colour = G.C.BLACK, r = 0.07, minw = 2.0, minh = 2.8 }, nodes = {
-                            -- Sabotage name
                             { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
                                 { n = G.UIT.T, config = { text = pick.name or "???",
                                     scale = 0.28, colour = G.C.PURPLE, shadow = true } },
                             }},
-                            -- Thin name/desc separator
                             { n = G.UIT.R, config = { align = "cm", minh = 0.015, minw = 1.8,
                                 colour = { 0.55, 0.15, 0.55, 0.5 }, padding = 0.03 }, nodes = {} },
-                            -- Description
                             { n = G.UIT.R, config = { align = "cm", padding = 0.06, minh = 1.4 }, nodes = {
                                 { n = G.UIT.T, config = { text = pick.desc or "",
                                     scale = 0.22, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
                             }},
-                            -- PICK button
                             { n = G.UIT.R, config = { align = "cm", padding = 0.06 }, nodes = {
                                 UIBox_button({ label = { mod_loc("PICK") },
                                     button = "mp_pick_sabotage_" .. i,
@@ -112,9 +98,6 @@ l 63
         _hide_mp_overlay("BOM_SABOTAGE_OVERLAY")
     end
 
-    -- ============================================
-    -- SABOTAGE RECEIVED NOTIFICATION
-    -- ============================================
 
     function bom_ui.show_sabotage_received(name)
 r 1 112 %20%20%20%20%20%20%20%20 -
@@ -144,7 +127,7 @@ l 23
                 G.BOM_SABOTAGE_TOAST = overlay
 
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 48
+l 45
                     trigger = 'after',
                     delay = 2,
                     func = function()
@@ -157,9 +140,6 @@ l 48
         }))
     end
 
-    -- ============================================
-    -- TAUNT SYSTEM
-    -- ============================================
 
     function bom_ui.send_taunt()
         if not G then return end
@@ -217,7 +197,7 @@ l 20
                 G.BOM_TAUNT_TOAST = overlay
 
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 17
+l 14
                     trigger = 'after',
                     delay = 2,
                     func = function()
@@ -230,9 +210,6 @@ l 17
         }))
     end
 
-    -- ============================================
-    -- DISCONNECT BANNERS
-    -- ============================================
 
     function bom_ui.show_disconnect_banner()
 r 1 112 %20%20%20%20%20%20%20%20 -
@@ -296,7 +273,7 @@ l 11
                 end)
 
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 33
+l 29
                     trigger = 'after',
                     delay = 0.6,
                     func = function()
@@ -320,10 +297,6 @@ l 33
         }))
     end
 
-    -- ============================================
-    -- ERROR DIALOG
-    -- FEATURE: Redesigned — clean overlay with red header, message, OK button
-    -- ============================================
 
     function bom_ui.show_error(msg)
         G.FUNCS.mp_dismiss_error = function()
@@ -332,7 +305,7 @@ l 33
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 82
+l 76
             blocking = false,
             blockable = false,
             func = function()
@@ -377,9 +350,6 @@ l 82
         end
     end
 
-    -- ============================================
-    -- CLEANUP — Remove all MP overlays
-    -- ============================================
 
     function bom_ui.cleanup()
         bom_ui.hide_searching_screen()
@@ -405,9 +375,6 @@ l 82
         end
     end
 
-    -- ============================================
-    -- VERSION MISMATCH POPUP
-    -- ============================================
 
     function bom_ui.show_version_mismatch(my_version, their_version)
         pcall(function()
@@ -417,7 +384,7 @@ l 82
 
 r 1 112 %20%20%20%20%20%20%20%20 -
 r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 53
+l 50
             blocking = false,
             blockable = false,
             func = function()
@@ -443,9 +410,6 @@ l 53
         }))
     end
 
-    -- ============================================
-    -- CONNECTING SCREEN
-    -- ============================================
 
     function bom_ui.show_connecting_screen()
         if not G or not G.FUNCS then return end

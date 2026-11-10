@@ -10,8 +10,7 @@ l 1
 
 c 20
 s 1
-l 5
-    -- FIX: pcall-protect newSource so a missing sound file doesn't crash the thread
+l 4
     local ok, s = pcall(function()
         return {sound = love.audio.newSource("resources/sounds/"..args.sound_code..'.ogg', should_stream and "stream" or 'static')}
     end)

@@ -2,16 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 327
--- ============================================
--- JUKEBOX v3.0 — Custom Music Player
--- ============================================
--- Drop .ogg files into resources/sounds/jukebox/
--- Songs keep their original filenames.
--- When enabled, replaces game music with your playlist.
--- Supports: play in order, shuffle, enable/disable songs,
---           play/pause, skip forward/back, pagination.
--- ============================================
+l 312
 
 local JUKEBOX_DIR = "resources/sounds/jukebox"
 local MY_MUSIC_DIR = "music"
@@ -23,9 +14,6 @@ local PLAYABLE = {ogg = true, mp3 = true, wav = true, flac = true}
 local CONVERTIBLE = {opus = true, oga = true, m4a = true, aac = true, wma = true, webm = true, mp4 = true, mka = true,
     aif = true, aiff = true, ape = true, wv = true, ac3 = true, amr = true, ["3gp"] = true, alac = true}
 
--- ============================================
--- MODULE STATE
--- ============================================
 local Jukebox = {
     initialized  = false,
     enabled      = false,
@@ -314,9 +302,6 @@ local function scan_songs()
     return found
 end
 
--- ============================================
--- PLAYLIST MANAGEMENT
--- ============================================
 local function rebuild_playlist()
     local old_idx = (Jukebox.playlist_pos > 0 and Jukebox.playlist_pos <= #Jukebox.playlist)
         and Jukebox.playlist[Jukebox.playlist_pos] or nil
@@ -331,7 +316,7 @@ local function rebuild_playlist()
     if Jukebox.shuffle and #Jukebox.playlist > 1 then
         for i = #Jukebox.playlist, 2, -1 do
 r 12 214 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 1589
+l 1543
             Jukebox.playlist[i], Jukebox.playlist[j] = Jukebox.playlist[j], Jukebox.playlist[i]
         end
     end
@@ -366,9 +351,6 @@ local function open_source(song)
     return nil
 end
 
--- ============================================
--- PLAYBACK
--- ============================================
 local function music_volume()
     local v = 1
     pcall(function()
@@ -390,7 +372,6 @@ local function stop_playback()
     Jukebox.song_name = "None"
 end
 
--- Fade state
 local FadeState = {
     active = false,
     fade_out_source = nil,
@@ -407,23 +388,19 @@ local function play_at(pos)
     local song = current_song()
     if not song then return false end
 
-    -- If currently playing, fade out first then fade in the new song
     if Jukebox.source and Jukebox.playing then
-        -- Start fade out of current source
         FadeState.active = true
         FadeState.fade_out_source = Jukebox.source
         FadeState.fade_timer = 0
         FadeState.pending_pos = pos
         FadeState.fade_in = false
         FadeState.fade_in_timer = 0
-        -- Detach current source so stop_playback won't kill it yet
         Jukebox.source = nil
         Jukebox.playing = false
         Jukebox.paused = false
         return true
     end
 
-    -- No current playback - just start directly
     stop_playback()
 
     local src = open_source(song)
@@ -480,9 +457,6 @@ local function toggle_pause()
     end
 end
 
--- ============================================
--- PERSISTENCE
--- ============================================
 local function save_settings()
     pcall(function()
         if not G or not G.SETTINGS then return end
@@ -494,7 +468,6 @@ local function save_settings()
         for _, s in ipairs(Jukebox.songs) do
             disabled[s.id] = (not s.enabled) or nil
         end
-        -- Save current song id for restoration on restart
         local cur_song_id = nil
         pcall(function()
             local cs = current_song()
@@ -513,7 +486,6 @@ local function save_settings()
     end)
 end
 
--- ============================================
 local WORKER_CODE = [[
 require("love.filesystem")
 local jobs = love.thread.getChannel("jukebox_jobs")
@@ -835,8 +807,6 @@ local function remove_song(idx)
     return ok
 end
 
--- INIT
--- ============================================
 local function jukebox_init()
     if Jukebox.initialized then return true end
     if not G then return false end
@@ -861,7 +831,6 @@ local function jukebox_init()
     rebuild_playlist()
 
     if Jukebox.enabled and #Jukebox.playlist > 0 then
-        -- Restore saved song position if available
         local start_pos = 1
         pcall(function()
             if G.SETTINGS.JUKEBOX and G.SETTINGS.JUKEBOX.current_song then
@@ -882,9 +851,6 @@ local function jukebox_init()
     return true
 end
 
--- ============================================
--- FRAME UPDATE (called from main.lua)
--- ============================================
 local function clock(secs)
     secs = math.max(0, math.floor(tonumber(secs) or 0))
     return string.format("%d:%02d", math.floor(secs / 60), secs % 60)
@@ -909,26 +875,21 @@ local function jukebox_update(dt)
     pcall(poll_worker)
     pcall(update_info, dt)
 
-    -- Global flag for modulate_sound() to silence game music
     G.JUKEBOX_ACTIVE = Jukebox.enabled and #Jukebox.playlist > 0
 
-    -- Handle fade transitions
     if FadeState.active then
         FadeState.fade_timer = FadeState.fade_timer + dt
         local progress = math.min(FadeState.fade_timer / FadeState.fade_duration, 1)
 
-        -- Fade out old source
         if FadeState.fade_out_source and not FadeState.fade_in then
             local vol = music_volume() * (1 - progress)
             pcall(function() FadeState.fade_out_source:setVolume(math.max(0, vol)) end)
 
             if progress >= 1 then
-                -- Fade out complete - stop and release old source
                 pcall(function() FadeState.fade_out_source:stop() end)
                 pcall(function() FadeState.fade_out_source:release() end)
                 FadeState.fade_out_source = nil
 
-                -- Now start the new song with fade in
                 if FadeState.pending_pos then
                     local song_idx = Jukebox.playlist[FadeState.pending_pos]
                     local song = song_idx and Jukebox.songs[song_idx]
@@ -936,7 +897,7 @@ local function jukebox_update(dt)
                         local src = open_source(song)
                         if src then
                             src:setLooping(false)
-                            src:setVolume(0) -- Start silent for fade in
+                            src:setVolume(0)
                             love.audio.play(src)
                             Jukebox.source = src
                             Jukebox.playing = true
@@ -961,7 +922,6 @@ local function jukebox_update(dt)
             end
         end
 
-        -- Fade in new source
         if FadeState.fade_in and Jukebox.source then
             FadeState.fade_in_timer = FadeState.fade_in_timer + dt
             local in_progress = math.min(FadeState.fade_in_timer / FadeState.fade_duration, 1)
@@ -969,40 +929,29 @@ local function jukebox_update(dt)
             pcall(function() Jukebox.source:setVolume(vol) end)
 
             if in_progress >= 1 then
-                -- Fade in complete
                 FadeState.active = false
                 FadeState.fade_in = false
                 FadeState.pending_pos = nil
             end
         end
 
-        return -- Don't do normal update during fade
+        return
     end
 
     if not Jukebox.enabled or not Jukebox.playing then return end
     if not Jukebox.source then return end
 
-    -- Sync volume with game settings
     pcall(function() Jukebox.source:setVolume(music_volume()) end)
 
-    -- Auto-advance when song finishes
     local ok, still = pcall(function() return Jukebox.source:isPlaying() end)
     if ok and not still and not Jukebox.paused then
         skip_next()
     end
 end
 
--- ============================================
--- UI REFRESH HELPER
--- ============================================
--- Forward declaration so refresh_ui can call create_jukebox_ui defined below
 local create_jukebox_ui
 
 refresh_ui = function()
-    -- FIX: In-place UIBox swap — no exit/reopen animation.
-    -- Previous version closed the overlay_menu and reopened it via
-    -- G.E_MANAGER events, which played the overlay open animation
-    -- on every button click (visible "window reappears" flash).
     if not G or not G.OVERLAY_MENU or G.OVERLAY_MENU == true then return end
     if not create_jukebox_ui then return end
     local win = rawget(_G, "UIK") and UIK._win
@@ -1012,9 +961,6 @@ refresh_ui = function()
     pcall(UIK.refresh)
 end
 
--- ============================================
--- UI BUILDER
--- ============================================
 local SOURCES = {
     {name = "Free Music Archive", url = "https://freemusicarchive.org/", note = "Creative Commons songs, check each licence"},
     {name = "ccMixter", url = "https://ccmixter.org/", note = "Creative Commons remixes and instrumentals"},
@@ -1312,9 +1258,6 @@ create_jukebox_ui = function(tab)
     }
 end
 
--- ============================================
--- BUTTON CALLBACKS
--- ============================================
 G.FUNCS = G.FUNCS or {}
 
 G.FUNCS.jukebox_toggle_enabled = function()
@@ -1364,13 +1307,11 @@ G.FUNCS.jukebox_play_song = function(e)
 
     if not Jukebox.enabled then Jukebox.enabled = true end
 
-    -- Enable song if disabled
     if not Jukebox.songs[idx].enabled then
         Jukebox.songs[idx].enabled = true
         rebuild_playlist()
     end
 
-    -- Find in playlist and play
     for i, pi in ipairs(Jukebox.playlist) do
         if pi == idx then play_at(i); break end
     end
@@ -1384,7 +1325,6 @@ G.FUNCS.jukebox_toggle_song = function(e)
 
     Jukebox.songs[idx].enabled = not Jukebox.songs[idx].enabled
 
-    -- Check if we just disabled the currently playing song
     local was = (Jukebox.playlist_pos > 0 and Jukebox.playlist_pos <= #Jukebox.playlist)
         and Jukebox.playlist[Jukebox.playlist_pos] or nil
 
@@ -1420,7 +1360,6 @@ local function show_window(def)
     return true
 end
 
--- Open jukebox overlay
 G.FUNCS.open_jukebox = function()
     pcall(function()
         jukebox_init()
@@ -1923,7 +1862,7 @@ local function mini_refresh_settings()
         G.OVERLAY_MENU = UIBox{definition = def, config = cfg}
 r 4 1353 %20%20%20%20%20%20%20%20 -
 r 4 1355 %20%20%20%20%20%20%20%20 -
-l 229
+l 221
         old:remove()
     end
 end
@@ -1957,9 +1896,6 @@ G.FUNCS.jukebox_mini_reset = function()
     save_settings()
 end
 
--- ============================================
--- EXPOSE UPDATE FOR main.lua
--- ============================================
 G.JUKEBOX_UPDATE = function(dt)
     jukebox_update(dt)
     local ok, err = pcall(mini_update, dt)
@@ -1968,12 +1904,7 @@ end
 G.JUKEBOX_MINI = Mini
 G.JUKEBOX_STATE = Jukebox
 
--- ============================================
--- REGISTER UI FUNCTION
--- ============================================
 G.UIDEF = G.UIDEF or {}
--- When the Jukebox tab is clicked, immediately trigger the overlay (second window)
--- instead of rendering the player inside the flat settings tab area.
 G.UIDEF.jukebox_tab = function()
     jukebox_init()
     local m = mini_cfg()

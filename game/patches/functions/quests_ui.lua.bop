@@ -2,21 +2,14 @@ BOP 1
 eol lf
 final 1
 base 0
-l 30
--- ============================================
--- QUEST UI for Balatro V10.5
--- Quest menu with 3 tabs: Daily, Weekly, Repeatable
--- Progress bars, claim buttons, reset timers
--- ============================================
+l 21
 
--- ===== QUEST UI STATE =====
 local QuestUI = {
   current_tab = "daily",
   current_page = 1,
   items_per_page = 4,
 }
 
--- ===== DIFFICULTY COLORS (function to avoid nil G.C at load time) =====
 local function get_difficulty_color(difficulty)
   if not G or not G.C then return {1,1,1,1} end
   if difficulty == "easy" then return G.C.GREEN end
@@ -26,9 +19,7 @@ local function get_difficulty_color(difficulty)
   return G.C.WHITE
 end
 
--- ===== CREATE QUEST MENU =====
 function create_UIBox_quest_menu()
-  -- Safety check - return a simple message if QuestManager not available
   if not QuestManager then
     return create_UIBox_generic_options({
       back_func = 'exit_overlay_menu',
@@ -38,14 +29,13 @@ l 2
           {n=G.UIT.T, config={text = mod_loc("QUESTS"), scale = 0.55, colour = G.C.GOLD, shadow = true}}
         }},
 r 15 71 %20%20%20%20%20%20%20%20 -
-l 15
+l 13
           {n=G.UIT.T, config={text = mod_loc("Play a run to unlock quests!"), scale = 0.35, colour = G.C.WHITE}}
         }},
       }
     })
   end
 
-  -- Safe init calls
   pcall(function() QuestManager.init() end)
   pcall(function() QuestManager.check_daily_reset() end)
   pcall(function() QuestManager.check_weekly_reset() end)
@@ -53,15 +43,13 @@ l 15
   return create_UIBox_generic_options({
     back_func = 'exit_overlay_menu',
     contents = {
-      -- Title
 r 15 71 %20%20%20%20%20%20 -
-l 4
+l 3
         {n=G.UIT.T, config={text = mod_loc("QUESTS"), scale = 0.78, colour = G.C.GOLD, shadow = true}}
       }},
 
-      -- Tabs
 r 15 71 %20%20%20%20%20%20 -
-l 266
+l 244
         create_tabs({
           tabs = {
             {
@@ -92,7 +80,6 @@ l 266
   })
 end
 
--- Helper function for Tavern integration (shows quest tabs directly)
 function create_quest_menu_main()
   if not QuestManager then return {n=G.UIT.ROOT, config={align = "cm"}, nodes={{n=G.UIT.T, config={text = mod_loc("Loading..."), scale = 0.4}}}} end
   QuestManager.init()
@@ -130,7 +117,6 @@ function create_quest_menu_main()
   }}
 end
 
--- ===== CREATE QUEST TAB =====
 function create_quest_tab(tab_type)
   QuestUI.current_tab = tab_type
   QuestUI.current_page = 1
@@ -143,14 +129,12 @@ function create_quest_tab(tab_type)
 
   local profile = G.PROFILES[G.SETTINGS.profile]
   if not profile or not profile.quests then
-    -- Force reinitialize for this profile (may have switched profiles)
     if QuestManager then
       QuestManager.initialized = false
       pcall(function() QuestManager.init() end)
       pcall(function() QuestManager.check_daily_reset() end)
       pcall(function() QuestManager.check_weekly_reset() end)
     end
-    -- Re-fetch profile
     profile = G.PROFILES[G.SETTINGS.profile]
     if not profile or not profile.quests then
       return {n=G.UIT.ROOT, config={align = "cm", padding = 0.1, colour = G.C.CLEAR}, nodes={
@@ -177,7 +161,6 @@ function create_quest_tab(tab_type)
     completed_text = mod_loc("Total Completed: ") .. (profile.quests.total_quests_completed or 0)
   end
 
-  -- Build quest cards
   local quest_nodes = {}
   for i, quest in ipairs(quests) do
     if i <= QuestUI.items_per_page then
@@ -185,7 +168,6 @@ function create_quest_tab(tab_type)
     end
   end
 
-  -- If no quests, show message
   if #quest_nodes == 0 then
     table.insert(quest_nodes, {n=G.UIT.R, config={align = "cm", padding = 0.17}, nodes={
       {n=G.UIT.T, config={text = mod_loc("No quests available"), scale = 0.442, colour = G.C.WHITE}}
@@ -193,7 +175,6 @@ function create_quest_tab(tab_type)
   end
 
   return {n=G.UIT.ROOT, config={align = "cm", padding = 0.0425, colour = G.C.CLEAR, minw = 7.735, minh = 6.0775}, nodes={
-    -- Header with reset timer
     {n=G.UIT.R, config={align = "cm", padding = 0.0255}, nodes={
       {n=G.UIT.C, config={align = "cl", minw = 3.8675}, nodes={
         {n=G.UIT.T, config={text = mod_loc(string.upper(tab_type) .. " QUESTS"), scale = 0.442, colour = G.C.WHITE, shadow = true}}
@@ -203,27 +184,22 @@ function create_quest_tab(tab_type)
       }},
     }},
 
-    -- Divider
     {n=G.UIT.R, config={align = "cm", padding = 0.017, minh = 0.017, minw = 7.735, colour = G.C.L_BLACK}, nodes={}},
 
-    -- Quest cards
     {n=G.UIT.R, config={align = "tm", padding = 0.0255}, nodes={
       {n=G.UIT.C, config={align = "tm", padding = 0.017}, nodes=quest_nodes}
     }},
 
-    -- Footer with completion count
     {n=G.UIT.R, config={align = "cm", padding = 0.0425}, nodes={
       {n=G.UIT.T, config={text = completed_text, scale = 0.3315, colour = G.C.WHITE}}
     }},
 
-    -- Reroll button (repeatable tab only)
     tab_type == "repeatable" and {n=G.UIT.R, config={align = "cm", padding = 0.0425}, nodes={
       UIBox_button({label = {mod_loc("Reroll Quests")}, button = 'reroll_repeatable_quests', minw = 3.315, minh = 0.663, colour = G.C.ORANGE, scale = 0.387})
     }} or nil,
   }}
 end
 
--- ===== CREATE QUEST CARD =====
 function create_quest_card(quest, index)
   if not quest then return nil end
 
@@ -247,9 +223,7 @@ function create_quest_card(quest, index)
   local difficulty_color = get_difficulty_color(quest.difficulty)
   local bar_color = quest.completed and G.C.GREEN or G.C.BLUE
 
-  -- Build the quest card
   local card_nodes = {
-    -- Row 1: Name + Status
     {n=G.UIT.R, config={align = "cm", padding = 0.017}, nodes={
       {n=G.UIT.C, config={align = "cl", minw = 4.7515}, nodes={
         {n=G.UIT.T, config={text = mod_loc(quest.name), scale = 0.387, colour = G.C.WHITE, shadow = true}}
@@ -259,14 +233,12 @@ function create_quest_card(quest, index)
       }},
     }},
 
-    -- Row 2: Description
     {n=G.UIT.R, config={align = "cm", padding = 0.0085}, nodes={
       {n=G.UIT.C, config={align = "cl", minw = 6.9615}, nodes={
         {n=G.UIT.T, config={text = mod_loc(quest.description), scale = 0.309, colour = G.C.WHITE}}
       }},
     }},
 
-    -- Row 3: Progress bar
     {n=G.UIT.R, config={align = "cm", padding = 0.0255}, nodes={
       {n=G.UIT.C, config={align = "cl", minw = 6.0775, minh = 0.276, r = 0.085, colour = G.C.L_BLACK, emboss = 0.017}, nodes={
         {n=G.UIT.C, config={align = "cl", minw = 6.0775 * progress_percent, minh = 0.221, r = 0.068, colour = bar_color}, nodes={}}
@@ -276,7 +248,6 @@ function create_quest_card(quest, index)
       }},
     }},
 
-    -- Row 4: Progress text + Rewards
     {n=G.UIT.R, config={align = "cm", padding = 0.017}, nodes={
       {n=G.UIT.C, config={align = "cl", minw = 2.7625}, nodes={
         {n=G.UIT.T, config={text = mod_loc("Progress: ") .. quest.progress .. "/" .. quest.target, scale = 0.276, colour = G.C.UI.TEXT_LIGHT}}
@@ -287,7 +258,6 @@ function create_quest_card(quest, index)
     }},
   }
 
-  -- Add claim button if completed but not claimed
   if quest.completed and not quest.claimed then
     table.insert(card_nodes, {n=G.UIT.R, config={align = "cm", padding = 0.0255}, nodes={
       {n=G.UIT.C, config={
@@ -309,11 +279,8 @@ function create_quest_card(quest, index)
   return {n=G.UIT.R, config={align = "cm", padding = 0.0425, r = 0.085, colour = G.C.L_BLACK, emboss = 0.0255, minw = 7.1825}, nodes=card_nodes}
 end
 
--- ===== BUTTON CALLBACKS =====
 
--- Combined Tavern Hub - Simple button navigation (no nested tabs)
 function create_UIBox_tavern_hub()
-  -- Safe initialization with pcall
   pcall(function()
     if QuestManager and QuestManager.init then QuestManager.init() end
   end)
@@ -327,38 +294,32 @@ function create_UIBox_tavern_hub()
   return create_UIBox_generic_options({
     back_func = 'exit_overlay_menu',
     contents = {
-      -- Title
 r 15 723 %20%20%20%20%20%20 -
-l 3
+l 2
         {n=G.UIT.T, config={text = mod_loc("TAVERN"), scale = 0.6, colour = G.C.GOLD, shadow = true}}
       }},
-      -- Quest Button
 r 15 723 %20%20%20%20%20%20 -
-l 3
+l 2
         UIBox_button({label = {mod_loc("QUESTS")}, button = 'open_quest_menu', minw = 5, minh = 1, colour = G.C.BLUE}),
       }},
-      -- Profile Button
 r 15 2760 %20%20%20%20%20%20 -
-l 3
+l 2
         UIBox_button({label = {mod_loc("PROFILE")}, button = 'open_profile_menu', minw = 5, minh = 1, colour = G.C.GREEN}),
       }},
-      -- Shop Button
 r 15 2760 %20%20%20%20%20%20 -
-l 3
+l 2
         UIBox_button({label = {mod_loc("SHOP")}, button = 'open_shop_menu', minw = 5, minh = 1, colour = G.C.MONEY}),
       }},
-      -- FEATURE: Deck Creator Button in Tavern
 r 15 2760 %20%20%20%20%20%20 -
 l 2
         UIBox_button({label = {string.upper("Deck Creator")}, button = 'open_deck_creator', minw = 5, minh = 1, colour = G.C.PURPLE}),
       }},
 r 15 2760 %20%20%20%20%20%20 -
-l 3
+l 2
         rawget(_G, "JokerForge") and JokerForge.tavern_button() or nil,
       }},
-      -- FEATURE: Seed Library Button in Tavern
 r 15 2760 %20%20%20%20%20%20 -
-l 11
+l 10
         UIBox_button({label = {mod_loc("SEED LIBRARY")}, button = 'open_seed_library', minw = 5, minh = 1, colour = G.C.SECONDARY_SET.Spectral}),
       }},
       rawget(_G, "Minigames") and Minigames.tavern_button and Minigames.tavern_button() or nil,
@@ -367,7 +328,6 @@ l 11
   })
 end
 
--- Simplified Quest Tab content
 function create_tavern_quest_tab()
   return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.CLEAR, minw = 5, minh = 4}, nodes={
 r 15 723 %20%20%20%20 -
@@ -379,13 +339,12 @@ l 2
       {n=G.UIT.T, config={text = mod_loc("Complete quests to earn rewards!"), scale = 0.3, colour = G.C.WHITE}}
     }},
 r 15 71 %20%20%20%20 -
-l 8
+l 7
       {n=G.UIT.T, config={text = mod_loc("Check back after playing a run"), scale = 0.25, colour = G.C.GREY}}
     }},
   }}
 end
 
--- Simple Profile Menu (7 tabs)
 function create_tavern_shop_tab()
   return {n=G.UIT.ROOT, config={align = "cm", colour = G.C.CLEAR, minw = 5, minh = 4}, nodes={
 r 15 723 %20%20%20%20 -
@@ -393,26 +352,24 @@ l 2
       {n=G.UIT.T, config={text = mod_loc("SHOP"), scale = 0.4, colour = G.C.GOLD}}
     }},
 r 15 71 %20%20%20%20 -
-l 7
+l 6
       {n=G.UIT.T, config={text = mod_loc("Buy cosmetics with Balacoin!"), scale = 0.3, colour = G.C.WHITE}}
     }},
   }}
 end
 
--- Open Tavern Hub
 G.FUNCS.open_tavern_hub = function(e)
 r 4 1381 %20%20 -
 l 1
   local success, err = pcall(function()
 r 4 1382 %20%20%20%20 -
-l 26
+l 24
       definition = create_UIBox_tavern_hub()
     }
   end)
   if not success then
     print("[TAVERN] Error opening tavern: " .. tostring(err))
   end
-  -- FEATURE: Sub-showcase on first visit
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_tavern then
       G.FUNCS.trigger_sub_showcase_tavern()
@@ -430,18 +387,16 @@ G.FUNCS.shop_titles = function(e) play_sound('highlight1') end
 G.FUNCS.shop_banners = function(e) play_sound('highlight1') end
 G.FUNCS.shop_badges = function(e) play_sound('highlight1') end
 
--- Open quest menu
 G.FUNCS.open_quest_menu = function(e)
 r 4 1381 %20%20 -
 l 1
   local success, err = pcall(function()
 r 4 1382 %20%20%20%20 -
-l 19
+l 16
       definition = create_UIBox_quest_menu()
     }
   end)
   if not success then print("[QUEST] Error: " .. tostring(err)) end
-  -- FEATURE: Sub-showcase on first visit
   pcall(function()
     if G.FUNCS.trigger_sub_showcase_quests then
       G.FUNCS.trigger_sub_showcase_quests()
@@ -449,16 +404,14 @@ l 19
   end)
 end
 
--- Reroll repeatable quests
 G.FUNCS.reroll_repeatable_quests = function(e)
   if QuestManager and QuestManager.reroll_repeatable_quests then
     play_sound('highlight1')
     local ok, err = pcall(function() QuestManager.reroll_repeatable_quests() end)
     if not ok then print("[QUESTS] Reroll error: " .. tostring(err)) end
-    -- Refresh the menu
 r 4 1375 %20%20%20%20 -
 r 1 112 %20%20%20%20 -
-l 22
+l 20
       trigger = 'after',
       delay = 0.3,
       func = function()
@@ -470,7 +423,6 @@ l 22
   end
 end
 
--- Claim quest reward
 G.FUNCS.claim_quest_reward = function(e)
   if not e or not e.config or not e.config.ref_table then return end
 
@@ -480,10 +432,9 @@ G.FUNCS.claim_quest_reward = function(e)
   if QuestManager and QuestManager.claim_quest then
     local success = QuestManager.claim_quest(quest)
     if success then
-      -- Refresh the menu
 r 4 1375 %20%20%20%20%20%20 -
 r 1 112 %20%20%20%20%20%20 -
-l 206
+l 185
         trigger = 'after',
         delay = 0.3,
         func = function()
@@ -496,8 +447,6 @@ l 206
   end
 end
 
--- ===== FEATURE: SEED LIBRARY =====
--- Save/load/name/edit seeds with deck+stake, paste clipboard, quickplay
 
 local function seed_library_file()
   local L = rawget(_G, "MODLOADER")
@@ -505,7 +454,6 @@ local function seed_library_file()
 end
 local SEED_LIBRARY_MAX  = 20
 
--- Format per line: SEED|NAME|DECK_NAME|STAKE_NUM
 local function seed_library_load()
   local seeds = {}
   pcall(function()
@@ -551,18 +499,14 @@ local function seed_library_get()
 end
 local function seed_library_invalidate() _seed_lib_cache = nil end
 
--- Page state
 local _seed_lib_page        = 1
 local SEEDS_PER_PAGE        = 3
--- Rename state
 local _seed_lib_rename_target = nil
--- Edit state
 local _seed_edit_target     = nil
-local _seed_edit_deck_opts  = {}   -- list of {name, key}
+local _seed_edit_deck_opts  = {}
 local _seed_edit_deck_idx   = 1
 local _seed_edit_stake      = 1
 
--- Build deck options list
 local function seed_lib_get_deck_opts()
   local opts = {}
   if G.P_CENTER_POOLS and G.P_CENTER_POOLS.Back then
@@ -574,7 +518,6 @@ local function seed_lib_get_deck_opts()
   return opts
 end
 
--- Stake display name: "1 - White Stake"
 local function seed_lib_stake_name(n)
   local ok, result = pcall(function()
     return localize{type='name_text', set='Stake', key=G.P_CENTER_POOLS.Stake[n].key}
@@ -582,7 +525,6 @@ local function seed_lib_stake_name(n)
   return (ok and result and result ~= "") and (n .. " - " .. result) or tostring(n)
 end
 
--- FEATURE: Compact Seed Library UI
 function create_UIBox_seed_library()
   local seeds = seed_library_get()
   local total_pages = math.max(1, math.ceil(#seeds / SEEDS_PER_PAGE))
@@ -593,17 +535,14 @@ function create_UIBox_seed_library()
 
   local rows = {}
 
-  -- Title
   table.insert(rows, {n=G.UIT.R, config={align="cm", padding=0.08}, nodes={
     {n=G.UIT.T, config={text=mod_loc("SEED LIBRARY"), scale=0.65, colour=G.C.GOLD, shadow=true}}
   }})
 
-  -- Paste from clipboard button
   table.insert(rows, {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
     UIBox_button({label={mod_loc("Paste from Clipboard")}, button='seed_lib_paste_clipboard', minw=7.0, minh=0.97, colour=G.C.GREEN, scale=0.52}),
   }})
 
-  -- Empty state or seed cards
   if #seeds == 0 then
     table.insert(rows, {n=G.UIT.R, config={align="cm", padding=0.13}, nodes={
       {n=G.UIT.T, config={text=mod_loc("No seeds saved yet"), scale=0.45, colour=G.C.UI.TEXT_INACTIVE}}
@@ -616,13 +555,10 @@ function create_UIBox_seed_library()
       local entry = seeds[i]
       if entry then
         local display_name = (entry.name ~= "" and entry.name) or (mod_loc("Seed") .. " #" .. i)
-        -- sub-info line: deck + stake if available, else just seed string
         local sub_info = entry.seed
         if entry.deck and entry.deck ~= "" then
           sub_info = sub_info .. "   " .. entry.deck .. "  ·  " .. mod_loc("Stake") .. " " .. (entry.stake or 1)
         end
-        -- Each seed is a G.UIT.R row (stacks vertically like all other rows);
-        -- inside: G.UIT.C card box; buttons row uses C wrappers for horizontal layout
         table.insert(rows, {n=G.UIT.R, config={align="cm", padding=0.04}, nodes={
           {n=G.UIT.C, config={align="cm", padding=0.05, r=0.08, colour=G.C.L_BLACK, emboss=0.04, minw=5.5}, nodes={
             {n=G.UIT.R, config={align="cl", padding=0.04}, nodes={
@@ -635,7 +571,6 @@ function create_UIBox_seed_library()
                 {n=G.UIT.T, config={text=sub_info, scale=0.31, colour=G.C.GOLD}},
               }},
             }},
-            -- Four buttons in a horizontal row (each wrapped in G.UIT.C)
             {n=G.UIT.R, config={align="cm", padding=0.04}, nodes={
               {n=G.UIT.C, config={align="cm", padding=0.02}, nodes={UIBox_button({label={mod_loc("Play")},   button='seed_lib_play_'..i,   minw=1.15, minh=0.58, colour=G.C.GREEN,  scale=0.36})}},
               {n=G.UIT.C, config={align="cm", padding=0.02}, nodes={UIBox_button({label={mod_loc("Edit")},   button='seed_lib_edit_'..i,   minw=1.15, minh=0.58, colour=G.C.BLUE,   scale=0.36})}},
@@ -648,7 +583,6 @@ function create_UIBox_seed_library()
     end
   end
 
-  -- Page navigation
   if total_pages > 1 then
     local page_options = {}
     for p = 1, total_pages do
@@ -661,7 +595,6 @@ function create_UIBox_seed_library()
     }})
   end
 
-  -- Footer count
   table.insert(rows, {n=G.UIT.R, config={align="cm", padding=0.04}, nodes={
     {n=G.UIT.T, config={text=#seeds.."/"..SEED_LIBRARY_MAX.." "..mod_loc("seeds saved"), scale=0.32, colour=G.C.UI.TEXT_INACTIVE}}
   }})
@@ -669,7 +602,6 @@ function create_UIBox_seed_library()
   return create_UIBox_generic_options({back_func='exit_overlay_menu', contents=rows})
 end
 
--- Open Seed Library
 G.FUNCS.open_seed_library = function(e)
   seed_library_invalidate()
   _seed_lib_page = 1
@@ -679,7 +611,6 @@ G.FUNCS.open_seed_library = function(e)
   G.FUNCS.overlay_menu{definition=create_UIBox_seed_library()}
 end
 
--- Refresh the seed library overlay
 local function seed_lib_refresh()
   G.E_MANAGER:add_event(Event({trigger='after', delay = 0, func=function()
     seed_library_invalidate()
@@ -688,15 +619,13 @@ local function seed_lib_refresh()
   end}))
 end
 
--- Page cycle callback
 G.FUNCS.seed_lib_page = function(args)
 r 4 603 %20%20 -
-l 184
+l 176
   _seed_lib_page = args.cycle_config.current_option
   seed_lib_refresh()
 end
 
--- Save current run seed + deck + stake — called from in-run Options screen
 G.FUNCS.seed_lib_save_current = function(e)
   if not G or not G.GAME or not G.GAME.pseudorandom or not G.GAME.pseudorandom.seed then
     pcall(function() play_sound('cancel') end)
@@ -710,7 +639,6 @@ G.FUNCS.seed_lib_save_current = function(e)
   local current_seed  = G.GAME.pseudorandom.seed
   local current_deck  = (G.GAME.selected_back and G.GAME.selected_back.name) or ""
   local current_stake = G.GAME.stake or 1
-  -- Duplicate check
   for _, entry in ipairs(seeds) do
     if entry.seed == current_seed then
       pcall(function() play_sound('cancel') end)
@@ -723,7 +651,6 @@ G.FUNCS.seed_lib_save_current = function(e)
   pcall(function() play_sound('timpani') end)
 end
 
--- Paste seed from clipboard
 G.FUNCS.seed_lib_paste_clipboard = function(e)
   local seeds = seed_library_get()
   if #seeds >= SEED_LIBRARY_MAX then
@@ -751,7 +678,6 @@ G.FUNCS.seed_lib_paste_clipboard = function(e)
   seed_lib_refresh()
 end
 
--- FEATURE: Seed Edit UI (change seed string + choose deck + stake)
 function create_UIBox_seed_edit(idx)
   local seeds = seed_library_get()
   local entry = seeds[idx] or {seed="", name="", deck="", stake=1}
@@ -843,12 +769,10 @@ G.FUNCS.seed_lib_edit_confirm = function(e)
   end}))
 end
 
--- Dynamic button handlers (Play/Edit/Rename/Delete per seed index)
 local _original_FUNCS_index = getmetatable(G.FUNCS) and getmetatable(G.FUNCS).__index
 if not getmetatable(G.FUNCS) then setmetatable(G.FUNCS, {}) end
 local _FUNCS_mt = getmetatable(G.FUNCS)
 _FUNCS_mt.__index = function(t, key)
-  -- seed_lib_play_N
   local play_idx = key:match("^seed_lib_play_(%d+)$")
   if play_idx then
     play_idx = tonumber(play_idx)
@@ -857,7 +781,6 @@ _FUNCS_mt.__index = function(t, key)
       local entry = seeds[play_idx]
       if not entry then return end
       if G.OVERLAY_MENU then G.OVERLAY_MENU:remove(); G.OVERLAY_MENU = nil end
-      -- Apply stored deck if set
       if entry.deck and entry.deck ~= "" then
         local center = get_deck_from_name(entry.deck)
         if center and center.unlocked then G.GAME.viewed_back = Back(center) end
@@ -868,7 +791,6 @@ _FUNCS_mt.__index = function(t, key)
       G.FUNCS.start_run(nil, {stake = math.max(1, math.min(max, tonumber(entry.stake) or 1)), seed = entry.seed})
     end
   end
-  -- seed_lib_edit_N
   local edit_idx = key:match("^seed_lib_edit_(%d+)$")
   if edit_idx then
     edit_idx = tonumber(edit_idx)
@@ -877,7 +799,7 @@ _FUNCS_mt.__index = function(t, key)
       local entry = seeds[edit_idx]
       if not entry then return end
 r 4 1375 %20%20%20%20%20%20 -
-l 15
+l 14
       G.E_MANAGER:add_event(Event({trigger='after', delay=0.1, func=function()
         _seed_edit_target = edit_idx
         G.FUNCS.overlay_menu{definition=create_UIBox_seed_edit(edit_idx)}
@@ -885,7 +807,6 @@ l 15
       end}))
     end
   end
-  -- seed_lib_rename_N
   local rename_idx = key:match("^seed_lib_rename_(%d+)$")
   if rename_idx then
     rename_idx = tonumber(rename_idx)
@@ -894,7 +815,7 @@ l 15
       local entry = seeds[rename_idx]
       if not entry then return end
 r 4 1375 %20%20%20%20%20%20 -
-l 91
+l 87
       G.E_MANAGER:add_event(Event({trigger='after', delay=0.1, func=function()
         _seed_lib_rename_target = rename_idx
         G._seed_rename_input = entry.name or ""
@@ -903,7 +824,6 @@ l 91
       end}))
     end
   end
-  -- seed_lib_delete_N
   local delete_idx = key:match("^seed_lib_delete_(%d+)$")
   if delete_idx then
     delete_idx = tonumber(delete_idx)
@@ -917,7 +837,6 @@ l 91
       end
     end
   end
-  -- Fallback
   if _original_FUNCS_index then
     if type(_original_FUNCS_index) == "function" then return _original_FUNCS_index(t, key)
     elseif type(_original_FUNCS_index) == "table" then return _original_FUNCS_index[key] end
@@ -925,7 +844,6 @@ l 91
   return nil
 end
 
--- FEATURE: Rename overlay (change library label, not the seed itself)
 function create_UIBox_seed_rename(idx, current_name, seed_text)
   return create_UIBox_generic_options({
     back_func = 'seed_lib_rename_cancel',
@@ -976,7 +894,6 @@ G.FUNCS.seed_lib_rename_confirm = function(e)
 end
 
 
--- ===== EXPORTS =====
 _G.QuestUI = QuestUI
 _G.create_UIBox_quest_menu = create_UIBox_quest_menu
 _G.create_quest_tab = create_quest_tab

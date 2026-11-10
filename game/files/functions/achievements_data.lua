@@ -1,14 +1,6 @@
-﻿-- ============================================
--- ACHIEVEMENT DEFINITIONS for Balatro v10.0
--- 85 achievements with safe unlock conditions
--- PROTOCOL: Full null-safety, no raw global access
--- ============================================
-
+﻿
 ACHIEVEMENT_DEFINITIONS = {}
 
--- ============================================
--- HELPER FUNCTION
--- ============================================
 
 local function add_achievement(data)
     if not data then return end
@@ -16,9 +8,6 @@ local function add_achievement(data)
     table.insert(ACHIEVEMENT_DEFINITIONS, data)
 end
 
--- ============================================
--- CATEGORY: PROGRESSION (15 achievements)
--- ============================================
 
 add_achievement({
     id = "ante_1",
@@ -202,9 +191,6 @@ add_achievement({
     reward_data = {id = "title_annihilator", name = "Annihilator"}
 })
 
--- ============================================
--- CATEGORY: SCORING (16 achievements)
--- ============================================
 
 add_achievement({
     id = "score_10k",
@@ -414,9 +400,6 @@ add_achievement({
     reward_data = {id = "title_perfect", name = "Perfect"}
 })
 
--- ============================================
--- CATEGORY: JOKER EXPERTISE (12 achievements)
--- ============================================
 
 add_achievement({
     id = "jokers_obtained_50",
@@ -574,9 +557,6 @@ add_achievement({
     reward_data = {id = "badge_trader", name = "Trader Badge"}
 })
 
--- ============================================
--- CATEGORY: DECK MASTERY (15 achievements)
--- ============================================
 
 add_achievement({
     id = "deck_win_b_red",
@@ -773,9 +753,6 @@ add_achievement({
     reward_data = {id = "badge_erratic_deck", name = "Erratic Deck Badge"}
 })
 
--- ============================================
--- CATEGORY: CHALLENGE MASTER (12 achievements)
--- ============================================
 
 add_achievement({
     id = "stake_white",
@@ -933,9 +910,6 @@ add_achievement({
     reward_data = {id = "title_efficient", name = "Efficient"}
 })
 
--- ============================================
--- CATEGORY: COLLECTION (8 achievements)
--- ============================================
 
 add_achievement({
     id = "money_100",
@@ -1041,9 +1015,6 @@ add_achievement({
     reward_data = {id = "badge_consumer", name = "Consumer Badge"}
 })
 
--- ============================================
--- CATEGORY: DAILY CHAMPION (5 achievements)
--- ============================================
 
 add_achievement({
     id = "daily_complete_1",
@@ -1110,9 +1081,6 @@ add_achievement({
     reward_data = {id = "back_daily", name = "Daily Champion Back"}
 })
 
--- ============================================
--- CATEGORY: SECRET (7 achievements)
--- ============================================
 
 add_achievement({
     id = "secret_mod_user",
@@ -1174,10 +1142,6 @@ add_achievement({
     reward_data = {id = "badge_broke", name = "Broke Badge"}
 })
 
--- ============================================
--- PROFILE ICON COLLECTION ACHIEVEMENTS
--- Unlocked by collecting joker profile icons
--- ============================================
 
 add_achievement({
     id = "icon_collector_1",
@@ -1277,9 +1241,6 @@ add_achievement({
     reward_data = {id = "title_full_court", name = "Grand Collector"}
 })
 
--- ============================================
--- Unlocked by collecting boss blind badges
--- ============================================
 
 add_achievement({
     id = "secret_999_dollars",
@@ -1326,13 +1287,7 @@ add_achievement({
     reward_data = {id = "title_lucky", name = "Lucky"}
 })
 
--- ============================================
--- NEW MODDED ACHIEVEMENTS (97 new, IDs 104-200)
--- ============================================
 
--- ============================================
--- CATEGORY: CREATIVE STAKES (8 achievements)
--- ============================================
 
 add_achievement({
     id = "stake_chaos", name = "Chaos Victory", description = "Win on Chaos Stake",
@@ -1370,9 +1325,6 @@ add_achievement({
     progress_required = 4, reward_type = "title", reward_data = {id = "title_creative_master", name = "Creative Master"}
 })
 
--- ============================================
--- CATEGORY: CHALLENGE COMPLETIONIST (10 achievements)
--- ============================================
 
 add_achievement({
     id = "challenge_first", name = "Challenger", description = "Win your first Challenge",
@@ -1425,9 +1377,6 @@ add_achievement({
     progress_required = 1, reward_type = "badge", reward_data = {id = "badge_alchemist", name = "Master Alchemist", icon = "badge_gold"}
 })
 
--- ============================================
--- CATEGORY: ECONOMY (8 achievements)
--- ============================================
 
 add_achievement({
     id = "money_2000", name = "Money $2K", description = "Have $2,000 at once",
@@ -1470,9 +1419,6 @@ add_achievement({
     progress_required = 500, reward_type = "title", reward_data = {id = "title_merchant", name = "Merchant Master"}
 })
 
--- ============================================
--- CATEGORY: HAND MASTERY (10 achievements)
--- ============================================
 
 add_achievement({
     id = "play_pair_100", name = "Pair Pro", description = "Play 100 Pair hands",
@@ -1525,9 +1471,6 @@ add_achievement({
     progress_required = 10000, reward_type = "title", reward_data = {id = "title_10k_hands", name = "Eternal Player"}
 })
 
--- ============================================
--- CATEGORY: CONSUMABLE MASTERY (10 achievements)
--- ============================================
 
 add_achievement({
     id = "tarots_50", name = "Tarot Reader", description = "Use 50 Tarot cards total",
@@ -1580,9 +1523,6 @@ add_achievement({
     progress_required = 1, reward_type = "title", reward_data = {id = "title_major_arcana", name = "Major Arcana"}
 })
 
--- ============================================
--- CATEGORY: JOKER ADVANCED (8 achievements)
--- ============================================
 
 add_achievement({
     id = "jokers_sold_200", name = "Joker Liquidator", description = "Sell 200 Jokers total",
@@ -1625,9 +1565,6 @@ add_achievement({
     progress_required = 3, reward_type = "title", reward_data = {id = "title_edition_variety", name = "Edition Collector"}
 })
 
--- ============================================
--- CATEGORY: BLIND EXPERTISE (8 achievements)
--- ============================================
 
 add_achievement({
     id = "blinds_beaten_500", name = "Blind Crusher", description = "Beat 500 blinds total",
@@ -1670,9 +1607,6 @@ add_achievement({
     progress_required = 50, reward_type = "title", reward_data = {id = "title_skip_master", name = "Skip Master"}
 })
 
--- ============================================
--- CATEGORY: ENDURANCE (8 achievements)
--- ============================================
 
 add_achievement({
     id = "ante_25", name = "Ante 25", description = "Reach Ante 25",
@@ -1715,9 +1649,6 @@ add_achievement({
     progress_required = 5, reward_type = "title", reward_data = {id = "title_streak_5", name = "On a Roll"}
 })
 
--- ============================================
--- CATEGORY: ENHANCEMENT & EDITION (8 achievements)
--- ============================================
 
 add_achievement({
     id = "enhance_50", name = "Enhancer", description = "Enhance 50 cards total",
@@ -1760,9 +1691,6 @@ add_achievement({
     progress_required = 5, reward_type = "badge", reward_data = {id = "badge_glass_cards", name = "Glass Collector", icon = "badge_silver"}
 })
 
--- ============================================
--- CATEGORY: QUEST MASTERY (6 achievements)
--- ============================================
 
 add_achievement({
     id = "quests_10", name = "Quest Beginner", description = "Complete 10 quests",
@@ -1795,9 +1723,6 @@ add_achievement({
     progress_required = 14, reward_type = "title", reward_data = {id = "title_two_week", name = "Two Week Warrior"}
 })
 
--- ============================================
--- CATEGORY: SECRET ADVANCED (13 achievements)
--- ============================================
 
 add_achievement({
     id = "secret_all_aces", name = "Ace High",
@@ -1891,9 +1816,6 @@ add_achievement({
     progress_required = 1, reward_type = "badge", reward_data = {id = "badge_full_spectrum", name = "Full Spectrum", icon = "badge_silver"}
 })
 
--- ============================================
--- CATEGORY: MULTIPLAYER (6 achievements)
--- ============================================
 
 add_achievement({
     id = "mp_first_blood",
@@ -2072,17 +1994,10 @@ end
 
 ACHIEVEMENT_CATEGORY_LIST = {"Runs", "Decks & Stakes", "Hands", "Jokers & Cards", "Overhaul", "Multiplayer", "Secret"}
 
--- ============================================
--- ACHIEVEMENT REGISTRY - Easy Add Framework
--- ============================================
 
 AchievementRegistry = AchievementRegistry or {}
 
----@brief Register a new achievement (easy framework for adding new ones)
----@param data table Achievement definition
----@return boolean Success
 function AchievementRegistry.register(data)
-    -- Validate required fields
     if not data then
         print("[ACHIEVEMENTS] ERROR: nil achievement data")
         return false
@@ -2100,7 +2015,6 @@ function AchievementRegistry.register(data)
         return false
     end
     
-    -- Set defaults for optional fields
     data.category = data.category or "Misc"
     data.rarity = data.rarity or "Common"
     data.is_secret = data.is_secret or false
@@ -2108,21 +2022,16 @@ function AchievementRegistry.register(data)
     data.progress_required = data.progress_required or 1
     data.order = data.order or (#ACHIEVEMENT_DEFINITIONS + 1)
     
-    -- Add to definitions
     add_achievement(data)
     
     print("[ACHIEVEMENTS] Registered: " .. data.name)
     return true
 end
 
----@brief Get total achievement count
----@return number count
 function AchievementRegistry.count()
     return #ACHIEVEMENT_DEFINITIONS
 end
 
----@brief Get all achievement IDs
----@return table ids
 function AchievementRegistry.get_all_ids()
     local ids = {}
     for i = 1, #ACHIEVEMENT_DEFINITIONS do

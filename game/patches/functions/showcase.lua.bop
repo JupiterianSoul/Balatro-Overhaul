@@ -2,17 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 37
--- ============================================================================
--- FEATURE: Overhaul Showcase — Guided Tour of All New Features
--- Uses the vanilla tutorial overlay system (G.OVERLAY_TUTORIAL) to walk
--- the player through every Overhaul feature with Jimbo explaining each one,
--- gray overlay dimming, and highlighted UI elements.
---
--- Triggered from Settings → "What's New" button, or auto on first launch.
--- Also provides sub-showcases that trigger when entering a feature for
--- the first time.
--- ============================================================================
+l 27
 
 local OVT = require "functions/showcase_text"
 mod_loc_register(OVT.STRINGS)
@@ -277,7 +267,7 @@ G.FUNCS.showcase_run_steps = function()
     end
 
 r 1 112 %20%20%20%20 -
-l 54
+l 41
         trigger = 'after',
         delay = 0.3,
         func = function()
@@ -295,11 +285,7 @@ l 54
     }), 'tutorial')
 end
 
--- ============================================================================
--- SECTION 7 — Sub-Showcase System (contextual Jimbo tips on first visit)
--- ============================================================================
 
---- Initialize the sub-showcase tracking table in settings
 local function ensure_sub_showcases_table()
     if not G or not G.SETTINGS then return end
     if not G.SETTINGS.sub_showcases_seen then
@@ -307,27 +293,18 @@ local function ensure_sub_showcases_table()
     end
 end
 
---- Check if a sub-showcase has already been shown
---- @param id string  Sub-showcase identifier (e.g. "tavern_quests")
---- @return boolean
 local function sub_showcase_seen(id)
     ensure_sub_showcases_table()
     if not G or not G.SETTINGS or not G.SETTINGS.sub_showcases_seen then return true end
     return G.SETTINGS.sub_showcases_seen[id] == true
 end
 
---- Mark a sub-showcase as seen
---- @param id string  Sub-showcase identifier
 local function mark_sub_showcase_seen(id)
     ensure_sub_showcases_table()
     if not G or not G.SETTINGS then return end
     G.SETTINGS.sub_showcases_seen[id] = true
 end
 
---- Run a sub-showcase with the given steps.
---- Each step is a table with {text_key, highlight_func (optional)}.
---- @param id string  Sub-showcase identifier for tracking
---- @param steps table  Array of {text_key=string, highlight=function|nil}
 local sub_showcase_in_menu = false
 
 local function end_sub_showcase()
@@ -344,7 +321,7 @@ r 4 2360 %20%20%20%20%20%20%20%20 -
 l 1
     end
 r 4 2361 %20%20%20%20 -
-l 25
+l 24
     release_tutorial_buttons()
 end
 
@@ -363,7 +340,6 @@ local function run_sub_showcase(id, steps)
     if sub_showcase_seen(id) then return end
     if G.SETTINGS and G.SETTINGS.overhaul_tips_off then return end
 
-    -- Don't run if another tutorial/showcase is active
     if G.OVERLAY_TUTORIAL then return end
     load_overhaul_text()
 
@@ -371,7 +347,7 @@ local function run_sub_showcase(id, steps)
     sub_showcase_in_menu = G.OVERLAY_MENU ~= nil
 
 r 4 2361 %20%20%20%20 -
-l 15
+l 14
     release_tutorial_buttons()
 
     local step_num = 1
@@ -386,7 +362,6 @@ l 15
         })
     end
 
-    -- Terminator
 r 1 112 %20%20%20%20 -
 l 5
         trigger = 'after',
@@ -400,7 +375,7 @@ r 4 2359 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 l 1
                 end)
 r 4 2360 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 154
+l 123
                 release_tutorial_buttons()
                 sub_showcase_in_menu = false
                 return true
@@ -411,70 +386,55 @@ l 154
     }), 'tutorial')
 end
 
--- ============================================================================
--- SECTION 8 — Sub-Showcase Triggers (called from feature entry points)
--- ============================================================================
 
---- Trigger sub-showcase when entering the Tavern hub
 G.FUNCS.trigger_sub_showcase_tavern = function()
     run_sub_showcase("casino_intro", {
         {text_key = "ovt_tip_casino"},
     })
 end
 
---- Trigger sub-showcase when entering the Quests tab
 G.FUNCS.trigger_sub_showcase_quests = function()
     run_sub_showcase("quests", {
         {text_key = "ovt_tip_quests"},
     })
 end
 
---- Trigger sub-showcase when entering the Profile
 G.FUNCS.trigger_sub_showcase_profile = function()
     run_sub_showcase("tailor", {
         {text_key = "ovt_tip_tailor"},
     })
 end
 
---- Trigger sub-showcase when entering the Balacoin Shop
 G.FUNCS.trigger_sub_showcase_shop = function()
     run_sub_showcase("market", {
         {text_key = "ovt_tip_market"},
     })
 end
 
---- Trigger sub-showcase when entering Achievements
 G.FUNCS.trigger_sub_showcase_achievements = function()
     run_sub_showcase("achievements", {
         {text_key = "ovt_tip_achievements"},
     })
 end
 
---- Trigger sub-showcase when entering Progression
 G.FUNCS.trigger_sub_showcase_progression = function()
     run_sub_showcase("progression", {
         {text_key = "ovt_tip_progression"},
     })
 end
 
---- Trigger sub-showcase when entering Collection
 G.FUNCS.trigger_sub_showcase_collection = function()
     run_sub_showcase("collection", {
         {text_key = "ovt_tip_collection"},
     })
 end
 
---- Trigger sub-showcase when entering Multiplayer
 G.FUNCS.trigger_sub_showcase_multiplayer = function()
     run_sub_showcase("multiplayer", {
         {text_key = "ovt_tip_multiplayer"},
     })
 end
 
---- Trigger sub-showcase when entering Settings (Game tab)
---- FIX: triggers on Settings, NOT in-run Options — presents each feature one by one
---- Each toggle and button gets its own step with highlight
---- Jimbo moves to center when presenting left-column cycles, stays left for middle/right columns
 G.FUNCS.trigger_sub_showcase_settings = function()
     run_sub_showcase("settings", {
         {text_key = "sc_sub_settings_welcome"},
@@ -486,95 +446,71 @@ G.FUNCS.trigger_sub_showcase_settings = function()
     })
 end
 
---- Trigger sub-showcase when entering Performance Settings
---- Left column (resolution, shader, particles, gc) → Jimbo on right
---- Right column (filter, canvas, culling, bg, heavy) → Jimbo on left
 G.FUNCS.trigger_sub_showcase_perf_settings = function()
     run_sub_showcase("performance", {
         {text_key = "ovt_tip_perf"},
     })
 end
 
---- Trigger sub-showcase when entering Optimizer Settings
---- Left column (toggles) → Jimbo on right
---- Right column (cycles/sliders) → Jimbo on left
 G.FUNCS.trigger_sub_showcase_optimizer_settings = function()
     run_sub_showcase("optimizer_settings", {
         {text_key = "sc_sub_opt_welcome"},
-        -- LEFT column (toggles) → Jimbo moves to right
         hl_step("sc_sub_opt_toggle",       "sc_opt_toggle",       5, OPT_BTNS),
         hl_step("sc_sub_opt_beginner",     "sc_opt_beginner",     5, OPT_BTNS),
         hl_step("sc_sub_opt_auto_compact", "sc_opt_auto_compact", 5, OPT_BTNS),
         hl_step("sc_sub_opt_discards",     "sc_opt_discards",     5, OPT_BTNS),
         hl_step("sc_sub_opt_outs",         "sc_opt_outs",         5, OPT_BTNS),
         hl_step("sc_sub_opt_joker_order",  "sc_opt_joker_order",  5, OPT_BTNS),
-        -- RIGHT column (cycles/sliders) → Jimbo moves to left
         hl_step("sc_sub_opt_mode",         "sc_opt_mode",        -5, OPT_BTNS),
         hl_step("sc_sub_opt_perf",         "sc_opt_perf",        -5, OPT_BTNS),
         hl_step("sc_sub_opt_scale",        "sc_opt_suggestions", -5, OPT_BTNS),
     })
 end
 
---- Trigger sub-showcase when Mod Menu opens
 G.FUNCS.trigger_sub_showcase_modmenu = function()
     run_sub_showcase("modmenu", {
         {text_key = "ovt_tip_cheats"},
     })
 end
 
---- Trigger sub-showcase when entering Custom Run Builder
 G.FUNCS.trigger_sub_showcase_custom_run = function()
     run_sub_showcase("custom_run", {
         {text_key = "sc_sub_custom_run"},
     })
 end
 
---- Trigger sub-showcase when entering Deck Creator
 G.FUNCS.trigger_sub_showcase_deck_creator = function()
     run_sub_showcase("deck_creator", {
         {text_key = "sc_sub_deck_creator"},
     })
 end
 
---- Trigger sub-showcase when opening the Jukebox
 G.FUNCS.trigger_sub_showcase_jukebox = function()
     run_sub_showcase("jukebox", {
         {text_key = rawget(_G, "RELEASE_BUILD") == true and "sc_sub_jukebox_own" or "sc_sub_jukebox"},
     })
 end
 
---- FEATURE: Trigger sub-showcase when opening the Seed Library
 G.FUNCS.trigger_sub_showcase_seed_library = function()
     run_sub_showcase("seed_library", {
         {text_key = "sc_sub_seed_library"},
     })
 end
 
--- ============================================================================
--- SECTION 9 — Integration: override skip_tutorial_section during showcase
--- ============================================================================
 
 local _original_skip_tutorial = G.FUNCS.skip_tutorial_section
 r 4 2354 - -
-l 80
-    -- If we're in showcase mode (no tutorial_progress.section set to vanilla values)
+l 64
     if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.overhaul then
-        -- We're in showcase mode — use our skip
         G.FUNCS.skip_showcase(e)
         return
     end
-    -- Otherwise, vanilla behavior
     if _original_skip_tutorial then
         _original_skip_tutorial(e)
     end
 end
 
--- ============================================================================
--- SECTION 10 — First-Launch Language Selector
--- ============================================================================
 
---- Show a language selection screen on first launch.
---- After selection, starts the showcase automatically.
 G.FUNCS.show_language_selector = function()
     if not G then return end
 
@@ -615,7 +551,6 @@ G.FUNCS.first_language_keep = function()
     G.FUNCS.select_first_language({config = {ref_table = {lang_code = G.SETTINGS and G.SETTINGS.language or "en-us"}}})
 end
 
---- Handle language selection from first-launch screen
 G.FUNCS.select_first_language = function(e)
     if not e or not e.config or not e.config.ref_table then return end
     local lang_code = e.config.ref_table.lang_code
@@ -623,20 +558,13 @@ G.FUNCS.select_first_language = function(e)
     local modded = rawget(_G, 'SMODS') ~= nil
     local same_language = G.SETTINGS and G.SETTINGS.language == lang_code
 
-    -- Mark language as chosen FIRST so check_first_launch (called from rebuilt
-    -- main_menu) does not re-open the language picker.
     if G.SETTINGS then
         G.SETTINGS.language = lang_code
         G.SETTINGS.language_chosen = true
         pcall(function() G:save_settings() end)
     end
 
-    -- FIX: Skip the screenwipe animation entirely — it was rendering the
-    -- screenwipecard at a broken scale (parent transform issue from the language
-    -- picker overlay context). Just close the picker, reload localization, and
-    -- rebuild the main menu directly. Clean and works.
 
-    -- Close language picker overlay
 r 23 214 %20%20%20%20 -
 l 6
         pcall(function() G.OVERLAY_MENU:remove() end)
@@ -646,7 +574,7 @@ l 6
     if modded then
         if same_language then
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 26
+l 23
                 trigger = 'after',
                 delay = 0.4,
                 no_delete = true,
@@ -666,16 +594,13 @@ l 26
         return
     end
 
-    -- Reload localization for the new language
     pcall(function()
         if G.set_language then G:set_language() end
     end)
 
-    -- Defer rebuild + showcase to a clean event tick so the click handler
-    -- finishes and the overlay removal is fully processed.
 r 4 229 %20%20%20%20 -
 r 1 112 %20%20%20%20 -
-l 15
+l 14
         trigger = 'after',
         delay = 0.1,
         no_delete = true,
@@ -690,9 +615,8 @@ l 15
                 if G.main_menu then G:main_menu() end
             end)
             if not built then return true end
-            -- After the menu is rebuilt in the new language, start the showcase.
 r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 28
+l 25
                 trigger = 'after',
                 delay = 0.4,
                 no_delete = true,
@@ -714,15 +638,12 @@ l 28
     }))
 end
 
---- Check if we should show the language selector on startup.
---- Called from main menu initialization.
 G.FUNCS.check_first_launch = function()
     if not G or not G.SETTINGS then return end
-    -- Only show on very first launch (never chose language before)
     if G.SETTINGS.language_chosen and G.SETTINGS.showcase_after_restart and not G.SETTINGS.showcase_seen then
         G.SETTINGS.showcase_after_restart = nil
 r 1 112 %20%20%20%20%20%20%20%20 -
-l 16
+l 14
             trigger = 'after',
             delay = 0.8,
             func = function()
@@ -737,19 +658,14 @@ l 16
     if G.SETTINGS.language_chosen then return end
     if G.SETTINGS.showcase_seen then return end
 
-    -- Mark language as chosen so this only runs once
-    -- (will be set properly when they pick a language)
 r 1 112 %20%20%20%20 -
-l 15
+l 12
         trigger = 'after',
         delay = 0.8,
         func = function()
             if not G or not G.SETTINGS then return true end
             if G.SETTINGS.language_chosen then return true end
             pcall(function()
-                -- FIX: Use overlay_menu() to create a proper UIBox instead of
-                -- assigning the raw UI definition table directly to G.OVERLAY_MENU.
-                -- Direct assignment caused crash: translate_container is nil on raw tables.
                 G.FUNCS.overlay_menu{definition = G.FUNCS.show_language_selector()}
             end)
             return true

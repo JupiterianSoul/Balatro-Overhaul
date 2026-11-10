@@ -249,10 +249,7 @@ l 5
             mp_sticker_persistent="Persistente",
             mp_sticker_unreliable="Poco fiable",
 c 372
-l 428
-            -- ==========================================
-            -- FEATURE: Overhaul Showcase text keys
-            -- ==========================================
+l 417
             sc_welcome={
                 "¡Hola! Bienvenido a",
                 "{C:attention}Balatro Overhaul{}.",
@@ -319,7 +316,6 @@ l 428
                 "desde {C:attention}Ajustes{} > {C:attention}Novedades{}.",
                 "¡Ahora ve a reventar algunas blinds!",
             },
-            -- FEATURE: Sub-showcase text keys (contextual Jimbo tips)
             sc_sub_tavern_intro={
                 "¡Bienvenido a la {C:blue}Taberna{}!",
                 "Este es tu centro principal.",
@@ -434,7 +430,6 @@ l 428
                 "¡Juega cara a cara contra",
                 "otro jugador en línea!",
             },
-            -- FEATURE: Settings sub-showcase (per-setting walkthrough)
             sc_sub_settings_welcome={
                 "¡Bienvenido a {C:attention}Ajustes{}!",
                 "Déjame mostrarte todas",
@@ -462,7 +457,6 @@ l 428
                 "{C:attention}Arrastrar para Selec.{}, {C:attention}Contador FPS{},",
                 "¡{C:attention}Modo Rendimiento{}, y más!",
             },
-            -- FEATURE: Individual toggle/button showcase steps
             sc_sub_tgl_modmenu={
                 "{C:attention}Desactivar los trucos{}: oculta",
                 "la opción Trucos y el botón",
@@ -528,7 +522,6 @@ l 428
                 "tu perfil de jugador, estadísticas",
                 "¡y progresión!",
             },
-            -- FEATURE: Performance Settings sub-showcase
             sc_sub_perf_welcome={
                 "¡Bienvenido a {C:attention}Ajustes de Rendimiento{}!",
                 "Ajusta estas opciones para obtener",
@@ -579,7 +572,6 @@ l 428
                 "salta animaciones largas de puntaje",
                 "cuando el total es muy grande.",
             },
-            -- FEATURE: Optimizer Settings sub-showcase
             sc_sub_opt_welcome={
                 "¡Bienvenido a {C:attention}Ajustes del Optimizador{}!",
                 "Configura cómo el Optimizador",
@@ -660,21 +652,18 @@ l 428
                 "añade tus canciones en",
                 "{C:attention}Mi música{} y escúchalas!",
             },
-            -- FEATURE: Badge Immunity sub-showcase
             sc_sub_badge_immunity={
                 "¡Equipa una {C:attention}Insignia de Boss{}!",
                 "Tu insignia {C:gold}desactiva{} el efecto",
                 "de ese boss por completo.",
                 "¡Revisa {C:attention}Perfil > Insignias{}!",
             },
-            -- FEATURE: Seed Library sub-showcase
             sc_sub_seed_library={
                 "¡Bienvenido a la {C:attention}Biblioteca de Seeds{}!",
                 "Guarda tus {C:gold}seeds{} favoritas,",
                 "{C:green}copia{} o {C:green}pega{} del portapapeles,",
                 "¡nómbralas y {C:blue}juega{} cuando quieras!",
             },
-            -- FEATURE: First-launch language selector
             sc_choose_language={
                 "Elige tu idioma:",
             },
