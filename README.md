@@ -164,6 +164,24 @@ The source is here, under the GPL v3. Balatro's own files are not: they belong t
 
 All the Overhaul's own code, art and text is free software under the [GNU GPL v3](LICENSE) (copyright and scope notes in [COPYRIGHT.md](COPYRIGHT.md)): you can use it, study it, change it and share it, as long as your version stays under the GPL with its source and keeps the credits. It does not cover Balatro, which belongs to LocalThunk and Playstack and is not included here, and the parts made by others keep their own licenses, see [LICENSES](LICENSES).
 
+### Licences of the projects the Overhaul is built on
+
+These keep their own authors and licences. Full texts are in [LICENSES](LICENSES), and the files that were ported are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+| Project | By | Licence | Used for |
+|---|---|---|---|
+| [Balatro Multiplayer](https://github.com/Balatro-Multiplayer/BalatroMultiplayer) | Virtualized and the BMP team | GPL v3 | The multiplayer is based on it |
+| [Steamodded](https://github.com/Steamodded/smods) | The Steamodded team | GPL v3 | Bundled and modified (changes in `game/files/smods/OVERHAUL_CHANGES.md`) |
+| [Balatro-DeckCreator](https://github.com/adambennett/Balatro-DeckCreator) | adambennett | GPL v3 | The Deck Creator is ported from it |
+| [Cryptid](https://github.com/MathIsFun0/Cryptid) | MathIsFun_ and the Cryptid team | GPL v3 | Some of the Deck Creator's random logic follows it |
+| [nativefs](https://github.com/megagrump/nativefs) | megagrump | MIT | File access, used by Steamodded |
+| [json.lua](https://github.com/rxi/json.lua) | rxi | MIT | JSON |
+| [Balatro Mod Index](https://github.com/skyline69/balatro-mod-index) | Efe and its contributors | MIT | The Workshop's list of mods |
+| [LOVE](https://love2d.org) 11.5 | The LOVE Development Team | zlib and others | The game engine |
+| [Lovely Injector](https://github.com/ethangreen-dev/lovely-injector) | ethangreen-dev | MIT | The Overhaul reads mods made for it |
+
+Balatro belongs to LocalThunk and Playstack and is not included.
+
 ## Credits
 
 Made by JupiterianSoul. Special thanks to Samlegeek63 and Monoceros for helping me test and find bugs !
