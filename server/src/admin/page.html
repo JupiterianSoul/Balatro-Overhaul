@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d2b2e">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="/admin/manifest.webmanifest">
+<link rel="icon" href="/admin/icon-192.png">
+<link rel="apple-touch-icon" href="/admin/icon-192.png">
+<title>Overhaul Admin</title>
+<style>
+:root {
+  --bg: #1d2b2e; --panel: #2a3b3f; --panel2: #33474c; --line: #41585e; --ink: #f4f1e6; --dim: #9fb3b3; --faint: #6f8686;
+  --red: #fe5f55; --blue: #2aa9ff; --green: #4bc292; --gold: #f3b958; --orange: #fda200; --purple: #a583c9;
+  --r: 10px; --pad: 14px; --tabh: 62px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+body { font: 15px/1.35 ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; overflow-x: hidden; }
+button, input, select { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+h2 { font-size: 13px; color: var(--gold); }
+h3 { font-size: 12px; color: var(--dim); }
+#app { min-height: 100%; display: flex; flex-direction: column; }
+header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 var(--pad); padding-top: env(safe-area-inset-top);
+  background: #17232680; backdrop-filter: blur(10px); border-bottom: 2px solid var(--line); }
+header h1 { font-size: 16px; color: var(--gold); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#stamp { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+#stamp i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); display: inline-block; }
+#stamp.stale { color: var(--red); } #stamp.stale i { background: var(--red); }
+#stamp.busy i { background: var(--gold); }
+main { flex: 1; padding: var(--pad); padding-bottom: calc(var(--tabh) + 24px + env(safe-area-inset-bottom)); max-width: 1180px; width: 100%; margin: 0 auto; }
+nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; height: calc(var(--tabh) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+  background: #172326; border-top: 2px solid var(--line); }
+nav button { flex: 1; border: 0; background: none; color: var(--dim); font-weight: 800; font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; min-width: 0; }
+nav button svg { width: 24px; height: 24px; display: block; }
+nav button.on { color: var(--ink); }
+nav button.on svg { color: var(--red); }
+.grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tile { background: var(--panel); border-radius: var(--r); padding: 12px; border-bottom: 3px solid #0003; min-width: 0; }
+.tile .k { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .v { font-size: 30px; font-weight: 800; line-height: 1.15; margin-top: 2px; }
+.tile .s { font-size: 12px; color: var(--dim); min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.red .v { color: var(--red); } .tile.blue .v { color: var(--blue); } .tile.green .v { color: var(--green); } .tile.gold .v { color: var(--gold); } .tile.purple .v { color: var(--purple); }
+section { margin-top: 18px; }
+section > h2 { margin: 0 2px 8px; display: flex; align-items: baseline; gap: 8px; }
+section > h2 small { font-size: 11px; color: var(--faint); font-weight: 700; letter-spacing: .02em; text-transform: none; }
+section > h2 { flex-wrap: wrap; row-gap: 0; }
+.card { background: var(--panel); border-radius: var(--r); padding: 12px; border-bottom: 3px solid #0003; }
+.rows { display: flex; flex-direction: column; gap: 8px; }
+.row { background: var(--panel); border-radius: var(--r); padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; border-bottom: 3px solid #0003; }
+button.row { width: 100%; border: 0; border-bottom: 3px solid #0003; text-align: left; cursor: pointer; }
+button.row:active { background: var(--panel2); }
+.row .n { flex: 1 1 62%; font-weight: 800; font-size: 16px; white-space: nowrap; overflow: hidden; display: flex; align-items: center; gap: 7px; min-width: 0; }
+.row .n span.t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row .n .chip { flex: none; }
+.row .m { flex: 1 1 40%; min-width: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .r { flex: 0 1 auto; margin-left: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; text-align: right; font-size: 12px; color: var(--dim); white-space: nowrap; }
+.row .r:empty { display: none; }
+.row .r b { display: block; font-size: 15px; color: var(--ink); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
+.dot.on { background: var(--green); box-shadow: 0 0 0 3px #4bc29233; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; background: var(--panel2); color: var(--ink); white-space: nowrap; }
+.chip.red { background: var(--red); color: #2b0d0b; } .chip.blue { background: var(--blue); color: #06243a; } .chip.green { background: var(--green); color: #0b2a1e; }
+.chip.gold { background: var(--gold); color: #33240a; } .chip.purple { background: var(--purple); color: #20122e; } .chip.dim { color: var(--dim); }
+.bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.bar input[type=search] { flex: 1 1 100%; min-width: 0; height: 46px; border-radius: var(--r); border: 2px solid var(--line); background: #172326; padding: 0 12px; outline: none; }
+.bar input[type=search]:focus { border-color: var(--blue); }
+.bar select, .bar #dir { flex: 1 1 0; min-width: 0; }
+.bar select { height: 46px; border-radius: var(--r); border: 2px solid var(--line); background: #172326; padding: 0 10px; }
+.seg { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; max-width: 100%; padding-bottom: 2px; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button { flex: none; height: 40px; padding: 0 14px; border-radius: 99px; border: 0; background: var(--panel); color: var(--dim); font-weight: 800; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; cursor: pointer; }
+.seg button.on { background: var(--red); color: #fff; }
+.btn { height: 46px; padding: 0 18px; border-radius: var(--r); border: 0; border-bottom: 3px solid #0004; background: var(--blue); color: #fff; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.btn.red { background: var(--red); } .btn.grey { background: var(--panel2); } .btn:disabled { opacity: .4; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
+.pager span { min-width: 120px; text-align: center; color: var(--dim); font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); padding: 4px 8px 6px 0; white-space: nowrap; }
+td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); vertical-align: top; }
+td.num, th.num { text-align: right; padding-right: 0; padding-left: 8px; white-space: nowrap; }
+.scroll { overflow-x: auto; }
+dl { margin: 0; }
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; font-size: 14px; }
+.kv dt { color: var(--dim); } .kv dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.meter { height: 10px; border-radius: 99px; background: #172326; overflow: hidden; margin-top: 6px; }
+.meter i { display: block; height: 100%; background: var(--green); border-radius: 99px; }
+.hbar { display: grid; grid-template-columns: minmax(70px, 34%) minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; padding: 4px 0; }
+.hbar .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbar .b { height: 12px; border-radius: 99px; background: #172326; overflow: hidden; }
+.hbar .b i { display: block; height: 100%; border-radius: 99px; background: var(--blue); }
+.hbar .x { color: var(--dim); min-width: 44px; text-align: right; }
+.chart { width: 100%; min-height: 60px; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart text { font: 700 11px ui-rounded, system-ui, sans-serif; fill: var(--dim); }
+.empty { color: var(--dim); text-align: center; padding: 22px 10px; font-size: 14px; }
+.note { color: var(--faint); font-size: 12px; margin: 8px 2px 0; }
+.two { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+#login { margin: auto; width: min(360px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 12px; text-align: center; }
+#login h1 { color: var(--gold); font-size: 22px; }
+#login input { height: 52px; border-radius: var(--r); border: 2px solid var(--line); background: #172326; padding: 0 14px; text-align: center; outline: none; }
+#login input:focus { border-color: var(--blue); }
+#login p { margin: 0; color: var(--red); min-height: 20px; font-size: 13px; }
+.back { display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px 0 8px; margin-bottom: 10px; border: 0; border-radius: 99px; background: var(--panel); color: var(--ink); font-weight: 800; letter-spacing: .05em; text-transform: uppercase; font-size: 12px; cursor: pointer; }
+.hero { display: flex; align-items: center; gap: 12px; }
+.hero .a { width: 54px; height: 54px; border-radius: 14px; background: var(--red); display: grid; place-items: center; font-size: 26px; font-weight: 800; color: #fff; flex: none; }
+.hero .t { min-width: 0; } .hero .t b { display: block; font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero .t span { color: var(--dim); font-size: 13px; }
+@media (min-width: 620px) {
+  .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .bar input[type=search] { flex: 2 1 240px; }
+  .bar select, .bar #dir { flex: 0 0 auto; }
+}
+@media (min-width: 900px) {
+  #app { padding-left: 190px; }
+  nav { top: 0; right: auto; width: 190px; height: auto; flex-direction: column; justify-content: flex-start; gap: 4px; padding: 64px 10px 10px; border-top: 0; border-right: 2px solid var(--line); }
+  nav button { flex: none; height: 46px; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 0 12px; border-radius: var(--r); font-size: 12px; }
+  nav button.on { background: var(--panel); }
+  main { padding-bottom: 30px; }
+  .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rows.wide { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile .v { font-size: 34px; }
+}
+@media (max-height: 480px) and (max-width: 899px) {
+  :root { --tabh: 46px; }
+  nav button svg { display: none; }
+  header { height: 44px; }
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+'use strict';
+const KEY = 'overhaul-admin-token';
+const S = { token: localStorage.getItem(KEY) || '', tab: 'home', more: 'installs', data: {}, at: {}, err: null, player: null, q: '', sort: 'last_seen', dir: 'desc', filter: '', page: 0, mpage: 0, range: 24, top: 'rp', busy: 0 };
+const charts = new Map();
+let lastW = 0;
+const $ = (s, r = document) => r.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nf = new Intl.NumberFormat();
+const n = v => (v === null || v === undefined || v === '' || Number.isNaN(Number(v))) ? '-' : nf.format(Number(v));
+const pad = v => String(v).padStart(2, '0');
+function clock(ms) { const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function day(ms) { if (!ms) return '-'; const d = new Date(ms); return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); }
+function stamp(ms) { if (!ms) return '-'; return day(ms) + ' ' + clock(ms); }
+function ago(ms) {
+  if (!ms) return 'never';
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + ' min ago';
+  if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+  return Math.floor(s / 86400) + ' d ago';
+}
+function span(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return s + ' s';
+  if (s < 3600) return Math.floor(s / 60) + ' min';
+  if (s < 86400) return Math.floor(s / 3600) + ' h ' + pad(Math.floor(s % 3600 / 60)) + ' min';
+  return Math.floor(s / 86400) + ' d ' + Math.floor(s % 86400 / 3600) + ' h';
+}
+function pct(a, b) { return b > 0 ? Math.round(100 * a / b) + '%' : '-'; }
+
+async function api(path) {
+  const r = await fetch('/admin/api/' + path, { headers: { Authorization: 'Bearer ' + S.token }, cache: 'no-store' });
+  if (r.status === 401) { S.token = ''; localStorage.removeItem(KEY); throw new Error('login'); }
+  if (r.status === 429) throw new Error('Too many tries. Wait ten minutes.');
+  if (!r.ok) throw new Error('Server answered ' + r.status);
+  return r.json();
+}
+async function load(key, path) {
+  S.busy++; mark();
+  try {
+    S.data[key] = await api(path);
+    S.at[key] = Date.now();
+    S.err = null;
+  } catch (e) {
+    if (e.message === 'login') { render(); return; }
+    S.err = e.message;
+  } finally {
+    S.busy--; mark();
+  }
+}
+function mark() {
+  const el = $('#stamp');
+  if (!el) return;
+  const k = current();
+  const at = S.at[k];
+  el.className = S.err ? 'stale' : (S.busy ? 'busy' : '');
+  el.innerHTML = '<i></i>' + (S.err ? 'No answer' + (at ? ', data from ' + clock(at) : '') : (at ? 'Updated ' + clock(at) + ':' + pad(new Date(at).getSeconds()) : 'Loading'));
+}
+function current() {
+  if (S.tab === 'players' && S.player) return 'player';
+  if (S.tab === 'more') return S.more;
+  return S.tab;
+}
+
+const ICON = {
+  home: '<path d="M3 11 12 3l9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  online: '<circle cx="12" cy="12" r="3"/><path d="M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14M8 8a5.5 5.5 0 0 0 0 8M16 8a5.5 5.5 0 0 1 0 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  players: '<circle cx="9" cy="8" r="4"/><path d="M1 21a8 8 0 0 1 16 0z"/><circle cx="18" cy="9" r="3"/><path d="M17 14a6 6 0 0 1 6 7h-4"/>',
+  stats: '<rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="15" rx="1"/><rect x="17" y="2" width="4" height="19" rx="1"/>',
+  more: '<circle cx="5" cy="12" r="2.4"/><circle cx="12" cy="12" r="2.4"/><circle cx="19" cy="12" r="2.4"/>',
+};
+const TABS = [['home', 'Home'], ['online', 'Online'], ['players', 'Players'], ['stats', 'Stats'], ['more', 'More']];
+const MORE = [['installs', 'Installs'], ['matches', 'Matches'], ['boards', 'Boards'], ['forge', 'Forge'], ['reports', 'Reports']];
+
+function render() {
+  const app = $('#app');
+  if (!S.token) {
+    app.innerHTML = '<form id="login"><h1>Overhaul Admin</h1><input type="password" id="pw" placeholder="Password" autocomplete="current-password" autofocus><button class="btn red">Open</button><p id="lerr"></p></form>';
+    app.style.cssText = 'display:flex;min-height:100vh;padding:0';
+    $('#login').onsubmit = async ev => {
+      ev.preventDefault();
+      S.token = $('#pw').value.trim();
+      try { await api('overview'); localStorage.setItem(KEY, S.token); S.err = null; render(); refresh(true); }
+      catch (e) { S.token = ''; $('#lerr').textContent = e.message === 'login' ? 'Wrong password.' : e.message; }
+    };
+    return;
+  }
+  app.style.cssText = '';
+  if (!$('main')) {
+    app.innerHTML = '<header><h1>Overhaul Admin</h1><div id="stamp"></div></header><main></main><nav>' +
+      TABS.map(([k, l]) => '<button data-tab="' + k + '"><svg viewBox="0 0 24 24" fill="currentColor">' + ICON[k] + '</svg>' + l + '</button>').join('') + '</nav>';
+    $('nav').onclick = ev => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (S.tab === b.dataset.tab && S.tab === 'players') S.player = null;
+      S.tab = b.dataset.tab;
+      render(); refresh(false); window.scrollTo(0, 0);
+    };
+  }
+  for (const b of document.querySelectorAll('nav button')) b.classList.toggle('on', b.dataset.tab === S.tab);
+  charts.clear();
+  const keep = document.activeElement && document.activeElement.id === 'q' ? [document.activeElement.selectionStart] : null;
+  $('main').innerHTML = VIEW[S.tab]();
+  if (keep) { const q = $('#q'); if (q) { q.focus(); q.setSelectionRange(keep[0], keep[0]); } }
+  draw(); mark();
+  requestAnimationFrame(() => { if (document.documentElement.clientWidth !== lastW) { lastW = document.documentElement.clientWidth; draw(); } });
+}
+
+function tile(k, v, s, c) { return '<div class="tile ' + (c || '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + (s || '') + '</div></div>'; }
+function hbars(items, colour) {
+  const max = Math.max(1, ...items.map(i => i[1]));
+  const sum = items.reduce((a, i) => a + i[1], 0);
+  return items.map(i => '<div class="hbar"><div class="l">' + esc(i[0]) + '</div><div class="b"><i style="width:' + (100 * i[1] / max).toFixed(1) + '%;background:' + (colour || 'var(--blue)') + '"></i></div><div class="x">' + n(i[1]) + (i[2] === false ? '' : ' · ' + pct(i[1], sum)) + '</div></div>').join('') || '<div class="empty">Nothing yet</div>';
+}
+function where(s, rooms) {
+  if (s.room) {
+    const r = (rooms || []).find(x => x.code === s.room);
+    if (r && (r.phase === 'playing' || r.phase === 'pvp_pending')) return ['red', 'In match', (r.mode || 'match') + ' · ante ' + r.ante + ' · room ' + r.code];
+    return ['gold', 'In a room', 'room ' + s.room + (r ? ' · ' + r.phase : '')];
+  }
+  if (s.queue) return ['purple', 'Ranked queue', 'looking for a match'];
+  if (s.party) return ['blue', 'In a party', 'party ' + s.party];
+  const w = { menu: ['dim', 'Menu', 'on the main menu'], browsing: ['blue', 'Browsing', 'looking at rooms'], spectating: ['purple', 'Spectating', 'watching a match'], solo: ['green', 'Solo run', 'playing alone'] }[s.where];
+  return w || ['dim', 'Connected', s.name ? 'online' : 'no name sent yet'];
+}
+function rankOf(p) { return p.rank_name ? p.rank_name + (p.rank_tier ? ' ' + p.rank_tier : '') + ' · ' + n(p.rp) + ' RP' : 'Unranked'; }
+
+const VIEW = {
+  home() {
+    const o = S.data.home;
+    if (!o) return '<div class="empty">Loading the server...</div>';
+    const l = o.live, d = o.db || {}, t = o.today, m = o.server.memory;
+    const vers = Object.entries(l.versions).sort((a, b) => b[1] - a[1]);
+    const up = Date.now() - o.server.started;
+    const hrs = (S.data.stats && S.data.stats.hours) || [];
+    charts.set('c-home', { type: 'line', points: series(hrs, 24, 'online_peak'), colour: '#fe5f55', hours: 24 });
+    return '<div class="grid">' +
+      tile('Online now', n(l.connections), n(l.named) + ' with a name', 'red') +
+      tile('In a match', n(l.in_match), n(l.matches_running) + ' matches · ' + n(l.rooms) + ' rooms', 'gold') +
+      tile('Players', n(d.total), 'ever connected online', 'blue') +
+      tile('Active 24 h', n(d.active_24h), n(d.active_7d) + ' in 7 d · ' + n(d.active_30d) + ' in 30 d', 'green') +
+      tile('New profiles 24 h', n(d.new_24h), n(d.new_7d) + ' in 7 days') +
+      tile('Matches 24 h', n(d.logged_24h), n(d.logged_7d) + ' in 7 days') +
+      tile('Devices today', n(t.devices), n(t.checks) + ' update checks', 'purple') +
+      tile('Patches today', n(t.patch_downloads), 'update downloads') +
+      '</div>' +
+      '<section><h2>Online, last 24 hours <small>peak per hour, recorded since this page went live</small></h2><div class="card"><div class="chart" id="c-home"></div></div></section>' +
+      '<div class="two">' +
+      '<section><h2>Builds online now</h2><div class="card">' + hbars(vers) + '</div></section>' +
+      '<section><h2>Right now</h2><div class="card"><dl class="kv">' +
+        '<dt>Ranked queue</dt><dd>' + n(l.in_queue) + '</dd><dt>Playing with mods</dt><dd>' + n(l.with_mods) + '</dd><dt>Server bots</dt><dd>' + n(l.bots) + '</dd>' +
+        '<dt>Peak since restart</dt><dd>' + n(l.peak_since_start) + '</dd><dt>Connections since restart</dt><dd>' + n(l.connections_since_start) + '</dd>' +
+        '<dt>Matches since restart</dt><dd>' + n(l.matches_since_start) + '</dd><dt>Players seen today</dt><dd>' + n(t.players) + '</dd></dl></div></section>' +
+      '<section><h2>Community</h2><div class="card"><dl class="kv">' +
+        '<dt>Played ranked</dt><dd>' + n(d.played_ranked) + '</dd><dt>Ranked matches</dt><dd>' + n(d.ranked_matches) + '</dd><dt>Friendships</dt><dd>' + n(d.friend_links) + '</dd>' +
+        '<dt>Speedruns</dt><dd>' + n(d.speedruns) + '</dd><dt>Forge mods shared</dt><dd>' + n(d.forge_mods) + ' · ' + n(d.forge_downloads) + ' downloads</dd>' +
+        '<dt>Daily runs today</dt><dd>' + n(d.daily_today) + '</dd><dt>Open reports</dt><dd>' + n(d.reports_open) + ' of ' + n(d.reports) + '</dd>' +
+        '<dt>First profile</dt><dd>' + stamp(d.first_created) + '</dd></dl></div></section>' +
+      '<section><h2>Server</h2><div class="card"><dl class="kv"><dt>Build</dt><dd>' + esc(o.server.build) + '</dd><dt>Up for</dt><dd>' + span(up) + '</dd>' +
+        '<dt>Memory</dt><dd>' + Math.round(m.totalMB) + ' of 512 MB</dd></dl><div class="meter"><i style="width:' + Math.min(100, m.totalMB / 5.12).toFixed(1) + '%;background:' + (m.totalMB > 380 ? 'var(--red)' : 'var(--green)') + '"></i></div>' +
+        '<dl class="kv" style="margin-top:10px"><dt>Database</dt><dd>' + (o.server.database === 'd1' ? 'Cloudflare D1' : 'not connected') + '</dd><dt>Rows read since restart</dt><dd>' + n(o.server.d1.rowsRead) + '</dd>' +
+        '<dt>Rows written</dt><dd>' + n(o.server.d1.rowsWritten) + '</dd><dt>Failed queries</dt><dd>' + n(o.server.d1.failed) + '</dd></dl></div></section>' +
+      '</div>';
+  },
+
+  online() {
+    const o = S.data.online;
+    if (!o) return '<div class="empty">Loading who is online...</div>';
+    const list = o.sockets.slice().sort((a, b) => (b.name !== '') - (a.name !== '') || a.since - b.since);
+    const people = list.map(s => {
+      const w = where(s, o.rooms);
+      const inner = '<div class="n"><i class="dot on"></i><span class="t">' + esc(s.name || 'Unnamed connection') + '</span> <span class="chip ' + w[0] + '">' + w[1] + '</span></div>' +
+        '<div class="r"><b>' + span(Date.now() - s.since) + '</b></div>' +
+        '<div class="m">' + esc(w[2]) + (s.level ? ' · level ' + n(s.level) : '') + (s.rank_name ? ' · ' + esc(s.rank_name) : '') + '</div>' +
+        '<div class="r">' + esc(s.version || 'no build') + (s.mods.length ? ' · ' + s.mods.length + (s.mods.length > 1 ? ' mods' : ' mod') : '') + (s.rtt != null ? ' · ' + Math.round(s.rtt) + ' ms' : '') + '</div>';
+      return s.id ? '<button class="row" data-player="' + s.id + '">' + inner + '</button>' : '<div class="row">' + inner + '</div>';
+    }).join('');
+    const rooms = o.rooms.map(r => '<div class="row"><div class="n"><span class="t">' + esc(r.code) + '</span> <span class="chip ' + (r.phase === 'lobby' ? 'gold' : r.phase === 'finished' ? 'dim' : 'red') + '">' + esc(r.phase.replace('_', ' ')) + '</span>' +
+      (r.ranked ? ' <span class="chip purple">Ranked</span>' : '') + (r.visibility === 'private' ? ' <span class="chip dim">Private</span>' : '') + '</div>' +
+      '<div class="r"><b>' + (r.phase === 'lobby' ? '-' : 'Ante ' + r.ante) + '</b></div>' +
+      '<div class="m">' + r.players.map(p => esc(p.name || '?') + (r.phase === 'lobby' ? '' : ' (' + p.lives + ' lives' + (p.score != null ? ', ' + n(p.score) : '') + ')') + (p.here ? '' : ' [away]')).join(' vs ') + '</div>' +
+      '<div class="r">' + esc(r.mode || '') + (r.mods ? ' · ' + r.mods + ' mods' : '') + ' · ' + span(Date.now() - r.created) + '</div></div>').join('');
+    return '<div class="grid">' + tile('Connected', n(o.counts.connections), n(o.counts.named) + ' with a name', 'red') + tile('In a match', n(o.counts.in_match), n(o.counts.matches_running) + ' matches', 'gold') +
+      tile('Rooms', n(o.counts.rooms), n(o.counts.in_queue) + ' in ranked queue', 'blue') + tile('Bots', n(o.counts.bots), 'server bots playing') + '</div>' +
+      '<section><h2>Players online <small>' + list.length + '</small></h2><div class="rows wide">' + (people || '<div class="card empty">Nobody is connected right now</div>') + '</div></section>' +
+      '<section><h2>Rooms <small>' + o.rooms.length + '</small></h2><div class="rows wide">' + (rooms || '<div class="card empty">No open rooms</div>') + '</div></section>';
+  },
+
+  players() {
+    if (S.player) return playerView();
+    const o = S.data.players;
+    const filters = [['', 'Everyone'], ['active', 'Active 24 h'], ['new', 'New 7 d'], ['ranked', 'Played ranked'], ['gone', 'Away 7 d+']];
+    const sorts = [['last_seen', 'Last seen'], ['created', 'Joined'], ['rp', 'Rank points'], ['level', 'Level'], ['matches', 'Ranked matches'], ['wins', 'Wins'], ['streak', 'Streak'], ['name', 'Name']];
+    let body = '<div class="empty">Loading players...</div>';
+    if (o) {
+      const pages = Math.max(1, Math.ceil(o.total / o.size));
+      body = '<div class="rows wide">' + (o.rows.map(p => '<button class="row" data-player="' + p.id + '"><div class="n"><i class="dot' + (p.online ? ' on' : '') + '"></i><span class="t">' + esc(p.name || 'No name') + '</span></div>' +
+        '<div class="r"><b>' + (p.level ? 'Lv ' + n(p.level) : '-') + '</b></div><div class="m">' + (p.online ? 'online now' : 'seen ' + ago(p.last_seen)) + (p.created ? ' · joined ' + day(p.created) : '') + (p.code ? ' · ' + esc(p.code) : '') + '</div>' +
+        '<div class="r">' + (p.matches > 0 ? esc(p.rank_name || '') + ' · ' + n(p.wins) + ' / ' + n(p.matches) : 'no ranked') + '</div></button>').join('') || '<div class="card empty">No player matches this</div>') + '</div>' +
+        '<div class="pager"><button class="btn grey" data-page="-1"' + (o.page <= 0 ? ' disabled' : '') + '>Back</button><span>Page ' + (o.page + 1) + ' of ' + pages + ' · ' + n(o.total) + '</span><button class="btn grey" data-page="1"' + (o.page >= pages - 1 ? ' disabled' : '') + '>Next</button></div>';
+    }
+    return '<div class="bar"><input type="search" id="q" placeholder="Search a name or friend code" value="' + esc(S.q) + '" enterkeyhint="search">' +
+      '<select id="sort">' + sorts.map(s => '<option value="' + s[0] + '"' + (S.sort === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('') + '</select>' +
+      '<button class="btn grey" id="dir">' + (S.dir === 'desc' ? 'High first' : 'Low first') + '</button></div>' +
+      '<div class="seg" style="margin-bottom:12px">' + filters.map(f => '<button data-filter="' + f[0] + '" class="' + (S.filter === f[0] ? 'on' : '') + '">' + f[1] + '</button>').join('') + '</div>' + body;
+  },
+
+  stats() {
+    const o = S.data.stats;
+    if (!o) return '<div class="empty">Loading stats...</div>';
+    const shift = -new Date().getTimezoneOffset() / 60;
+    const byHour = Array.from({ length: 24 }, (_, h) => ({ l: pad(h), v: 0 }));
+    for (const r of o.log_hours) byHour[((r.h + Math.round(shift)) % 24 + 24) % 24].v += r.n;
+    const perDay = new Map();
+    for (const r of o.log_days) perDay.set(r.d, (perDay.get(r.d) || 0) + r.n);
+    const days = fillDays([...perDay.entries()].map(([d, v]) => ({ d, v })));
+    const range = [[24, '24 hours'], [168, '7 days'], [720, '30 days']];
+    charts.set('c-online', { type: 'line', points: series(o.hours, S.range, 'online_peak'), colour: '#fe5f55', hours: S.range });
+    charts.set('c-new', { type: 'bars', items: fillDays(o.created.map(r => ({ d: r.d, v: r.n }))).map(r => ({ l: r.d.slice(5), v: r.v })), colour: '#2aa9ff' });
+    charts.set('c-seen', { type: 'bars', items: fillDays(o.last_seen.map(r => ({ d: r.d, v: r.n }))).map(r => ({ l: r.d.slice(5), v: r.v })), colour: '#4bc292' });
+    charts.set('c-matches', { type: 'bars', items: days.map(r => ({ l: r.d.slice(5), v: r.v })), colour: '#f3b958' });
+    charts.set('c-hours', { type: 'bars', items: byHour, colour: '#a583c9' });
+    charts.set('c-dau', { type: 'bars', items: o.days.map(r => ({ l: r.day.slice(5), v: r.players })), colour: '#4bc292' });
+    charts.set('c-dev', { type: 'bars', items: o.days.map(r => ({ l: r.day.slice(5), v: r.devices })), colour: '#a583c9' });
+    charts.set('c-levels', { type: 'bars', items: o.levels.map(r => ({ l: String(r.level), v: r.n })), colour: '#2aa9ff' });
+    const tops = { rp: ['Rank points', r => n(r.rp) + ' RP · ' + esc(r.rank_name || '')], level: ['Level', r => 'Lv ' + n(r.level) + ' · ' + n(r.xp) + ' XP'], matches: ['Ranked matches', r => n(r.matches) + ' played'], wins: ['Wins', r => n(r.wins) + ' of ' + n(r.matches)], streak: ['Streak', r => n(r.streak) + ' in a row'] };
+    const top = o.top[S.top] || [];
+    return '<section style="margin-top:0"><h2>Players online <small>peak per hour, recorded by the server</small></h2><div class="seg" style="margin-bottom:8px">' + range.map(r => '<button data-range="' + r[0] + '" class="' + (S.range === r[0] ? 'on' : '') + '">' + r[1] + '</button>').join('') + '</div><div class="card"><div class="chart" id="c-online"></div></div></section>' +
+      '<div class="two">' +
+      '<section><h2>New profiles per day</h2><div class="card"><div class="chart" id="c-new"></div></div></section>' +
+      '<section><h2>Players by last day seen</h2><div class="card"><div class="chart" id="c-seen"></div></div></section>' +
+      '<section><h2>Players online per day <small>counted by the server each day</small></h2><div class="card"><div class="chart" id="c-dau"></div></div></section>' +
+      '<section><h2>Devices checking for updates per day</h2><div class="card"><div class="chart" id="c-dev"></div></div></section>' +
+      '<section><h2>Matches per day <small>from the match logs the server still keeps</small></h2><div class="card"><div class="chart" id="c-matches"></div></div></section>' +
+      '<section><h2>When matches start <small>your local time</small></h2><div class="card"><div class="chart" id="c-hours"></div></div></section>' +
+      '<section><h2>Modes</h2><div class="card">' + hbars(o.modes.map(m => [(m.mode || 'unknown') + (m.kind === 'party' ? ' party' : '') + (m.ranked ? ' ranked' : ''), m.n])) + '</div></section>' +
+      '<section><h2>How matches ended</h2><div class="card">' + hbars(o.statuses.map(m => [m.status || 'normal', m.n]), 'var(--gold)') + '</div></section>' +
+      '<section><h2>Ranks <small>players with at least one ranked match</small></h2><div class="card">' + hbars(o.ranks.map(r => [r.name + (r.tier ? ' ' + r.tier : ''), r.n]), 'var(--purple)') + '</div></section>' +
+      '<section><h2>Levels</h2><div class="card"><div class="chart" id="c-levels"></div></div></section>' +
+      '</div>' +
+      '<section><h2>Top players</h2><div class="seg" style="margin-bottom:8px">' + Object.entries(tops).map(([k, v]) => '<button data-top="' + k + '" class="' + (S.top === k ? 'on' : '') + '">' + v[0] + '</button>').join('') + '</div>' +
+      '<div class="rows wide">' + (top.map((r, i) => '<button class="row" data-player="' + r.pkey_id + '"><div class="n"><span class="chip ' + (i === 0 ? 'gold' : 'dim') + '">' + (i + 1) + '</span><span class="t">' + esc(r.name || 'No name') + '</span></div><div class="r"><b>' + tops[S.top][1](r) + '</b></div></button>').join('') || '<div class="card empty">Nothing yet</div>') + '</div></section>' +
+      '<p class="note">Friends: ' + n(o.friends.links) + ' friendships between ' + n(o.friends.players) + ' players. Days are UTC days.</p>';
+  },
+
+  more() {
+    const head = '<div class="seg" style="margin-bottom:12px">' + MORE.map(m => '<button data-more="' + m[0] + '" class="' + (S.more === m[0] ? 'on' : '') + '">' + m[1] + '</button>').join('') + '</div>';
+    const o = S.data[S.more];
+    if (!o) return head + '<div class="empty">Loading...</div>';
+    return head + SUB[S.more](o);
+  },
+};
+
+const SUB = {
+  installs(o) {
+    const rows = Object.entries(o.today.rows);
+    const pick = p => rows.filter(r => r[0].startsWith(p)).map(r => [r[0].slice(p.length), r[1].devices, r[1].requests]).sort((a, b) => b[1] - a[1]);
+    const list = (items, unit) => items.length ? items.map(i => '<div class="hbar"><div class="l">' + esc(i[0]) + '</div><div class="b"><i style="width:' + (100 * i[1] / Math.max(1, items[0][1])).toFixed(1) + '%;background:var(--purple)"></i></div><div class="x">' + n(i[1]) + ' · ' + n(i[2]) + ' ' + unit + '</div></div>').join('') : '<div class="empty">Nothing yet today</div>';
+    charts.set('c-idev', { type: 'bars', items: o.days.map(r => ({ l: r.day.slice(5), v: r.devices })), colour: '#a583c9' });
+    charts.set('c-ipatch', { type: 'bars', items: o.days.map(r => ({ l: r.day.slice(5), v: r.patch_dl })), colour: '#f3b958' });
+    return '<div class="grid">' + tile('Devices today', n(o.today.devices), 'checked for an update', 'purple') + tile('Update checks', n(o.today.checks), 'requests today') +
+      tile('Patch downloads', n(o.today.patch_downloads), 'today', 'gold') + tile('Players online', n(o.today.players), 'different players today', 'green') + '</div>' +
+      '<div class="two"><section><h2>Game update checks by platform <small>devices · requests</small></h2><div class="card">' + list(pick('check:'), 'checks') + '</div></section>' +
+      '<section><h2>Launcher and feed files <small>devices · requests</small></h2><div class="card">' + list(pick('feed:'), 'reads') + '</div></section>' +
+      '<section><h2>Patch downloads by file</h2><div class="card">' + list(pick('patch:'), 'downloads') + '</div></section>' +
+      '<section><h2>Client type</h2><div class="card">' + list(pick('ua:'), 'requests') + '</div></section>' +
+      '<section><h2>Devices per day</h2><div class="card"><div class="chart" id="c-idev"></div></div></section>' +
+      '<section><h2>Patch downloads per day</h2><div class="card"><div class="chart" id="c-ipatch"></div></div></section></div>' +
+      '<p class="note">A device is one internet address seen on one UTC day. Addresses are never stored: only a daily scrambled count is kept, so the same device cannot be followed from one day to the next. People who play without checking for updates are not counted.</p>';
+  },
+  matches(o) {
+    const pages = Math.max(1, Math.ceil(o.total / o.size));
+    return '<div class="rows wide">' + (o.rows.map(r => '<div class="row"><div class="n"><span class="t">' + esc(r.names || 'unknown players') + '</span></div><div class="r"><b>' + (r.ended > r.at ? span(r.ended - r.at) : '-') + '</b></div>' +
+      '<div class="m">' + stamp(r.at) + ' · ' + esc(r.mode || 'match') + (r.kind === 'party' ? ' party' : '') + '</div><div class="r">' + (r.ranked ? '<span class="chip purple">Ranked</span> ' : '') + (r.status ? '<span class="chip gold">' + esc(r.status) + '</span>' : '') + (r.has_replay ? ' replay' : '') + '</div></div>').join('') || '<div class="card empty">No matches logged</div>') + '</div>' +
+      '<div class="pager"><button class="btn grey" data-mpage="-1"' + (o.page <= 0 ? ' disabled' : '') + '>Back</button><span>Page ' + (o.page + 1) + ' of ' + pages + ' · ' + n(o.total) + '</span><button class="btn grey" data-mpage="1"' + (o.page >= pages - 1 ? ' disabled' : '') + '>Next</button></div>';
+  },
+  boards(o) {
+    const t = s => { const m = Math.floor(s / 60); return m + ':' + (s % 60).toFixed(2).padStart(5, '0'); };
+    return '<section style="margin-top:0"><h2>Speedruns <small>' + o.speedruns.length + '</small></h2><div class="card scroll">' + (o.speedruns.length ? '<table><tr><th>Player</th><th>Category</th><th>Deck</th><th class="num">Time</th><th class="num">When</th></tr>' +
+      o.speedruns.map(r => '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.cat) + ' · ' + esc(r.seed_type || '') + '</td><td>' + esc(r.deck) + ' · stake ' + n(r.stake) + '</td><td class="num">' + t(r.time) + '</td><td class="num">' + day(r.at) + '</td></tr>').join('') + '</table>' : '<div class="empty">No speedruns yet</div>') + '</div></section>' +
+      '<section><h2>Daily run, last 7 days <small>' + o.daily.length + '</small></h2><div class="card scroll">' + (o.daily.length ? '<table><tr><th>Day</th><th>Player</th><th>Result</th><th class="num">Best hand</th></tr>' +
+      o.daily.map(r => '<tr><td>' + esc(r.day) + '</td><td>' + esc(r.name) + '</td><td>' + (r.won ? 'Won' : 'Ante ' + n(r.ante) + ', round ' + n(r.round)) + '</td><td class="num">' + n(Math.round(r.best)) + '</td></tr>').join('') + '</table>' : '<div class="empty">No daily runs this week</div>') + '</div></section>' +
+      '<section><h2>Minigame bests <small>' + o.minigames.length + '</small></h2><div class="card scroll">' + (o.minigames.length ? '<table><tr><th>Game</th><th>Player</th><th class="num">Score</th><th class="num">When</th></tr>' +
+      o.minigames.map(r => '<tr><td>' + esc(r.game) + '</td><td>' + esc(r.name) + '</td><td class="num">' + n(r.score) + '</td><td class="num">' + day(r.at) + '</td></tr>').join('') + '</table>' : '<div class="empty">No minigame scores yet</div>') + '</div></section>';
+  },
+  forge(o) {
+    return '<div class="rows wide">' + (o.mods.map(m => '<div class="row"><div class="n"><span class="t">' + esc(m.name || m.id) + '</span>' + (m.hidden ? ' <span class="chip red">Hidden</span>' : '') + (m.reported ? ' <span class="chip gold">Reported</span>' : '') + '</div>' +
+      '<div class="r"><b>' + n(m.downloads) + '</b>downloads</div><div class="m">by ' + esc(m.author || 'unknown') + ' · v' + n(m.version) + ' · ' + n(Math.round(m.size / 1024)) + ' KB · updated ' + ago(m.updated) + '</div><div class="r"></div>' +
+      '<div class="m" style="flex:1 1 100%;white-space:normal">' + esc(Object.entries(m.summary || {}).filter(e => typeof e[1] === 'number' && e[1] > 0).map(e => e[1] + ' ' + e[0] + (e[1] > 1 ? 's' : '')).join(', ') || 'empty mod') + (m.about ? ' · ' + esc(m.about) : '') + '</div></div>').join('') || '<div class="card empty">No Forge mods shared yet</div>') + '</div>';
+  },
+  reports(o) {
+    return '<div class="rows">' + (o.rows.map(r => '<div class="row"><div class="n"><span class="t">' + esc(r.reported_name || 'unknown') + '</span> <span class="chip ' + (r.status ? 'dim' : 'red') + '">' + esc(r.status || 'open') + '</span></div><div class="r">' + stamp(r.at) + '</div>' +
+      '<div class="m" style="flex:1 1 100%;white-space:normal">Reported by ' + esc(r.reporter_name || 'unknown') + ' · ' + esc(r.kind || '') + (r.reason ? ' · ' + esc(r.reason) : '') + '</div>' +
+      (r.text ? '<div class="m" style="flex:1 1 100%;white-space:normal;color:var(--ink)">' + esc(r.text) + '</div>' : '') + '</div>').join('') || '<div class="card empty">No reports. Nobody has reported a message yet.</div>') + '</div>';
+  },
+};
+
+function playerView() {
+  const o = S.data.player;
+  const back = '<button class="back" data-back="1"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Players</button>';
+  if (!o) return back + '<div class="empty">Loading this player...</div>';
+  if (o.error) return back + '<div class="card empty">This player link is no longer valid. Go back and pick the player again.</div>';
+  const p = o.profile;
+  const tbl = (rows, head, cells) => rows.length ? '<div class="scroll"><table><tr>' + head.map(h => '<th' + (h[1] ? ' class="num"' : '') + '>' + h[0] + '</th>').join('') + '</tr>' + rows.map(r => '<tr>' + cells(r).map((c, i) => '<td' + (head[i][1] ? ' class="num"' : '') + '>' + c + '</td>').join('') + '</tr>').join('') + '</table></div>' : '<div class="empty">Nothing here</div>';
+  const sec = (t, c, body) => c === 0 ? '' : '<section><h2>' + t + ' <small>' + c + '</small></h2><div class="card">' + body + '</div></section>';
+  const w = o.online ? where({ ...o.online, name: p.name }, []) : null;
+  const friends = o.links.filter(l => l.status === 'accepted');
+  return back + '<div class="card hero"><div class="a">' + esc((p.name || '?').slice(0, 1).toUpperCase()) + '</div><div class="t"><b>' + esc(p.name || 'No name') + '</b><span>' +
+    (o.online ? '<span class="chip green">Online</span> ' + esc(w[1]) + ' · ' + esc(o.online.version || '') + ' · for ' + span(Date.now() - o.online.since) : 'Last seen ' + ago(p.last_seen) + ' (' + stamp(p.last_seen) + ')') + '</span></div></div>' +
+    '<div class="grid" style="margin-top:10px">' + tile('Level', n(p.level), n(p.xp) + ' XP', 'blue') + tile('Rank', esc(p.rank_name || 'None'), p.matches > 0 ? n(p.rp) + ' RP · peak ' + n(p.peak_rp) : 'no ranked match', 'purple') +
+    tile('Ranked', p.matches > 0 ? n(p.wins) + ' / ' + n(p.matches) : '-', p.matches > 0 ? pct(p.wins, p.matches) + ' won · streak ' + n(p.streak) : 'wins / matches', 'gold') + tile('Friends', n(friends.length), n(o.links.length - friends.length) + ' other links', 'green') + '</div>' +
+    '<div class="two">' +
+    sec('Profile', '', '<dl class="kv"><dt>Joined</dt><dd>' + stamp(p.created) + '</dd><dt>Friend code</dt><dd>' + esc(p.code || '-') + '</dd><dt>Season</dt><dd>' + esc(p.season || '-') + '</dd><dt>Card packs</dt><dd>' + n(p.packs) + '</dd>' +
+      (o.online && o.online.mods.length ? '<dt>Mods on now</dt><dd>' + o.online.mods.map(esc).join(', ') + '</dd>' : '') +
+      o.equipped.map(e => '<dt>' + esc(e.slot) + '</dt><dd>' + esc(e.item) + '</dd>').join('') + '</dl>') +
+    sec('Matches', o.logs.length, tbl(o.logs, [['When'], ['Mode'], ['Against'], ['Time', 1]], r => [stamp(r.at), esc(r.mode || '') + (r.ranked ? ' ranked' : '') + (r.status ? ' · ' + esc(r.status) : ''), esc(r.versus || '-'), r.ended > r.at ? span(r.ended - r.at) : '-'])) +
+    sec('Ranked results', o.ranked.length, tbl(o.ranked, [['When'], ['Result'], ['Ante', 1], ['RP', 1]], r => [stamp(r.at), esc(r.result || '') + ' · ' + n(r.placement) + ' of ' + n(r.players), n(r.ante), (r.rp_delta > 0 ? '+' : '') + n(r.rp_delta)])) +
+    sec('Head to head', o.head_to_head.length, tbl(o.head_to_head, [['Against'], ['Won', 1], ['Lost', 1], ['Draw', 1]], r => [esc(r.name || '?'), n(r.wins), n(r.losses), n(r.draws)])) +
+    sec('Friends and links', o.links.length, tbl(o.links, [['Player'], ['Link'], ['Since', 1]], r => [esc(r.name || '?'), esc(r.status), day(r.at)])) +
+    sec('Recently played with', o.recent.length, tbl(o.recent, [['Player'], ['Mode'], ['When', 1]], r => [esc(r.name || '?'), esc(r.mode || '') + (r.ranked ? ' ranked' : ''), ago(r.at)])) +
+    sec('Speedruns', o.speedruns.length, tbl(o.speedruns, [['Category'], ['Deck'], ['Time', 1]], r => [esc(r.cat), esc(r.deck) + ' · stake ' + n(r.stake), Number(r.time).toFixed(2) + ' s'])) +
+    sec('Daily runs', o.daily.length, tbl(o.daily, [['Day'], ['Result'], ['Best', 1]], r => [esc(r.day), r.won ? 'Won' : 'Ante ' + n(r.ante), n(Math.round(r.best))])) +
+    sec('Forge mods', o.forge_mods.length, tbl(o.forge_mods, [['Mod'], ['Size', 1], ['Downloads', 1]], r => [esc(r.name || r.id), n(Math.round(r.size / 1024)) + ' KB', n(r.downloads)])) +
+    sec('Unlocked cosmetics', o.unlocks.length, tbl(o.unlocks.slice(0, 60), [['Item'], ['From'], ['When', 1]], r => [esc(r.item), esc(r.source), day(r.at)])) +
+    sec('Minigames', o.minigames.length, tbl(o.minigames, [['Game'], ['Best', 1]], r => [esc(r.game), n(r.score)])) +
+    sec('Reports', o.reports.length, tbl(o.reports, [['When'], ['What']], r => [stamp(r.at), esc(r.kind || '') + ' · ' + esc(r.text || r.reason || '')])) +
+    '</div>';
+}
+
+function series(hours, range, key) {
+  const now = Math.floor(Date.now() / 3600000);
+  const by = new Map(hours.map(h => [h.h, h]));
+  const out = [];
+  for (let h = now - range + 1; h <= now; h++) out.push({ t: h * 3600000, v: by.has(h) ? by.get(h)[key] : null });
+  return out;
+}
+function fillDays(rows) {
+  if (!rows.length) return [];
+  const by = new Map(rows.map(r => [r.d, r.v]));
+  const out = [];
+  const end = Date.now();
+  for (let t = Date.parse(rows[0].d + 'T00:00:00Z'); t <= end && out.length < 120; t += 86400000) {
+    const d = new Date(t).toISOString().slice(0, 10);
+    out.push({ d, v: by.get(d) || 0 });
+  }
+  return out;
+}
+function nice(max) {
+  if (max <= 4) return 4;
+  const p = Math.pow(10, Math.floor(Math.log10(max)));
+  for (const m of [1, 2, 4, 5, 8, 10]) if (m * p >= max) return m * p;
+  return 10 * p;
+}
+function draw() {
+  for (const [id, c] of charts) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const W = Math.max(240, Math.floor(el.clientWidth)), H = W < 420 ? 150 : 180, pl = 34, pr = 6, pt = 10, pb = 20;
+    const iw = W - pl - pr, ih = H - pt - pb;
+    const vals = c.type === 'line' ? c.points.map(p => p.v).filter(v => v != null) : c.items.map(i => i.v);
+    if (!vals.length || (c.type === 'bars' && !vals.some(v => v > 0))) { el.innerHTML = '<div class="empty">' + (c.type === 'line' ? 'No history recorded yet. The server writes one point per hour from now on.' : 'Nothing recorded yet') + '</div>'; continue; }
+    const max = nice(Math.max(1, ...vals));
+    let g = '';
+    for (let i = 0; i <= 4; i++) {
+      const y = Math.round(pt + ih - ih * i / 4) + .5;
+      g += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y + '" y2="' + y + '" stroke="#41585e" stroke-width="1"' + (i ? ' stroke-dasharray="2 4"' : '') + '/><text x="' + (pl - 6) + '" y="' + (y + 3.5) + '" text-anchor="end">' + nf.format(max * i / 4) + '</text>';
+    }
+    const labels = Math.max(2, Math.floor(iw / 46));
+    if (c.type === 'bars') {
+      const k = c.items.length, bw = iw / k, step = Math.max(1, Math.ceil(k / labels));
+      c.items.forEach((it, i) => {
+        const h = Math.round(ih * it.v / max), x = pl + i * bw;
+        if (it.v > 0) g += '<rect x="' + (x + Math.min(2, bw * .15)).toFixed(1) + '" y="' + (pt + ih - Math.max(h, 2)) + '" width="' + Math.max(1, bw - 2 * Math.min(2, bw * .15)).toFixed(1) + '" height="' + Math.max(h, 2) + '" rx="' + Math.min(3, bw / 4).toFixed(1) + '" fill="' + c.colour + '"><title>' + esc(it.l) + ': ' + nf.format(it.v) + '</title></rect>';
+        if (i % step === 0) g += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + esc(it.l) + '</text>';
+      });
+    } else {
+      const k = c.points.length, sx = iw / Math.max(1, k - 1);
+      let d = '', area = '', open = false, first = 0, last = 0;
+      c.points.forEach((p, i) => {
+        if (p.v == null) { if (open) { area += 'L' + last.toFixed(1) + ' ' + (pt + ih) + 'L' + first.toFixed(1) + ' ' + (pt + ih) + 'Z'; open = false; } return; }
+        const x = pl + i * sx, y = pt + ih - ih * p.v / max;
+        if (!open) { d += 'M' + x.toFixed(1) + ' ' + y.toFixed(1); area += 'M' + x.toFixed(1) + ' ' + y.toFixed(1); first = x; open = true; }
+        else { d += 'L' + x.toFixed(1) + ' ' + y.toFixed(1); area += 'L' + x.toFixed(1) + ' ' + y.toFixed(1); }
+        last = x;
+        if (k <= 48 || vals.length === 1) g += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="2.5" fill="' + c.colour + '"><title>' + stamp(p.t) + ': ' + nf.format(p.v) + '</title></circle>';
+      });
+      if (open) area += 'L' + last.toFixed(1) + ' ' + (pt + ih) + 'L' + first.toFixed(1) + ' ' + (pt + ih) + 'Z';
+      g += '<path d="' + area + '" fill="' + c.colour + '" opacity=".18"/><path d="' + d + '" fill="none" stroke="' + c.colour + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+      const step = Math.max(1, Math.ceil(k / labels));
+      for (let i = k - 1; i >= 0; i -= step) g += '<text x="' + (pl + i * sx).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + (i === k - 1 ? 'end' : 'middle') + '">' + (c.hours > 48 ? day(c.points[i].t) : clock(c.points[i].t)) + '</text>';
+    }
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + '</svg>';
+  }
+}
+
+function playersPath() {
+  return 'players?q=' + encodeURIComponent(S.q) + '&sort=' + S.sort + '&dir=' + S.dir + '&filter=' + S.filter + '&page=' + S.page;
+}
+async function refresh(force) {
+  if (!S.token) return;
+  const k = current();
+  const fresh = S.at[k] && Date.now() - S.at[k] < 5000;
+  if (fresh && !force) return;
+  if (k === 'home') { await Promise.all([load('home', 'overview'), (!S.at.stats || Date.now() - S.at.stats > 60000) ? load('stats', 'stats') : null]); }
+  else if (k === 'online') await load('online', 'online');
+  else if (k === 'players') await load('players', playersPath());
+  else if (k === 'player') await load('player', 'player?id=' + encodeURIComponent(S.player));
+  else if (k === 'stats') await load('stats', 'stats');
+  else if (k === 'matches') await load('matches', 'matches?page=' + S.mpage);
+  else await load(k, k);
+  if (current() === k) render();
+}
+
+let typing = 0;
+document.addEventListener('input', ev => {
+  if (ev.target.id !== 'q') return;
+  S.q = ev.target.value; S.page = 0;
+  clearTimeout(typing);
+  typing = setTimeout(() => refresh(true), 300);
+});
+document.addEventListener('change', ev => {
+  if (ev.target.id === 'sort') { S.sort = ev.target.value; S.page = 0; refresh(true); }
+});
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-player],[data-back],[data-filter],[data-page],[data-mpage],[data-range],[data-top],[data-more],#dir');
+  if (!b || b.disabled) return;
+  const d = b.dataset;
+  if (d.player) { S.player = d.player; S.tab = 'players'; delete S.data.player; delete S.at.player; render(); refresh(true); window.scrollTo(0, 0); }
+  else if (d.back) { S.player = null; render(); refresh(false); }
+  else if (d.filter !== undefined) { S.filter = d.filter; S.page = 0; render(); refresh(true); }
+  else if (d.page) { S.page = Math.max(0, S.page + Number(d.page)); refresh(true); window.scrollTo(0, 0); }
+  else if (d.mpage) { S.mpage = Math.max(0, S.mpage + Number(d.mpage)); refresh(true); window.scrollTo(0, 0); }
+  else if (d.range) { S.range = Number(d.range); render(); }
+  else if (d.top) { S.top = d.top; render(); }
+  else if (d.more) { S.more = d.more; render(); refresh(false); }
+  else if (b.id === 'dir') { S.dir = S.dir === 'desc' ? 'asc' : 'desc'; S.page = 0; render(); refresh(true); }
+});
+let sized = 0;
+new ResizeObserver(() => { const w = document.documentElement.clientWidth; if (w === lastW) return; lastW = w; clearTimeout(sized); sized = setTimeout(draw, 60); }).observe(document.documentElement);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(true); });
+setInterval(() => {
+  if (document.hidden || !S.token) return;
+  const k = current();
+  if (k === 'home' || k === 'online') refresh(true);
+  else if (document.activeElement && document.activeElement.id === 'q') return;
+  else if (S.at[k] && Date.now() - S.at[k] > 60000) refresh(true);
+}, 15000);
+(function () {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('t')) { S.token = h.get('t'); localStorage.setItem(KEY, S.token); }
+  if (VIEW[h.get('tab')]) S.tab = h.get('tab');
+  if (SUB[h.get('more')]) { S.tab = 'more'; S.more = h.get('more'); }
+  if (h.get('player')) { S.tab = 'players'; S.player = h.get('player'); }
+  if (location.hash) history.replaceState(null, '', location.pathname);
+})();
+render();
+refresh(true);
+</script>
+</body>
+</html>

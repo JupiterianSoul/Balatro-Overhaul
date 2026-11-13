@@ -1,0 +1,1424 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 508
+local R = bom_ranked
+local S = R.S
+local U = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+
+local function txt(str, scale, colour, o)
+    o = o or {}
+    return {n = G.UIT.T, config = {text = tostring(str), scale = scale, colour = colour or G.C.WHITE, shadow = true, ref_table = o.ref_table, ref_value = o.ref_value, id = o.id}}
+end
+
+local function row(nodes, o)
+    o = o or {}
+    return {n = G.UIT.R, config = {align = o.align or "cm", minw = o.w, minh = o.h, padding = o.padding or 0.02, colour = o.colour, r = o.r, id = o.id, emboss = o.emboss}, nodes = nodes}
+end
+
+local function col(nodes, o)
+    o = o or {}
+    return {n = G.UIT.C, config = {align = o.align or "cm", minw = o.w, maxw = o.maxw, minh = o.h, padding = o.padding or 0, colour = o.colour, r = o.r, emboss = o.emboss}, nodes = nodes}
+end
+
+local function fmt_num(n)
+    n = tonumber(n) or 0
+    if n >= 1e6 and number_format then return number_format(n) end
+    local s = tostring(math.floor(n))
+    local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (out:gsub("^,", ""))
+end
+
+local function signed(n)
+    n = tonumber(n) or 0
+    return (n > 0 and "+" or "") .. tostring(n)
+end
+
+local function place_text(p, n)
+    p = tonumber(p) or 1
+    local suf = (p % 10 == 1 and p % 100 ~= 11) and "st" or (p % 10 == 2 and p % 100 ~= 12) and "nd" or (p % 10 == 3 and p % 100 ~= 13) and "rd" or "th"
+    if n and n > 2 then return tostring(p) .. L(suf) .. " / " .. tostring(n) end
+    return tostring(p) .. L(suf)
+end
+
+local MODE_NAMES = {["1v1"] = "1v1", br = "Battle Royale", teams = "Teams", raid = "Co-op Raid"}
+local LINE_NAMES = {placement = "Placement", ante = "Ante reached", score = "Best score", streak = "Win streak", bots = "Opponents", floor = "Rank floor"}
+local PROMO_SOUNDS = {"tarot1", "chips2", "coin1", "generic1", "glass2", "foil1", "holo1", "polychrome1", "negative", "gong"}
+
+local function seg_bar(n, w, h, gap)
+    local segs, nodes = {}, {}
+    gap = gap or 0.03
+    local sw = (w - (n - 1) * gap) / n
+    for i = 1, n do
+        local c = {1, 1, 1, 0.12}
+        segs[i] = c
+        nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = sw, minh = h, colour = c, r = gap > 0 and 0.02 or nil, padding = 0}}
+        if i < n and gap > 0 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = gap, padding = 0}} end
+    end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", padding = 0.05, colour = G.C.BLACK, r = 0.08}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = nodes}}}}}, segs
+end
+
+local function set_bar(segs, frac, on)
+    frac = math.max(0, math.min(1, frac or 0))
+    for i, c in ipairs(segs) do
+        local src = ((i - 0.5) / #segs <= frac) and on or {1, 1, 1, 0.12}
+        c[1], c[2], c[3], c[4] = src[1], src[2], src[3], src[4]
+    end
+end
+
+local function tier_frac(rp, rank)
+    if rank >= 9 then return 1 end
+    return ((rp or 0) % 100) / 100
+end
+
+local function rank_of_rp(rp)
+    rp = math.max(0, math.floor(rp or 0))
+    if rp >= 2700 then return 9, 0 end
+    return math.floor(rp / 300), 3 - math.floor((rp % 300) / 100)
+end
+
+local MATCH_MODES = {nemesis = "Rivals", faceoff = "FaceOff", ascension = "Ascension", attrition = "Rivals", vanilla = "Vanilla", ruleset = "Ruleset", showdown = "FaceOff"}
+local RESULT_NAMES = {win = "WIN", lose = "LOSS", draw = "DRAW"}
+local COLS = {num = 0.7, result = 1.5, opp = 3.7, mode = 2.0, ante = 1.0, rp = 1.1}
+local PANEL_W = 10.6
+
+local function tall()
+    return UIK and UIK.portrait and UIK.portrait() or false
+end
+
+local function fit_panel()
+    local p = tall()
+    PANEL_W = p and 8.6 or 10.6
+    COLS.opp = p and 2.1 or 3.7
+    COLS.mode = p and 1.6 or 2.0
+end
+
+local function side_w()
+    return tall() and PANEL_W - 0.4 or PANEL_W - 3.2
+end
+
+local function small(s)
+    return touch() and s + 0.04 or s
+end
+
+local function panel(left, stats, stats_w)
+    if tall() then
+        return {n = G.UIT.R, config = {align = "cm", padding = 0.14, colour = G.C.BLACK, r = 0.1, minw = PANEL_W}, nodes = {
+            col({row(left), row({col(stats, {w = stats_w})})}, {w = PANEL_W - 0.3}),
+        }}
+    end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.14, colour = G.C.BLACK, r = 0.1, minw = PANEL_W}, nodes = {
+        col(left, {w = 2.8}),
+        col(stats, {w = stats_w}),
+    }}
+end
+
+local function game_cells(a, b, c, d, e, f, s, colour)
+    return {
+        col({txt(a, s, colour)}, {w = COLS.num}),
+        col({b}, {w = COLS.result}),
+        col({c}, {w = COLS.opp, maxw = COLS.opp}),
+        col({txt(d, s, colour)}, {w = COLS.mode, maxw = COLS.mode}),
+        col({txt(e, s, colour)}, {w = COLS.ante}),
+        col({f}, {w = COLS.rp}),
+    }
+end
+
+local function any_ranked(games)
+    for _, g in ipairs(games) do if g.ranked then return true end end
+    return false
+end
+
+local function game_rows(games, s, h)
+    local last_col = any_ranked(games) and L("RP") or L("XP")
+    local rows = {row(game_cells(L("Game"), txt(L("Result"), s * 0.85, G.C.UI.TEXT_INACTIVE), txt(L("Opponent"), s * 0.85, G.C.UI.TEXT_INACTIVE),
+        L("Mode"), L("Ante"), txt(last_col, s * 0.85, G.C.UI.TEXT_INACTIVE), s * 0.85, G.C.UI.TEXT_INACTIVE), {w = PANEL_W - 0.3, h = h})}
+    local first = math.max(1, #games - 5)
+    for i = first, #games do
+        local g = games[i]
+        local rk = g.ranked
+        local res_col = g.result == "win" and G.C.GREEN or g.result == "lose" and G.C.RED or G.C.UI.BACKGROUND_INACTIVE
+        local pill = col({txt(L(RESULT_NAMES[g.result] or "DRAW"), s * 0.9, G.C.WHITE)}, {w = COLS.result - 0.2, h = h - 0.08, colour = res_col, r = 0.08})
+        local rp_val = (rk and rk.counted) and signed(rk.delta or 0) or "-"
+        local rp_col = (rk and rk.counted and (rk.delta or 0) > 0) and G.C.GOLD or (rk and rk.counted and (rk.delta or 0) < 0) and G.C.RED or G.C.UI.TEXT_INACTIVE
+        if not rk and g.mp and (g.mp.gain or 0) > 0 then rp_val, rp_col = "+" .. fmt_num(g.mp.gain), G.C.BLUE end
+        local opp = g.opp and g.opp ~= "" and tostring(g.opp) or (g.players and tostring(g.players) .. " " .. L("Players")) or "-"
+        rows[#rows + 1] = row(game_cells(tostring(i), pill, txt(opp, s, G.C.WHITE), L(MATCH_MODES[g.mode] or MODE_NAMES[g.mode] or "Match"),
+            g.ante and tostring(g.ante) or "-", txt(rp_val, s, rp_col), s, G.C.WHITE), {w = PANEL_W - 0.3, h = h})
+    end
+    return rows
+end
+
+local function merged_rank(games)
+    local first, last = nil, nil
+    local delta, gain, unlocks, counted = 0, 0, {}, false
+    for _, g in ipairs(games) do
+        local d = g.ranked
+        if d then
+            first = first or d
+            last = d
+            if d.counted then counted = true; delta = delta + (tonumber(d.delta) or 0) end
+            gain = gain + (d.xp and tonumber(d.xp.gain) or 0)
+            for _, it in ipairs(d.unlocks or {}) do unlocks[#unlocks + 1] = it end
+        end
+    end
+    if not first then return nil end
+    local fx, lx = first.xp or {}, last.xp or {}
+    return {
+        counted = false, lines = {}, ranked_any = counted, delta = delta, before = first.before, after = last.after,
+        xp = {gain = gain, before = fx.before, after = lx.after, levelBefore = fx.levelBefore, needBefore = fx.needBefore, need = lx.need},
+        unlocks = unlocks, result = last.result, promoted = last.promoted, totalPacks = last.totalPacks, season = last.season, reason = last.reason,
+        single_lines = #games == 1 and first.counted and first.lines or nil,
+    }
+end
+
+local function rank_panel(m, V)
+    local b = m.before or {}
+    local stats_w = side_w()
+    V.rank_name = R.rank_name(b.rank, b.tier)
+    V.rp = fmt_num(b.rp)
+    V.total = "0"
+    V.xp_text = L("Ranked level") .. " " .. tostring(m.xp.levelBefore or 1)
+    V.xp_gain = ""
+    V.lvl = ""
+    local keep = {}
+    local badge = R.badge_node(b.rank or 0, b.tier or 3, touch() and 1.6 or 1.5, {pips = true, keep = keep, legend_no = m.after and m.after.legendNo})
+    V.badge, V.pips = keep.sprite, keep.pips
+    local rp_bar, rp_segs = seg_bar(40, stats_w - 0.1, touch() and 0.24 or 0.2, 0)
+    local xp_bar, xp_segs = seg_bar(40, stats_w - 0.1, touch() and 0.16 or 0.13, 0)
+    V.rp_segs, V.xp_segs = rp_segs, xp_segs
+    set_bar(rp_segs, tier_frac(b.rp, b.rank or 0), R.rank_colour(b.rank))
+    set_bar(xp_segs, (m.xp.before or 0) / math.max(1, m.xp.needBefore or 300), G.C.BLUE)
+    V.next_text = U.next_text(b.rp, b.rank)
+    V.unlock_row = {n = G.UIT.R, config = {align = "cm", minh = 0.1, id = "rk_unlocks"}, nodes = {}}
+    local half = stats_w / 2
+    local stats = {
+        row({
+            col({txt(L("Rank points"), 0.4, G.C.GOLD)}, {align = "cl", w = half}),
+            col({txt("", 0.46, G.C.GOLD, {ref_table = V, ref_value = "total"})}, {align = "cr", w = half}),
+        }, {w = stats_w, h = 0.48}),
+    }
+    if m.single_lines then
+        local parts, note = {}, nil
+        for _, l in ipairs(m.single_lines) do
+            if l.k == "floor" then
+                note = l.v > 0 and L("RP never drops below 0") or L("A loss never gives RP")
+            elseif l.k ~= "bots" and (l.v ~= 0 or l.k == "placement") then
+                parts[#parts + 1] = L(LINE_NAMES[l.k] or l.k) .. " " .. signed(l.v)
+            end
+        end
+        if #parts > 0 then stats[#stats + 1] = row({txt(table.concat(parts, "   "), small(0.28), G.C.UI.TEXT_LIGHT)}, {w = stats_w, h = small(0.3), maxw = stats_w}) end
+        if note then stats[#stats + 1] = row({txt(note, small(0.28), G.C.UI.TEXT_LIGHT)}, {w = stats_w, h = small(0.3), maxw = stats_w}) end
+    elseif m.reason == "held" then
+        stats[#stats + 1] = row({txt(L("On hold for review: no RP change yet"), 0.3, G.C.UI.TEXT_LIGHT)}, {w = stats_w, h = 0.3})
+    elseif not m.ranked_any then
+        stats[#stats + 1] = row({txt(L("Unranked: nobody left ante 1"), 0.3, G.C.UI.TEXT_LIGHT)}, {w = stats_w, h = 0.3})
+    end
+    stats[#stats + 1] = rp_bar
+    stats[#stats + 1] = row({
+        col({txt(L("RP") .. " ", small(0.32), G.C.UI.TEXT_LIGHT), txt("", small(0.32), G.C.WHITE, {ref_table = V, ref_value = "rp"})}, {align = "cl", w = half}),
+        col({txt("", small(0.32), G.C.WHITE, {ref_table = V, ref_value = "next_text"})}, {align = "cr", w = half}),
+    }, {w = stats_w, h = 0.38})
+    stats[#stats + 1] = xp_bar
+    stats[#stats + 1] = row({
+        col({txt("", small(0.32), G.C.UI.TEXT_LIGHT, {ref_table = V, ref_value = "xp_text"})}, {align = "cl", w = half}),
+        col({txt("", small(0.32), G.C.BLUE, {ref_table = V, ref_value = "xp_gain"})}, {align = "cr", w = half}),
+    }, {w = stats_w, h = 0.38})
+    return panel({row({badge}), row({txt("", 0.38, R.rank_colour(b.rank), {ref_table = V, ref_value = "rank_name", id = "rk_rank_name"})}, {padding = 0.05})}, stats, stats_w)
+end
+
+local function merged_mp(games)
+    local first, last, gain, coins = nil, nil, 0, 0
+    for _, g in ipairs(games) do
+        local p = g.mp
+        if p and p.before and p.after then
+            first = first or p
+            last = p
+            gain = gain + (tonumber(p.gain) or 0)
+            coins = coins + (tonumber(p.coins) or 0)
+        end
+    end
+    if not first then return nil end
+    return {before = first.before, after = last.after, gain = gain, coins = coins}
+end
+
+local function mp_title(level)
+    local f = rawget(_G, "get_rank")
+    local t = type(f) == "function" and f(level or 1) or nil
+    return t or {name = "Novice"}
+end
+
+local function xp_text(xp, need)
+    return fmt_num(xp) .. " / " .. fmt_num(need) .. " " .. L("XP")
+end
+
+local function mp_panel(p, V)
+    local b, a = p.before, p.after
+    local stats_w = side_w()
+    local half = stats_w / 2
+    local ta = mp_title(a.level)
+    V.mp_level = tostring(b.level or 1)
+    V.mp_title = L(mp_title(b.level).name or "Novice")
+    V.mp_xp = xp_text(b.xp or 0, b.need or 1)
+    V.mp_gain = ""
+    V.mp_coins = ""
+    V.lvl = ""
+    local bar, segs = seg_bar(40, stats_w - 0.1, touch() and 0.24 or 0.2, 0)
+    V.mp_segs = segs
+    set_bar(segs, (b.xp or 0) / math.max(1, b.need or 1), G.C.BLUE)
+    local stats = {
+        row({
+            col({txt(L("Multiplayer level"), 0.4, G.C.GOLD)}, {align = "cl", w = half}),
+            col({txt("", 0.46, G.C.BLUE, {ref_table = V, ref_value = "mp_gain"})}, {align = "cr", w = half}),
+        }, {w = stats_w, h = 0.48}),
+        bar,
+        row({
+            col({txt("", small(0.32), G.C.WHITE, {ref_table = V, ref_value = "mp_xp"})}, {align = "cl", w = half}),
+            col({txt("", small(0.32), G.C.GOLD, {ref_table = V, ref_value = "mp_coins"})}, {align = "cr", w = half}),
+        }, {w = stats_w, h = 0.38}),
+    }
+    return panel({
+            row({txt("", touch() and 1.1 or 1.0, G.C.GOLD, {ref_table = V, ref_value = "mp_level", id = "mp_level_num"})}, {h = touch() and 1.15 or 1.05}),
+            row({txt("", 0.38, G.C[ta.color or "WHITE"] or G.C.WHITE, {ref_table = V, ref_value = "mp_title"})}, {padding = 0.05}),
+        }, stats, stats_w)
+end
+
+function U.session_def(games, V)
+    fit_panel()
+    local wins, losses = 0, 0
+    for _, g in ipairs(games) do
+        if g.result == "win" then wins = wins + 1 elseif g.result == "lose" then losses = losses + 1 end
+    end
+    local one = #games == 1 and games[1] or nil
+    local title, title_col = L("SESSION RESULTS"), G.C.GOLD
+    local sub = L("Wins") .. ": " .. wins .. "    " .. L("Losses") .. ": " .. losses
+    if one then
+        title = one.result == "win" and L("VICTORY") or one.result == "draw" and L("DRAW") or L("DEFEAT")
+        title_col = one.result == "win" and G.C.GOLD or one.result == "draw" and G.C.WHITE or G.C.RED
+        if one.ranked and one.ranked.mode == "br" then title = place_text(one.ranked.placement, one.ranked.players) end
+        sub = bom_rejoin and bom_rejoin.reason_text(one.reason) or ""
+    end
+    local rs = touch() and 0.38 or 0.34
+    local rh = touch() and 0.56 or 0.46
+    local body = {
+        row({txt(title, touch() and 0.95 or 0.85, title_col)}, {padding = 0.04}),
+        row({txt(sub, touch() and 0.38 or 0.34, G.C.UI.TEXT_LIGHT)}, {padding = 0.03, maxw = PANEL_W}),
+        row({}, {h = 0.1}),
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1, colour = G.C.BLACK, r = 0.1, minw = PANEL_W}, nodes = {col(game_rows(games, rs, rh))}},
+    }
+    local m = merged_rank(games)
+    if m then
+        body[#body + 1] = row({}, {h = 0.12})
+        body[#body + 1] = rank_panel(m, V)
+        body[#body + 1] = row({txt("", 0.34, G.C.GOLD, {ref_table = V, ref_value = "lvl"})}, {h = 0.34})
+        body[#body + 1] = V.unlock_row
+        return body, m, nil
+    end
+    local p = merged_mp(games)
+    if p then
+        body[#body + 1] = row({}, {h = 0.12})
+        body[#body + 1] = mp_panel(p, V)
+        body[#body + 1] = row({txt("", 0.34, G.C.GOLD, {ref_table = V, ref_value = "lvl"})}, {h = 0.34})
+    end
+    return body, nil, p
+end
+
+function U.next_text(rp, rank)
+    if (rank or 0) >= 9 then return L("TRUE JIMBO") end
+    local nr, nt = rank_of_rp((math.floor((rp or 0) / 100) + 1) * 100)
+    return tostring(100 - ((rp or 0) % 100)) .. " " .. L("to") .. " " .. R.rank_name(nr, nt)
+end
+
+local function ev(delay, fn)
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = delay, blockable = false, blocking = false, timer = "REAL", func = function() fn() return true end}))
+end
+
+local function juice_text(id)
+    local e = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID(id)
+    if e and e.juice_up then e:juice_up(0.3, 0.3) end
+end
+
+local function run_results(d, V)
+    local t = 0.5
+    local total = 0
+    for i, l in ipairs(d.counted and d.lines or {}) do
+        t = t + 0.32
+        ev(t, function()
+            if l.k == "bots" then
+                V["l" .. i] = (l.v >= 100) and L("Humans") or ("x" .. string.format("%.2f", l.v / 100):gsub("0+$", ""):gsub("%.$", ""))
+            else
+                V["l" .. i] = signed(l.v)
+                total = total + l.v
+            end
+            play_sound(l.k == "bots" and "chips1" or "coin3", 0.9 + i * 0.06, 0.6)
+        end)
+    end
+    t = t + 0.4
+    ev(t, function() V.total = signed(d.delta or 0); play_sound(d.delta and d.delta < 0 and "cancel" or "chips2", 1, 0.7); juice_text("rk_rank_name") end)
+    local b, a = d.before or {}, d.after or {}
+    local from, to = b.rp or 0, a.rp or 0
+    local steps = math.min(40, math.max(1, math.abs(to - from)))
+    local cur_rank, cur_tier = b.rank or 0, b.tier or 3
+    for s = 1, steps do
+        ev(t + 0.3 + s * 0.03, function()
+            local rp = math.floor(from + (to - from) * s / steps + 0.5)
+            local rk, tr = rank_of_rp(rp)
+            V.rp = fmt_num(rp)
+            V.next_text = U.next_text(rp, rk)
+            set_bar(V.rp_segs, tier_frac(rp, rk), R.rank_colour(rk))
+            if rk ~= cur_rank or tr ~= cur_tier then
+                local up = rk > cur_rank or (rk == cur_rank and tr < cur_tier)
+                cur_rank, cur_tier = rk, tr
+                V.rank_name = R.rank_name(rk, tr)
+                R.set_pips(V.pips, tr)
+                if V.badge then
+                    R.set_badge_rank(V.badge, rk)
+                    V.badge:juice_up(0.6, 0.4)
+                end
+                if up then
+                    play_sound(PROMO_SOUNDS[rk + 1] or "tarot1", 1, 0.8)
+                    if G.OVERLAY_MENU then R.fx(G.OVERLAY_MENU, R.celebration_colours(rk), 1.2) end
+                else
+                    play_sound("crumple1", 0.8, 0.6)
+                end
+                juice_text("rk_rank_name")
+            end
+        end)
+    end
+    t = t + 0.5 + steps * 0.03
+    local x = d.xp or {}
+    ev(t, function() V.xp_gain = "+" .. tostring(x.gain or 0) .. " " .. L("XP"); play_sound("generic1", 1.1, 0.4) end)
+    local lv = x.levelBefore or 1
+    local need = x.needBefore or 300
+    local cur = x.before or 0
+    local remaining = x.gain or 0
+    local ticks = 0
+    while remaining > 0 and ticks < 60 do
+        local step = math.max(1, math.ceil((x.gain or 1) / 25))
+        local add = math.min(step, remaining, need - cur)
+        cur = cur + add
+        remaining = remaining - add
+        ticks = ticks + 1
+        local lv_now, cur_now, need_now = lv, cur, need
+        local leveled = cur >= need
+        ev(t + 0.2 + ticks * 0.03, function()
+            set_bar(V.xp_segs, cur_now / need_now, G.C.BLUE)
+            V.xp_text = L("Ranked level") .. " " .. tostring(lv_now)
+            if leveled then
+                V.xp_text = L("Ranked level") .. " " .. tostring(lv_now + 1)
+                V.lvl = L("LEVEL UP!") .. "  " .. L("Ranked Pack") .. " +1"
+                play_sound("tarot2", 1, 0.7)
+                set_bar(V.xp_segs, 0, G.C.BLUE)
+            end
+        end)
+        if leveled then
+            lv = lv + 1
+            cur = 0
+            need = math.min(1500, 300 + 50 * (lv - 1))
+        end
+    end
+    t = t + 0.4 + ticks * 0.03
+    ev(t, function()
+        set_bar(V.xp_segs, (x.after or 0) / math.max(1, x.need or 300), G.C.BLUE)
+        local box = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("rk_unlocks")
+        if not box then return end
+        local chips = {}
+        for i, it in ipairs(d.unlocks or {}) do
+            if i > 4 then break end
+            chips[#chips + 1] = col({txt(L(it.name or it.id), 0.3, G.C.WHITE)}, {padding = 0.07, r = 0.08, colour = R.RARITY_COLOUR[it.rarity] or G.C.BLUE, emboss = 0.04})
+            chips[#chips + 1] = col({}, {w = 0.1})
+        end
+        if #chips > 0 then
+            table.remove(chips)
+            G.OVERLAY_MENU:add_child({n = G.UIT.R, config = {align = "cm"}, nodes = chips}, box)
+            play_sound("card1", 1, 0.6)
+            G.OVERLAY_MENU:recalculate()
+        end
+        if (d.result == "win" or d.promoted) and G.OVERLAY_MENU then R.fx(G.OVERLAY_MENU, R.celebration_colours(a.rank), 1.4) end
+    end)
+end
+
+local function run_mp(p, V)
+    local t = 0.6
+    local b, a = p.before or {}, p.after or {}
+    ev(t, function() V.mp_gain = "+" .. fmt_num(p.gain or 0) .. " " .. L("XP"); play_sound("generic1", 1.1, 0.4) end)
+    if (p.coins or 0) > 0 then
+        ev(t + 0.3, function() V.mp_coins = "+" .. fmt_num(p.coins) .. " " .. L("Balacoin"); play_sound("coin3", 1, 0.5) end)
+    end
+    local lv, cur = b.level or 1, b.xp or 0
+    local need = math.max(1, b.need or 1)
+    local remaining = math.max(0, p.gain or 0)
+    local step_xp = math.max(1, math.ceil(remaining / 25))
+    local ticks = 0
+    while remaining > 0 and ticks < 80 do
+        local add = math.max(1, math.min(step_xp, remaining, need - cur))
+        cur = cur + add
+        remaining = remaining - add
+        ticks = ticks + 1
+        local lv_now, cur_now, need_now, leveled = lv, cur, need, cur >= need
+        ev(t + 0.6 + ticks * 0.03, function()
+            if leveled then
+                V.mp_level = tostring(lv_now + 1)
+                V.mp_title = L(mp_title(lv_now + 1).name or "Novice")
+                V.lvl = L("LEVEL UP!")
+                set_bar(V.mp_segs, 0, G.C.BLUE)
+                play_sound("tarot2", 1, 0.7)
+                juice_text("mp_level_num")
+            else
+                set_bar(V.mp_segs, cur_now / need_now, G.C.BLUE)
+                V.mp_xp = xp_text(cur_now, need_now)
+            end
+        end)
+        if leveled then
+            lv = lv + 1
+            cur = 0
+            local f = rawget(_G, "get_xp_for_level")
+            need = math.max(1, type(f) == "function" and f(lv) or need)
+        end
+    end
+    ev(t + 0.8 + ticks * 0.03, function()
+        V.mp_level = tostring(a.level or lv)
+        V.mp_title = L(mp_title(a.level or lv).name or "Novice")
+        V.mp_xp = xp_text(a.xp or cur, a.need or need)
+        set_bar(V.mp_segs, (a.xp or cur) / math.max(1, a.need or need), G.C.BLUE)
+    end)
+end
+
+local function close_session()
+    S.showing = false
+    S.games = {}
+    if G.SETTINGS then G.SETTINGS.mp_ranked_pending = nil end
+end
+
+function R.session_refresh()
+    if not (S.showing and G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("mp_ranked_results")) then return end
+    R.show_results()
+end
+
+function R.show_results()
+    local V = {}
+    local games = S.games
+    G.FUNCS.mp_ranked_results_close = function()
+        close_session()
+        if S.back_to_mp and G.FUNCS.open_multiplayer_menu then
+            S.back_to_mp = nil
+            G.FUNCS.open_multiplayer_menu()
+            return
+        end
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 531
+    end
+    G.FUNCS.mp_ranked_results_view = function()
+        close_session()
+        G.FUNCS.mp_open_ranked()
+    end
+    G.FUNCS.mp_ranked_results_pack = function()
+        close_session()
+        U.open_pack_flow()
+    end
+    local body, m, p = U.session_def(games, V)
+    local bw, bh = 3.2, touch() and 0.95 or 0.8
+    local footer = {UIK.button{label = L("CONTINUE"), button = "mp_ranked_results_close", colour = G.C.GREEN, w = bw, h = bh}}
+    if m and (m.totalPacks or 0) > 0 then
+        footer[#footer + 1] = UIK.button{label = L("OPEN PACK"), button = "mp_ranked_results_pack", colour = G.C.PURPLE, w = bw, h = bh}
+    end
+    if m then footer[#footer + 1] = UIK.button{label = L("VIEW RANKED"), button = "mp_ranked_results_view", colour = G.C.BLUE, w = bw, h = bh} end
+    G.FUNCS.overlay_menu{definition = create_UIBox_generic_options({no_back = true, contents = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1, id = "mp_ranked_results"}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = body}}},
+        UIK.button_bar(footer),
+    }})}
+    if m then run_results(m, V) elseif p then run_mp(p, V) end
+    for _, g in ipairs(games) do
+        if not g.ranked and not S.asked_profile then
+            S.asked_profile = true
+            pcall(R.request_profile)
+        end
+    end
+    S.asked_profile = nil
+end
+
+local function season_left(sec)
+    sec = math.max(0, (sec or 0) - math.floor(love.timer.getTime() - (S.season_at or love.timer.getTime())))
+    local d = math.floor(sec / 86400)
+    local h = math.floor((sec % 86400) / 3600)
+    if d > 0 then return tostring(d) .. L("d") .. " " .. tostring(h) .. L("h") end
+    return tostring(h) .. L("h") .. " " .. tostring(math.floor((sec % 3600) / 60)) .. L("m")
+end
+
+local function waiting_body()
+    local msg = S.error == "offline" and L("Could not reach the server.") or (S.error and L("Something went wrong, try again.") or L("Connecting..."))
+    local nodes = {row({txt(msg, 0.45, S.error and G.C.RED or G.C.UI.TEXT_LIGHT)}, {padding = 0.2})}
+    if S.error then nodes[#nodes + 1] = UIK.button_bar({UIK.button{label = L("RETRY"), button = "mp_ranked_retry", colour = G.C.BLUE}}) end
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - UIK.TOP, id = "mp_ranked_body"}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = nodes}}}
+end
+
+local function body_wrap(node)
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0, id = "mp_ranked_body"}, nodes = {node}}
+end
+
+U.Q = U.Q or {}
+local Q = U.Q
+Q.view = Q.view or {status = "", counts = ""}
+
+local function now() return love.timer.getTime() end
+local function kit() return rawget(_G, "bom_kit") end
+local function menu() return rawget(_G, "mpm_menu") end
+
+local function clock(sec)
+    sec = math.max(0, math.floor(sec or 0))
+    return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
+end
+
+local function searching()
+    return Q.status == "joining" or Q.status == "searching"
+end
+U.searching = searching
+
+local function counts_text()
+    local m = menu()
+    local i = m and m.info or {}
+    if not i.online then return " " end
+    return tostring(i.ranked_queue or 0) .. " " .. L("in the ranked queue") .. ", " .. tostring(i.online or 0) .. " " .. L("online")
+end
+
+local ERRORS = {
+    mods_not_allowed = "Mods not allowed in ranked",
+    no_key = "Your ranked profile is not ready. Try again.",
+    name = "Pick your own name in Profile first.",
+    taken = "That name is already used by another online player.",
+    bad_name = "This name is not allowed",
+    offline = "Could not reach the server.",
+}
+
+local function status_text()
+    if Q.status == "joining" then return L("Joining the queue...") end
+    if Q.status == "searching" then return L("Searching for an opponent") .. "  " .. clock(now() - (Q.since or now())) end
+    if Q.status == "error" then
+        local s = L(ERRORS[Q.error] or "Something went wrong, try again.")
+        if Q.error == "mods_not_allowed" and type(Q.mods) == "table" and #Q.mods > 0 then s = s .. ": " .. table.concat(Q.mods, ", ") end
+        return s
+    end
+    return L("Same fixed rules for everyone")
+end
+
+local function update_view()
+    Q.view.status = status_text()
+    Q.view.counts = counts_text()
+end
+U.update_view = update_view
+
+local function ranked_open()
+    return G.OVERLAY_MENU ~= nil and UIK._win ~= nil and UIK._win.id == "mp_ranked" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") ~= nil
+end
+
+local function start_tick()
+    if Q.ticking then return end
+    Q.ticking = true
+    local next_info = now() + 8
+    G.E_MANAGER:add_event(Event({blocking = false, blockable = false, pause_force = true, timer = "REAL", func = function()
+        update_view()
+        local open = ranked_open()
+        if open and now() >= next_info then
+            next_info = now() + 8
+            if menu() then menu().request_info() end
+        end
+        if not open and not searching() then
+            Q.ticking = false
+            return true
+        end
+        return false
+    end}))
+end
+
+function U.queue_start()
+    if searching() then return end
+    local name = bom_room and bom_room.my_profile_name and bom_room.my_profile_name() or ""
+    Q.mods = nil
+    if bom_room and bom_room.is_default_name and bom_room.is_default_name(name) then
+        Q.status, Q.error = "error", "name"
+        update_view()
+        return R.ui_refresh()
+    end
+    Q.status, Q.error, Q.since = "joining", nil, now()
+    if G.GAME then
+        G.GAME.mp_searching = true
+        G.GAME.bom_quick_match = true
+    end
+    update_view()
+    start_tick()
+    R.ui_refresh()
+    bom_core.connect(function()
+        if Q.status ~= "joining" then return end
+        bom_core.send({type = "find_match", ranked = true, pkey = bom_core.player_key(), mods = bom_core.mods_field(true),
+            version = bom_room.game_version(), name = name})
+    end, {silent = true, on_fail = function()
+        if Q.status ~= "joining" then return end
+        Q.status, Q.error = "error", "offline"
+        if G.GAME then G.GAME.mp_searching = false end
+        update_view()
+        R.ui_refresh()
+    end})
+end
+
+function U.queue_cancel(silent)
+    if not searching() then
+        if Q.status == "error" then Q.status = nil end
+        return
+    end
+    Q.status = nil
+    if G.GAME then
+        G.GAME.mp_searching = false
+        G.GAME.bom_quick_match = nil
+    end
+    pcall(function() if bom_core.is_connected() then bom_core.send({type = "cancel_search"}) end end)
+    update_view()
+    if not silent then R.ui_refresh() end
+end
+
+function U.on_menu_info()
+    update_view()
+    if UIK and UIK._win and UIK._win.id == "mp_ranked" and UIK._win._cur == "rules" then R.ui_refresh() end
+end
+
+local function ref_text(key, scale, colour)
+    return {n = G.UIT.T, config = {ref_table = Q.view, ref_value = key, scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}}
+end
+
+local function kv_row(k, v, w, vc)
+    return row({
+        col({txt(k, 0.34, G.C.UI.TEXT_LIGHT)}, {align = "cl", w = w * 0.5}),
+        col({txt(v, 0.34, vc or G.C.WHITE)}, {align = "cr", w = w * 0.5}),
+    }, {w = w, h = 0.42})
+end
+
+local function rank_card(w, h)
+    local p = S.profile
+    local t = touch()
+    local inner = w - 0.6
+    local br, animated = R.badge_rank_of(S.equipped and S.equipped.badge, p.rank)
+    if (br or 0) > (p.rank or 0) then br = p.rank end
+    local bar, segs = seg_bar(20, inner, 0.22)
+    set_bar(segs, tier_frac(p.rp, p.rank or 0), R.rank_colour(p.rank))
+    return UIK.section(L("Current rank"), {
+        row({R.badge_node(br, p.tier, t and 1.55 or 1.45, {animated = animated, pips = true, legend_no = p.legendNo, pip_size = 0.16})}, {w = inner, padding = 0.04}),
+        row({txt(R.rank_name(p.rank, p.tier), t and 0.55 or 0.5, R.rank_colour(p.rank))}, {w = inner, h = 0.55}),
+        row({txt(fmt_num(p.rp) .. " " .. L("RP"), 0.38, G.C.GOLD)}, {w = inner, h = 0.45}),
+        row({bar}, {w = inner, padding = 0.04}),
+        row({txt(U.next_text(p.rp, p.rank), 0.3, G.C.UI.TEXT_LIGHT)}, {w = inner, h = 0.4}),
+    }, {w = w, h = h})
+end
+
+local function season_card(w, h)
+    local p = S.profile
+    local inner = w - 0.6
+    local season = S.season or {}
+    local name = tostring(season.name or "")
+    local _, peak_tier = rank_of_rp(p.peakRp or 0)
+    local matches = tonumber(p.matches) or 0
+    local wins = tonumber(p.wins) or 0
+    local rate = matches > 0 and (tostring(math.floor(wins * 100 / matches + 0.5)) .. "%") or "-"
+    local need = math.max(1, tonumber(p.xpNeed) or 300)
+    return UIK.section(name ~= "" and name or L("Season"), {
+        kv_row(L("Ends in"), season_left(season.secondsLeft), inner),
+        kv_row(L("Season peak"), R.rank_name(p.peakRank or 0, peak_tier), inner, R.rank_colour(p.peakRank or 0)),
+        kv_row(L("Matches"), tostring(matches), inner),
+        kv_row(L("Win rate"), rate, inner),
+        kv_row(L("Win streak"), tostring(tonumber(p.streak) or 0), inner),
+        kv_row(L("Next pack"), tostring(tonumber(p.xp) or 0) .. " / " .. tostring(need) .. " " .. L("XP"), inner),
+        kv_row(L("Packs to open"), tostring(tonumber(p.packs) or 0), inner, (tonumber(p.packs) or 0) > 0 and G.C.GOLD or nil),
+    }, {w = w, h = h})
+end
+
+local function recent_line(m, w)
+    local K = kit()
+    local d = K.dims()
+    local res = m.result == "win" and "win" or (m.result == "draw" and "draw" or "lose")
+    local rc = res == "win" and G.C.GREEN or (res == "draw" and G.C.UI.BACKGROUND_INACTIVE or G.C.RED)
+    local delta = tonumber(m.delta) or 0
+    local rw = 1.2
+    local pw = 1.4
+    local aw = w - rw - pw - 2 * d.gap
+    return K.row({
+        K.pill(L(RESULT_NAMES[res] or "LOSS"), {w = rw, colour = rc}),
+        K.cell({K.text(L("Ante") .. " " .. tostring(m.ante or 0), {scale = d.small, colour = UIK.C.muted})}, {w = aw}),
+        K.pill(signed(delta) .. " " .. L("RP"), {w = pw, colour = K.colour("status"), text_colour = delta > 0 and G.C.GREEN or (delta < 0 and G.C.RED or G.C.WHITE)}),
+    }, {w = w})
+end
+
+local function recent_card(w, h)
+    local inner = w - 0.6
+    local list = S.history or {}
+    local nodes = {}
+    for i = 1, math.min(touch() and 5 or 6, #list) do nodes[#nodes + 1] = row({recent_line(list[i], inner)}, {w = inner, padding = 0.02}) end
+    if #nodes == 0 then
+        nodes[1] = row({txt(L("No ranked match yet."), 0.32, G.C.UI.TEXT_LIGHT)}, {w = inner, h = 0.6})
+        nodes[2] = row({txt(L("Your last matches show here."), 0.3, UIK.C.muted)}, {w = inner, h = 0.4})
+    end
+    return UIK.section(L("Recent matches"), nodes, {w = w, h = h})
+end
+
+local function tab_main()
+    if not S.profile then return waiting_body() end
+    local t = touch()
+    local cw = UIK.col_w(3) - 0.2
+    local bh = t and 1.0 or 0.86
+    local ch = UIK.H - UIK.TOP - bh - 0.95
+    local busy = searching()
+    local packs = tonumber(S.profile.packs) or 0
+    update_view()
+    local cards
+    if UIK.portrait() then
+        cw = UIK.col_w(2) - 0.2
+        local h1 = math.floor((ch - 0.2) * 0.56 * 10) / 10
+        local h2 = ch - 0.2 - h1
+        cards = {n = G.UIT.C, config = {align = "tm"}, nodes = {
+            UIK.columns({{rank_card(cw, h1)}, {season_card(cw, h1)}}, {h = h1}),
+            {n = G.UIT.R, config = {minh = 0.2}, nodes = {}},
+            UIK.columns({{recent_card(UIK.W - 0.2, h2)}}, {h = h2}),
+        }}
+    else
+        cards = UIK.columns({{rank_card(cw, ch)}, {season_card(cw, ch)}, {recent_card(cw, ch)}}, {h = ch})
+    end
+    local buttons = UIK.button_bar({
+        UIK.button{label = busy and L("CANCEL") or L("PLAY RANKED"), button = busy and "mp_ranked_queue_cancel" or "mp_ranked_queue",
+            colour = busy and G.C.RED or G.C.GREEN, w = cw, h = bh, id = "mp_ranked_queue"},
+        {n = G.UIT.C, config = {minw = 0.3}},
+        UIK.button{label = L("OPEN PACK") .. " (" .. tostring(packs) .. ")", button = "mp_ranked_open_pack", colour = G.C.PURPLE,
+            disabled = packs <= 0, w = cw, h = bh, id = "mp_ranked_pack"},
+    }, {padding = 0.06})
+    return body_wrap({n = G.UIT.C, config = {align = "tm"}, nodes = {
+        {n = G.UIT.R, config = {align = "cm"}, nodes = {cards}},
+        buttons,
+        row({ref_text("status", t and 0.34 or 0.3, Q.status == "error" and G.C.RED or (busy and G.C.GOLD or G.C.UI.TEXT_LIGHT))}, {w = UIK.W, h = 0.36}),
+        row({ref_text("counts", t and 0.3 or 0.27, UIK.C.muted)}, {w = UIK.W, h = 0.3}),
+    }})
+end
+
+U.page = U.page or {board = 1}
+local function per_page() return touch() and 7 or 9 end
+
+local function paged(key, list)
+    local pp = per_page()
+    local pages = math.max(1, math.ceil(#list / pp))
+    U.page[key] = math.max(1, math.min(pages, U.page[key] or 1))
+    local first = (U.page[key] - 1) * pp + 1
+    local out = {}
+    for i = first, math.min(#list, first + pp - 1) do out[#out + 1] = list[i] end
+    return out, pages
+end
+U.paged = paged
+
+local function tab_board()
+    local b = S.board
+    if not b then return waiting_body() end
+    local K = kit()
+    local w = math.min(UIK.W - 1.2, 12)
+    local rows, pages = paged("board", b.top or {})
+    local me = b.me or {}
+    local mine = me.pos and (L("Your place") .. ": #" .. tostring(me.pos) .. "   " .. fmt_num(me.rp) .. " " .. L("RP")) or L("Play a match to get on the board.")
+    local nodes = {row({txt(mine, 0.36, G.C.GOLD)}, {h = 0.45})}
+    for _, e in ipairs(rows) do
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+            K.ranked_row({place = e.pos, name = e.name or "?", rank = {rank = e.rank, tier = e.tier, name = R.rank_name(e.rank, e.tier)}, rp = fmt_num(e.rp), mine = e.me, dev = e.dev, dev_col = bom_badges.any_dev(rows), w = w}),
+        }}
+    end
+    if #rows == 0 then nodes[#nodes + 1] = row({txt(L("Nothing here yet."), 0.38, G.C.UI.TEXT_LIGHT)}, {h = 1}) end
+    local body = {row({col(nodes, {align = "tm"})}, {align = "tm", h = UIK.H - UIK.TOP - (touch() and 1.0 or 0.85)})}
+    if pages > 1 then
+        body[#body + 1] = UIK.pager{prev = "mp_ranked_prev_board", next = "mp_ranked_next_board",
+            text = tostring(U.page.board) .. " / " .. tostring(pages), prev_disabled = U.page.board <= 1, next_disabled = U.page.board >= pages}
+    end
+    return body_wrap({n = G.UIT.C, config = {align = "tm"}, nodes = body})
+end
+
+local function tab_rewards()
+    local p = S.profile
+    if not p then return waiting_body() end
+    local season = S.season or {}
+    local best = tonumber(p.peakRank) or tonumber(p.rank) or 0
+    local cw = (UIK.W - 1.2) / 5
+    local t = touch()
+    local items = {}
+    local port = UIK.portrait and UIK.portrait()
+    for r = 0, 9 do
+        local reached = r <= best
+        local rp = r == 9 and (L("from") .. " 2,700 " .. L("RP")) or (fmt_num(r * 300) .. " " .. L("RP"))
+        local tile = port and (UIK.W - 0.5) / 2
+        items[#items + 1] = port and col({row({
+            col({R.badge_node(r, 3, 1.25, {})}, {w = 1.45}),
+            col({
+                row({txt(R.rank_name(r), 0.42, R.rank_colour(r))}, {align = "cl"}),
+                row({txt(rp, 0.34, G.C.UI.TEXT_LIGHT)}, {align = "cl"}),
+                row({txt(L("Season badge"), 0.32, reached and G.C.GOLD or UIK.C.muted)}, {align = "cl"}),
+                row({txt(L("Season sleeve"), 0.32, reached and G.C.GOLD or UIK.C.muted)}, {align = "cl"}),
+            }, {align = "cl", w = tile - 1.6, maxw = tile - 1.6}),
+        }, {padding = 0})}, {w = tile, h = 1.75, padding = 0.05, r = 0.1, colour = r == best and {1, 0.85, 0.3, 0.16} or {0, 0, 0, 0.15}}) or col({
+            row({R.badge_node(r, 3, t and 1.0 or 0.92, {})}, {padding = 0.03}),
+            row({txt(R.rank_name(r), 0.34, R.rank_colour(r))}),
+            row({txt(rp, 0.26, G.C.UI.TEXT_LIGHT)}),
+            row({txt(L("Season badge"), 0.27, reached and G.C.GOLD or UIK.C.muted)}),
+            row({txt(L("Season sleeve"), 0.27, reached and G.C.GOLD or UIK.C.muted)}),
+        }, {w = cw, padding = 0.05, r = 0.1, colour = r == best and {1, 0.85, 0.3, 0.16} or {0, 0, 0, 0.15}})
+    end
+    local about = {row({txt(L("At the end of the season you get the badge and sleeve of the best rank you reached."), 0.3, G.C.UI.TEXT_LIGHT)}, {padding = 0.04})}
+    if UIK.portrait and UIK.portrait() then
+        local ok, lines = pcall(require("multiplayer.mps_state").wrap, L("At the end of the season you get the badge and sleeve of the best rank you reached."), UIK.W - 0.4, 0.34)
+        if ok and #lines > 1 then
+            about = {}
+            for _, ln in ipairs(lines) do about[#about + 1] = row({txt(ln, 0.34, G.C.UI.TEXT_LIGHT)}, {padding = 0.02}) end
+        end
+    end
+    local head_rows = {row({txt(L("Season") .. " " .. tostring(season.name or "") .. ", " .. L("ends in") .. " " .. season_left(season.secondsLeft), 0.38, G.C.GOLD)})}
+    for _, r in ipairs(about) do head_rows[#head_rows + 1] = r end
+    head_rows[#head_rows + 1] = row({txt(L("Best this season") .. ": " .. R.rank_name(best), 0.32, R.rank_colour(best))})
+    local head = col(head_rows)
+    return body_wrap(col({row({head}, {padding = 0.04}), UIK.grid(items, port and 2 or 5, {padding = port and 0.08 or 0.06})}, {align = "tm"}))
+end
+
+local function ranked_ruleset()
+    local rs = nil
+    local RS = rawget(_G, "bom_rulesets")
+    if RS and type(RS.get) == "function" then pcall(function() rs = RS.get("ranked") end) end
+    if type(rs) ~= "table" then
+        local m = menu()
+        rs = m and m.info and m.info.ruleset or nil
+    end
+    return type(rs) == "table" and rs or nil
+end
+U.ranked_ruleset = ranked_ruleset
+
+local function tab_rules()
+    local rs = ranked_ruleset()
+    local m = menu()
+    if not rs or not m then
+        if m then m.request_info() end
+        return waiting_body()
+    end
+    return body_wrap(m.ruleset_view(rs, UIK.W - 0.6, {L("Every ranked match uses these rules. The host's settings are ignored.")}))
+end
+
+local COLL = {
+    {slot = "back", label = "Sleeves"}, {slot = "cframe", label = "Card Frames"}, {slot = "jframe", label = "Joker Frames"}, {slot = "badge", label = "Badges"},
+    {slot = "title", label = "Titles"}, {slot = "flame", label = "Scoring Flames"}, {slot = "burst", label = "PvP Win Bursts"}, {slot = "celebration", label = "Celebrations"},
+}
+local SOURCE_ORDER = {rank = 1, pack = 2, season = 3}
+local RARITY_ORDER = {common = 1, uncommon = 2, rare = 3, legendary = 4}
+local PER_ROW, MAX_ROWS = 5, 3
+U.coll = {slot = "back", page = 1}
+
+local function item_rank(it) return tonumber(tostring(it.id):match("_(%d)$")) or 0 end
+
+local function coll_items(slot)
+    local list = {}
+    for _, it in pairs(S.catalog) do if it.type == slot then list[#list + 1] = it end end
+    table.sort(list, function(a, b)
+        local sa, sb = SOURCE_ORDER[a.source] or 4, SOURCE_ORDER[b.source] or 4
+        if sa ~= sb then return sa < sb end
+        if a.source == "rank" and item_rank(a) ~= item_rank(b) then return item_rank(a) < item_rank(b) end
+        local ra, rb = RARITY_ORDER[a.rarity] or 0, RARITY_ORDER[b.rarity] or 0
+        if ra ~= rb then return ra < rb end
+        return tostring(a.id) < tostring(b.id)
+    end)
+    return list
+end
+
+local function tab_collection()
+    if not S.profile then return waiting_body() end
+    local cols = {{}, {}}
+    for i, c in ipairs(COLL) do
+        local list = coll_items(c.slot)
+        local own = 0
+        for _, it in ipairs(list) do if S.unlocks[it.id] then own = own + 1 end end
+        local dst = cols[i <= #COLL / 2 and 1 or 2]
+        dst[#dst + 1] = UIBox_button({button = "mp_ranked_coll_" .. c.slot, label = {L(c.label)}, count = {tally = own, of = #list}, minw = 5, id = "mp_ranked_coll_" .. c.slot})
+    end
+    local p = S.profile
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - UIK.TOP, id = "mp_ranked_body"}, nodes = {
+        {n = G.UIT.C, config = {align = "cm"}, nodes = {
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                {n = G.UIT.C, config = {align = "tm", padding = 0.15}, nodes = cols[1]},
+                {n = G.UIT.C, config = {align = "tm", padding = 0.15}, nodes = cols[2]},
+            }},
+            UIK.button_bar({UIK.button{label = L("OPEN PACK") .. " (" .. tostring(p.packs or 0) .. ")", button = "mp_ranked_open_pack", colour = G.C.PURPLE, disabled = (p.packs or 0) <= 0}}),
+        }},
+    }}
+end
+
+local function lock_text(it)
+    if it.source == "rank" then return L("Reach") .. " " .. R.rank_name(item_rank(it)) end
+    if it.source == "pack" then return L("Found in Ranked Packs") end
+    return L("Season reward")
+end
+
+local function coll_popup(it, owned)
+    local equipped = S.equipped[it.type] == it.id
+    local name = owned and L(it.name or it.id) or localize("k_locked")
+    local main = owned and (equipped and L("Equipped") or L("Click to equip")) or lock_text(it)
+    local rarity = L((it.rarity or "common"):gsub("^%l", string.upper))
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+        {n = G.UIT.C, config = {align = "cm"}, nodes = {
+            {n = G.UIT.R, config = {padding = 0.05, r = 0.12, colour = lighten(G.C.JOKER_GREY, 0.5), emboss = 0.07}, nodes = {
+                {n = G.UIT.R, config = {align = "cm", padding = 0.07, r = 0.1, colour = adjust_alpha(owned and darken(G.C.BLACK, 0.1) or G.C.BLACK, 0.8)}, nodes = {
+                    name_from_rows({{n = G.UIT.T, config = {text = name, scale = 0.4, colour = G.C.WHITE, shadow = true}}}),
+                    desc_from_rows({{{n = G.UIT.T, config = {text = main, scale = 0.32, colour = (owned and equipped) and G.C.GREEN or G.C.UI.TEXT_DARK}}}}),
+                    {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {create_badge(rarity, R.RARITY_COLOUR[it.rarity] or G.C.BLUE, nil, 1.2)}},
+                }},
+            }},
+        }},
+    }}
+end
+
+local function mark_equipped()
+    local want = S.equipped[U.coll.slot]
+    for _, area in ipairs(U.areas or {}) do
+        for _, c in ipairs(area.cards) do c.highlighted = c.mp_cosmetic ~= nil and c.mp_cosmetic.id == want end
+    end
+end
+
+local LOOSE = {badge = true, title = true, flame = true, burst = true, celebration = true}
+
+local LOCKED = {key = "mp_rank_locked", set = "Joker", name = "?", discovered = false, unlocked = true, alerted = true,
+    atlas = "Joker", pos = {x = 0, y = 0}, config = {}, cost = 0, rarity = 1, order = 0}
+
+local function add_preview(card, it)
+    if it.type == "badge" then
+        local r, animated = R.badge_rank_of(it.id, tonumber(it.value) or 0)
+        local spr = R.badge_sprite(r, G.CARD_W * 0.72, animated)
+        if spr then spr:set_alignment({major = card, type = "cm", bond = "Strong"}); card.children.mp_fx = spr end
+    elseif it.type == "title" then
+        local lines, cur = {}, ""
+        for w in ("\"" .. L(tostring(it.value)) .. "\""):gmatch("%S+") do
+            if cur ~= "" and #cur + #w > 9 then lines[#lines + 1] = cur; cur = w else cur = cur == "" and w or (cur .. " " .. w) end
+        end
+        if cur ~= "" then lines[#lines + 1] = cur end
+        local rows = {}
+        for i, l in ipairs(lines) do rows[i] = {n = G.UIT.R, config = {align = "cm"}, nodes = {{n = G.UIT.T, config = {text = l, scale = 0.34, colour = G.C.GOLD, shadow = true}}}} end
+        card.children.mp_fx = UIBox{definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, maxw = G.CARD_W * 0.74}, nodes = rows},
+            config = {align = "cm", offset = {x = 0, y = 0}, major = card, bond = "Strong", parent = card}}
+    elseif it.type == "flame" then
+        local spr = Sprite(0, 0, G.CARD_W * 0.95, G.CARD_W * 0.95, G.ASSET_ATLAS["ui_1"], {x = 2, y = 0})
+        local col = R.flame_colours_of(it.value) or {G.C.UI_CHIPS, G.C.WHITE}
+        local args = {timer = G.TIMERS.REAL, real_intensity = 6, colour_1 = col[1], colour_2 = col[2]}
+        spr:define_draw_steps({{shader = "flame", send = {
+            {name = "time", ref_table = args, ref_value = "timer"},
+            {name = "amount", ref_table = args, ref_value = "real_intensity"},
+            {name = "image_details", ref_table = spr, ref_value = "image_dims"},
+            {name = "texture_details", ref_table = spr.RETS, ref_value = "get_pos_pixel"},
+            {name = "colour_1", ref_table = args, ref_value = "colour_1"},
+            {name = "colour_2", ref_table = args, ref_value = "colour_2"},
+            {name = "id", val = spr.ID},
+        }}})
+        spr:get_pos_pixel()
+        spr:set_alignment({major = card, type = "cm", bond = "Strong", offset = {x = 0, y = G.CARD_H * 0.04}})
+        card.mp_flame = args
+        card.children.mp_fx = spr
+    elseif it.type == "burst" or it.type == "celebration" then
+        local cols
+        if it.type == "burst" then
+            local c = R.hex_colour(it.value) or G.C.GOLD
+            cols = {c, G.C.WHITE, lighten(c, 0.35)}
+        else
+            cols = R.celebration_set(it.value) or {G.C.GOLD, G.C.WHITE}
+        end
+        card.children.mp_fx = Particles(0, 0, 0, 0, {timer = 0.05, scale = 0.25, initialize = true, lifespan = 1.2, speed = 1.4,
+            padding = -0.35, attach = card, colours = cols, fill = true})
+    end
+end
+
+local function coll_card(area, it)
+    local owned = S.unlocks[it.id] and true or false
+    local x, y = area.T.x + area.T.w / 2, area.T.y
+    local card
+    if not owned then
+        card = Card(x, y, G.CARD_W, G.CARD_H, nil, LOCKED)
+    elseif it.type == "jframe" then
+        card = Card(x, y, G.CARD_W, G.CARD_H, nil, G.P_CENTERS.j_joker, {bypass_discovery_center = true, bypass_discovery_ui = true})
+    elseif it.type == "cframe" then
+        card = Card(x, y, G.CARD_W, G.CARD_H, G.P_CARDS.H_A, G.P_CENTERS.c_base)
+    else
+        card = Card(x, y, G.CARD_W, G.CARD_H, G.P_CARDS.empty, G.P_CENTERS.c_base)
+    end
+r 6 219 %20%20%20%20 -
+l 9
+    if owned then
+        card.mp_cosmetic = it
+        add_preview(card, it)
+        if LOOSE[it.type] then
+            card.draw = function(self, layer)
+                layer = layer or "both"
+                if not self.states.visible or layer == "shadow" then return end
+                R.draw_tile(self)
+                if self.children.mp_fx then self.children.mp_fx:draw() end
+r 2 461 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 127
+            end
+        end
+    end
+    card.hover = function()
+        if G.CONTROLLER.dragging.target and not G.CONTROLLER.using_touch then return end
+        if card.hovering or not card.states.visible then return end
+        card.hovering = true
+        card:juice_up(0.05, 0.02)
+        card.config.h_popup = coll_popup(it, owned)
+        card.config.h_popup_config = card:align_h_popup()
+        Node.hover(card)
+    end
+    card.stop_hover = function() card.hovering = false; Node.stop_hover(card) end
+    card.click = function()
+        if not owned then
+            play_sound("cancel", 0.8, 0.6)
+            card:juice_up(0.3, 0.3)
+            return
+        end
+        local id = S.equipped[it.type] ~= it.id and it.id or nil
+        R.send({type = "ranked_equip", slot = it.type, item = id})
+        S.equipped[it.type] = id
+        pcall(R.save_equipped)
+        mark_equipped()
+        play_sound(id and "card1" or "cardSlide2", 1, 0.6)
+        card:juice_up(0.3, 0.3)
+        if card.hovering then
+            card.config.h_popup = coll_popup(it, owned)
+            Node.stop_hover(card)
+            Node.hover(card)
+        end
+    end
+    card:start_materialize(nil, true)
+    return card
+end
+
+function U.coll_fill()
+    local list = coll_items(U.coll.slot)
+    local per = PER_ROW * #U.areas
+    local first = (U.coll.page - 1) * per
+    for j, area in ipairs(U.areas) do
+        for i = #area.cards, 1, -1 do
+            local c = area:remove_card(area.cards[i])
+            if c then c:remove() end
+        end
+        for i = 1, PER_ROW do
+            local it = list[first + (j - 1) * PER_ROW + i]
+            if it then area:emplace(coll_card(area, it)) end
+        end
+    end
+    mark_equipped()
+end
+
+function U.coll_def(slot)
+    U.coll.slot = slot
+    U.coll.page = 1
+    local list = coll_items(slot)
+    local rows = math.max(1, math.min(MAX_ROWS, math.ceil(#list / PER_ROW)))
+    local pages = math.max(1, math.ceil(#list / (PER_ROW * rows)))
+    U.areas = {}
+    local nodes = {}
+    for j = 1, rows do
+        U.areas[j] = CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, 5 * G.CARD_W, 0.95 * G.CARD_H,
+            {card_limit = PER_ROW, type = "title", highlight_limit = 0, collection = true})
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.07, no_fill = true}, nodes = {{n = G.UIT.O, config = {object = U.areas[j]}}}}
+    end
+    U.coll_fill()
+    local contents = {{n = G.UIT.R, config = {align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes = nodes}}
+    if pages > 1 then
+        local opts = {}
+        for i = 1, pages do opts[i] = localize("k_page") .. " " .. i .. "/" .. pages end
+        contents[2] = {n = G.UIT.R, config = {align = "cm"}, nodes = {
+            create_option_cycle({options = opts, w = 4.5, cycle_shoulders = true, opt_callback = "mp_ranked_coll_page", current_option = 1, colour = G.C.RED, no_pips = true, focus_args = {snap_to = true, nav = "wide"}}),
+        }}
+    end
+    return create_UIBox_generic_options({back_func = "mp_ranked_coll_return", contents = contents})
+end
+
+local function tab_profile()
+    if not S.profile then return waiting_body() end
+    local items = {
+        UIK.header(L("Recovery code")),
+        UIK.value{label = L("Your code"), value = S.recovery or L("Hidden")},
+        UIK.action{label = L("Keep it safe, it restores your rank"), button_label = S.recovery and L("HIDE") or L("SHOW CODE"), button = "mp_ranked_toggle_code", colour = G.C.BLUE},
+        UIK.header(L("Restore a rank")),
+        UIK.input{label = L("Code from your old device"), ref_table = S.restore, ref_value = "code", max_length = 14, prompt = "XXXX-XXXX-XXXX", all_caps = true},
+        UIK.action{label = S.error == "bad_code" and L("That code was not found.") or (S.restored and (L("Restored") .. ": " .. tostring(S.restored.name)) or L("This device takes over that rank")),
+            button_label = L("RESTORE"), button = "mp_ranked_restore", colour = G.C.ORANGE},
+    }
+    return UIK.flow{id = "rk_prof", items = items, cols = 2}
+end
+
+local function window_def(tab)
+    return UIK.window{zoom = false,
+        id = "mp_ranked",
+        title = L("RANKED"),
+        tab = tab,
+        tabs = {
+            {key = "main", label = L("Ranked"), build = tab_main},
+            {key = "board", label = L("Leaderboard"), build = tab_board},
+            {key = "rewards", label = L("Season rewards"), build = tab_rewards},
+            {key = "rules", label = L("Rules"), build = tab_rules},
+        },
+        back_func = "mp_ranked_back",
+    }
+end
+
+function R.ui_refresh()
+    if G.CONTROLLER and G.CONTROLLER.text_input_hook then return end
+    if G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("mp_ranked_body") then UIK.refresh() end
+end
+
+function U.open_pack_flow()
+    S.pack = nil
+    S.pack_wait = true
+    local function go() R.send({type = "ranked_open_pack"}) end
+    if bom_core.is_connected() then go() else bom_core.connect(go, {silent = true, on_fail = function() S.pack_wait = false end}) end
+end
+
+local function pack_art()
+    local atlas = G.ASSET_ATLAS and G.ASSET_ATLAS.mp_rank_pack
+    if not atlas then return nil end
+    local spr = Sprite(0, 0, G.CARD_W * 0.75, G.CARD_H * 0.75, atlas, {x = 0, y = 0})
+    spr.states.drag.can = false
+    spr.states.collide.can = false
+    spr.ARGS.send_to_shader = {0, 0}
+    spr.draw = function(self)
+r 2 447 %20%20%20%20%20%20%20%20 -
+l 6
+        local t = G.TIMERS.REAL
+        self.ARGS.send_to_shader[1] = t / 28
+        self.ARGS.send_to_shader[2] = t
+        self:draw_shader("dissolve")
+        self:draw_shader("jimbo", nil, self.ARGS.send_to_shader)
+        if R.draw_motes then R.draw_motes(self, 71) end
+r 2 461 %20%20%20%20%20%20%20%20 -
+l 93
+    end
+    return {n = G.UIT.O, config = {object = spr}}
+end
+
+function R.on_pack(d)
+    S.pack_wait = false
+    local items = d.items or {}
+    local nodes = {}
+    local keep = {}
+    for i, it in ipairs(items) do
+        local c = R.RARITY_COLOUR[it.rarity] or G.C.BLUE
+        local card = col({
+            row({txt(L(it.type == "back" and "Sleeve" or (R.SLOT_NAMES[it.type] or it.type)), 0.3, G.C.UI.TEXT_LIGHT)}, {padding = 0.05}),
+            row({txt(L(it.name or it.id), 0.38, G.C.WHITE)}, {w = 2.9, padding = 0.08}),
+            row({txt(L((it.rarity or ""):gsub("^%l", string.upper)), 0.3, c)}),
+            row({txt(it.dupe and ("+" .. tostring(it.xp or 0) .. " " .. L("XP")) or L("NEW"), 0.34, it.dupe and G.C.BLUE or G.C.GOLD)}, {padding = 0.06}),
+        }, {w = 3.1, h = 2.2, r = 0.12, colour = G.C.BLACK, emboss = 0.06, padding = 0.08})
+        keep[i] = "rk_pack_" .. i
+        nodes[#nodes + 1] = {n = G.UIT.C, config = {align = "cm", id = keep[i], padding = 0.06}, nodes = {{n = G.UIT.R, config = {align = "cm", colour = c, r = 0.14, padding = 0.05}, nodes = {card}}}}
+    end
+    G.FUNCS.mp_ranked_pack_done = function()
+        local P = rawget(_G, "mpm_profile")
+        if P and P.open then return P.open("progression") end
+        G.FUNCS.mp_open_ranked()
+    end
+    G.FUNCS.mp_ranked_pack_again = function() U.open_pack_flow() end
+    local left = S.profile and (S.profile.packs or 0) or 0
+    local footer = {UIK.button{label = L("CONTINUE"), button = "mp_ranked_pack_done", colour = G.C.GREEN}}
+    if left > 1 then footer[#footer + 1] = UIK.button{label = L("OPEN ANOTHER") .. " (" .. tostring(left - 1) .. ")", button = "mp_ranked_pack_again", colour = G.C.PURPLE} end
+    local contents = {
+        row({txt(L("RANKED PACK"), 0.8, G.C.PURPLE)}, {padding = 0.1}),
+        row({{n = G.UIT.C, config = {align = "cm"}, nodes = nodes}}, {padding = 0.15}),
+        row({txt((d.levelUps or 0) > 0 and (L("LEVEL UP!") .. "  " .. L("Ranked Pack") .. " +" .. tostring(d.levelUps)) or " ", 0.36, G.C.GOLD)}),
+        UIK.button_bar(footer),
+    }
+    local art = pack_art()
+    if art then table.insert(contents, 1, row({art}, {padding = 0.05})) end
+    G.FUNCS.overlay_menu{definition = create_UIBox_generic_options({no_back = true, contents = contents})}
+    play_sound("cardFan2", 1, 0.6)
+    for i, id in ipairs(keep) do
+        ev(0.25 + i * 0.3, function()
+            local e = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID(id)
+            if e then e:juice_up(0.4, 0.4) end
+            play_sound("card1", 0.9 + i * 0.08, 0.7)
+            local it = items[i]
+            if it and (it.rarity == "rare" or it.rarity == "legendary") then play_sound(it.rarity == "legendary" and "polychrome1" or "foil1", 1, 0.6) end
+        end)
+    end
+    if G.OVERLAY_MENU then R.fx(G.OVERLAY_MENU, {G.C.WHITE, lighten(G.C.PURPLE, 0.4), lighten(G.C.GOLD, 0.2)}, 1.0, 0.25) end
+end
+
+local function listen(t, fn)
+    if bom_events and bom_events.register then bom_events.register(t, fn) end
+end
+
+local function events()
+    if U._listening then return end
+    U._listening = true
+    listen("searching", function(d)
+        if type(d) == "table" and d.ranked and searching() then
+            if Q.status ~= "searching" then Q.since = now() end
+            Q.status = "searching"
+            update_view()
+            R.ui_refresh()
+            return true
+        end
+    end)
+    listen("ranked_error", function(d)
+        if type(d) == "table" and d["for"] == "find_match" then
+            Q.status, Q.error, Q.mods = "error", d.code or d.reason, d.mods
+            if G.GAME then G.GAME.mp_searching = false end
+            update_view()
+            R.ui_refresh()
+            return true
+        end
+    end)
+    listen("name_refused", function(d)
+        if type(d) == "table" and d["for"] == "find_match" and Q.status == "joining" then
+            Q.status, Q.error = "error", d.reason == "default" and "name" or d.reason == "bad_name" and "bad_name" or "taken"
+            if G.GAME then G.GAME.mp_searching = false end
+            update_view()
+            R.ui_refresh()
+            return true
+        end
+    end)
+    listen("room_ready", function(d)
+        if type(d) == "table" and d.ranked and searching() then Q.status = nil end
+    end)
+end
+
+function U.register()
+    events()
+    G.FUNCS.mp_open_ranked = function()
+r 13 1381 %20%20%20%20%20%20%20%20 -
+l 12
+        G.FUNCS.overlay_menu{definition = window_def()}
+        R.request_profile()
+        local m = menu()
+        if m then m.request_info() end
+        update_view()
+        start_tick()
+    end
+    G.FUNCS.mp_ranked_back = function()
+        U.queue_cancel(true)
+        local m = menu()
+        if m and m.active then return G.FUNCS.exit_overlay_menu() end
+        if G.FUNCS.open_multiplayer_menu then return G.FUNCS.open_multiplayer_menu() end
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 17
+    end
+    G.FUNCS.mp_ranked_queue = function() U.queue_start() end
+    G.FUNCS.mp_ranked_queue_cancel = function() U.queue_cancel() end
+    G.FUNCS.mp_ranked_retry = function() S.error = nil; R.request_profile(); UIK.refresh() end
+    G.FUNCS.mp_ranked_open_pack = function() U.open_pack_flow() end
+    G.FUNCS.mp_ranked_toggle_code = function()
+        if S.recovery then S.recovery = nil; UIK.refresh() else R.send({type = "ranked_recovery"}) end
+    end
+    G.FUNCS.mp_ranked_restore = function()
+        local code = tostring(S.restore.code or ""):upper():gsub("[^A-Z0-9]", "")
+        if #code ~= 12 then S.error = "bad_code"; UIK.refresh() return end
+        S.error = nil
+        S.restored = nil
+        R.send({type = "ranked_restore", code = code})
+    end
+    for _, c in ipairs(COLL) do
+        G.FUNCS["mp_ranked_coll_" .. c.slot] = function()
+r 13 1381 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 12
+            G.FUNCS.overlay_menu{definition = U.coll_def(c.slot)}
+        end
+    end
+    G.FUNCS.mp_ranked_coll_page = function(args)
+        if not (args and args.to_key and U.areas) then return end
+        U.coll.page = args.to_key
+        U.coll_fill()
+    end
+    G.FUNCS.mp_ranked_coll_return = function()
+        U.areas = nil
+        local P = rawget(_G, "mpm_profile")
+        if P and P.open then return P.open("cosmetics") end
+r 13 1381 %20%20%20%20%20%20%20%20 -
+l 85
+        G.FUNCS.overlay_menu{definition = window_def()}
+    end
+    G.FUNCS.mp_ranked_prev_board = function() U.page.board = (U.page.board or 1) - 1; UIK.refresh() end
+    G.FUNCS.mp_ranked_next_board = function() U.page.board = (U.page.board or 1) + 1; UIK.refresh() end
+end
+
+U.seg_bar, U.set_bar, U.tier_frac, U.rank_of_rp = seg_bar, set_bar, tier_frac, rank_of_rp
+U.fmt_num, U.signed, U.place_text, U.season_left = fmt_num, signed, place_text, season_left
+U.txt, U.row, U.col, U.waiting_body, U.body_wrap = txt, row, col, waiting_body, body_wrap
+U.tab_cosmetics, U.tab_account = tab_collection, tab_profile
+U.MODE_NAMES, U.RESULT_NAMES = MODE_NAMES, RESULT_NAMES
+
+local function register_strings_1()
+    mod_loc_register{
+        fr = {["Season rewards"] = "Récompenses de saison", ["Rules"] = "Règles", ["Ranked"] = "Classé", ["PLAY RANKED"] = "JOUER EN CLASSÉ", ["CANCEL"] = "ANNULER",
+            ["in the ranked queue"] = "en file classée", ["online"] = "en ligne", ["Joining the queue..."] = "Entrée dans la file...",
+            ["Searching for an opponent"] = "Recherche d'un adversaire", ["Same fixed rules for everyone"] = "Les mêmes règles pour tous",
+            ["Mods not allowed in ranked"] = "Mods interdits en classé", ["Your ranked profile is not ready. Try again."] = "Votre profil classé n'est pas prêt. Réessayez.",
+            ["Pick your own name in Profile first."] = "Choisissez d'abord votre nom dans Profil.", ["That name is already used by another online player."] = "Ce nom est déjà utilisé par un autre joueur en ligne.",
+            ["Something went wrong, try again."] = "Un problème est survenu, réessayez.", ["ends in"] = "se termine dans", ["Last 10 matches"] = "10 derniers matchs",
+            ["vs bots"] = "contre bots", ["Ante"] = "Mise", ["Play a ranked match to start your history."] = "Jouez un match classé pour lancer votre historique.",
+            ["Your place"] = "Votre place", ["Play a match to get on the board."] = "Jouez un match pour entrer au classement.", ["Nothing here yet."] = "Rien pour l'instant.",
+            ["from"] = "dès", ["Season badge"] = "Insigne de saison", ["Season sleeve"] = "Pochette de saison", ["Best this season"] = "Meilleur rang de la saison",
+            ["At the end of the season you get the badge and sleeve of the best rank you reached."] = "En fin de saison, vous recevez l'insigne et la pochette du meilleur rang atteint.",
+            ["Every ranked match uses these rules. The host's settings are ignored."] = "Chaque match classé suit ces règles. Les réglages de l'hôte sont ignorés.",
+            ["WIN"] = "GAGNÉ", ["LOSS"] = "PERDU", ["DRAW"] = "ÉGALITÉ", ["RP"] = "RP"},
+        es = {["Season rewards"] = "Premios de temporada", ["Rules"] = "Reglas", ["Ranked"] = "Clasificatoria", ["PLAY RANKED"] = "JUGAR CLASIFICATORIA", ["CANCEL"] = "CANCELAR",
+            ["in the ranked queue"] = "en la cola clasificatoria", ["online"] = "en línea", ["Joining the queue..."] = "Entrando en la cola...",
+            ["Searching for an opponent"] = "Buscando rival", ["Same fixed rules for everyone"] = "Las mismas reglas para todos",
+            ["Mods not allowed in ranked"] = "Mods no permitidos en clasificatoria", ["Your ranked profile is not ready. Try again."] = "Tu perfil clasificatorio no está listo. Inténtalo de nuevo.",
+            ["Pick your own name in Profile first."] = "Primero elige tu nombre en Perfil.", ["That name is already used by another online player."] = "Ese nombre ya lo usa otro jugador en línea.",
+            ["Something went wrong, try again."] = "Algo salió mal, inténtalo de nuevo.", ["ends in"] = "termina en", ["Last 10 matches"] = "Últimas 10 partidas",
+            ["vs bots"] = "contra bots", ["Ante"] = "Apuesta", ["Play a ranked match to start your history."] = "Juega una partida clasificatoria para empezar tu historial.",
+            ["Your place"] = "Tu puesto", ["Play a match to get on the board."] = "Juega una partida para entrar en la clasificación.", ["Nothing here yet."] = "Nada por ahora.",
+            ["from"] = "desde", ["Season badge"] = "Insignia de temporada", ["Season sleeve"] = "Funda de temporada", ["Best this season"] = "Mejor rango de la temporada",
+            ["At the end of the season you get the badge and sleeve of the best rank you reached."] = "Al final de la temporada recibes la insignia y la funda del mejor rango que alcanzaste.",
+            ["Every ranked match uses these rules. The host's settings are ignored."] = "Todas las partidas clasificatorias usan estas reglas. Se ignoran los ajustes del anfitrión.",
+            ["WIN"] = "VICTORIA", ["LOSS"] = "DERROTA", ["DRAW"] = "EMPATE", ["RP"] = "RP"},
+    }
+end
+
+local function register_strings_2()
+    mod_loc_register{
+        fr = {["RANKED"] = "CLASSÉ", ["Rank"] = "Rang", ["Ranks"] = "Rangs", ["Leaderboard"] = "Classement", ["History"] = "Historique",
+            ["Collection"] = "Collection", ["Profile"] = "Profil", ["Stone"] = "Pierre", ["Bronze"] = "Bronze", ["Silver"] = "Argent", ["Gold"] = "Or", ["Platinum"] = "Platine",
+            ["Foiled"] = "Brillant", ["Holographic"] = "Holographique", ["Polychromed"] = "Polychrome", ["Negative"] = "Négatif",
+            ["TRUE JIMBO"] = "VRAI JIMBO", ["VICTORY"] = "VICTOIRE", ["DEFEAT"] = "DÉFAITE", ["DRAW"] = "ÉGALITÉ", ["CONTINUE"] = "CONTINUER",
+            ["Current rank"] = "Rang actuel", ["Next pack"] = "Prochain paquet", ["Recent matches"] = "Derniers matchs", ["No ranked match yet."] = "Aucun match classé pour l'instant.", ["Your last matches show here."] = "Vos derniers matchs s'affichent ici.", ["Win rate"] = "Taux de victoire", ["Packs to open"] = "Paquets à ouvrir", ["Season peak"] = "Pic de la saison", ["Matches"] = "Matchs",
+            ["VIEW RANKED"] = "VOIR LE CLASSÉ", ["SESSION RESULTS"] = "RÉSULTATS DE LA SESSION", ["Wins"] = "Victoires", ["Losses"] = "Défaites", ["Game"] = "Partie", ["Result"] = "Résultat", ["WIN"] = "GAGNÉ", ["LOSS"] = "PERDU", ["OPEN PACK"] = "OUVRIR", ["Season"] = "Saison", ["Level"] = "Niveau", ["Rank points"] = "Points de rang",
+            ["Placement"] = "Place", ["Ante reached"] = "Mise initiale atteinte", ["Best score"] = "Meilleur score", ["Win streak"] = "Série", ["Opponents"] = "Adversaires",
+            ["Humans"] = "Humains", ["Bots"] = "Bots", ["LEVEL UP!"] = "NIVEAU SUPÉRIEUR !", ["Ranked Pack"] = "Paquet classé", ["RANKED PACK"] = "PAQUET CLASSÉ",
+            ["Recovery code"] = "Code de récupération", ["RESTORE"] = "RESTAURER", ["SHOW CODE"] = "VOIR LE CODE", ["HIDE"] = "CACHER", ["NEW"] = "NOUVEAU",
+            ["Connecting..."] = "Connexion...", ["Could not reach the server."] = "Serveur injoignable.", ["RETRY"] = "RÉESSAYER", ["None"] = "Aucun",
+            ["Sleeves"] = "Pochettes", ["Card Frames"] = "Cadres de carte", ["Joker Frames"] = "Cadres de joker", ["Badges"] = "Insignes", ["Titles"] = "Titres",
+            ["Scoring Flames"] = "Flammes de score", ["PvP Win Bursts"] = "Éclats de victoire JcJ", ["Celebrations"] = "Célébrations", ["Reach"] = "Atteindre",
+            ["Found in Ranked Packs"] = "Dans les paquets classés", ["Season reward"] = "Récompense de saison", ["Equipped"] = "Équipé", ["Click to equip"] = "Cliquer pour équiper",
+            ["Common"] = "Commun", ["Uncommon"] = "Peu commun", ["Rare"] = "Rare", ["Legendary"] = "Légendaire", ["OPEN ANOTHER"] = "EN OUVRIR UN AUTRE", ["to"] = "avant", ["Unranked: nobody left ante 1"] = "Non classé : personne n'a passé la mise initiale 1", ["Multiplayer level"] = "Niveau multijoueur", ["Ranked level"] = "Niveau classé", ["RP never drops below 0"] = "Les RP ne descendent pas sous 0",
+            ["A loss never gives RP"] = "Une défaite ne donne jamais de RP", ["On hold for review: no RP change yet"] = "En attente de vérification : RP inchangés pour l'instant", ["Balacoin"] = "Balacoin", ["XP"] = "XP"},
+        es = {["OPEN ANOTHER"] = "ABRIR OTRO", ["to"] = "para", ["Unranked: nobody left ante 1"] = "Sin clasificar: nadie pasó de la apuesta inicial 1", ["Multiplayer level"] = "Nivel multijugador", ["Ranked level"] = "Nivel clasificatorio", ["RP never drops below 0"] = "Los RP no bajan de 0",
+            ["A loss never gives RP"] = "Una derrota nunca da RP", ["On hold for review: no RP change yet"] = "En revisión: los RP no cambian por ahora", ["Balacoin"] = "Balacoin", ["XP"] = "XP", ["RANKED"] = "CLASIFICATORIA", ["Rank"] = "Rango", ["Ranks"] = "Rangos", ["Leaderboard"] = "Clasificación", ["History"] = "Historial",
+            ["Collection"] = "Colección", ["Profile"] = "Perfil", ["Stone"] = "Piedra", ["Bronze"] = "Bronce", ["Silver"] = "Plata", ["Gold"] = "Oro", ["Platinum"] = "Platino",
+            ["Foiled"] = "Laminado", ["Holographic"] = "Holográfico", ["Polychromed"] = "Policromo", ["Negative"] = "Negativo",
+            ["TRUE JIMBO"] = "JIMBO VERDADERO", ["VICTORY"] = "VICTORIA", ["DEFEAT"] = "DERROTA", ["DRAW"] = "EMPATE", ["CONTINUE"] = "CONTINUAR",
+            ["Current rank"] = "Rango actual", ["Next pack"] = "Próximo paquete", ["Recent matches"] = "Últimas partidas", ["No ranked match yet."] = "Aún no hay partidas clasificatorias.", ["Your last matches show here."] = "Tus últimas partidas aparecen aquí.", ["Win rate"] = "Porcentaje de victorias", ["Packs to open"] = "Paquetes por abrir", ["Season peak"] = "Máximo de la temporada", ["Matches"] = "Partidas",
+            ["VIEW RANKED"] = "VER CLASIFICATORIA", ["SESSION RESULTS"] = "RESULTADOS DE LA SESIÓN", ["Wins"] = "Victorias", ["Losses"] = "Derrotas", ["Game"] = "Partida", ["Result"] = "Resultado", ["WIN"] = "VICTORIA", ["LOSS"] = "DERROTA", ["OPEN PACK"] = "ABRIR", ["Season"] = "Temporada", ["Level"] = "Nivel", ["Rank points"] = "Puntos de rango",
+            ["Placement"] = "Puesto", ["Ante reached"] = "Apuesta inicial alcanzada", ["Best score"] = "Mejor puntuación", ["Win streak"] = "Racha", ["Opponents"] = "Rivales",
+            ["Humans"] = "Humanos", ["Bots"] = "Bots", ["LEVEL UP!"] = "¡SUBES DE NIVEL!", ["Ranked Pack"] = "Paquete clasificatorio", ["RANKED PACK"] = "PAQUETE CLASIFICATORIO",
+            ["Recovery code"] = "Código de recuperación", ["RESTORE"] = "RESTAURAR", ["SHOW CODE"] = "VER CÓDIGO", ["HIDE"] = "OCULTAR", ["NEW"] = "NUEVO",
+            ["Connecting..."] = "Conectando...", ["Could not reach the server."] = "No se pudo conectar.", ["RETRY"] = "REINTENTAR", ["None"] = "Ninguno",
+            ["Sleeves"] = "Fundas", ["Card Frames"] = "Marcos de carta", ["Joker Frames"] = "Marcos de comodín", ["Badges"] = "Insignias", ["Titles"] = "Títulos",
+            ["Scoring Flames"] = "Llamas de puntuación", ["PvP Win Bursts"] = "Estallidos de victoria JcJ", ["Celebrations"] = "Celebraciones", ["Reach"] = "Alcanza",
+            ["Found in Ranked Packs"] = "En paquetes clasificatorios", ["Season reward"] = "Premio de temporada", ["Equipped"] = "Equipado", ["Click to equip"] = "Pulsa para equipar",
+            ["Common"] = "Común", ["Uncommon"] = "Poco común", ["Rare"] = "Raro", ["Legendary"] = "Legendario"},
+    }
+end
+
+U.window_def = window_def
+
+function U.register_strings()
+    if not mod_loc_register then return end
+    register_strings_1()
+    register_strings_2()
+end
+
+return U
+end

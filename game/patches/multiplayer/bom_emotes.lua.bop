@@ -1,0 +1,1300 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 843
+local E = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+local pi, sin, cos, abs, exp, min, max, floor = math.pi, math.sin, math.cos, math.abs, math.exp, math.min, math.max, math.floor
+
+local function clock() return love.timer.getTime() end
+E.clock = clock
+
+E.DURATION = 1.5
+E.SPEED = 0.7
+E.LOOP_GAP = 0.6
+E.HOLD = E.DURATION - 0.24
+E.SEND_GAP = 2.2
+E.MAX_LIVE = 6
+E.WAIT_ANCHOR = 0.2
+
+E.LIST = {
+    {id = "hi", label = "Hi!"},
+    {id = "laugh", label = "Haha!"},
+    {id = "cry", label = "Noo..."},
+    {id = "nope", label = "Nope!"},
+    {id = "chips", label = "Chips!"},
+    {id = "fire", label = "On fire!"},
+    {id = "money", label = "Cash!"},
+    {id = "gg", label = "GG"},
+    {id = "think", label = "Hmm..."},
+    {id = "lucky", label = "Lucky!"},
+    {id = "oops", label = "Oops!"},
+    {id = "hurry", label = "Hurry!"},
+}
+E.BY_ID = {}
+for i, def in ipairs(E.LIST) do
+    def.index = i
+    E.BY_ID[def.id] = def
+end
+
+E.FROM_LEGACY = {"lucky", "gg", "fire", "oops", "gg", "hurry"}
+E.TO_LEGACY = {hi = 1, lucky = 1, gg = 2, laugh = 3, chips = 3, fire = 3, money = 3, cry = 4, oops = 4, hurry = 6}
+E.LEGACY_TEXT = {
+    ["good luck!"] = "lucky", ["well played!"] = "gg", ["nice!"] = "fire",
+    ["oops!"] = "oops", ["thanks!"] = "gg", ["hurry up!"] = "hurry",
+}
+
+function E.resolve(v, depth)
+    depth = depth or 0
+    if depth > 2 then return nil end
+    local tv = type(v)
+    if tv == "table" then
+        return E.resolve(v.id, depth + 1) or E.resolve(v.e, depth + 1)
+    elseif tv == "number" then
+        if v ~= v or v ~= floor(v) then return nil end
+        return E.FROM_LEGACY[v]
+    elseif tv == "string" then
+        if E.BY_ID[v] then return v end
+        local low = v:lower()
+        if E.BY_ID[low] then return low end
+        if E.LEGACY_TEXT[low] then return E.LEGACY_TEXT[low] end
+        local n = tonumber(v)
+        if n then return E.resolve(n, depth + 1) end
+    end
+    return nil
+end
+
+local function clamp(x, a, b)
+    if x < a then return a end
+    if x > b then return b end
+    return x
+end
+local function seg(t, a, b) return clamp((t - a) / (b - a), 0, 1) end
+local function out_back(u) local c1 = 1.70158 local c3 = c1 + 1 return 1 + c3 * (u - 1) ^ 3 + c1 * (u - 1) ^ 2 end
+local function out_cubic(u) return 1 - (1 - u) ^ 3 end
+local function in_cubic(u) return u * u * u end
+local function sine_io(u) return (1 - cos(pi * u)) / 2 end
+local function bell(u) return sin(pi * u) end
+local function wave(t, hz) return sin(2 * pi * hz * t) end
+
+
+local function soft_out(u) local c1 = 1.2 local c3 = c1 + 1 return 1 + c3 * (u - 1) ^ 3 + c1 * (u - 1) ^ 2 end
+local function soft_in(u) local c1 = 1.2 local c3 = c1 + 1 return c3 * u * u * u - c1 * u * u end
+
+function E.envelope(t)
+    local D = E.DURATION
+    if t <= 0 or t >= D then return 0 end
+    if t < 0.24 then return max(0, soft_out(t / 0.24)) end
+    if t > D - 0.24 then return max(0, 1 - soft_in(seg(t, D - 0.24, D))) end
+    return 1
+end
+
+local CH = 0.72
+local CW = CH * 71 / 95
+
+local function spr(out, key, name, x, y, w, h, r, extra)
+    local p = {k = "spr", key = key, spr = name, x = x, y = y, w = w, h = h, r = r or 0}
+    if extra then for kk, vv in pairs(extra) do p[kk] = vv end end
+    out[#out + 1] = p
+    return p
+end
+
+local function card(out, key, base, front, x, y, w, h, r, extra)
+    spr(out, key, base, x, y, w, h, r, extra)
+    if front then spr(out, key .. "_f", front, x, y, w, h, r, extra) end
+end
+
+local function txt(out, key, text, x, y, s, colour, extra)
+    local p = {k = "txt", key = key, text = text, x = x, y = y, s = s, r = 0, kk = 1, colour = colour}
+    if extra then for kk, vv in pairs(extra) do p[kk] = vv end end
+    out[#out + 1] = p
+    return p
+end
+
+local function emit(out, key, x, y, cfg, extra)
+    local p = {k = "fx", key = key, x = x, y = y, w = 0, h = 0, cfg = cfg, on = true}
+    if extra then for kk, vv in pairs(extra) do p[kk] = vv end end
+    out[#out + 1] = p
+    return p
+end
+
+local function pivot(px, py, h, r) return px + sin(r) * h / 2, py - cos(r) * h / 2 end
+
+E.FX = {
+    tear = {timer = 0.02, scale = 0.075, speed = 0.12, lifespan = 0.3, colours = {"BLUE", "TEAR"}, max = 8},
+    spark = {timer = 0.006, scale = 0.08, speed = 1.6, lifespan = 0.45, colours = {"CHIPS", "BLUE", "WHITE"}, max = 24},
+    glint = {timer = 0.035, scale = 0.07, speed = 0.5, lifespan = 0.45, colours = {"GOLD", "GREEN", "WHITE"}, max = 14, fill = true},
+    shards = {timer = 0.005, scale = 0.08, speed = 1.05, lifespan = 0.35, colours = {"GLASS"}, max = 40, fill = true},
+}
+
+local CHIP_STACK = {"chip_white", "chip_red", "chip_blue"}
+local CHIP_BURST = {"chip_white", "chip_red", "chip_blue", "chip_green", "chip_gold", "chip_red", "chip_blue", "chip_white"}
+local CASH_X = {-0.36, 0.3, -0.12, 0.4, -0.42, 0.12, -0.26}
+
+local P = {}
+
+P.hi = function(t, o)
+    local a = seg(t, 0.12, 0.3) * (1 - seg(t, 1.15, 1.4))
+    local r = 0.3 * a * wave(t - 0.12, 2.2)
+    local bob = -0.03 * a * abs(wave(t - 0.12, 2.2))
+    local x, y = pivot(0, 0.02 + CH / 2 + bob, CH, r)
+    spr(o, "jimbo", "jimbo", x, y, CW, CH, r)
+end
+
+P.laugh = function(t, o)
+    local a = bell(seg(t, 0.1, 1.35))
+    local shake = wave(t, 7)
+    local r = 0.13 * a * shake - 0.08 * a
+    local hop = -0.05 * a * abs(wave(t, 3.5))
+    local sq = 0.07 * a * shake * shake
+    local sx, sy = 1 + sq, 1 - sq
+    spr(o, "jimbo", "jimbo", 0, 0.02 + hop + CH * (1 - sy) / 2, CW * sx, CH * sy, r)
+    local HA = {{0.22, 0.34, -0.3, 0.2}, {0.55, -0.36, -0.22, -0.2}, {0.85, 0.3, -0.12, 0.15}}
+    for i, h in ipairs(HA) do
+        local u = seg(t, h[1], h[1] + 0.45)
+        if t >= h[1] and u < 1 then
+            local k = max(0, out_back(seg(t, h[1], h[1] + 0.14))) * (1 - seg(u, 0.75, 1))
+            txt(o, "ha" .. i, "ha", h[2], h[3] - 0.12 * u, 0.42, "GOLD", {kk = k, r = h[4]})
+        end
+    end
+end
+
+P.cry = function(t, o)
+    local a = seg(t, 0.1, 0.45)
+    local sway = 0.07 * wave(t, 0.9) * a
+    local sy = 1 - 0.05 * a
+    local jy = 0.02 + 0.035 * a + CH * (1 - sy) / 2
+    spr(o, "jimbo", "jimbo", 0, jy, CW * (1 + 0.03 * a), CH * sy, sway)
+    for i = 1, 7 do
+        local u = t - (0.22 + (i - 1) * 0.15)
+        if u >= 0 and u <= 0.65 then
+            local side = (i % 2 == 1) and -1 or 1
+            emit(o, "tear" .. i, side * (0.07 + 0.08 * u), jy - 0.07 + 1.1 * u * u + 0.05 * u, E.FX.tear, {on = u < 0.32})
+        end
+    end
+end
+
+P.nope = function(t, o)
+    local sx = 1
+    local flipped = t >= 0.54
+    if t >= 0.42 and t < 0.54 then
+        sx = cos(pi / 2 * seg(t, 0.42, 0.54))
+    elseif flipped then
+        sx = out_back(seg(t, 0.54, 0.74))
+    end
+    sx = max(0.02, sx)
+    local shake = 0
+    if t > 0.74 then shake = wave(t - 0.74, 4) * exp(-3 * (t - 0.74)) end
+    local x, r = 0.07 * shake, -0.12 * shake
+    card(o, "card", "base", "ace", x, 0, CW * sx, CH, r)
+    if flipped then spr(o, "x", "debuff", x, 0, CW * sx, CH, r) end
+    if t >= 0.62 then
+        txt(o, "nope", "nope", x * 0.5, 0.27, 0.6, "RED", {kk = max(0, out_back(seg(t, 0.62, 0.76))), bump = true})
+    end
+end
+
+P.chips = function(t, o)
+    local B = 0.38
+    if t < B then
+        local a = seg(t, 0.16, B)
+        local sq = 0.22 * in_cubic(a)
+        local jig = 0.05 * a * wave(t, 9)
+        for i = 1, 3 do
+            spr(o, "stack" .. i, CHIP_STACK[i], jig, 0.12 - (i - 1) * 0.07 * (1 - sq), 0.34 * (1 + sq), 0.34 * (1 - 0.8 * sq), 0)
+        end
+        return
+    end
+    local u = t - B
+    for i = 1, 8 do
+        local ang = -pi / 2 + (i - 1) * 2 * pi / 8 + 0.2
+        local v = 1.05 + 0.22 * (i % 3)
+        local size = 0.28 * (1 - 0.45 * seg(u, 0.55, 1.1))
+        spr(o, "chip" .. i, CHIP_BURST[i], cos(ang) * v * u, 0.05 + sin(ang) * v * u + 1.3 * u * u, size, size, ((i % 2 == 0) and 7 or -7) * u)
+    end
+    emit(o, "spark", 0, 0.05, E.FX.spark, {on = u < 0.12})
+end
+
+P.fire = function(t, o)
+    local a = out_cubic(seg(t, 0.12, 0.5)) * (1 - seg(t, 1.2, 1.45))
+    local boom = bell(seg(t, 0.45, 0.62))
+    local pulse = 1 + 0.05 * a * wave(t, 3) + 0.12 * boom
+    local x = 0.012 * a * wave(t, 13)
+    local w, h = 0.8 * pulse, 0.4 * (1 + 0.06 * a * wave(t, 3) - 0.05 * boom)
+    local y = 0.16
+    o[#o + 1] = {k = "flame", key = "flame", x = x, y = y + h / 2 - 0.55, w = 1.1, h = 1.1, r = 0, amount = max(0, 4 * a + 0.35 * a * wave(t, 2.3))}
+    o[#o + 1] = {k = "rect", key = "pill", x = x, y = y, w = w, h = h, r = 0, colour = "MULT", round = 0.07}
+    txt(o, "mult", "mult", x, y, 0.5, "WHITE", {kk = pulse})
+end
+
+P.money = function(t, o)
+    local a = seg(t, 0.1, 0.3) * (1 - seg(t, 1.2, 1.4))
+    local tt = t - 0.1
+    local hop = -0.07 * a * abs(wave(tt, 2.4))
+    local sq = 0.05 * a * cos(2 * pi * 4.8 * tt)
+    local sx, sy = 1 + sq, 1 - sq
+    local gh = CH * 0.9
+    spr(o, "golden", "golden", 0, 0.04 + hop + gh * (1 - sy) / 2, CW * 0.9 * sx, gh * sy, 0.05 * a * wave(t, 1.2))
+    for i = 1, 7 do
+        local u = t - (0.12 + (i - 1) * 0.11)
+        if u >= 0 then
+            local y = -0.6 + 1.7 * u * u + 0.2 * u
+            if y < 0.55 then
+                local k = max(0, out_back(seg(u, 0, 0.12))) * (1 - seg(y, 0.35, 0.55))
+                txt(o, "cash" .. i, "$", CASH_X[i], y, 0.5, "MONEY", {kk = k, r = 0.5 * wave(u + i * 0.13, 1.1)})
+            end
+        end
+    end
+end
+
+P.gg = function(t, o)
+    local cw, ch = CW, CH
+    local enter = out_back(seg(t, 0, 0.34))
+    local b = bell(seg(t, 0.34, 0.74)) + 0.6 * bell(seg(t, 0.82, 1.12))
+    for i, s in ipairs({-1, 1}) do
+        local bx = s * (0.24 + 0.3 * (1 - enter))
+        local r = -s * 0.42 * b
+        local sy = 1 - 0.1 * b
+        local x, y = pivot(bx, 0.06 + ch / 2, ch * sy, r)
+        card(o, "c" .. i, "base", i == 1 and "king" or "queen", x, y, cw, ch * sy, r)
+    end
+    if t >= 0.44 then txt(o, "gg", "GG", 0, -0.34, 0.62, "GOLD", {kk = max(0, out_back(seg(t, 0.44, 0.6))), bump = true}) end
+end
+
+P.think = function(t, o)
+    local th = 4 * pi * sine_io(seg(t, 0.15, 1.25))
+    local c = cos(th)
+    spr(o, "card", c >= 0 and "hermit" or "back", 0, 0.03 * wave(t, 1.2), CW * max(0.02, abs(c)), CH, 0)
+    if t > 0.3 then
+        local u = seg(t, 0.3, 1.4)
+        txt(o, "q", "?", 0.36, -0.28 - 0.08 * u, 0.55, "WHITE", {kk = max(0, out_back(seg(t, 0.3, 0.45))), r = 0.25 * wave(t, 1.5)})
+    end
+end
+
+P.lucky = function(t, o)
+    local j = seg(t, 0.25, 0.75)
+    local hop = -0.14 * bell(j)
+    local r = 2 * pi * sine_io(j)
+    local land = bell(seg(t, 0.75, 0.9))
+    local sx, sy = 1 + 0.12 * land, 1 - 0.12 * land
+    local y = 0.03 + hop + CH * (1 - sy) / 2
+    card(o, "card", "lucky_base", "seven", 0, y, CW * sx, CH * sy, r)
+    emit(o, "glint", 0, y, E.FX.glint, {w = CW, h = CH, on = t > 0.72 and t < 1.2})
+    if t >= 0.78 then txt(o, "lucky", "lucky", 0, 0.36, 0.42, "GREEN", {kk = max(0, out_back(seg(t, 0.78, 0.94))), bump = true}) end
+end
+
+P.oops = function(t, o)
+    local nerv = seg(t, 0.12, 0.62)
+    local r = (0.03 + 0.11 * nerv) * wave(t, 6) * (1 - seg(t, 0.66, 0.9))
+    local y = 0.02 + 0.08 * in_cubic(seg(t, 0.5, 0.66))
+    local dis = seg(t, 0.66, 1.0)
+    if dis < 1 then card(o, "card", "glass", "ten", 0, y, CW, CH, r, {dis = dis, dis_col = "GLASS"}) end
+    emit(o, "shards", 0, y, E.FX.shards, {w = CW, h = CH, on = t >= 0.66 and t < 0.92})
+    if t >= 0.88 then txt(o, "oops", "oops", 0, 0, 0.48, "FILTER", {kk = max(0, out_back(seg(t, 0.88, 1.02))), bump = true}) end
+end
+
+local function hurry_x(t)
+    local a = seg(t, 0.15, 0.4) * (1 - seg(t, 1.05, 1.35))
+    return 0.3 * a * wave(t - 0.15, 1.8)
+end
+
+P.hurry = function(t, o)
+    local x = hurry_x(t)
+    local v = (hurry_x(t + 0.008) - hurry_x(t - 0.008)) / 0.016
+    local st = min(0.32, abs(v) * 0.12)
+    local r = clamp(v * 0.09, -0.3, 0.3)
+    for g = 2, 1, -1 do
+        local gx = hurry_x(t - 0.05 * g)
+        if abs(gx - x) > 0.02 then spr(o, "ghost" .. g, "mercury", gx, 0, CW * (1 + st), CH * (1 - 0.4 * st), r, {a = 0.3 / g}) end
+    end
+    spr(o, "card", "mercury", x, 0, CW * (1 + st), CH * (1 - 0.4 * st), r)
+end
+
+E.POSES = P
+
+function E.pose(id, t)
+    local f = P[id]
+    local out = {}
+    if f then f(t, out) end
+    return out
+end
+
+E.SOUNDS = {
+    hi = {{0.12, "voice2", 1.15, 0.45}, {0.55, "voice5", 1.25, 0.4}},
+    laugh = {{0.15, "voice1", 1.45, 0.4}, {0.33, "voice3", 1.55, 0.38}, {0.52, "voice1", 1.5, 0.36}, {0.72, "voice4", 1.6, 0.32}},
+    cry = {{0.15, "voice6", 0.68, 0.42}, {0.7, "voice8", 0.6, 0.38}},
+    nope = {{0.42, "card1", 1.1, 0.6}, {0.56, "cancel", 1.0, 0.6}},
+    chips = {{0.08, "chips1", 1.0, 0.55}, {0.38, "chips2", 1.1, 0.7}, {0.38, "generic1", 1.25, 0.4}},
+    fire = {{0.12, "multhit1", 1.0, 0.6}, {0.48, "multhit2", 1.0, 0.6}},
+    money = {{0.12, "coin1", 1.0, 0.35}, {0.34, "coin3", 1.05, 0.35}, {0.56, "coin5", 1.1, 0.35}, {0.78, "coin7", 1.15, 0.35}},
+    gg = {{0.05, "card1", 1.0, 0.5}, {0.44, "gong", 1.6, 0.22}},
+    think = {{0.15, "tarot1", 1.1, 0.45}, {1.2, "tarot2", 1.2, 0.4}},
+    lucky = {{0.28, "holo1", 1.2, 0.4}, {0.78, "coin2", 1.3, 0.45}},
+    oops = {{0.66, "glass", 1.0, 0.55}, {0.66, "generic1", 1.0, 0.5}},
+    hurry = {{0.18, "whoosh1", 1.3, 0.35}, {0.46, "whoosh2", 1.4, 0.35}, {0.74, "whoosh1", 1.5, 0.35}, {1.0, "whoosh2", 1.5, 0.3}},
+}
+
+E.SPRITES = {
+    jimbo = {center = "j_joker"},
+    golden = {center = "j_golden"},
+    hermit = {center = "c_hermit"},
+    mercury = {center = "c_mercury"},
+    back = {center = "b_red"},
+    base = {center = "c_base"},
+    glass = {center = "m_glass"},
+    lucky_base = {center = "m_lucky"},
+    debuff = {atlas = "centers", pos = {x = 4, y = 0}},
+    ace = {front = "S_A"},
+    king = {front = "H_K"},
+    queen = {front = "H_Q"},
+    seven = {front = "C_7"},
+    ten = {front = "D_T"},
+    chip_white = {stake = "stake_white"},
+    chip_red = {stake = "stake_red"},
+    chip_green = {stake = "stake_green"},
+    chip_blue = {stake = "stake_blue"},
+    chip_gold = {stake = "stake_gold"},
+    flame = {atlas = "ui_1", pos = {x = 2, y = 0}},
+}
+
+E.TEXTS = {
+    ha = function() return L("HA") end,
+    nope = function()
+        local ok, s = pcall(function() return localize and localize("k_nope_ex") end)
+        if ok and type(s) == "string" and s ~= "" and s ~= "ERROR" and s ~= "k_nope_ex" then return s end
+        return L("Nope!")
+    end,
+    mult = function() return L("Mult") end,
+    lucky = function() return L("Lucky!") end,
+    oops = function() return L("Oops!") end,
+}
+
+E.LOC = {
+    fr = {
+        ["EMOTES"] = "ÉMOTES", ["Emotes"] = "Émotes",
+        ["Hi!"] = "Salut !", ["Haha!"] = "Haha !", ["Noo..."] = "Nooon...", ["Nope!"] = "Non !",
+        ["Chips!"] = "Jetons !", ["On fire!"] = "En feu !", ["Cash!"] = "Du cash !", ["GG"] = "GG",
+        ["Hmm..."] = "Hmm...", ["Lucky!"] = "Chanceux !", ["Oops!"] = "Oups !", ["Hurry!"] = "Vite !",
+        ["HA"] = "HA", ["Mult"] = "Multi",
+    },
+    es = {
+        ["EMOTES"] = "EMOTES", ["Emotes"] = "Emotes",
+        ["Hi!"] = "¡Hola!", ["Haha!"] = "¡Jaja!", ["Noo..."] = "Nooo...", ["Nope!"] = "¡Nop!",
+        ["Chips!"] = "¡Fichas!", ["On fire!"] = "¡En llamas!", ["Cash!"] = "¡Dinero!", ["GG"] = "GG",
+        ["Hmm..."] = "Mmm...", ["Lucky!"] = "¡Suerte!", ["Oops!"] = "¡Ups!", ["Hurry!"] = "¡Rápido!",
+        ["HA"] = "JA", ["Mult"] = "Multi",
+    },
+}
+
+local SPECIAL = {TEAR = {0.55, 0.8, 1, 1}, GLASS = {1, 1, 1, 0.8}}
+
+local function colour(name)
+    if type(name) == "table" then return name end
+    if SPECIAL[name] then return SPECIAL[name] end
+    return (G and G.C and G.C[name]) or {1, 1, 1, 1}
+end
+
+local function sprite_info(name)
+    local s = E.SPRITES[name]
+    if not (s and G and G.ASSET_ATLAS) then return nil end
+    if s.center then
+        local c = G.P_CENTERS and G.P_CENTERS[s.center]
+        if not (c and c.pos) then return nil end
+        if c.set == "Joker" or c.consumeable or c.set == "Voucher" then
+            return G.ASSET_ATLAS[c.atlas or c.set] or G.ASSET_ATLAS[c.set] or G.ASSET_ATLAS.Tarot, c.pos
+        end
+        return G.ASSET_ATLAS[c.atlas or "centers"] or G.ASSET_ATLAS.centers, c.pos
+    end
+    if s.front then
+        local f = G.P_CARDS and G.P_CARDS[s.front]
+        if not f then return nil end
+        if get_front_spriteinfo then
+            local ok, atlas, pos = pcall(get_front_spriteinfo, f)
+            if ok and atlas then return atlas, pos end
+        end
+        return G.ASSET_ATLAS.cards_1, f.pos
+    end
+    if s.stake then
+        local st = G.P_STAKES and G.P_STAKES[s.stake]
+        return G.ASSET_ATLAS.chips, st and st.pos or {x = 0, y = 0}
+    end
+    return G.ASSET_ATLAS[s.atlas], s.pos
+end
+
+local function place(obj, x, y, w, h, r, scale)
+    local T, V = obj.T, obj.VT
+    T.x, T.y, T.w, T.h, T.r, T.scale = x - w / 2, y - h / 2, w, h, r or 0, scale or 1
+    V.x, V.y, V.w, V.h, V.r, V.scale = T.x, T.y, w, h, T.r, T.scale
+end
+
+local function quiet(obj)
+    if not obj then return end
+    obj.states.collide.can = false
+    obj.states.hover.can = false
+    obj.states.click.can = false
+    obj.states.drag.can = false
+    obj.created_on_pause = true
+end
+
+local function pop_size()
+    return (UIK and UIK.touch and UIK.touch()) and 1.6 or 1.35
+end
+
+local function lick(c)
+    local y = (G and G.C and G.C.YELLOW) or {1, 0.8, 0, 1}
+    local out = {1, 1, 1, 1}
+    for i = 1, 3 do out[i] = min(max(((c[i] * 0.5 + y[i] * 0.5) + 0.1) ^ 2, 0.1), 1) end
+    return out
+end
+
+local function play(s)
+    if not play_sound then return end
+    local code = s[2]
+    if code == "glass" then code = "glass" .. math.random(1, 6) end
+    pcall(play_sound, code, s[3] + (math.random() - 0.5) * 0.04, s[4])
+end
+
+E.live = E.live or {}
+
+local function walk(node, id, depth, budget)
+    if not node or budget[1] <= 0 then return nil end
+    budget[1] = budget[1] - 1
+    local cfg = node.config
+    if cfg and cfg.id == id and not node.REMOVED and node.VT then return node end
+    local obj = cfg and cfg.object
+    if obj and depth > 0 and obj.UIRoot and not obj.REMOVED then
+        local e = walk(obj.UIRoot, id, depth - 1, budget)
+        if e then return e end
+    end
+    if type(node.children) == "table" then
+        for _, ch in ipairs(node.children) do
+            local e = walk(ch, id, depth, budget)
+            if e then return e end
+        end
+    end
+    return nil
+end
+
+local function find_in(box, ids)
+    if not (box and not box.REMOVED and box.get_UIE_by_ID) then return nil end
+    local inner
+    local body = box:get_UIE_by_ID("uik_body")
+    if body and body.config and body.config.object and body.config.object.get_UIE_by_ID then inner = body.config.object end
+    for _, id in ipairs(ids) do
+        local e = box:get_UIE_by_ID(id) or (inner and inner:get_UIE_by_ID(id))
+        if e and not e.REMOVED and e.VT then return e, id end
+    end
+    if box.UIRoot then
+        for _, id in ipairs(ids) do
+            local e = walk(box.UIRoot, id, 4, {2000})
+            if e then return e, id end
+        end
+    end
+    return nil
+end
+
+local function ids_for(who)
+    local ids = {}
+    if who.pid ~= nil then ids[#ids + 1] = "bom_emote_pid_" .. tostring(who.pid) end
+    ids[#ids + 1] = who.mine and "bom_emote_you" or "bom_emote_opp"
+    return ids
+end
+
+E.GAP = 0.15
+E.PAD = 0.25
+E.RUN_SIZE = 1.25
+E.QUEUE_MAX = 3
+E.LAYOUT_EVERY = 0.2
+E.TAG_SCALE = 0.32
+E.SHRINK = {1, 0.85, 0.72}
+
+local function screen_box()
+    local s = (G.TILESIZE or 20) * (G.TILESCALE or 1)
+    local o = G.ROOM_ORIG or (G.ROOM and G.ROOM.T) or {x = 0, y = 0}
+    local w, h = 0, 0
+    if love.graphics and love.graphics.getDimensions then w, h = love.graphics.getDimensions() end
+    if not (w > 0 and h > 0 and s > 0) then
+        local R = G.ROOM and G.ROOM.T or {w = 20, h = 11.5}
+        return 0, 0, R.w, R.h
+    end
+    return -(o.x or 0), -(o.y or 0), w / s, h / s
+end
+E.screen_box = screen_box
+
+local function solid(node)
+    local c = node.config and node.config.colour
+    return type(c) == "table" and (c[4] or 1) > 0.3
+end
+
+local function frame_of(box)
+    local root = box.UIRoot
+    local room_w = (G.ROOM and G.ROOM.T.w) or 20
+    if root then
+        local queue, qi = {root}, 1
+        while queue[qi] and qi <= 80 do
+            local node = queue[qi]
+            qi = qi + 1
+            local V = node.VT
+            if node ~= root and V and V.w >= 2 and V.h >= 1.5 and V.w <= room_w * 1.5 and solid(node) then return node end
+            if type(node.children) == "table" then
+                for _, ch in ipairs(node.children) do queue[#queue + 1] = ch end
+            end
+        end
+        if root.VT and root.VT.w > 0 and root.VT.w <= room_w * 1.5 then return root end
+    end
+    if box.VT and box.VT.w > 0 and box.VT.w <= room_w * 1.5 then return box end
+    return nil
+end
+
+local function context()
+    local o = G.OVERLAY_MENU
+    if o and not o.REMOVED then
+        local f = frame_of(o)
+        if f then return "window", o, f end
+    end
+    if G.STAGES and G.STAGE == G.STAGES.RUN and G.deck and G.deck.T and G.consumeables and G.consumeables.T then return "run", nil, nil end
+    return "screen", nil, nil
+end
+E.context = context
+
+local function settled(f)
+    local T, V = f.T, f.VT
+    if not (T and V) then return true end
+    return abs(T.x - V.x) < 0.05 and abs(T.y - V.y) < 0.05
+end
+
+local function hits(x, y, w, h, blocks, n)
+    for i = 1, n do
+        local r = blocks[i]
+        if x < r[1] + r[3] and r[1] < x + w and y < r[2] + r[4] and r[2] < y + h then return true end
+    end
+    return false
+end
+
+local function search(lo, hi, want, ok)
+    if hi < lo - 1e-6 then return nil end
+    if want < lo then want = lo elseif want > hi then want = hi end
+    local step = 0.05
+    local n = floor((hi - lo) / step) + 1
+    for d = 0, n do
+        local a = want + d * step
+        if a <= hi + 1e-6 and ok(a) then return a end
+        local b = want - d * step
+        if d > 0 and b >= lo - 1e-6 and ok(b) then return b end
+    end
+    if ok(hi) then return hi end
+    if ok(lo) then return lo end
+    return nil
+end
+
+local function add_block(blocks, n, x, y, w, h, grow)
+    n = n + 1
+    local r = blocks[n]
+    if not r then r = {} blocks[n] = r end
+    grow = grow or 0
+    r[1], r[2], r[3], r[4] = x - grow, y - grow, w + 2 * grow, h + 2 * grow
+    return n
+end
+
+local function ui_blocks(blocks, n, x0, y0, x1, y1, sw, sh)
+    local list = G.I and G.I.UIBOX
+    if type(list) ~= "table" then return n end
+    for _, u in ipairs(list) do
+        local V = u.VT
+        if V and not u.REMOVED and u ~= G.OVERLAY_MENU and (not u.states or u.states.visible ~= false)
+            and V.w > 0.05 and V.h > 0.05 and V.w < sw * 0.6 and V.h < sh * 0.6
+            and V.x < x1 and x0 < V.x + V.w and V.y < y1 and y0 < V.y + V.h then
+            n = add_block(blocks, n, V.x, V.y, V.w, V.h, E.GAP * 0.4)
+        end
+    end
+    return n
+end
+
+local function px_block(blocks, n, b, s, sx, sy)
+    if not (b and b.w and b.h and b.w > 0 and b.h > 0) then return n end
+    return add_block(blocks, n, sx + b.x / s, sy + b.y / s, b.w / s, b.h / s, E.GAP)
+end
+
+local function corner_blocks(blocks, n)
+    local CL = CORNER_LABELS
+    if not CL then return n end
+    local s = (G.TILESIZE or 20) * (G.TILESCALE or 1)
+    if not (s > 0) then return n end
+    local sx, sy = screen_box()
+    n = px_block(blocks, n, CL.status_box, s, sx, sy)
+    n = px_block(blocks, n, CL.mode_rect, s, sx, sy)
+    local GR = G.SETTINGS and G.SETTINGS.GRAPHICS
+    if GR and GR.show_fps then n = px_block(blocks, n, CL.fps_box, s, sx, sy) end
+    local MGH = rawget(_G, "Minigames") and Minigames.host
+    local b = MGH and MGH.btn
+    if b and not b.REMOVED and b.VT then n = add_block(blocks, n, b.VT.x, b.VT.y, b.VT.w, b.VT.h, E.GAP) end
+    return n
+end
+
+local function area_right(a)
+    if not (a and a.T and not a.REMOVED) then return nil end
+    return a.T.x + a.T.w
+end
+
+local function run_dock(sx, sy, sw, sh)
+    local x0 = sx + sw * 0.5
+    for _, a in ipairs({G.hand, G.play}) do
+        local r = area_right(a)
+        if r and r > x0 then x0 = r end
+    end
+    x0 = x0 + E.GAP
+    local C, D = G.consumeables.T, G.deck.T
+    return x0, C.y + C.h + E.GAP * 0.5, sx + sw - 0.35, D.y - E.GAP * 0.5
+end
+
+function E.tag_of(fx)
+    local name = fx.who and fx.who.name
+    if not name or name == "" or fx.who.fixed then return nil end
+    local d = fx.texts.__tag
+    if d == nil then
+        local S = fx.size
+        local ok, made = pcall(DynaText, {string = {tostring(name)}, colours = {G.C.WHITE}, scale = E.TAG_SCALE, shadow = true, silent = true, maxw = S * 1.3})
+        d = ok and made or false
+        if d then quiet(d) d.parent = fx end
+        fx.texts.__tag = d
+    end
+    return d or nil
+end
+
+local function slot_dims(fx)
+    local S = fx.size
+    local b = S * 1.06
+    local d = E.tag_of(fx)
+    local tw, th = 0, 0
+    if d then tw, th = d.T.w, d.T.h + 0.04 end
+    return max(b, tw), S * 1.11 + th, S * 0.53
+end
+
+local function side_for(fx, id)
+    if id == "bom_emote_you" then return "left" end
+    if id == "bom_emote_opp" then return "right" end
+    if id then return "left" end
+    return fx.who.mine and "left" or "right"
+end
+
+local function place_window(fx, box, f, blocks, n)
+    local F = f.VT
+    local sx, sy, sw, sh = screen_box()
+    local w, h, top = slot_dims(fx)
+    local e, id = find_in(box, ids_for(fx.who))
+    local want = e and (e.VT.y + e.VT.h / 2) or (F.y + top + 0.3)
+    local first = side_for(fx, id)
+    local stay = (id == nil or id == "bom_emote_you" or id == "bom_emote_opp") and 2.5 or 0.3
+    local best, best_d
+    for _, side in ipairs({"left", "right"}) do
+        local x = side == "left" and (F.x - E.GAP - w) or (F.x + F.w + E.GAP)
+        if x >= sx + E.PAD - 1e-6 and x + w <= sx + sw - E.PAD + 1e-6 then
+            local lo, hi = max(sy + E.PAD, F.y), min(sy + sh - E.PAD, F.y + F.h) - h
+            local y = search(lo, hi, want - top, function(yy) return not hits(x, yy, w, h, blocks, n) end)
+            if y then
+                local d = abs(y + top - want) + (side == first and 0 or stay)
+                if not best_d or d < best_d then best, best_d = {x + w / 2, y + top}, d end
+            end
+        end
+    end
+    if not best then
+        for _, side in ipairs({"top", "bottom"}) do
+            local y = side == "top" and (F.y - E.GAP - h) or (F.y + F.h + E.GAP)
+            if not best and y >= sy + E.PAD - 1e-6 and y + h <= sy + sh - E.PAD + 1e-6 then
+                local lo, hi = max(sx + E.PAD, F.x), min(sx + sw - E.PAD, F.x + F.w) - w
+                local x = search(lo, hi, first == "left" and lo or hi, function(xx) return not hits(xx, y, w, h, blocks, n) end)
+                if x then best = {x + w / 2, y + top} end
+            end
+        end
+    end
+    if not best then return nil end
+    return {kind = "window", box = box, rel = f, dx = best[1] - F.x, dy = best[2] - F.y, w = w, h = h, top = top}
+end
+
+local function place_free(fx, kind, blocks, n)
+    local sx, sy, sw, sh = screen_box()
+    local w, h, top = slot_dims(fx)
+    local x0, y0, x1, y1
+    if kind == "run" then
+        x0, y0, x1, y1 = run_dock(sx, sy, sw, sh)
+    else
+        x0, y0, x1, y1 = sx + sw * 0.2, sy + E.PAD + 0.2, sx + sw * 0.8, sy + sh * 0.45
+    end
+    local cols = min(kind == "run" and 2 or 4, floor((x1 - x0 + E.GAP) / (w + E.GAP)))
+    if cols < 1 then return nil end
+    local best_x, best_y
+    local span = cols * w + (cols - 1) * E.GAP
+    local mid = (x0 + x1) / 2
+    if kind == "run" and G.deck and G.deck.T then mid = G.deck.T.x + G.deck.T.w / 2 end
+    local left = clamp(mid - span / 2, x0, x1 - span)
+    for c = 1, cols do
+        local x = left + (c - 1) * (w + E.GAP)
+        local y = search(y0, y1 - h, y0, function(yy) return not hits(x, yy, w, h, blocks, n) end)
+        if y and (not best_y or y < best_y - 0.25) then best_x, best_y = x, y end
+    end
+    if not best_y then return nil end
+    return {kind = kind, dx = best_x + w / 2, dy = best_y + top, w = w, h = h, top = top}
+end
+
+local function place_any(fx, kind, box, blocks, n)
+    local sx, sy, sw, sh = screen_box()
+    local w, h, top = slot_dims(fx)
+    local m = ui_blocks(blocks, n, sx, sy, sx + sw, sy + sh, sw, sh)
+    for _, a in ipairs({G.hand, G.deck, G.HUD, G.HUD_blind, G.buttons}) do
+        if type(a) == "table" and a.T and not a.REMOVED and a.T.w > 0 then m = add_block(blocks, m, a.T.x, a.T.y, a.T.w, a.T.h, E.GAP * 0.3) end
+    end
+    local x0, x1 = sx + E.PAD, sx + sw - E.PAD - w
+    local y0, y1 = sy + E.PAD, sy + sh - E.PAD - h
+    if x1 < x0 or y1 < y0 then return nil end
+    local mid = clamp(sx + (sw - w) / 2, x0, x1)
+    local want = sy + sh * (kind == "run" and 0.42 or 0.3)
+    local best_x, best_y, best_d
+    local steps = floor((x1 - x0) / (w * 0.5))
+    for i = 0, steps do
+        for _, sgn in ipairs(i == 0 and {1} or {1, -1}) do
+            local x = mid + sgn * i * w * 0.5
+            if x >= x0 - 1e-6 and x <= x1 + 1e-6 then
+                local y = search(y0, y1, want, function(yy) return not hits(x, yy, w, h, blocks, m) end)
+                if y then
+                    local d = abs(y - want) + abs(x - mid) * 0.5
+                    if not best_d or d < best_d then best_x, best_y, best_d = x, y, d end
+                end
+            end
+        end
+    end
+    if not best_x then
+        local y = search(y0, y1, want, function(yy) return not hits(mid, yy, w, h, blocks, n) end)
+        best_x, best_y = mid, y or clamp(want, y0, y1)
+    end
+    return {kind = kind, box = box, dx = best_x + w / 2, dy = best_y + top, w = w, h = h, top = top}
+end
+
+local function block_of(p, blocks, n)
+    local bx, by = 0, 0
+    if p.rel then bx, by = p.rel.VT.x, p.rel.VT.y end
+    return add_block(blocks, n, bx + p.dx - p.w / 2, by + p.dy - p.top, p.w, p.h, E.GAP * 0.3)
+end
+
+E._blocks = {}
+
+function E.layout(force)
+    local now = clock()
+    if not force and now < (E._layout_t or 0) then return end
+    E._layout_t = now + E.LAYOUT_EVERY
+    local kind, box, f = context()
+    local blocks, n = E._blocks, 0
+    n = corner_blocks(blocks, n)
+    if kind == "run" then
+        local sx, sy, sw, sh = screen_box()
+        local x0, y0, x1, y1 = run_dock(sx, sy, sw, sh)
+        n = ui_blocks(blocks, n, x0, y0, x1, y1, sw, sh)
+    end
+    for _, fx in ipairs(E.live) do
+        local p = not (fx.who and fx.who.fixed) and fx.place or nil
+        if p and (p.kind ~= kind or p.box ~= box or (p.rel and p.rel.REMOVED)) then fx.place, fx.tried, p = nil, nil, nil end
+        if p and not fx.dead then n = block_of(p, blocks, n) end
+    end
+    for _, fx in ipairs(E.live) do
+        if not fx.place and not fx.dead and fx.mode == "pop" and not (fx.who and fx.who.fixed) then
+            local p
+            if kind == "window" then
+                if settled(f) then
+                    for _, k in ipairs(E.SHRINK) do
+                        local S = fx.base_size * k
+                        if S <= (fx.tried or 1e9) + 1e-6 then
+                            fx.tried = S
+                            if fx.size ~= S then fx:resize(S) end
+                            p = place_window(fx, box, f, blocks, n)
+                            if p then break end
+                        end
+                    end
+                end
+            else
+                local S = min(E.RUN_SIZE, fx.base_size)
+                if kind ~= "run" then S = fx.base_size end
+                if PORTRAIT and PORTRAIT.on and PORTRAIT.on() then S = S * 2 end
+                if fx.size ~= S then fx:resize(S) end
+                p = place_free(fx, kind, blocks, n)
+            end
+            if not p and (kind ~= "window" or settled(f)) then p = place_any(fx, kind, box, blocks, n) end
+            if p then
+                fx.place = p
+                n = block_of(p, blocks, n)
+            end
+        end
+    end
+end
+
+local Fx
+
+local function fx_class()
+    if Fx then return Fx end
+    Fx = Moveable:extend()
+
+    function Fx:init(o)
+        Moveable.init(self, 0, 0, o.size, o.size)
+        self.id = o.id
+        self.mode = o.mode or "pop"
+        self.size = o.size
+        self.base_size = o.size
+        self.who = o.who or {}
+        self.silent = o.silent or self.mode ~= "pop"
+        self.freeze = o.freeze
+        self.born = clock()
+        if self.mode ~= "pop" then self.start = clock() - (o.offset or 0) end
+        self.sprites, self.texts, self.emitters = {}, {}, {}
+        self.next_sound = 1
+r 17 21 %20%20%20%20%20%20%20%20 -
+l 199
+        quiet(self)
+    end
+
+    function Fx:time()
+        if self.freeze then return self.freeze end
+        if self.mode == "pop" and E.freeze then return E.freeze end
+        if not self.start then return 0 end
+        local t = (clock() - self.start) * E.SPEED
+        if self.mode == "preview" then t = min(t % (E.DURATION + E.LOOP_GAP), E.HOLD) end
+        return t
+    end
+
+    function Fx:expired()
+        if self.dead then return true end
+        if self.mode ~= "pop" or self.freeze or E.freeze then return false end
+        return self.start ~= nil and (clock() - self.start) * E.SPEED > E.DURATION + 0.05
+    end
+
+    function Fx:resolve()
+        if self.who.fixed then
+            self.place = self.place or {kind = "fixed", dx = self.who.fixed.x, dy = self.who.fixed.y, w = 0, h = 0, top = 0}
+        else
+            E.layout()
+        end
+        if self.place and not self.start then self.start = clock() end
+        if not self.place and not self.start and clock() - self.born > E.QUEUE_MAX then self.dead = true end
+    end
+
+    function Fx:resize(S)
+        self.size = S
+        self.T.w, self.T.h = S, S
+        for _, obj in pairs(self.texts) do
+            if obj then pcall(function() obj:remove() end) end
+        end
+        self.texts = {}
+    end
+
+    function Fx:spot()
+        if self.mode ~= "pop" then
+            local V = self.VT
+            return V.x + V.w / 2, V.y + V.h / 2
+        end
+        local p = self.place
+        if not p then return nil end
+        if p.rel then return p.rel.VT.x + p.dx, p.rel.VT.y + p.dy end
+        return p.dx, p.dy
+    end
+
+    function Fx:update(dt)
+        if self.dead or self.mode ~= "pop" then return end
+        local ok = pcall(function()
+            self:resolve()
+            if self.silent or not self.start then return end
+            local list = E.SOUNDS[self.id]
+            local t = self:time()
+            while list and list[self.next_sound] and list[self.next_sound][1] <= t do
+                local s = list[self.next_sound]
+                self.next_sound = self.next_sound + 1
+                if t - s[1] < 0.25 then play(s) end
+            end
+        end)
+        if not ok then self.dead = true end
+    end
+
+    function Fx:sprite(name)
+        local cached = self.sprites[name]
+        if cached ~= nil then return cached or nil end
+        local atlas, pos = sprite_info(name)
+        if not (atlas and pos) then self.sprites[name] = false return nil end
+        local ok, s = pcall(Sprite, 0, 0, 1, 1, atlas, pos)
+        if not ok or not s then self.sprites[name] = false return nil end
+        quiet(s)
+        s.parent = self
+        self.sprites[name] = s
+        return s
+    end
+
+    function Fx:text(p, S)
+        local cached = self.texts[p.key]
+        if cached ~= nil then return cached or nil end
+        local str = E.TEXTS[p.text] and E.TEXTS[p.text]() or tostring(p.text)
+        local ok, d = pcall(DynaText, {string = {str}, colours = {colour(p.colour)}, scale = p.s * S * 0.9, shadow = true, bump = p.bump, silent = true})
+        if not ok or not d then self.texts[p.key] = false return nil end
+        quiet(d)
+        d.parent = self
+        self.texts[p.key] = d
+        return d
+    end
+
+    function Fx:emitter(p)
+        local cached = self.emitters[p.key]
+        if cached ~= nil then return cached or nil end
+        local cfg = p.cfg or {}
+        local cols = {}
+        for i, c in ipairs(cfg.colours or {"WHITE"}) do cols[i] = colour(c) end
+        local ok, em = pcall(Particles, 0, 0, p.w or 0, p.h or 0, {timer = cfg.timer, scale = cfg.scale, speed = cfg.speed,
+            lifespan = cfg.lifespan, colours = cols, max = cfg.max, fill = cfg.fill, timer_type = "REAL"})
+        if not ok or not em then self.emitters[p.key] = false return nil end
+        quiet(em)
+        em.parent = self
+        em.full_max = cfg.max or 10
+        self.emitters[p.key] = em
+        return em
+    end
+
+    function Fx:draw_part(p, cx, cy, S, k, alpha)
+        local X, Y = cx + p.x * S * k, cy + p.y * S * k
+        if p.k == "spr" then
+            local s = self:sprite(p.spr)
+            if not s then return end
+            local w, h = p.w * S * k, p.h * S * k
+            if w <= 0.001 or h <= 0.001 then return end
+            place(s, X, Y, w, h, p.r, 1)
+            s.dissolve = p.dis or 0
+            s.dissolve_colours = p.dis_col and {colour(p.dis_col), colour(p.dis_col)} or nil
+            local a = alpha * (p.a or 1)
+            G.BRUTE_OVERLAY = a < 0.999 and {1, 1, 1, a} or self.overlay_keep
+            s:draw_shader("dissolve")
+            G.BRUTE_OVERLAY = self.overlay_keep
+        elseif p.k == "txt" then
+            local d = self:text(p, S)
+            if not d then return end
+            local kk = (p.kk or 1) * k
+            if kk <= 0.001 then return end
+            place(d, X, Y, d.T.w, d.T.h, p.r, kk)
+            d:draw()
+        elseif p.k == "rect" then
+            local w, h = p.w * S * k, p.h * S * k
+            local c = colour(p.colour)
+            local rr = (p.round or 0.06) * S * k
+            love.graphics.push()
+            love.graphics.scale(G.TILESCALE * G.TILESIZE)
+            love.graphics.translate(X, Y)
+            love.graphics.setColor(0, 0, 0, 0.3 * alpha)
+            love.graphics.rectangle("fill", -w / 2, -h / 2 + 0.04 * S * k, w, h, rr, rr, 6)
+            love.graphics.setColor(c[1], c[2], c[3], (c[4] or 1) * alpha)
+            love.graphics.rectangle("fill", -w / 2, -h / 2, w, h, rr, rr, 6)
+            love.graphics.pop()
+        elseif p.k == "flame" then
+            if not (G.SHADERS and G.SHADERS.flame) or (p.amount or 0) <= 0.01 then return end
+            local s = self:sprite("flame")
+            if not s then return end
+            place(s, X, Y, p.w * S * k, p.h * S * k, 0, 1)
+            local c1 = (G.C and (G.C.UI_MULT or G.C.RED)) or {1, 0.3, 0.3, 1}
+            self.lick = self.lick or lick(c1)
+            s:get_pos_pixel()
+            s:draw_shader("flame", nil, {
+                {name = "time", val = clock() - (self.start or self.born) + 1},
+                {name = "amount", val = p.amount},
+                {name = "image_details", val = s.image_dims},
+                {name = "texture_details", val = s.RETS.get_pos_pixel},
+                {name = "colour_1", val = c1},
+                {name = "colour_2", val = self.lick},
+                {name = "id", val = s.ID},
+            }, nil, nil, nil, nil, nil, nil, true)
+        elseif p.k == "fx" then
+            local em = self:emitter(p)
+            if not em then return end
+            em.max = p.on == false and 0 or em.full_max
+            place(em, X, Y, p.w or 0, p.h or 0, 0, S * k)
+            em:draw(alpha)
+        end
+    end
+
+    function Fx:draw_tag(cx, cy, S, k)
+        local d = E.tag_of(self)
+        if not d then return end
+        place(d, cx, cy + S * 0.58 * k + d.T.h / 2, d.T.w, d.T.h, 0, k)
+        d:draw()
+    end
+
+    function Fx:draw_body()
+        local t = self:time()
+        local k = E.envelope(t)
+        if k <= 0.001 then return end
+        local cx, cy = self:spot()
+        if not cx then return end
+        local S = self.size
+        local alpha = min(1, k * 1.5)
+        self.overlay_keep = G.BRUTE_OVERLAY
+        if self.mode == "pop" then
+            local b = S * 1.06 * k
+            love.graphics.push()
+            love.graphics.scale(G.TILESCALE * G.TILESIZE)
+            love.graphics.setColor(0, 0, 0, 0.42 * alpha)
+            love.graphics.rectangle("fill", cx - b / 2, cy - b / 2, b, b, 0.16 * S * k, 0.16 * S * k, 8)
+            love.graphics.pop()
+        end
+        for _, p in ipairs(E.pose(self.id, t)) do self:draw_part(p, cx, cy, S, k, alpha) end
+        if self.mode == "pop" and self.place and self.place.kind ~= "fixed" then self:draw_tag(cx, cy, S, k) end
+    end
+
+    function Fx:draw()
+        if self.dead or not self.states.visible then return end
+        local depth = love.graphics.getStackDepth and love.graphics.getStackDepth() or nil
+        local ok = pcall(self.draw_body, self)
+        G.BRUTE_OVERLAY = self.overlay_keep
+        if not ok then
+            self.dead = true
+r 3 4413 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 22
+            if depth then
+                while love.graphics.getStackDepth() > depth do love.graphics.pop() end
+            end
+        end
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    function Fx:remove()
+        if self.removed_fx then return end
+        self.removed_fx = true
+        for _, group in ipairs({self.sprites, self.texts, self.emitters}) do
+            for _, obj in pairs(group) do
+                if obj then pcall(function() obj:remove() end) end
+            end
+        end
+        self.sprites, self.texts, self.emitters = {}, {}, {}
+        local alerts = G.I and G.I.ALERT
+        if alerts then
+            for i = #alerts, 1, -1 do
+                if alerts[i] == self then table.remove(alerts, i) end
+            end
+        end
+r 3 4770 %20%20%20%20%20%20%20%20 -
+l 167
+    end
+
+    return Fx
+end
+
+E.fx_class = fx_class
+
+local function kill(fx)
+    if fx then pcall(function() fx:remove() end) end
+end
+
+function E.sweep()
+    for i = #E.live, 1, -1 do
+        local fx = E.live[i]
+        if fx:expired() then
+            table.remove(E.live, i)
+            kill(fx)
+        end
+    end
+end
+
+function E.clear()
+    for i = #E.live, 1, -1 do kill(E.live[i]) end
+    E.live = {}
+end
+
+local function who_key(who)
+    if who.fixed then return nil end
+    if who.mine then return "me" end
+    if who.pid ~= nil then return "p" .. tostring(who.pid) end
+    return "n" .. tostring(who.name or "?")
+end
+
+function E.play(id, who, o)
+    id = E.resolve(id)
+    if not id then return nil end
+    if not (G and G.I and G.I.ALERT and G.TIMERS and Moveable and Sprite) then return nil end
+    who = who or {}
+    o = o or {}
+    local key = who_key(who)
+    if key then
+        for _, fx in ipairs(E.live) do
+            if fx.who_key == key then fx.dead = true end
+        end
+    end
+    E.sweep()
+    while #E.live >= E.MAX_LIVE and not o.many do kill(table.remove(E.live, 1)) end
+    local ok, fx = pcall(fx_class(), {id = id, mode = "pop", size = o.size or pop_size(), who = who, freeze = o.freeze, silent = o.silent})
+    if not ok or not fx then return nil end
+    fx.who_key = key
+    table.insert(G.I.ALERT, fx)
+    E.live[#E.live + 1] = fx
+    E._layout_t = 0
+    pcall(function() fx:resolve() end)
+    return fx
+end
+
+local function profile_name()
+    local p = G and G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    return p and p.name or nil
+end
+
+local function party_on()
+    return bom_party ~= nil and bom_party.S ~= nil and bom_party.active ~= nil and bom_party.active()
+end
+
+local function my_pid()
+    if party_on() then return bom_party.S.me end
+    local st = bom_match and bom_match.get_state and bom_match.get_state()
+    return st and st.server_player_id or nil
+end
+
+local function pid_by_name(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    local lists = {}
+    if party_on() then
+        local S = bom_party.S
+        lists[#lists + 1] = S.room and S.room.players
+        lists[#lists + 1] = S.ps and S.ps.players
+    end
+    local st = bom_match and bom_match.get_state and bom_match.get_state()
+    lists[#lists + 1] = st and st.roster
+    for _, list in ipairs(lists) do
+        if type(list) == "table" then
+            for _, p in ipairs(list) do
+                if type(p) == "table" and p.name == name and p.pid ~= nil then return p.pid end
+            end
+        end
+    end
+    return nil
+end
+
+function E.on_message(d)
+    if type(d) ~= "table" then return true end
+    local id = E.resolve(d.id) or E.resolve(d.e)
+    if not id then return true end
+    local pid = tonumber(d.pid)
+    local name = d.name ~= nil and tostring(d.name) or ""
+    if pid == nil then pid = pid_by_name(name) end
+    E.play(id, {pid = pid, name = name, mine = false})
+    return true
+end
+
+function E.can_send()
+    return clock() >= (E._next_send or 0)
+end
+
+function E.send(id)
+    id = E.resolve(id)
+    if not id then return false end
+    if not E.can_send() then
+        if play_sound then pcall(play_sound, "cancel", 1, 0.5) end
+        return false
+    end
+    E._next_send = clock() + E.SEND_GAP
+    if bom_core and bom_core.is_connected and bom_core.is_connected() then
+        pcall(bom_core.send, {type = "social_emote", id = id, e = E.TO_LEGACY[id]})
+    end
+    local who = {mine = true, pid = my_pid(), name = profile_name()}
+    if G.E_MANAGER and Event then
+        G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.05, timer = "REAL", blocking = false, blockable = false, pause_force = true,
+            func = function() E.play(id, who) return true end}))
+    else
+        E.play(id, who)
+    end
+    return true
+end
+
+local function tile_dims()
+    local touch = UIK and UIK.touch and UIK.touch()
+    if touch then return 2.35, 2.35, 1.6, 0.4 end
+    return 2.05, 2.05, 1.4, 0.36
+end
+
+function E.picker_cols()
+    if UIK and UIK.portrait and UIK.portrait() then return 3 end
+    return 6
+end
+
+function E.picker_w()
+    local tw = tile_dims()
+    return E.picker_cols() * (tw + 0.16) + 0.2
+end
+
+function E.picker_grid()
+    local tw, th, ps, ls = tile_dims()
+    local items = {}
+    local F = fx_class()
+    for i, def in ipairs(E.LIST) do
+        local fx = F({id = def.id, mode = "preview", size = ps, offset = (i - 1) * 0.37})
+        items[#items + 1] = {n = G.UIT.C, config = {align = "cm", minw = tw, maxw = tw, minh = th, r = 0.12, padding = 0.04,
+            colour = {0, 0, 0, 0.22}, emboss = 0.05, hover = true, shadow = true, button = "bom_emote_pick_" .. i, id = "bom_emote_tile_" .. def.id}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", minw = tw - 0.1, minh = ps}, nodes = {
+                {n = G.UIT.O, config = {object = fx, can_collide = false}},
+            }},
+            {n = G.UIT.R, config = {align = "cm", minw = tw - 0.1, minh = ls + 0.08}, nodes = {
+                {n = G.UIT.T, config = {text = L(def.label), scale = ls, colour = G.C.WHITE, shadow = true, maxw = tw - 0.2}},
+            }},
+        }}
+    end
+    return UIK.grid(items, E.picker_cols(), {w = E.picker_w(), padding = 0.08})
+end
+
+function E.open_picker(o)
+    o = o or {}
+    if not (G and G.FUNCS and UIK and UIK.window) then return end
+    E._picker = {after = o.after, pick = o.pick}
+r 13 1381 %20%20%20%20 -
+l 55
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "emotes", title = L("EMOTES"), compact = true, w = E.picker_w() + 0.4,
+        tabs = {{key = "all", label = L("Emotes"), build = E.picker_grid}},
+        back_func = o.back or "exit_overlay_menu",
+    }}
+    E._picker.box = G.OVERLAY_MENU
+end
+
+function E.picker_open()
+    return E._picker ~= nil and E._picker.box ~= nil and E._picker.box == G.OVERLAY_MENU
+end
+
+function E.debug_strip(ids, o)
+    o = o or {}
+    E.clear()
+    local frames = o.frames or {0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.42}
+    local S = o.size or 1.5
+    local room_w = (G.ROOM and G.ROOM.T.w) or 20
+    local gap_x = (room_w - 0.6) / #frames
+    local gap_y = o.row_h or 3.1
+    for r, id in ipairs(ids) do
+        for c, ft in ipairs(frames) do
+            E.play(id, {fixed = {x = 0.3 + gap_x * (c - 0.5), y = (o.top or 1.7) + (r - 1) * gap_y}}, {freeze = ft, silent = true, size = S, many = true})
+        end
+    end
+end
+
+function E.update()
+    if #E.live == 0 then return end
+    E.sweep()
+end
+
+local function register_funcs()
+    for i, def in ipairs(E.LIST) do
+        G.FUNCS["bom_emote_pick_" .. i] = function()
+            local pick = E._picker and E._picker.pick
+            if pick then
+                if pick(def.id) then E._picker = nil end
+                return
+            end
+            if not E.send(def.id) then return end
+            local after = E._picker and E._picker.after
+            E._picker = nil
+            if after then after() elseif G.FUNCS.exit_overlay_menu then G.FUNCS.exit_overlay_menu() end
+        end
+    end
+end
+
+function E.init()
+    if G and G.FUNCS then register_funcs() end
+    if mod_loc_register then mod_loc_register(E.LOC) end
+    if bom_events and bom_events.register then bom_events.register("social_emote", E.on_message) end
+end
+
+return E
+end

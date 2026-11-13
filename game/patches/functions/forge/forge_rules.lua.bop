@@ -1,0 +1,796 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 258
+local R = {}
+
+R.WHEN = {"card_scored", "card_held", "hand_played", "before", "after", "discard", "first_hand", "blind_selected", "round_end", "blind_skipped", "reroll", "shop_end", "card_sold", "self_sold", "pack_opened", "consumable_used", "card_bought", "pack_skipped", "cards_destroyed", "card_added"}
+R.ONLY = {"hand", "suit", "rank", "enhancement", "seal", "edition", "cards_played", "money", "hands_left", "discards_left", "first_hand", "last_hand", "ante", "jokers", "boss", "chance", "var", "blind", "deck_cards", "held_cards", "consumables", "hand_level", "round"}
+R.GIVE = {"chips", "mult", "xmult", "money", "retrigger", "gain_chips", "gain_mult", "gain_xmult", "create", "level_up", "change", "hand", "discard", "destroy_self", "var_add", "var_set", "var_chips", "var_mult", "destroy_card", "add_card", "sell_value", "perma_chips", "copy_card", "tag", "disable_boss", "destroy_joker"}
+R.VAR_GIVE = {var_add = true, var_set = true, var_chips = true, var_mult = true}
+R.MAX_VARS = 4
+R.VAR_NAME = 12
+R.BIG = 1e15
+R.MANY = 1000
+R.VAR_CAP = R.BIG
+R.MAX_RULES = 12
+
+R.CARD_WHEN = {card_scored = true, card_held = true, discard = true}
+R.HAND_WHEN = {card_scored = true, card_held = true, hand_played = true, before = true, after = true}
+R.CARD_ONLY = {suit = true, rank = true, enhancement = true, seal = true, edition = true}
+R.ROUND_WHEN = {card_scored = true, card_held = true, hand_played = true, before = true, after = true, discard = true, first_hand = true, blind_selected = true}
+
+R.HANDS = {"High Card", "Pair", "Two Pair", "Three of a Kind", "Straight", "Flush", "Full House", "Four of a Kind", "Straight Flush", "Five of a Kind", "Flush House", "Flush Five"}
+R.SUITS = {"Hearts", "Diamonds", "Spades", "Clubs", "red", "black"}
+R.RANKS = {14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, "face", "number", "even", "odd"}
+R.ENHANCEMENTS = {"m_bonus", "m_mult", "m_wild", "m_glass", "m_steel", "m_stone", "m_gold", "m_lucky"}
+R.SEALS = {"Red", "Blue", "Gold", "Purple"}
+R.EDITIONS = {"foil", "holo", "polychrome"}
+R.OPS = {"at_least", "at_most", "exactly"}
+R.KINDS = {"Tarot", "Planet", "Spectral", "Joker"}
+R.CHANGES = {"suit", "rank", "enhancement", "seal", "edition"}
+R.BLINDS = {"Small", "Big", "Boss"}
+R.TAGS = {"tag_double", "tag_d_six", "tag_coupon", "tag_juggle", "tag_economy", "tag_investment", "tag_voucher", "tag_charm", "tag_meteor", "tag_ethereal", "tag_buffoon", "tag_standard", "tag_negative", "tag_polychrome"}
+R.ADD_CARDS = {"c_base", "m_bonus", "m_mult", "m_wild", "m_glass", "m_steel", "m_stone", "m_gold", "m_lucky"}
+
+R.NUM = {
+  chips = {def = 30, lo = 5, hi = R.BIG, step = 5, big = 50},
+  mult = {def = 4, lo = 1, hi = R.BIG, step = 1, big = 10},
+  xmult = {def = 1.5, lo = 1.1, hi = R.BIG, step = 0.1, big = 1},
+  money = {def = 3, lo = 1, hi = R.BIG, step = 1, big = 5},
+  retrigger = {def = 1, lo = 1, hi = R.MANY, step = 1, big = 10},
+  gain_chips = {def = 5, lo = 1, hi = R.BIG, step = 1, big = 10},
+  gain_mult = {def = 1, lo = 1, hi = R.BIG, step = 1, big = 5},
+  gain_xmult = {def = 0.1, lo = 0.05, hi = R.BIG, step = 0.05, big = 0.5},
+  hand = {def = 1, lo = 1, hi = R.MANY, step = 1, big = 10},
+  discard = {def = 1, lo = 1, hi = R.MANY, step = 1, big = 10},
+  chance = {def = 4, lo = 2, hi = 1e6, step = 1, big = 10},
+  cards_played = {def = 5, lo = 1, hi = 52, step = 1},
+  money_cond = {def = 10, lo = 0, hi = R.BIG, step = 5, big = 50},
+  hands_left = {def = 1, lo = 0, hi = R.MANY, step = 1, big = 10},
+  discards_left = {def = 0, lo = 0, hi = R.MANY, step = 1, big = 10},
+  ante = {def = 3, lo = 1, hi = R.MANY, step = 1, big = 10},
+  jokers = {def = 3, lo = 0, hi = 100, step = 1, big = 10},
+  var_add = {def = 1, lo = -R.BIG, hi = R.BIG, step = 1, big = 10},
+  var_set = {def = 0, lo = 0, hi = R.BIG, step = 1, big = 10},
+  var_chips = {def = 5, lo = 1, hi = R.BIG, step = 1, big = 10},
+  var_mult = {def = 1, lo = 1, hi = R.BIG, step = 1, big = 5},
+  var = {def = 5, lo = 0, hi = R.BIG, step = 1, big = 10},
+  var_start = {def = 0, lo = 0, hi = R.BIG, step = 1, big = 10},
+  deck_cards = {def = 20, lo = 0, hi = R.MANY, step = 1, big = 10},
+  held_cards = {def = 5, lo = 0, hi = 100, step = 1, big = 10},
+  consumables = {def = 1, lo = 0, hi = 100, step = 1, big = 10},
+  hand_level = {def = 3, lo = 1, hi = 1e6, step = 1, big = 10},
+  round = {def = 5, lo = 1, hi = 1e6, step = 1, big = 10},
+  sell_value = {def = 2, lo = 1, hi = R.BIG, step = 1, big = 10},
+  perma_chips = {def = 5, lo = 1, hi = R.BIG, step = 1, big = 10},
+}
+
+R.OLD_HI = {chips = 300, mult = 50, xmult = 5, money = 20, retrigger = 3, gain_chips = 50, gain_mult = 10, gain_xmult = 1, hand = 3, discard = 3, chance = 20, money_cond = 100, hands_left = 5, discards_left = 5, ante = 8, jokers = 5, var_add = 10, var_set = 100, var_chips = 50, var_mult = 10, var = 100, var_start = 100}
+R.OLD_LO = {var_add = -10}
+R.V2_HI = {chips = 1000, mult = 200, xmult = 20, money = 50, retrigger = 5, gain_chips = 200, gain_mult = 50, gain_xmult = 2, hand = 5, discard = 5, chance = 100, cards_played = 5, money_cond = 500, hands_left = 10, discards_left = 10, ante = 20, jokers = 10, var_add = 50, var_set = 999, var_chips = 200, var_mult = 50, var = 999, var_start = 999, deck_cards = 80, held_cards = 15, consumables = 6, hand_level = 100, round = 100, sell_value = 20}
+R.V2_LO = {chips = 5, xmult = 1.1, gain_xmult = 0.05, var_add = -50}
+R.V3_IDS = {perma_chips = true, copy_card = true, tag = true, disable_boss = true, destroy_joker = true}
+R.NEW_IDS = {card_bought = true, pack_skipped = true, cards_destroyed = true, card_added = true, blind = true, deck_cards = true, held_cards = true, consumables = true, hand_level = true, round = true, destroy_card = true, add_card = true, sell_value = true}
+
+R.warned = {}
+R.errors = 0
+
+local function log_once(key, msg)
+  if R.warned[key] then return end
+  R.warned[key] = true
+  R.errors = R.errors + 1
+  print("[FORGE] " .. tostring(msg))
+end
+
+local function num_key(id)
+  if id == "money" then return "money_cond" end
+  return id
+end
+
+function R.num(kind, v, is_cond)
+  local spec = R.NUM[is_cond and num_key(kind) or kind]
+  if not spec then return tonumber(v) or 0 end
+  v = tonumber(v) or spec.def
+  if v ~= v then v = spec.def end
+  if v < spec.lo then v = spec.lo end
+  if v > spec.hi then v = spec.hi end
+  if spec.step % 1 == 0 and spec.lo % 1 == 0 then return math.floor(v + 0.5) end
+  return math.floor(v * 100 + 0.5) / 100
+end
+
+local function member(list, v)
+  for _, x in ipairs(list) do if x == v then return true end end
+  return false
+end
+
+R.TAG_RANDOM = "random"
+
+function R.tag_ok(v)
+  return v == R.TAG_RANDOM or member(R.TAGS, v)
+end
+
+function R.tag_pool()
+  local out = {}
+  for _, v in ipairs(R.TAGS) do
+    if G.P_TAGS and G.P_TAGS[v] then out[#out + 1] = v end
+  end
+  return out
+end
+
+function R.roll_tag()
+  local pool = R.tag_pool()
+  if #pool == 0 then return nil end
+  return pseudorandom_element(pool, pseudoseed("forge_tag"))
+end
+
+function R.allowed_give(when, give)
+  if give == "var_chips" then give = "chips" elseif give == "var_mult" then give = "mult" end
+  if give == "chips" then return when == "card_scored" or when == "hand_played" end
+  if give == "mult" or give == "xmult" then return when == "card_scored" or when == "card_held" or when == "hand_played" end
+  if give == "retrigger" then return when == "card_scored" or when == "card_held" end
+  if give == "level_up" then return when == "before" or when == "hand_played" or when == "after" end
+  if give == "change" then return when == "card_scored" end
+  if give == "hand" or give == "discard" then return R.ROUND_WHEN[when] or false end
+  if give == "destroy_card" or give == "copy_card" then return when == "card_scored" or when == "discard" end
+  if give == "perma_chips" then return when == "card_scored" end
+  if give == "disable_boss" then return R.ROUND_WHEN[when] or false end
+  return member(R.GIVE, give)
+end
+
+function R.allowed_only(when, only)
+  if R.CARD_ONLY[only] then return R.CARD_WHEN[when] or false end
+  if only == "hand" or only == "cards_played" then return R.HAND_WHEN[when] or when == "discard" end
+  if only == "first_hand" or only == "last_hand" or only == "hands_left" or only == "discards_left" then return R.ROUND_WHEN[when] or when == "round_end" end
+  if only == "hand_level" then return R.HAND_WHEN[when] or false end
+  return member(R.ONLY, only)
+end
+
+function R.default_only(id)
+  if id == "hand" then return {id = "hand", v = "Pair", mode = "contains"} end
+  if id == "suit" then return {id = "suit", v = "Hearts"} end
+  if id == "rank" then return {id = "rank", v = "face"} end
+  if id == "enhancement" then return {id = "enhancement", v = "m_gold"} end
+  if id == "seal" then return {id = "seal", v = "Red"} end
+  if id == "edition" then return {id = "edition", v = "foil"} end
+  if id == "chance" then return {id = "chance", n = R.NUM.chance.def} end
+  if id == "var" then return {id = "var", var = 1, op = "at_least", n = R.NUM.var.def} end
+  if id == "blind" then return {id = "blind", v = "Small"} end
+  if id == "money" then return {id = "money", op = "at_least", n = R.NUM.money_cond.def} end
+  if R.NUM[id] then return {id = id, op = "at_least", n = R.NUM[id].def} end
+  return {id = id}
+end
+
+function R.default_give(id)
+  if id == "create" then return {id = "create", v = "Tarot"} end
+  if id == "change" then return {id = "change", what = "enhancement", v = "m_gold"} end
+  if id == "add_card" then return {id = "add_card", v = "m_stone"} end
+  if id == "tag" then return {id = "tag", v = "tag_double"} end
+  if id == "level_up" or id == "destroy_self" or id == "destroy_card" or id == "copy_card" or id == "disable_boss" or id == "destroy_joker" then return {id = id} end
+  if R.VAR_GIVE[id] then return {id = id, var = 1, n = R.NUM[id].def} end
+  return {id = id, n = R.NUM[id] and R.NUM[id].def or 1}
+end
+
+function R.change_values(what)
+  if what == "suit" then return {"Hearts", "Diamonds", "Spades", "Clubs"} end
+  if what == "rank" then return {14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2} end
+  if what == "seal" then return R.SEALS end
+  if what == "edition" then return R.EDITIONS end
+  return R.ENHANCEMENTS
+end
+
+local function var_index(v)
+  v = math.floor(tonumber(v) or 1)
+  if v < 1 then v = 1 end
+  if v > R.MAX_VARS then v = R.MAX_VARS end
+  return v
+end
+
+function R.clean_name(str)
+  str = tostring(str or ""):gsub("[%c{}#%%\\]", ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if #str > R.VAR_NAME then
+    str = str:sub(1, R.VAR_NAME)
+    while #str > 0 and str:byte(#str) >= 128 do
+      local b = str:byte(#str)
+      str = str:sub(1, -2)
+      if b >= 192 then break end
+    end
+  end
+  return str
+end
+
+function R.clean_vars(list)
+  local out = {}
+  for _, v in ipairs(type(list) == "table" and list or {}) do
+    if type(v) == "table" and #out < R.MAX_VARS then
+      local name = R.clean_name(v.name)
+      if name == "" then name = "V" .. (#out + 1) end
+      out[#out + 1] = {name = name, start = R.num("var_start", v.start)}
+    end
+  end
+  return out
+end
+
+function R.clean_rule(r)
+  if type(r) ~= "table" or not member(R.WHEN, r.when) then return nil end
+  local out = {when = r.when, only = {}, give = {}}
+  for _, o in ipairs(type(r.only) == "table" and r.only or {}) do
+    if type(o) == "table" and member(R.ONLY, o.id) and R.allowed_only(r.when, o.id) then
+      local c = {id = o.id, v = o.v, mode = o.mode, op = o.op, n = o.n, neg = o.neg == true and o.id ~= "chance" or nil, var = o.id == "var" and var_index(o.var) or nil}
+      if c.n ~= nil then c.n = R.num(o.id, c.n, true) end
+      if c.op and not member(R.OPS, c.op) then c.op = "at_least" end
+      if c.id == "blind" and not member(R.BLINDS, c.v) then c.v = "Small" end
+      out.only[#out.only + 1] = c
+    end
+  end
+  for _, g in ipairs(type(r.give) == "table" and r.give or {}) do
+    if type(g) == "table" and member(R.GIVE, g.id) and R.allowed_give(r.when, g.id) then
+      local e = {id = g.id, v = g.v, what = g.what, n = g.n, var = R.VAR_GIVE[g.id] and var_index(g.var) or nil}
+      if R.NUM[g.id] then e.n = R.num(g.id, g.n) end
+      if e.id == "add_card" and not member(R.ADD_CARDS, e.v) then e.v = "c_base" end
+      if e.id == "tag" and not R.tag_ok(e.v) then e.v = "tag_double" end
+      out.give[#out.give + 1] = e
+    end
+  end
+  if #out.only > 0 and type(r.alt) == "table" then
+    for _, g in ipairs(r.alt) do
+      if type(g) == "table" and g.id ~= "change" and member(R.GIVE, g.id) and R.allowed_give(r.when, g.id) and #(out.alt or {}) < 4 then
+        local e = {id = g.id, v = g.v, what = g.what, n = g.n, var = R.VAR_GIVE[g.id] and var_index(g.var) or nil}
+        if R.NUM[g.id] then e.n = R.num(g.id, g.n) end
+        if e.id == "add_card" and not member(R.ADD_CARDS, e.v) then e.v = "c_base" end
+        if e.id == "tag" and not R.tag_ok(e.v) then e.v = "tag_double" end
+        out.alt = out.alt or {}
+        out.alt[#out.alt + 1] = e
+      end
+    end
+  end
+  return out
+end
+
+function R.clean_rules(list)
+  local out = {}
+  for _, r in ipairs(type(list) == "table" and list or {}) do
+    local c = R.clean_rule(r)
+    if c then out[#out + 1] = c end
+    if #out >= R.MAX_RULES then break end
+  end
+  return out
+end
+
+function R.trigger_of(context)
+  if type(context) ~= "table" then return nil end
+  if context.destroying_card then return "card_scored", "destroy" end
+r 3 2244 %20%20 -
+l 4
+    if context.cardarea == G.play then return "card_scored", "repeat" end
+    if context.cardarea == G.hand and not context.end_of_round then return "card_held", "repeat" end
+    return nil
+  end
+r 3 2875 %20%20 -
+l 155
+    if context.cardarea == G.play then return "card_scored" end
+    if context.cardarea == G.hand and not context.end_of_round then return "card_held" end
+    return nil
+  end
+  if context.joker_main then return "hand_played" end
+  if context.before then return "before" end
+  if context.after then return "after" end
+  if context.discard then return "discard" end
+  if context.first_hand_drawn then return "first_hand" end
+  if context.setting_blind then return "blind_selected" end
+  if context.end_of_round then return "round_end" end
+  if context.skip_blind then return "blind_skipped" end
+  if context.reroll_shop then return "reroll" end
+  if context.ending_shop then return "shop_end" end
+  if context.selling_self then return "self_sold" end
+  if context.selling_card then return "card_sold" end
+  if context.open_booster then return "pack_opened" end
+  if context.using_consumeable then return "consumable_used" end
+  if context.buying_card then return "card_bought" end
+  if context.skipping_booster then return "pack_skipped" end
+  if context.remove_playing_cards then return "cards_destroyed" end
+  if context.playing_card_added then return "card_added" end
+  return nil
+end
+
+local function compare(op, a, b)
+  a, b = tonumber(a) or 0, tonumber(b) or 0
+  if op == "at_most" then return a <= b end
+  if op == "exactly" then return a == b end
+  return a >= b
+end
+
+local function card_rank_ok(card, v)
+  local id = card:get_id()
+  if v == "face" then return card:is_face() end
+  if v == "number" then return id >= 2 and id <= 10 end
+  if v == "even" then return id >= 2 and id <= 10 and id % 2 == 0 end
+  if v == "odd" then return id == 14 or (id >= 3 and id <= 9 and id % 2 == 1) end
+  return id == tonumber(v)
+end
+
+local function card_suit_ok(card, v)
+  if v == "red" then return card:is_suit("Hearts") or card:is_suit("Diamonds") end
+  if v == "black" then return card:is_suit("Spades") or card:is_suit("Clubs") end
+  return card:is_suit(v)
+end
+
+local function round() return G.GAME and G.GAME.current_round or {} end
+
+local function count(area) return area and area.cards and #area.cards or 0 end
+
+local function blind_type()
+  local b = G.GAME and G.GAME.blind
+  if not b then return nil end
+  if b.boss then return "Boss" end
+  if type(b.get_type) == "function" then
+    local ok, t = pcall(b.get_type, b)
+    if ok and t then return t end
+  end
+  if b.name == "Big Blind" then return "Big" end
+  if b.name == "Small Blind" then return "Small" end
+  return nil
+end
+R.blind_type = blind_type
+
+local function hand_level(context)
+  local name = context.scoring_name
+  local h = name and G.GAME and G.GAME.hands and G.GAME.hands[name]
+  return h and tonumber(h.level) or 0
+end
+
+local function var_val(card, i)
+  local x = card and card.ability and card.ability.extra
+  local vars = type(x) == "table" and type(x.vars) == "table" and x.vars or {}
+  return tonumber(vars[i or 1]) or 0
+end
+R.var_val = var_val
+
+function R.vars_state(card, defs)
+  local x = R.state(card)
+  x.vars = type(x.vars) == "table" and x.vars or {}
+  for i, d in ipairs(type(defs) == "table" and defs or {}) do
+    if tonumber(x.vars[i]) == nil then x.vars[i] = tonumber(d.start) or 0 end
+  end
+  return x.vars
+end
+
+function R.check(o, context, card, other, seed)
+  local id = o.id
+  if R.CARD_ONLY[id] then
+    if not other then return false end
+    if id == "suit" then return card_suit_ok(other, o.v) end
+    if id == "rank" then return card_rank_ok(other, o.v) end
+    if id == "enhancement" then return other.config and other.config.center and other.config.center.key == o.v end
+    if id == "seal" then return other.seal == o.v end
+    if id == "edition" then return other.edition and other.edition[o.v] and true or false end
+  end
+  if id == "hand" then
+    if o.mode == "is" then return context.scoring_name == o.v end
+    local ph = context.poker_hands
+    if ph and ph[o.v] then return next(ph[o.v]) ~= nil end
+    return context.scoring_name == o.v
+  end
+  if id == "cards_played" then return compare(o.op, context.full_hand and #context.full_hand or 0, o.n) end
+  if id == "money" then return compare(o.op, G.GAME and G.GAME.dollars or 0, o.n) end
+  if id == "hands_left" then return compare(o.op, round().hands_left, o.n) end
+  if id == "discards_left" then return compare(o.op, round().discards_left, o.n) end
+  if id == "first_hand" then return (round().hands_played or 0) == 0 end
+  if id == "last_hand" then return (round().hands_left or 1) == 0 end
+  if id == "ante" then return compare(o.op, G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante or 1, o.n) end
+  if id == "jokers" then return compare(o.op, G.jokers and G.jokers.cards and #G.jokers.cards or 0, o.n) end
+  if id == "boss" then return G.GAME and G.GAME.blind and G.GAME.blind.boss and true or false end
+  if id == "blind" then return blind_type() == o.v end
+  if id == "deck_cards" then return compare(o.op, count(G.deck), o.n) end
+  if id == "held_cards" then return compare(o.op, count(G.hand), o.n) end
+  if id == "consumables" then return compare(o.op, count(G.consumeables), o.n) end
+  if id == "hand_level" then return compare(o.op, hand_level(context), o.n) end
+  if id == "round" then return compare(o.op, G.GAME and G.GAME.round or 0, o.n) end
+  if id == "var" then return compare(o.op, var_val(card, o.var), o.n) end
+  if id == "chance" then
+    local p = G.GAME and G.GAME.probabilities and G.GAME.probabilities.normal or 1
+    return pseudorandom(seed) < p / (tonumber(o.n) or 4)
+  end
+  return false
+end
+
+local function all_ok(rule, context, card, other, seed)
+  for _, o in ipairs(rule.only or {}) do
+    local ok = R.check(o, context, card, other, seed)
+    if o.neg then ok = not ok end
+    if not ok then return false end
+  end
+  return true
+end
+
+function R.state(card)
+  local ab = card.ability
+  ab.extra = type(ab.extra) == "table" and ab.extra or {}
+  local x = ab.extra
+  x.chips = tonumber(x.chips) or 0
+  x.mult = tonumber(x.mult) or 0
+  x.xmult = tonumber(x.xmult) or 1
+  return x
+end
+
+local function msg_var(key, n) return localize{type = "variable", key = key, vars = {n}} end
+
+local function status(card, text, colour)
+  card_eval_status_text(card, "extra", nil, nil, nil, {message = text, colour = colour})
+end
+
+local function create_one(kind, card)
+  if kind == "Joker" then
+    if #G.jokers.cards + (G.GAME.joker_buffer or 0) >= G.jokers.config.card_limit then return false end
+    G.GAME.joker_buffer = (G.GAME.joker_buffer or 0) + 1
+r 3 617 %20%20%20%20 -
+l 4
+      local c = create_card("Joker", G.jokers, nil, nil, nil, nil, nil, "forge")
+      c:add_to_deck()
+      G.jokers:emplace(c)
+      c:start_materialize()
+r 3 2539 %20%20%20%20%20%20 -
+l 6
+      return true
+    end}))
+    return true
+  end
+  if #G.consumeables.cards + (G.GAME.consumeable_buffer or 0) >= G.consumeables.config.card_limit then return false end
+  G.GAME.consumeable_buffer = (G.GAME.consumeable_buffer or 0) + 1
+r 3 617 %20%20 -
+l 3
+    local c = create_card(kind, G.consumeables, nil, nil, nil, nil, nil, "forge")
+    c:add_to_deck()
+    G.consumeables:emplace(c)
+r 3 1057 %20%20%20%20 -
+l 31
+    return true
+  end}))
+  return true
+end
+
+R.create_one = create_one
+
+local SUIT_PREFIX = {Hearts = "H", Diamonds = "D", Spades = "S", Clubs = "C"}
+local RANK_SUFFIX = {[14] = "A", [13] = "K", [12] = "Q", [11] = "J", [10] = "T"}
+
+function R.change_card(other, g)
+  if g.what == "suit" and SUIT_PREFIX[g.v] then
+    other:change_suit(g.v)
+  elseif g.what == "rank" then
+    local r = tonumber(g.v)
+    if not r then return end
+    local suit = SUIT_PREFIX[other.base and other.base.suit] or "S"
+    local key = suit .. "_" .. (RANK_SUFFIX[r] or tostring(r))
+    if G.P_CARDS[key] then other:set_base(G.P_CARDS[key]) end
+  elseif g.what == "seal" then
+    other:set_seal(g.v, nil, true)
+  elseif g.what == "edition" then
+    if member(R.EDITIONS, g.v) then other:set_edition({[g.v] = true}, true) end
+  elseif G.P_CENTERS[g.v] then
+    other:set_ability(G.P_CENTERS[g.v], nil, true)
+  end
+end
+
+local function destroy(card)
+  if card.forge_dying then return end
+  card.forge_dying = true
+r 3 617 %20%20 -
+l 6
+    play_sound("tarot1")
+    card.T.r = -0.2
+    card:juice_up(0.3, 0.4)
+    card.states.drag.is = true
+    card.children.center.pinch.x = true
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.3, blockable = false, func = function()
+r 13 2209 %20%20%20%20%20%20 -
+l 44
+      card:remove()
+      return true
+    end}))
+    return true
+  end}))
+end
+
+local function side_effect(g, card, src, context, other, out)
+  local id = g.id
+  if id == "money" then
+    if out.card_ctx and out.when == "card_scored" then
+      out.ret.dollars = (out.ret.dollars or 0) + g.n
+    else
+      ease_dollars(g.n)
+      status(src, localize("$") .. g.n, G.C.MONEY)
+    end
+  elseif id == "gain_chips" or id == "gain_mult" or id == "gain_xmult" then
+    if context.blueprint then return end
+    local x = R.state(card)
+    if id == "gain_chips" then x.chips = x.chips + g.n
+    elseif id == "gain_mult" then x.mult = x.mult + g.n
+    else x.xmult = math.floor((x.xmult + g.n) * 100 + 0.5) / 100 end
+    status(src, localize("k_upgrade_ex"), id == "gain_chips" and G.C.CHIPS or G.C.MULT)
+  elseif id == "create" then
+    if create_one(member(R.KINDS, g.v) and g.v or "Tarot", card) then
+      status(src, "+1", G.C.SECONDARY_SET and G.C.SECONDARY_SET[g.v == "Joker" and "Tarot" or g.v] or G.C.FILTER)
+    end
+  elseif id == "level_up" then
+    if context.scoring_name then
+      status(src, localize("k_level_up_ex"), G.C.SECONDARY_SET and G.C.SECONDARY_SET.Planet)
+      level_up_hand(src, context.scoring_name)
+    end
+  elseif id == "hand" then
+    ease_hands_played(g.n)
+    status(src, localize{type = "variable", key = "a_hands", vars = {g.n}}, G.C.BLUE)
+  elseif id == "discard" then
+    ease_discard(g.n)
+    status(src, "+" .. g.n, G.C.RED)
+  elseif id == "destroy_self" then
+    if not context.blueprint then destroy(card) end
+  elseif id == "destroy_card" then
+    if out.when == "discard" and other then out.remove = true end
+  elseif id == "add_card" then
+    local center = G.P_CENTERS[g.v] or G.P_CENTERS.c_base
+r 3 617 %20%20%20%20 -
+l 2
+      local front = pseudorandom_element(G.P_CARDS, pseudoseed("forge_add"))
+      create_playing_card({front = front, center = center}, G.deck, nil, nil, {G.C.SECONDARY_SET.Enhanced})
+r 3 1210 %20%20%20%20%20%20 -
+l 9
+      return true
+    end}))
+    status(src, "+1", G.C.SECONDARY_SET and G.C.SECONDARY_SET.Enhanced or G.C.FILTER)
+  elseif id == "perma_chips" then
+    if not other or not other.ability then return end
+    other.ability.perma_bonus = (tonumber(other.ability.perma_bonus) or 0) + g.n
+    status(other, localize("k_upgrade_ex"), G.C.CHIPS)
+  elseif id == "copy_card" then
+    if not other or not G.deck then return end
+r 3 1207 %20%20%20%20 -
+l 2
+    local c = copy_card(other, nil, nil, G.playing_card)
+    c:add_to_deck()
+r 3 1210 %20%20%20%20 -
+l 7
+    table.insert(G.playing_cards, c)
+    G.deck:emplace(c)
+    status(src, localize("k_copied_ex"), G.C.CHIPS)
+  elseif id == "tag" then
+    local key = member(R.TAGS, g.v) and g.v or "tag_double"
+    if g.v == R.TAG_RANDOM then key = R.roll_tag() end
+    if not key or not G.P_TAGS or not G.P_TAGS[key] then return end
+r 3 617 %20%20%20%20 -
+l 233
+      add_tag(Tag(key))
+      play_sound("generic1", 0.9 + math.random() * 0.1, 0.8)
+      play_sound("holo1", 1.2 + math.random() * 0.1, 0.4)
+      return true
+    end}))
+    status(src, "+1", G.C.FILTER)
+  elseif id == "disable_boss" then
+    local b = G.GAME and G.GAME.blind
+    if b and b.boss and not b.disabled then
+      b:disable()
+      status(src, localize("ph_boss_disabled"), G.C.RED)
+    end
+  elseif id == "destroy_joker" then
+    local list = {}
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do
+      if j ~= card and not (j.ability and j.ability.eternal) and not j.getting_sliced and not j.forge_dying then list[#list + 1] = j end
+    end
+    if #list == 0 then return end
+    local j = pseudorandom_element(list, pseudoseed("forge_dj"))
+    j.getting_sliced = true
+    destroy(j)
+    status(src, "-1", G.C.RED)
+  elseif id == "sell_value" then
+    if context.blueprint then return end
+    card.ability.extra_value = (tonumber(card.ability.extra_value) or 0) + g.n
+    if card.set_cost then card:set_cost() end
+    status(src, localize("k_val_up"), G.C.MONEY)
+  elseif id == "var_add" or id == "var_set" then
+    if context.blueprint then return end
+    local vars = R.state(card).vars
+    if type(vars) ~= "table" then vars = {}; R.state(card).vars = vars end
+    local i = g.var or 1
+    local nv = id == "var_set" and g.n or (tonumber(vars[i]) or 0) + g.n
+    vars[i] = math.max(0, math.min(R.VAR_CAP, nv))
+    if id == "var_set" then status(src, localize("k_reset"), G.C.FILTER)
+    else status(src, (g.n >= 0 and "+" or "") .. tostring(g.n), G.C.FILTER) end
+  end
+end
+
+local function seed_of(card, i)
+  local c = card.config and card.config.center
+  return "forge_" .. tostring(c and c.forge_id or "x") .. "_" .. i
+end
+
+local function apply_card(rule, i, card, src, context, other, phase, acc)
+  if phase == "repeat" then
+    for _, g in ipairs(rule.give) do
+      if g.id == "retrigger" then acc.reps = math.min(R.MANY, (acc.reps or 0) + g.n) end
+    end
+    return
+  end
+  local held = context.cardarea == G.hand
+  for _, g in ipairs(rule.give) do
+    local n = g.n
+    if g.id == "var_chips" or g.id == "var_mult" then n = g.n * var_val(card, g.var) end
+    if (g.id == "chips" or g.id == "var_chips") and not held then
+      if n > 0 then acc.ret.chips = (acc.ret.chips or 0) + n end
+    elseif g.id == "mult" or g.id == "var_mult" then
+      if n > 0 then
+        if held then acc.ret.h_mult = (acc.ret.h_mult or 0) + n else acc.ret.mult = (acc.ret.mult or 0) + n end
+      end
+    elseif g.id == "xmult" then acc.ret.x_mult = (acc.ret.x_mult or 1) * g.n
+    elseif g.id ~= "retrigger" and g.id ~= "change" and g.id ~= "chips" and g.id ~= "var_chips" then side_effect(g, card, src, context, other, acc) end
+  end
+end
+
+local function apply_main(rule, card, src, context, acc)
+  for _, g in ipairs(rule.give) do
+    if g.id == "chips" then acc.ret.chip_mod = (acc.ret.chip_mod or 0) + g.n
+    elseif g.id == "mult" then acc.ret.mult_mod = (acc.ret.mult_mod or 0) + g.n
+    elseif g.id == "var_chips" then
+      local n = g.n * var_val(card, g.var)
+      if n > 0 then acc.ret.chip_mod = (acc.ret.chip_mod or 0) + n end
+    elseif g.id == "var_mult" then
+      local n = g.n * var_val(card, g.var)
+      if n > 0 then acc.ret.mult_mod = (acc.ret.mult_mod or 0) + n end
+    elseif g.id == "xmult" then acc.ret.Xmult_mod = (acc.ret.Xmult_mod or 1) * g.n
+    else side_effect(g, card, src, context, nil, acc) end
+  end
+end
+
+local function run_changes(rules, card, context)
+  local hand = context.scoring_hand
+  if not hand then return false end
+  local any = false
+  for i, rule in ipairs(rules) do
+    if rule.when == "card_scored" then
+      local changes = {}
+      for _, g in ipairs(rule.give) do if g.id == "change" then changes[#changes + 1] = g end end
+      if #changes > 0 then
+        local ok, err = pcall(function()
+          for _, other in ipairs(hand) do
+            if not other.debuff and all_ok(rule, context, card, other, seed_of(card, i)) then
+              for _, g in ipairs(changes) do R.change_card(other, g) end
+              any = true
+              G.E_MANAGER:add_event(Event({func = function() other:juice_up(); return true end}))
+            end
+          end
+        end)
+        if not ok then log_once(seed_of(card, i) .. "_change", "rule " .. i .. " failed: " .. tostring(err)) end
+      end
+    end
+  end
+  return any
+end
+
+local function destroy_phase(card, context, rules)
+  local other = context.destroying_card
+  local ctx = {scoring_name = G.GAME and G.GAME.last_hand_played, full_hand = context.full_hand}
+  for i, rule in ipairs(rules) do
+    if rule.when == "card_scored" then
+      local wants = false
+      for _, g in ipairs(rule.give or {}) do if g.id == "destroy_card" then wants = true end end
+      if wants then
+        local ok, r = pcall(all_ok, rule, ctx, card, other, seed_of(card, i))
+        if ok and r then return true end
+        if not ok then log_once(seed_of(card, i) .. "_destroy", "rule " .. i .. " failed: " .. tostring(r)) end
+      end
+    end
+  end
+  return nil
+end
+
+function R.calculate(card, context, rules, vars)
+  local when, phase = R.trigger_of(context)
+  if not when then return nil end
+  if phase == "destroy" then
+    if context.blueprint then return nil end
+    return destroy_phase(card, context, rules)
+  end
+  if type(vars) == "table" and #vars > 0 then R.vars_state(card, vars) end
+  local src = context.blueprint_card or card
+  local other = R.CARD_WHEN[when] and context.other_card or nil
+  local acc = {ret = {}, when = when, card_ctx = R.CARD_WHEN[when]}
+  if when == "self_sold" or when == "card_sold" then other = nil end
+  if when == "before" and not context.blueprint then
+    if run_changes(rules, card, context) then acc.changed = true end
+  end
+  for i, rule in ipairs(rules) do
+    if rule.when == when then
+      local ok, err = pcall(function()
+        local list = rule
+        if not all_ok(rule, context, card, other, seed_of(card, i)) then
+          if not (rule.alt and #rule.alt > 0) then return end
+          list = {give = rule.alt}
+        end
+        acc.fired = true
+        if when == "card_scored" or when == "card_held" then
+          apply_card(list, i, card, src, context, other, phase, acc)
+        elseif when == "hand_played" then
+          apply_main(list, card, src, context, acc)
+        else
+          for _, g in ipairs(list.give) do side_effect(g, card, src, context, other, acc) end
+        end
+      end)
+      if not ok then log_once(seed_of(card, i), "rule " .. i .. " of " .. tostring(card.config and card.config.center and card.config.center.key) .. " failed: " .. tostring(err)) end
+    end
+  end
+  if when == "hand_played" then
+    local x = R.state(card)
+    if x.chips > 0 then acc.ret.chip_mod = (acc.ret.chip_mod or 0) + x.chips end
+    if x.mult > 0 then acc.ret.mult_mod = (acc.ret.mult_mod or 0) + x.mult end
+    if x.xmult > 1 then acc.ret.Xmult_mod = (acc.ret.Xmult_mod or 1) * x.xmult end
+  end
+  if phase == "repeat" then
+    if acc.reps and acc.reps > 0 then return {message = localize("k_again_ex"), repetitions = acc.reps, card = src} end
+    return nil
+  end
+  local ret = acc.ret
+  if when == "card_scored" or when == "card_held" then
+    if next(ret) then ret.card = src; return ret end
+    return nil
+  end
+  if when == "hand_played" then
+    if type(card_eval_status_text) == "function" then
+      local main = ret.Xmult_mod and "x" or ret.mult_mod and "m" or ret.chip_mod and "c"
+      if main ~= "c" and ret.chip_mod then pcall(card_eval_status_text, src, "chips", ret.chip_mod) end
+      if main ~= "m" and ret.mult_mod then pcall(card_eval_status_text, src, "mult", ret.mult_mod) end
+    end
+    if ret.Xmult_mod then ret.message = msg_var("a_xmult", ret.Xmult_mod)
+    elseif ret.mult_mod then ret.message = msg_var("a_mult", ret.mult_mod)
+    elseif ret.chip_mod then ret.message = msg_var("a_chips", ret.chip_mod) end
+    if ret.Xmult_mod or ret.mult_mod then ret.colour = G.C.MULT elseif ret.chip_mod then ret.colour = G.C.CHIPS end
+    if next(ret) then return ret end
+    return nil
+  end
+  if acc.remove then return {message = localize("k_extinct_ex"), colour = G.C.RED, remove = true, card = src} end
+  if acc.changed then return {message = localize("k_upgrade_ex"), colour = G.C.MONEY, card = src} end
+  return nil
+end
+
+function R.need_v(rules, vars)
+  local need = 1
+  local top = 0
+  local function num(id, n)
+    n = tonumber(n)
+    if not n then return end
+    if (R.V2_HI[id] and n > R.V2_HI[id]) or (R.V2_LO[id] and n < R.V2_LO[id]) then need = 3 return end
+    if (R.OLD_HI[id] and n > R.OLD_HI[id]) or (R.OLD_LO[id] and n < R.OLD_LO[id]) then need = math.max(need, 2) end
+  end
+  local function id_of(id)
+    if R.V3_IDS[id] then need = 3 elseif R.NEW_IDS[id] then need = math.max(need, 2) end
+  end
+  for _, v in ipairs(type(vars) == "table" and vars or {}) do
+    if type(v) == "table" then num("var_start", v.start) end
+  end
+  local list = type(rules) == "table" and rules or {}
+  if #list > 6 then need = 3 end
+  for _, r in ipairs(list) do
+    if type(r) == "table" then
+      id_of(r.when)
+      for _, o in ipairs(type(r.only) == "table" and r.only or {}) do
+        id_of(o.id)
+        num(o.id == "money" and "money_cond" or o.id, o.n)
+      end
+      for _, l in ipairs({r.give, r.alt}) do
+        for _, g in ipairs(type(l) == "table" and l or {}) do
+          id_of(g.id)
+          num(g.id, g.n)
+          if g.id == "change" and g.what == "edition" then need = 3 end
+          if g.id == "tag" and g.v == R.TAG_RANDOM then top = 5 end
+        end
+      end
+    end
+  end
+  return math.max(need, top)
+end
+
+function R.uses_new(rules, vars)
+  return R.need_v(rules, vars) > 1
+end
+
+return R
+end

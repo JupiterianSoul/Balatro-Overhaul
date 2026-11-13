@@ -1,0 +1,44 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 15
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -5
+
+### Supporting code for loader.lua
+
+## Save discovered, unlocked states
+# Game:init_item_prototypes()
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = '''
+local meta_file = G.SETTINGS.profile..'/meta.jkr'
+local meta = G.FILES[meta_file] or {}
+r 14 29 - -
+r 14 30 - -
+l 9
+meta.alerted = meta.alerted or {}'''
+position = 'after'
+payload = '''
+for _, t in ipairs{
+    G.P_CENTERS,
+    G.P_BLINDS,
+    G.P_TAGS,
+    G.P_SEALS,
+} do
+r 11 131 %20%20%20%20 -
+l 9
+        if v._discovered_unlocked_overwritten then
+            if v._saved_d_u then v.discovered, v.unlocked = v._d, v._u end
+            v._discovered_unlocked_overwritten = false
+        end
+        SMODS._save_d_u(v)
+        v._discovered_unlocked_overwritten = true
+    end
+end'''
+match_indent = true
+end

@@ -1,0 +1,682 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 411
+local R = {
+    initialized = false,
+    hooked = false,
+}
+
+local ACTIVE = {}
+local SAVED = {}
+local TEXT_SAVED = {}
+local NONE = {}
+
+local ORDER = {
+    'j_hanging_chad', 'j_bloodstone', 'j_ticket', 'j_selzer', 'j_turtle_bean', 'j_idol', 'j_baron', 'j_mime',
+    'j_todo_list', 'm_glass', 'Blue', 'tag_uncommon', 'tag_rare', 'tag_foil', 'tag_holo', 'tag_polychrome',
+    'tag_negative', 'tag_investment', 'c_magician', 'c_ouija', 'c_wraith',
+}
+
+local FULL_PRICE_TAGS = {
+    tag_uncommon = true, tag_rare = true, tag_foil = true, tag_holo = true, tag_polychrome = true, tag_negative = true,
+}
+
+local NOTE_NAME = { en = 'MP rework', fr = 'Refonte JcJ', es = 'Ajuste JcJ' }
+
+local function note(en, fr, es)
+    return {
+        en = { name = NOTE_NAME.en, text = en },
+        fr = { name = NOTE_NAME.fr, text = fr },
+        es = { name = NOTE_NAME.es, text = es },
+    }
+end
+
+local function edition_tag_text(en_ed, fr_ed, es_ed)
+    return {
+        en = { 'Next base edition shop', 'Joker becomes {C:dark_edition}' .. en_ed },
+        fr = { 'Le prochain Joker de base', 'de la boutique devient {C:dark_edition}' .. fr_ed },
+        es = { 'El siguiente comodín base', 'de la tienda se vuelve {C:dark_edition}' .. es_ed },
+    }
+end
+
+local NOT_FREE = note({ 'The Joker is {C:attention}not free{}' }, { 'Le Joker n\'est {C:attention}pas gratuit{}' }, { 'El comodín {C:attention}no es gratis{}' })
+
+local DEFS = {
+    j_hanging_chad = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { config = { extra = 1 } },
+        text = {
+            en = { 'The {C:attention}first two{} played cards', 'used in scoring retrigger', '{C:attention}#1#{} more time' },
+            fr = { 'Les {C:attention}deux premières{} cartes jouées', 'qui comptent se relancent', '{C:attention}#1#{} fois de plus' },
+            es = { 'Las {C:attention}dos primeras{} cartas jugadas', 'que puntúan se reactivan', '{C:attention}#1#{} vez más' },
+        },
+        note = note({ 'Retriggers the first {C:attention}2{} cards', 'once each instead of', 'the first card twice' },
+            { 'Relance les {C:attention}2{} premières', 'cartes une fois chacune,', 'pas la première deux fois' },
+            { 'Reactiva las {C:attention}2{} primeras', 'cartas una vez cada una,', 'no la primera dos veces' }),
+    },
+    j_bloodstone = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS',
+        note = note({ 'In a {C:attention}PvP Blind{}, rolls follow', 'a fixed sequence shared by', 'both players, reused every hand' },
+            { 'En {C:attention}Blinde JcJ{}, les tirages suivent', 'une suite fixe commune aux', 'deux joueurs, reprise à chaque main' },
+            { 'En una {C:attention}ciega JcJ{}, las tiradas siguen', 'una secuencia fija común a', 'ambos jugadores, repetida cada mano' }),
+    },
+    j_ticket = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { rarity = 2, cost = 6, enhancement_gate = NONE },
+        note = note({ 'Now {C:green}Uncommon{} ({C:money}$6{})', 'Can appear without a', '{C:attention}Gold{} card in your deck' },
+            { 'Désormais {C:green}Peu commun{} ({C:money}$6{})', 'Peut apparaître sans', 'carte {C:attention}Or{} dans le paquet' },
+            { 'Ahora {C:green}poco común{} ({C:money}$6{})', 'Puede aparecer sin cartas', 'de {C:attention}oro{} en la baraja' }),
+    },
+    j_selzer = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { config = { extra = 8 } },
+        note = note({ 'Lasts {C:attention}8{} hands', 'instead of {C:attention}10{}' }, { 'Dure {C:attention}8{} mains', 'au lieu de {C:attention}10{}' }, { 'Dura {C:attention}8{} manos', 'en vez de {C:attention}10{}' }),
+    },
+    j_turtle_bean = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { config = { extra = { h_size = 4, h_mod = 1 } } },
+        note = note({ '{C:attention}+4{} hand size', 'instead of {C:attention}+5{}' }, { '{C:attention}+4{} cartes en main', 'au lieu de {C:attention}+5{}' }, { '{C:attention}+4{} cartas en mano', 'en vez de {C:attention}+5{}' }),
+    },
+    j_idol = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { rarity = 3, cost = 8 },
+        note = note({ 'Now {C:red}Rare{} ({C:money}$8{})', 'instead of {C:green}Uncommon{} ({C:money}$6{})' },
+            { 'Désormais {C:red}Rare{} ({C:money}$8{})', 'au lieu de {C:green}Peu commun{} ({C:money}$6{})' },
+            { 'Ahora {C:red}raro{} ({C:money}$8{})', 'en vez de {C:green}poco común{} ({C:money}$6{})' }),
+    },
+    j_baron = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { rarity = 2, cost = 5 },
+        note = note({ 'Now {C:green}Uncommon{} ({C:money}$5{})', 'instead of {C:red}Rare{} ({C:money}$8{})' },
+            { 'Désormais {C:green}Peu commun{} ({C:money}$5{})', 'au lieu de {C:red}Rare{} ({C:money}$8{})' },
+            { 'Ahora {C:green}poco común{} ({C:money}$5{})', 'en vez de {C:red}raro{} ({C:money}$8{})' }),
+    },
+    j_mime = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { rarity = 3, cost = 8 },
+        note = note({ 'Now {C:red}Rare{} ({C:money}$8{})', 'instead of {C:green}Uncommon{} ({C:money}$5{})' },
+            { 'Désormais {C:red}Rare{} ({C:money}$8{})', 'au lieu de {C:green}Peu commun{} ({C:money}$5{})' },
+            { 'Ahora {C:red}raro{} ({C:money}$8{})', 'en vez de {C:green}poco común{} ({C:money}$5{})' }),
+    },
+    j_todo_list = {
+        kind = 'joker', set = 'Joker', tbl = 'P_CENTERS', changes = { config = { extra = { dollars = 5, poker_hand = 'High Card' } } },
+        note = note({ 'Earns {C:money}$5{} instead of {C:money}$4{}', 'Picks from {C:attention}every{} poker hand,', 'not only the ones you can see' },
+            { 'Rapporte {C:money}$5{} au lieu de {C:money}$4{}', 'Choisit parmi {C:attention}toutes{} les mains,', 'pas seulement les mains visibles' },
+            { 'Da {C:money}$5{} en vez de {C:money}$4{}', 'Elige entre {C:attention}todas{} las manos,', 'no solo las visibles' }),
+    },
+    m_glass = {
+        kind = 'enhancement', set = 'Enhanced', tbl = 'P_CENTERS', changes = { config = { Xmult = 1.5, extra = 4 } },
+        note = note({ '{X:mult,C:white} X1.5 {} Mult', 'instead of {X:mult,C:white} X2 {}' }, { '{X:mult,C:white} X1.5 {} Multi', 'au lieu de {X:mult,C:white} X2 {}' }, { '{X:mult,C:white} X1.5 {} multi', 'en vez de {X:mult,C:white} X2 {}' }),
+    },
+    Blue = {
+        kind = 'seal', set = 'Other', loc_key = 'blue_seal', tbl = 'P_SEALS',
+        text = {
+            en = { 'Creates a random {C:planet}Planet{} card', 'if this card is {C:attention}held{}', 'in hand at end of round', '{C:inactive}(Must have room)' },
+            fr = { 'Crée une carte {C:planet}Planète{} au hasard', 'si cette carte est {C:attention}gardée{}', 'en main en fin de manche', '{C:inactive}(Doit avoir de la place)' },
+            es = { 'Crea una carta de {C:planet}planeta{} al azar', 'si esta carta se {C:attention}queda{}', 'en la mano al final de la ronda', '{C:inactive}(Debe haber espacio)' },
+        },
+        note = note({ 'Any {C:planet}Planet{}, not the one', 'for your last hand' }, { 'N\'importe quelle {C:planet}Planète{},', 'pas celle de la dernière main' }, { 'Cualquier {C:planet}planeta{}, no el', 'de la última mano' }),
+    },
+    tag_uncommon = {
+        kind = 'tag', set = 'Tag', tbl = 'P_TAGS',
+        text = { en = { 'Shop has an', '{C:green}Uncommon Joker' }, fr = { 'La boutique propose', 'un {C:green}Joker peu commun' }, es = { 'La tienda tiene un', '{C:green}comodín poco común' } },
+        note = NOT_FREE,
+    },
+    tag_rare = {
+        kind = 'tag', set = 'Tag', tbl = 'P_TAGS',
+        text = { en = { 'Shop has a', '{C:red}Rare Joker' }, fr = { 'La boutique propose', 'un {C:red}Joker Rare' }, es = { 'La tienda tiene un', '{C:red}comodín raro' } },
+        note = NOT_FREE,
+    },
+    tag_foil = { kind = 'tag', set = 'Tag', tbl = 'P_TAGS', text = edition_tag_text('Foil', 'Brillant', 'laminado'), note = NOT_FREE },
+    tag_holo = { kind = 'tag', set = 'Tag', tbl = 'P_TAGS', text = edition_tag_text('Holographic', 'Holographique', 'holográfico'), note = NOT_FREE },
+    tag_polychrome = { kind = 'tag', set = 'Tag', tbl = 'P_TAGS', text = edition_tag_text('Polychrome', 'Polychrome', 'policromo'), note = NOT_FREE },
+    tag_negative = { kind = 'tag', set = 'Tag', tbl = 'P_TAGS', text = edition_tag_text('Negative', 'Négatif', 'negativo'), note = NOT_FREE },
+    tag_investment = {
+        kind = 'tag', set = 'Tag', tbl = 'P_TAGS', changes = { config = { type = 'eval', dollars = 15 } },
+        note = note({ '{C:money}$15{} instead of {C:money}$25{}' }, { '{C:money}$15{} au lieu de {C:money}$25{}' }, { '{C:money}$15{} en vez de {C:money}$25{}' }),
+    },
+    c_magician = {
+        kind = 'consumable', set = 'Tarot', tbl = 'P_CENTERS', changes = { config = { mod_conv = 'm_lucky', max_highlighted = 1, mod_num = 1 } },
+        text = {
+            en = { 'Enhances {C:attention}#1#{} selected', 'card into a', '{C:attention}#2#' },
+            fr = { 'Améliore {C:attention}#1#{} carte', 'sélectionnée en', '{C:attention}#2#' },
+            es = { 'Mejora {C:attention}#1#{} carta', 'seleccionada a', '{C:attention}#2#' },
+        },
+        note = note({ 'Enhances {C:attention}1{} card', 'instead of {C:attention}2{}' }, { 'Améliore {C:attention}1{} carte', 'au lieu de {C:attention}2{}' }, { 'Mejora {C:attention}1{} carta', 'en vez de {C:attention}2{}' }),
+    },
+    c_ouija = {
+        kind = 'consumable', set = 'Spectral', tbl = 'P_CENTERS',
+        text = {
+            en = { '{C:red}Destroys{} {C:attention}3{} random cards', 'in hand, converts the rest', 'to a single random {C:attention}rank{}' },
+            fr = { '{C:red}Détruit{} {C:attention}3{} cartes au hasard', 'en main, convertit les autres', 'en un même {C:attention}rang{} aléatoire' },
+            es = { '{C:red}Destruye{} {C:attention}3{} cartas al azar', 'de la mano y convierte el resto', 'en un mismo {C:attention}valor{} al azar' },
+        },
+        note = note({ 'Destroys {C:attention}3{} cards instead', 'of costing {C:attention}1{} hand size' }, { 'Détruit {C:attention}3{} cartes au lieu', 'de coûter {C:attention}1{} carte en main' }, { 'Destruye {C:attention}3{} cartas en vez', 'de costar {C:attention}1{} carta de mano' }),
+    },
+    c_wraith = {
+        kind = 'consumable', set = 'Spectral', tbl = 'P_CENTERS',
+        text = {
+            en = { 'Creates a random', '{C:green}Uncommon{} {C:attention}Joker{},', 'earn {C:money}$5{}', '{C:inactive}(Must have room)' },
+            fr = { 'Crée un {C:attention}Joker{}', '{C:green}Peu commun{} au hasard,', 'gagnez {C:money}$5{}', '{C:inactive}(Doit avoir de la place)' },
+            es = { 'Crea un {C:attention}comodín{}', '{C:green}poco común{} al azar,', 'gana {C:money}$5{}', '{C:inactive}(Debe haber espacio)' },
+        },
+        note = note({ '{C:green}Uncommon{} instead of {C:red}Rare{},', 'gives {C:money}$5{} instead of', 'setting money to {C:money}$0{}' },
+            { '{C:green}Peu commun{} au lieu de {C:red}Rare{},', 'donne {C:money}$5{} au lieu de', 'mettre l\'argent à {C:money}$0{}' },
+            { '{C:green}Poco común{} en vez de {C:red}raro{},', 'da {C:money}$5{} en vez de', 'dejar el dinero en {C:money}$0{}' }),
+    },
+}
+R.DEFS = DEFS
+
+R.PRESETS = {
+    balanced = { reworks = { 'j_hanging_chad', 'j_bloodstone', 'm_glass' }, bans = { consumables = { 'c_justice' } } },
+    experimental = { reworks = { 'j_hanging_chad', 'j_ticket', 'j_selzer', 'j_todo_list', 'j_bloodstone', 'j_idol', 'c_ouija', 'm_glass' }, bans = { consumables = { 'c_justice' } } },
+    expanded = { reworks = { 'j_ticket', 'j_selzer', 'j_turtle_bean', 'c_ouija' }, bans = {} },
+    classic = { reworks = { 'm_glass' }, bans = {} },
+    release = { reworks = { 'Blue', 'tag_uncommon', 'tag_rare', 'tag_foil', 'tag_holo', 'tag_polychrome', 'tag_negative', 'tag_investment', 'c_magician' }, bans = {} },
+    wraith = { reworks = { 'c_wraith' }, bans = {} },
+    majorleague = { reworks = { 'j_bloodstone' }, bans = {} },
+    rarity_swap = { reworks = { 'j_idol', 'j_baron', 'j_mime' }, bans = {} },
+}
+
+local function O() return bom_custom_objects end
+
+local function clone(v)
+    if O() and O().clone_table then return O().clone_table(v) end
+    if type(v) ~= 'table' then return v end
+    local out = {}
+    for k, x in pairs(v) do out[k] = clone(x) end
+    return out
+end
+
+local function pick(tr)
+    if O() and O().pick then return O().pick(tr) end
+    return tr and tr.en
+end
+
+local function target(key)
+    local d = DEFS[key]
+    if not d or not G then return nil end
+    local t = G[d.tbl]
+    return t and t[key]
+end
+
+local function in_sandbox()
+    local P = rawget(_G, 'PREVIEW')
+    return type(P) == 'table' and P._in_sandbox == true
+end
+
+function R.is_active(key) return ACTIVE[key] == true end
+
+function R.available()
+    local out = {}
+    for _, k in ipairs(ORDER) do out[#out + 1] = k end
+    return out
+end
+
+function R.active()
+    local out = {}
+    for _, k in ipairs(ORDER) do if ACTIVE[k] then out[#out + 1] = k end end
+    return out
+end
+
+local function move_rarity(center, from, to)
+    if not G.P_JOKER_RARITY_POOLS or from == to then return end
+    local src, dst = G.P_JOKER_RARITY_POOLS[from], G.P_JOKER_RARITY_POOLS[to]
+    if src then
+        for i = #src, 1, -1 do if src[i] == center then table.remove(src, i) end end
+    end
+    if dst then
+        local found = false
+        for _, v in ipairs(dst) do if v == center then found = true end end
+        if not found then
+            dst[#dst + 1] = center
+            if O() and O().sort_pool then O().sort_pool(dst) end
+        end
+    end
+end
+
+local function desc_set(key)
+    local d = DEFS[key]
+    local loc = G and G.localization and G.localization.descriptions
+    return loc and loc[d.set], d.loc_key or key
+end
+
+local function swap_text(key)
+    local d = DEFS[key]
+    if not d.text or TEXT_SAVED[key] then return end
+    local set, lk = desc_set(key)
+    if not set then return end
+    local orig = set[lk]
+    TEXT_SAVED[key] = { ref = orig }
+    local name = orig and orig.name or key
+    local lines = pick(d.text)
+    if O() and O().parsed then
+        set[lk] = O().parsed({ name = name, text = lines })
+    else
+        set[lk] = { name = name, text = lines }
+    end
+end
+
+local function restore_text(key)
+    local saved = TEXT_SAVED[key]
+    if not saved then return end
+    local set, lk = desc_set(key)
+    if set then set[lk] = saved.ref end
+    TEXT_SAVED[key] = nil
+end
+
+local function apply_one(key)
+    if ACTIVE[key] or not DEFS[key] then return end
+    local d = DEFS[key]
+    local c = target(key)
+    if not c then return end
+    SAVED[key] = {}
+    for field, value in pairs(d.changes or {}) do
+        local old = c[field]
+        SAVED[key][field] = (old == nil) and NONE or clone(old)
+        if field == 'config' then
+            local cfg = clone(old or {})
+            for k, v in pairs(value) do cfg[k] = clone(v) end
+            c.config = cfg
+        elseif value == NONE then
+            c[field] = nil
+        else
+            c[field] = clone(value)
+        end
+    end
+    if d.changes and d.changes.rarity and d.kind == 'joker' then
+        local old = SAVED[key].rarity
+        if old ~= NONE then move_rarity(c, old, c.rarity) end
+    end
+    swap_text(key)
+    ACTIVE[key] = true
+end
+
+local function clear_one(key)
+    if not ACTIVE[key] then return end
+    local d = DEFS[key]
+    local c = target(key)
+    local saved = SAVED[key] or {}
+    if c then
+        local cur_rarity = c.rarity
+        for field, old in pairs(saved) do
+            if old == NONE then c[field] = nil else c[field] = old end
+        end
+        if d.changes and d.changes.rarity and d.kind == 'joker' and c.rarity then
+            move_rarity(c, cur_rarity, c.rarity)
+        end
+    end
+    restore_text(key)
+    SAVED[key] = nil
+    ACTIVE[key] = nil
+end
+
+function R.clear()
+    for i = #ORDER, 1, -1 do pcall(clear_one, ORDER[i]) end
+    R.bs_index = 0
+end
+
+local function write_game_list()
+    if G and G.GAME then
+        local list = R.active()
+        G.GAME.mp_reworks = (#list > 0) and list or nil
+    end
+end
+
+local function apply_keys(keys)
+    R.clear()
+    if type(keys) ~= 'table' then return end
+    local want = {}
+    for _, k in pairs(keys) do if type(k) == 'string' then want[k] = true end end
+    for _, k in ipairs(ORDER) do
+        if want[k] then
+            local ok, err = pcall(apply_one, k)
+            if not ok and mp_log then mp_log.warn('BOM_REWORKS', 'apply %s failed: %s', k, tostring(err)) end
+        end
+    end
+end
+
+function R.apply(keys)
+    apply_keys(keys)
+    write_game_list()
+    if mp_log then mp_log.info('BOM_REWORKS', 'active reworks: %s', table.concat(R.active(), ',')) end
+end
+
+local function refresh_texts()
+    for k in pairs(TEXT_SAVED) do TEXT_SAVED[k] = nil end
+    for _, k in ipairs(ORDER) do if ACTIVE[k] then pcall(swap_text, k) end end
+end
+
+function R.info(key)
+    local d = DEFS[key]
+    if not d then return nil end
+    local set, lk = desc_set(key)
+    local name, text = key, nil
+    local entry = set and set[lk]
+    local orig = TEXT_SAVED[key] and TEXT_SAVED[key].ref or entry
+    if orig and orig.name then name = orig.name end
+    if d.text then text = clone(pick(d.text)) elseif orig and orig.text then text = clone(orig.text) end
+    local n = d.note and pick(d.note)
+    return { key = key, kind = d.kind, set = d.set, name = name, text = text or {}, note = n and clone(n.text) or {} }
+end
+
+function R.collection_text(key)
+    local info = R.info(key)
+    if not info then return nil end
+    local src = (#info.note > 0) and info.note or info.text
+    local lines = {}
+    for _, l in ipairs(src) do lines[#lines + 1] = (tostring(l):gsub('{[^}]*}', '')) end
+    return { lines = lines }
+end
+
+function R.preview(key, fn)
+    if ACTIVE[key] or not DEFS[key] then return fn() end
+    local applied = pcall(apply_one, key)
+    local ok, res = pcall(fn)
+    if applied then pcall(clear_one, key) end
+    if ok then return res end
+end
+
+local function hand_names()
+    local out = {}
+    if G.handlist then
+        for _, h in ipairs(G.handlist) do if G.GAME.hands[h] then out[#out + 1] = h end end
+    end
+    if #out == 0 then
+        for h in pairs(G.GAME.hands or {}) do out[#out + 1] = h end
+        table.sort(out)
+    end
+    return out
+end
+
+local function todo_pick(card)
+    local list = {}
+    for _, h in ipairs(hand_names()) do
+        if h ~= card.ability.to_do_poker_hand then list[#list + 1] = h end
+    end
+    if #list > 0 then card.ability.to_do_poker_hand = pseudorandom_element(list, pseudoseed('mp_to_do')) end
+end
+
+local function is_pvp()
+    local r = false
+    pcall(function() r = bom_nemesis and bom_nemesis.is_pvp_boss and bom_nemesis.is_pvp_boss() or false end)
+    return r and true or false
+end
+
+local function bloodstone_roll()
+    R.bs_index = (R.bs_index or 0) + 1
+    local ante = tostring((G.GAME.round_resets and G.GAME.round_resets.ante) or 1)
+    local store = G.GAME.mp_bs_rolls
+    local seq = type(store) == 'table' and store[ante] or nil
+    if seq and seq[R.bs_index] then return seq[R.bs_index] end
+    local roll = pseudorandom('mp_bloodstone' .. ante)
+    if not in_sandbox() then
+        G.GAME.mp_bs_rolls = (type(store) == 'table' and store) or {}
+        G.GAME.mp_bs_rolls[ante] = G.GAME.mp_bs_rolls[ante] or {}
+        G.GAME.mp_bs_rolls[ante][R.bs_index] = roll
+    end
+    return roll
+end
+
+local function destroy_cards(list)
+r 1 112 %20%20%20%20 -
+l 44
+        trigger = 'after', delay = 0.1,
+        func = function()
+            for i = #list, 1, -1 do
+                local c = list[i]
+                if c.ability and c.ability.name == 'Glass Card' then c:shatter() else c:start_dissolve(nil, i == #list) end
+            end
+            return true
+        end,
+    }))
+end
+
+local function use_ouija(self, used)
+    local temp = {}
+    for _, c in ipairs(G.hand.cards) do temp[#temp + 1] = c end
+    table.sort(temp, function(a, b) return (a.playing_card or 0) < (b.playing_card or 0) end)
+    pseudoshuffle(temp, pseudoseed('mp_ouija_destroy'))
+    local doomed, keep = {}, {}
+    for i, c in ipairs(temp) do
+        if i <= 3 then doomed[#doomed + 1] = c else keep[#keep + 1] = c end
+    end
+    table.sort(keep, function(a, b)
+        local ia, ib = 0, 0
+        for i, c in ipairs(G.hand.cards) do
+            if c == a then ia = i end
+            if c == b then ib = i end
+        end
+        return ia < ib
+    end)
+    G.E_MANAGER:add_event(Event({ trigger = 'after', delay = 0.4, func = function()
+        play_sound('tarot1')
+        used:juice_up(0.3, 0.5)
+        return true
+    end }))
+    for i, c in ipairs(keep) do
+        local percent = 1.15 - (i - 0.999) / (#keep - 0.998) * 0.3
+        G.E_MANAGER:add_event(Event({ trigger = 'after', delay = 0.15, func = function()
+            c:flip(); play_sound('card1', percent); c:juice_up(0.3, 0.3)
+            return true
+        end }))
+    end
+    destroy_cards(doomed)
+    delay(0.3)
+    local rank = pseudorandom_element({ '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A' }, pseudoseed('ouija'))
+    for _, c in ipairs(keep) do
+r 2 467 %20%20%20%20%20%20%20%20 -
+l 13
+            local suit_prefix = string.sub(c.base.suit, 1, 1) .. '_'
+            c:set_base(G.P_CARDS[suit_prefix .. rank])
+            return true
+        end }))
+    end
+    for i, c in ipairs(keep) do
+        local percent = 0.85 + (i - 0.999) / (#keep - 0.998) * 0.3
+        G.E_MANAGER:add_event(Event({ trigger = 'after', delay = 0.15, func = function()
+            c:flip(); play_sound('tarot2', percent, 0.6); c:juice_up(0.3, 0.3)
+            return true
+        end }))
+    end
+    delay(0.5)
+r 2 590 %20%20%20%20 -
+l 6
+        G.jokers.cards[i]:calculate_joker({ remove_playing_cards = true, removed = doomed })
+    end
+end
+
+local function use_wraith(used)
+    G.E_MANAGER:add_event(Event({ trigger = 'after', delay = 0.4, func = function()
+r 3 598 %20%20%20%20%20%20%20%20 -
+l 2
+        local card = create_card('Joker', G.jokers, nil, 0.9, nil, nil, nil, 'wra')
+        card:add_to_deck()
+r 3 1420 %20%20%20%20%20%20%20%20 -
+l 9
+        used:juice_up(0.3, 0.5)
+        ease_dollars(5, true)
+        return true
+    end }))
+    delay(0.6)
+end
+
+local function blue_seal_planet(card)
+    if #G.consumeables.cards + G.GAME.consumeable_buffer >= G.consumeables.config.card_limit then return false end
+r 3 1042 %20%20%20%20 -
+r 1 112 %20%20%20%20 -
+l 5
+        trigger = 'before', delay = 0.0,
+        func = function()
+            local c = create_card('Planet', G.consumeables, nil, nil, nil, nil, nil, 'blusl')
+            c:add_to_deck()
+            G.consumeables:emplace(c)
+r 3 1057 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 70
+            return true
+        end,
+    }))
+    card_eval_status_text(card, 'extra', nil, nil, nil, { message = localize('k_plus_planet'), colour = G.C.SECONDARY_SET.Planet })
+    return true
+end
+
+local function install_hooks()
+    if R.hooked then return end
+    R.hooked = true
+
+    local orig_calc = Card.calculate_joker
+    Card.calculate_joker = function(self, context)
+        if self and self.ability and context and not self.debuff then
+            local name = self.ability.name
+            if name == 'Hanging Chad' and ACTIVE.j_hanging_chad and context.repetition and context.cardarea == G.play then
+                local sh = context.scoring_hand or {}
+                if context.other_card and (context.other_card == sh[1] or context.other_card == sh[2]) then
+                    return { message = localize('k_again_ex'), repetitions = 1, card = self }
+                end
+                return nil
+            elseif name == 'Bloodstone' and ACTIVE.j_bloodstone and is_pvp() then
+                if context.before and not context.blueprint then R.bs_index = 0 end
+                if context.individual and context.cardarea == G.play and context.other_card then
+                    if context.other_card:is_suit('Hearts') then
+                        local e = self.ability.extra or {}
+                        local normal = (G.GAME.probabilities and G.GAME.probabilities.normal) or 1
+                        if bloodstone_roll() < normal / (e.odds or 2) then
+                            return { x_mult = e.Xmult or 1.5, card = self }
+                        end
+                    end
+                    return nil
+                end
+            elseif name == 'To Do List' and ACTIVE.j_todo_list and context.end_of_round and not context.individual
+                and not context.repetition and not context.blueprint then
+                todo_pick(self)
+                return { message = localize('k_reset') }
+            end
+        end
+        return orig_calc(self, context)
+    end
+
+    local orig_set_ability = Card.set_ability
+    Card.set_ability = function(self, center, initial, delay_sprites)
+        local r = orig_set_ability(self, center, initial, delay_sprites)
+        if ACTIVE.j_todo_list and self.ability and self.ability.name == 'To Do List' and G.GAME and G.GAME.hands then
+            pcall(todo_pick, self)
+        end
+        return r
+    end
+
+    local orig_eor = Card.get_end_of_round_effect
+    Card.get_end_of_round_effect = function(self, context)
+        if ACTIVE.Blue and self.seal == 'Blue' and not self.debuff then
+            self.seal = nil
+            local ok, ret = pcall(orig_eor, self, context)
+            self.seal = 'Blue'
+            if not ok then error(ret, 0) end
+            ret = ret or {}
+            if blue_seal_planet(self) then ret.effect = true end
+            return ret
+        end
+        return orig_eor(self, context)
+    end
+
+    local orig_use = Card.use_consumeable
+    Card.use_consumeable = function(self, area, copier)
+        local name = self.ability and self.ability.name
+        if (name == 'Ouija' and ACTIVE.c_ouija) or (name == 'Wraith' and ACTIVE.c_wraith) then
+            stop_use()
+r 3 1093 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 3 1094 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 98
+            local used = copier or self
+            if name == 'Ouija' then use_ouija(self, used) else use_wraith(used) end
+            return nil
+        end
+        return orig_use(self, area, copier)
+    end
+
+    local orig_can_use = Card.can_use_consumeable
+    Card.can_use_consumeable = function(self, any_state, skip_check)
+        local r = orig_can_use(self, any_state, skip_check)
+        if r and ACTIVE.c_ouija and self.ability and self.ability.name == 'Ouija' then
+            return G.hand and G.hand.cards and #G.hand.cards >= 3 or false
+        end
+        return r
+    end
+
+    local orig_set_cost = Card.set_cost
+    Card.set_cost = function(self)
+        if self and self.ability and self.ability.mp_full_price then self.ability.couponed = nil end
+        return orig_set_cost(self)
+    end
+
+    local orig_gen_ui = Card.generate_UIBox_ability_table
+    Card.generate_UIBox_ability_table = function(self, vars_only, ...)
+        local pk = self and self.mp_rw_preview
+        if pk and not ACTIVE[pk] and DEFS[pk] then
+            local n, args = select('#', ...), { ... }
+            return R.preview(pk, function() return Card.generate_UIBox_ability_table(self, vars_only, unpack(args, 1, n)) end)
+        end
+        local ui = orig_gen_ui(self, vars_only, ...)
+        if not vars_only and ui and self and self.config and self.config.center then
+            local key = self.config.center.key
+            if ACTIVE[key] and DEFS[key] and DEFS[key].note then
+                pcall(generate_card_ui, { key = 'mp_rw_' .. key, set = 'Other' }, ui)
+            end
+        end
+        return ui
+    end
+
+    if Tag and Tag.apply_to_run then
+        local orig_tag = Tag.apply_to_run
+        Tag.apply_to_run = function(self, _context)
+            local ret = orig_tag(self, _context)
+            if ret and _context and self and FULL_PRICE_TAGS[self.key] and ACTIVE[self.key] then
+                local card = nil
+                if _context.type == 'store_joker_create' and type(ret) == 'table' then card = ret end
+                if _context.type == 'store_joker_modify' then card = _context.card end
+                if card and card.ability then card.ability.mp_full_price = true end
+            end
+            return ret
+        end
+    end
+
+    if Game and Game.start_run then
+        local orig_start = Game.start_run
+        Game.start_run = function(self, args)
+            local a = args or {}
+            local save = type(a.savetext) == 'table' and a.savetext or nil
+            local keys = save and save.GAME and save.GAME.mp_reworks
+            local from_save = type(keys) == 'table'
+            if from_save then
+                pcall(apply_keys, keys)
+            elseif not a.mp_start then
+                pcall(R.clear)
+            end
+            local r = orig_start(self, args)
+            if (from_save or a.mp_start) and next(ACTIVE) then pcall(write_game_list) end
+            return r
+        end
+    end
+
+    if Game and Game.main_menu then
+        local orig_menu = Game.main_menu
+        Game.main_menu = function(self, ...)
+            pcall(R.clear)
+            return orig_menu(self, ...)
+        end
+    end
+end
+
+local function register_loc()
+    if not O() or not O().register_loc then return end
+    for _, k in ipairs(ORDER) do
+        if DEFS[k].note then O().register_loc('Other', 'mp_rw_' .. k, DEFS[k].note) end
+    end
+end
+
+function R.init()
+    if R.initialized then return end
+    register_loc()
+    if O() and O().inject_loc then O().inject_loc() end
+    if O() and O().on_language then O().on_language(refresh_texts) end
+    local ok, err = pcall(install_hooks)
+    if not ok and mp_log then mp_log.warn('BOM_REWORKS', 'hook install failed: %s', tostring(err)) end
+    R.initialized = true
+end
+
+return R
+end

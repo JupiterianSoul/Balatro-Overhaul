@@ -1,0 +1,778 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 77
+local R = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+R.S = {
+    profile = nil, season = nil, catalog = {}, unlocks = {}, equipped = {}, store = nil,
+    board = nil, history = nil, pending = nil, seen = {}, badges = {}, asked = {}, want = {},
+    error = nil, recovery = nil, restore = {code = ""}, pack = nil, loading = false, last_badge_send = 0,
+}
+local S = R.S
+
+R.RANKS = {
+    {name = "Stone", flavour = "Heavy, plain, and it still counts.", colour = {0.62, 0.62, 0.66, 1}},
+    {name = "Bronze", flavour = "Dull until it rings true.", colour = {0.72, 0.47, 0.29, 1}},
+    {name = "Silver", flavour = "Smooth talker, smoother hands.", colour = {0.77, 0.80, 0.84, 1}, shader = "voucher"},
+    {name = "Gold", flavour = "Pays out at the end of every round.", colour = {0.92, 0.72, 0.25, 1}, shader = "booster"},
+    {name = "Platinum", flavour = "Rarer than gold, and it knows it.", colour = {0.85, 0.90, 0.93, 1}, shader = "voucher"},
+    {name = "Foiled", flavour = "+50 Chips of pure shine.", colour = {0.60, 0.76, 0.96, 1}, shader = "foil"},
+    {name = "Holographic", flavour = "+10 Mult and a soft glow.", colour = {0.94, 0.56, 0.82, 1}, shader = "holo"},
+    {name = "Polychromed", flavour = "X1.5 Mult in every colour.", colour = {0.78, 0.62, 1.00, 1}, shader = "polychrome"},
+    {name = "Negative", flavour = "+1 slot in the hall of fame.", colour = {0.55, 0.42, 0.75, 1}, shader = "negative"},
+    {name = "TRUE JIMBO", flavour = "Jimbo tips his hat. You earned it.", colour = {0.99, 0.64, 0.00, 1}, shader = "jimbo", soul = true},
+}
+R.TIERS = {"I", "II", "III"}
+R.SLOTS = {"badge", "title", "back", "cframe", "jframe", "flame", "burst", "celebration"}
+R.SLOT_NAMES = {badge = "Badge", title = "Title", back = "Sleeve", cframe = "Card frame", jframe = "Joker frame", flame = "Scoring flame", burst = "PvP win burst", celebration = "Results celebration"}
+R.RARITY_COLOUR = {common = G and G.C and G.C.BLUE or {0, 0.6, 1, 1}, uncommon = G and G.C and G.C.GREEN or {0.3, 0.7, 0.4, 1},
+    rare = G and G.C and G.C.RED or {1, 0.3, 0.3, 1}, legendary = G and G.C and G.C.PURPLE or {0.5, 0.4, 0.7, 1}}
+
+function R.rank_name(r, tier)
+    local rk = R.RANKS[(tonumber(r) or 0) + 1] or R.RANKS[1]
+    local n = L(rk.name)
+    if tier and tier > 0 then n = n .. " " .. (R.TIERS[tier] or "") end
+    return n
+end
+
+function R.rank_colour(r) return (R.RANKS[(tonumber(r) or 0) + 1] or R.RANKS[1]).colour end
+
+local function key()
+    return bom_core and bom_core.player_key and bom_core.player_key() or nil
+end
+
+function R.send(msg)
+    if not (bom_core and bom_core.is_connected and bom_core.is_connected()) then return false end
+    msg.pkey = msg.pkey or key()
+    return bom_core.send(msg)
+end
+
+function R.item(id)
+    if not id then return nil end
+    return S.catalog[id]
+end
+
+local function hex_colour(h)
+    if type(h) ~= "string" or #h ~= 6 then return nil end
+    local r, g, b = tonumber(h:sub(1, 2), 16), tonumber(h:sub(3, 4), 16), tonumber(h:sub(5, 6), 16)
+    if not (r and g and b) then return nil end
+    return {r / 255, g / 255, b / 255, 1}
+end
+R.hex_colour = hex_colour
+
+local function equipped_value(slot)
+    local it = R.item(S.equipped and S.equipped[slot])
+    return it and it.value or nil
+end
+
+local function badge_rank_of(id, fallback)
+    if type(id) ~= "string" then return fallback, false end
+    local r = id:match("^rb_(%d)$")
+    if r then return tonumber(r), false end
+    r = id:match("^s%d%d%d%d%-%d%d_b_(%d)$")
+    if r then return tonumber(r), true end
+    return fallback, false
+end
+R.badge_rank_of = badge_rank_of
+
+local function badge_draw(self)
+r 2 447 %20%20%20%20 -
+l 21
+    local t = G.TIMERS.REAL
+    self.ARGS.send_to_shader = self.ARGS.send_to_shader or {0, 0}
+    local send = self.ARGS.send_to_shader
+    send[1] = t / 28 + self.seed
+    send[2] = t
+    local rk = R.RANKS[self.rk + 1] or R.RANKS[1]
+    if rk.shader == "negative" then
+        self:draw_shader("negative", nil, send)
+        self:draw_shader("negative_shine", nil, send)
+    else
+        self:draw_shader("dissolve")
+        if rk.shader then self:draw_shader(rk.shader, nil, send) end
+    end
+    if rk.shader == "jimbo" then R.draw_motes(self, 35) end
+    if self.animated then self:draw_shader("foil", nil, send) end
+    if self.soul then
+        local sm = 0.07 + 0.02 * math.sin(1.8 * t)
+        local rm = 0.05 * math.sin(1.219 * t)
+        self.soul:draw_shader("dissolve", 0, nil, nil, self, sm, rm, nil, 0.1 + 0.03 * math.sin(1.8 * t), nil, 0.6)
+        self.soul:draw_shader("dissolve", nil, nil, nil, self, sm, rm)
+    end
+r 2 461 %20%20%20%20 -
+l 455
+end
+
+function R.set_badge_rank(spr, rank, animated)
+    if not spr then return end
+    rank = math.max(0, math.min(9, tonumber(rank) or 0))
+    spr.rk = rank
+    spr.animated = animated and true or false
+    spr:set_sprite_pos({x = rank, y = 0})
+    if rank == 9 and not spr.soul then
+        spr.soul = Sprite(0, 0, spr.T.w, spr.T.h, G.ASSET_ATLAS.mp_rank_badges, {x = 0, y = 1})
+        spr.soul.role.draw_major = spr
+        spr.soul.states.collide.can = false
+    elseif rank ~= 9 and spr.soul then
+        spr.soul:remove()
+        spr.soul = nil
+    end
+end
+
+function R.badge_sprite(rank, size, animated)
+    local atlas = G and G.ASSET_ATLAS and G.ASSET_ATLAS.mp_rank_badges
+    if not atlas then return nil end
+    local spr = Sprite(0, 0, size, size, atlas, {x = 0, y = 0})
+    spr.states.drag.can = false
+    spr.states.collide.can = false
+    spr.seed = (tonumber(rank) or 0) * 0.37
+    spr.draw = badge_draw
+    local base_remove = spr.remove
+    spr.remove = function(self)
+        if self.soul then self.soul:remove(); self.soul = nil end
+        return base_remove(self)
+    end
+    R.set_badge_rank(spr, rank, animated)
+    return spr
+end
+
+function R.set_pips(cols, tier)
+    if not cols then return end
+    local filled = (tonumber(tier) or 0) <= 0 and 0 or 4 - tier
+    for i, c in ipairs(cols) do
+        local src = (tonumber(tier) or 0) <= 0 and {0, 0, 0, 0} or (i <= filled and G.C.GOLD or {1, 1, 1, 0.18})
+        c[1], c[2], c[3], c[4] = src[1], src[2], src[3], src[4]
+    end
+end
+
+function R.pips(tier, size, legend_no, keep)
+    size = size or 0.12
+    if (tonumber(tier) or 0) <= 0 then
+        if not legend_no then return {n = G.UIT.R, config = {align = "cm", minh = size * 1.6}, nodes = {}} end
+        return {n = G.UIT.R, config = {align = "cm", minh = size * 1.6}, nodes = {
+            {n = G.UIT.T, config = {text = "#" .. tostring(legend_no), scale = size * 2.6, colour = G.C.GOLD, shadow = true}},
+        }}
+    end
+    local filled = 4 - tier
+    local nodes = {}
+    for i = 1, 3 do
+        if i > 1 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = size * 0.6}} end
+        local c = i <= filled and {G.C.GOLD[1], G.C.GOLD[2], G.C.GOLD[3], G.C.GOLD[4]} or {1, 1, 1, 0.18}
+        if keep then keep.pips = keep.pips or {}; keep.pips[i] = c end
+        nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = size, minh = size, r = size * 0.25, colour = c, emboss = 0.02}}
+    end
+    return {n = G.UIT.R, config = {align = "cm", minh = size * 1.6}, nodes = nodes}
+end
+
+function R.badge_node(rank, tier, size, opts)
+    opts = opts or {}
+    local spr = R.badge_sprite(rank, size, opts.animated)
+    if not spr then return {n = G.UIT.C, config = {minw = size, minh = size}} end
+    if opts.keep then opts.keep.sprite = spr end
+    local rows = {{n = G.UIT.R, config = {align = "cm"}, nodes = {{n = G.UIT.O, config = {object = spr}}}}}
+    if opts.pips then rows[#rows + 1] = R.pips(tier, opts.pip_size or size * 0.11, opts.legend_no, opts.keep) end
+    return {n = G.UIT.C, config = {align = "cm", padding = opts.padding or 0}, nodes = rows}
+end
+
+function R.my_badge_rank()
+    local p = S.profile
+    if not p then return nil end
+    return badge_rank_of(S.equipped and S.equipped.badge, p.rank)
+end
+
+function R.is_dev_name(name)
+    local b = type(name) == "string" and S.badges[name] or nil
+    return type(b) == "table" and b.dev == true
+end
+
+function R.badge_for(name, size, opts)
+    if type(name) ~= "string" or name == "" then return nil end
+    local b = S.badges[name]
+    if b == nil then
+        if not S.asked[name] then S.want[name] = true end
+        return nil
+    end
+    if not b then return nil end
+    local dev = b.dev == true and not (opts and opts.no_dev) and rawget(_G, "bom_badges") and bom_badges.with_dev
+    size = size or 0.36
+    local r, animated = badge_rank_of(b.badge, b.r)
+    if (tonumber(r) or 0) > (tonumber(b.r) or 0) then r = b.r end
+    local spr = R.badge_sprite(r, dev and size * 0.86 or size, animated)
+    local node = spr and {n = G.UIT.C, config = {align = "cm", padding = 0.02}, nodes = {{n = G.UIT.O, config = {object = spr}}}} or nil
+    if dev then return bom_badges.with_dev(node, {h = size / 0.9}) end
+    return node
+end
+
+function R.live_badge(ref_table, ref_value, size)
+    local spr = R.badge_sprite(0, size or 0.4)
+    if not spr then return nil end
+    local inner = spr.draw
+    spr.draw = function(self)
+        local n = ref_table[ref_value]
+        local b = S.badges[n]
+        if b == nil and type(n) == "string" and n ~= "" and not S.asked[n] then S.want[n] = true end
+        if not b then return end
+        local r, animated = badge_rank_of(b.badge, b.r)
+        if (tonumber(r) or 0) > (tonumber(b.r) or 0) then r = b.r end
+        if self.rk ~= r or self.animated ~= animated then R.set_badge_rank(self, r, animated) end
+        inner(self)
+    end
+    return {n = G.UIT.O, config = {object = spr}}
+end
+
+function R.want_names(list)
+    for _, n in ipairs(list or {}) do
+        if type(n) == "string" and n ~= "" and S.badges[n] == nil and not S.asked[n] then S.want[n] = true end
+    end
+end
+
+local function after_badges()
+    pcall(function() if bom_party and bom_party.refresh_lobby then bom_party.refresh_lobby() end end)
+    pcall(function() if bom_party and bom_party.rebuild_hud and G.STAGE == G.STAGES.RUN then bom_party.rebuild_hud() end end)
+    pcall(function() if bom_party and bom_party.refresh_standings then bom_party.refresh_standings() end end)
+    pcall(function()
+        if G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID and G.OVERLAY_MENU:get_UIE_by_ID("bom_lobby_mode")
+            and bom_ui and bom_ui.update_lobby_ready then
+            bom_ui.update_lobby_ready()
+        end
+    end)
+end
+
+function R.update(dt)
+    local now = love.timer.getTime()
+    if next(S.want) and now - S.last_badge_send > 1 and bom_core and bom_core.is_connected and bom_core.is_connected() then
+        local names = {}
+        for n in pairs(S.want) do
+            if #names >= 16 then break end
+            names[#names + 1] = n
+        end
+        for _, n in ipairs(names) do S.want[n] = nil; S.asked[n] = now end
+        S.last_badge_send = now
+        bom_core.send({type = "ranked_badges", names = names})
+    end
+    for n, t in pairs(S.asked) do
+        if now - t > 45 then S.asked[n] = nil; if S.badges[n] == false then S.badges[n] = nil end end
+    end
+    R.maybe_show_results()
+end
+
+local function apply_profile(d)
+    S.profile = d.profile
+    S.season = d.season
+    S.season_at = love.timer.getTime()
+    S.store = d.store
+    S.catalog = S.catalog or {}
+    for _, it in ipairs(d.catalog or {}) do if it and it.id then S.catalog[it.id] = it end end
+    S.unlocks = {}
+    for _, id in ipairs(d.unlocks or {}) do S.unlocks[id] = true end
+    S.equipped = type(d.equipped) == "table" and d.equipped or {}
+    S.loading = false
+    S.error = nil
+    if type(d.last) == "table" and d.last.match and not S.seen[d.last.match] and not S.pending
+        and not (G and G.SETTINGS and G.SETTINGS.mp_ranked_seen == d.last.match) then
+        S.pending = d.last
+    end
+    pcall(R.save_equipped)
+end
+
+function R.save_equipped()
+    if not (G and G.SETTINGS) then return end
+    local cache = {}
+    for slot, id in pairs(S.equipped or {}) do
+        local it = S.catalog[id]
+        if it then cache[slot] = {id = id, type = it.type, value = it.value, name = it.name} end
+    end
+    G.SETTINGS.mp_ranked_equipped = cache
+    if S.profile then G.SETTINGS.mp_ranked_rank = {r = S.profile.rank, t = S.profile.tier} end
+end
+
+local function cached_slot(slot)
+    local c = G and G.SETTINGS and G.SETTINGS.mp_ranked_equipped
+    local it = type(c) == "table" and c[slot]
+    return type(it) == "table" and it or nil
+end
+
+function R.cached_equip(slot)
+    local v = equipped_value(slot)
+    if v ~= nil then return v end
+    local it = cached_slot(slot)
+    return it and it.value or nil
+end
+
+function R.on_message(d)
+    local t = d.type
+    if t == "ranked_profile" then
+        apply_profile(d)
+        if R.ui_refresh then pcall(R.ui_refresh) end
+    elseif t == "ranked_result" then
+        S.pending = d
+        R.flush_pending()
+        if S.profile then
+            S.profile.rp = d.after and d.after.rp or S.profile.rp
+            S.profile.rank = d.after and d.after.rank or S.profile.rank
+            S.profile.tier = d.after and d.after.tier or S.profile.tier
+            if d.counted then
+                S.profile.matches = (tonumber(S.profile.matches) or 0) + 1
+                if d.result == "win" then S.profile.wins = (tonumber(S.profile.wins) or 0) + 1 end
+            end
+        end
+        R.send({type = "ranked_profile", name = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile] and G.PROFILES[G.SETTINGS.profile].name or nil})
+        R.send({type = "ranked_history"})
+        for _, it in ipairs(d.unlocks or {}) do if it.id then S.catalog[it.id] = it; S.unlocks[it.id] = true end end
+        if G and G.SETTINGS then G.SETTINGS.mp_ranked_pending = d end
+    elseif t == "ranked_leaderboard" then
+        S.board = d
+        if R.ui_refresh then pcall(R.ui_refresh) end
+    elseif t == "ranked_history" then
+        S.history = d.matches or {}
+        if R.ui_refresh then pcall(R.ui_refresh) end
+    elseif t == "ranked_pack" then
+        S.pack = d
+        for _, it in ipairs(d.items or {}) do if it.id then S.catalog[it.id] = it; S.unlocks[it.id] = true end end
+        if R.on_pack then pcall(R.on_pack, d) end
+    elseif t == "ranked_equipped" then
+        S.equipped = d.equipped or {}
+        pcall(R.save_equipped)
+        if R.ui_refresh then pcall(R.ui_refresh) end
+    elseif t == "ranked_recovery" then
+        S.recovery = d.code
+        if R.ui_refresh then pcall(R.ui_refresh) end
+    elseif t == "ranked_restored" then
+        if type(d.pkey) == "string" and #d.pkey == 24 and G and G.SETTINGS then
+            G.SETTINGS.mp_player_key = d.pkey
+            if G.save_settings then pcall(G.save_settings, G) end
+        end
+        S.restored = d
+        S.recovery = nil
+        S.profile = nil
+        R.request_profile()
+    elseif t == "ranked_badges" then
+        local got = d.badges or {}
+        for n, at in pairs(S.asked) do
+            if got[n] then S.badges[n] = got[n] elseif S.badges[n] == nil and love.timer.getTime() - at < 45 then S.badges[n] = false end
+        end
+        for n, b in pairs(got) do S.badges[n] = b end
+        after_badges()
+    elseif t == "ranked_error" then
+        S.error = d.reason
+        S.loading = false
+        if R.ui_refresh then pcall(R.ui_refresh) end
+    end
+    return true
+end
+
+function R.peek_names(d)
+    local t = d.type
+    if t == "party_room" or t == "party_state" then
+        local names = {}
+        for _, p in ipairs(d.players or {}) do if p.name and not p.bot then names[#names + 1] = p.name end end
+        R.want_names(names)
+    elseif t == "room_ready" or t == "room_joined" or t == "match_state_update" then
+        R.want_names({d.oppName, d.opp_name, d.player_name, d.host_name, d.guest_name})
+    end
+end
+
+function R.request_profile()
+    S.loading = true
+    local function go()
+        R.send({type = "ranked_profile", name = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile] and G.PROFILES[G.SETTINGS.profile].name or nil})
+        R.send({type = "ranked_leaderboard"})
+        R.send({type = "ranked_history"})
+    end
+    if bom_core.is_connected() then go() return end
+    bom_core.connect(go, {silent = true, on_fail = function()
+        S.loading = false
+        S.error = "offline"
+        if R.ui_refresh then pcall(R.ui_refresh) end
+    end})
+end
+
+function R.flame_colours_of(v)
+    if v == "rainbow" then
+        R._rainbow = R._rainbow or {{1, 1, 1, 1}, {1, 1, 1, 1}}
+        local h = (G.TIMERS.REAL * 0.25) % 1
+        local i6 = math.floor(h * 6) % 6
+        local f = h * 6 - math.floor(h * 6)
+        local q, t = 1 - 0.7 * f, 1 - 0.7 * (1 - f)
+        local c = ({{1, t, 0.3}, {q, 1, 0.3}, {0.3, 1, t}, {0.3, q, 1}, {t, 0.3, 1}, {1, 0.3, q}})[i6 + 1]
+        for i = 1, 3 do R._rainbow[1][i] = c[i]; R._rainbow[2][i] = math.min(1, c[i] * 0.5 + 0.5) end
+        return R._rainbow
+    end
+    local c = hex_colour(v)
+    if not c then return nil end
+    R._flame_cache = R._flame_cache or {}
+    local hit = R._flame_cache[v]
+    if not hit then
+        hit = {c, {math.min(1, c[1] * 0.5 + 0.5), math.min(1, c[2] * 0.5 + 0.5), math.min(1, c[3] * 0.5 + 0.5), 1}}
+        R._flame_cache[v] = hit
+    end
+    return hit
+end
+
+function R.flame_colours()
+    if not (G and G.GAME) then return nil end
+    return R.flame_colours_of(R.cached_equip("flame"))
+end
+
+local BACK_SHADERS = {stone = "voucher", voucher = "voucher", booster = "booster", hologram = "hologram", foil = "foil",
+    holo = "holo", polychrome = "polychrome", negative = "negative_shine", soul = "polychrome", jimbo = "jimbo"}
+
+local SLOT_RANK = {
+    back = {"^rk_(%d)$", "^s%d%d%d%d%-%d%d_k_(%d)$"},
+    cframe = {"^rc_(%d)$"},
+    jframe = {"^rj_(%d)$"},
+}
+
+function R.cached_equip_id(slot)
+    local id = S.equipped and S.equipped[slot]
+    if id ~= nil then return id end
+    local it = cached_slot(slot)
+    return it and it.id or nil
+end
+
+local function id_rank(slot, id)
+    if type(id) ~= "string" then return nil end
+    for _, pat in ipairs(SLOT_RANK[slot] or {}) do
+        local r = id:match(pat)
+        if r then return tonumber(r) end
+    end
+    return nil
+end
+
+R._shared = R._shared or {}
+local function shared_sprite(atlas, x, y)
+    local sk = atlas .. ":" .. x .. ":" .. y
+    local spr = R._shared[sk]
+    if spr then return spr end
+    local a = G and G.ASSET_ATLAS and G.ASSET_ATLAS[atlas]
+    if not a then return nil end
+    spr = Sprite(0, 0, G.CARD_W, G.CARD_H, a, {x = x, y = y})
+    spr.states.drag.can = false
+    spr.states.collide.can = false
+    R._shared[sk] = spr
+    return spr
+end
+
+local MOTE_COLOURS = {
+    {{0.95, 0.76, 0.33, 1}, {1, 0.94, 0.78, 1}},
+    {{0.42, 0.78, 1, 1}, {1, 1, 1, 1}},
+    {{1, 0.6, 0.84, 1}, {0.62, 0.94, 1, 1}},
+    {{1, 0.37, 0.33, 1}, {0.99, 0.64, 0, 1}, {0.29, 0.76, 0.57, 1}, {0, 0.62, 1, 1}, {0.53, 0.4, 0.65, 1}},
+    {{0.22, 0.26, 0.27, 1}, {0.78, 0.83, 0.86, 1}},
+}
+
+local function mote_hash(n)
+    local v = math.sin(n * 12.9898 + 78.233) * 43758.5453
+    return v - math.floor(v)
+end
+
+function R.draw_motes(spr, art_px)
+    if not (spr and spr.VT) then return end
+    local t = G.TIMERS.REAL
+    local s = t / 2
+    local cur = math.floor(s) % 5
+    local f = s - math.floor(s)
+    f = f * f * (3 - 2 * f)
+    local ca, cb = MOTE_COLOURS[cur + 1], MOTE_COLOURS[(cur + 1) % 5 + 1]
+    local w, h = spr.VT.w, spr.VT.h
+    local px = w / art_px
+    prep_draw(spr, 1)
+    for k = 0, 9 do
+        local ph = mote_hash(k * 3.7)
+        local sp = 0.18 + 0.12 * mote_hash(k * 1.9)
+        local life = (t * sp + ph) % 1
+        if not (life > 0.85 and (k + math.floor(t * 10)) % 2 == 1) then
+            local x = w * (0.1 + 0.8 * mote_hash(k * 5.3)) + 2 * px * math.sin(t * 1.4 + k)
+            local y = h + 2 * px - life * (h + 6 * px)
+            local a, b = ca[k % #ca + 1], cb[k % #cb + 1]
+            love.graphics.setColor(a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f, 1)
+            local sz = (k % 4 == 0 and life < 0.6) and 2 or 1
+            love.graphics.rectangle("fill", x, y, px * sz, px * sz)
+        end
+    end
+    love.graphics.pop()
+end
+
+local function draw_rank_overlay(spr, card, base, r)
+    spr.role.draw_major = card
+    spr:draw_shader("dissolve", nil, nil, true, base)
+    local sh = (R.RANKS[r + 1] or {}).shader
+    local send = card.ARGS.send_to_shader
+    if sh == "negative" then
+        spr:draw_shader("negative", nil, send, true, base)
+        spr:draw_shader("negative_shine", nil, send, true, base)
+    elseif sh then
+        spr:draw_shader(sh, nil, send, true, base)
+    end
+    return sh
+end
+
+function R.draw_back(card)
+    local cos = card.mp_cosmetic
+    if not (G.GAME and (card.playing_card or cos) and card.children and card.children.back) then return end
+    card.ARGS.send_to_shader = card.ARGS.send_to_shader or {0, 0}
+    local buried = card.area == G.deck and G.deck.cards[1] ~= card
+    local r = id_rank("back", cos and cos.id or R.cached_equip_id("back"))
+    local spr = r and shared_sprite("mp_rank_sleeves", r, 0)
+    if spr then
+        if buried then
+            local prev = G.BRUTE_OVERLAY
+            G.BRUTE_OVERLAY = (card.rank or 0) > 3 and card.back_overlay or G.C.WHITE
+            spr.role.draw_major = card
+            spr:draw_from(card.children.back)
+            G.BRUTE_OVERLAY = prev
+        elseif draw_rank_overlay(spr, card, card.children.back, r) == "jimbo" then
+            R.draw_motes(card.children.back, 71)
+        end
+        return
+    end
+    if buried then return end
+    local sh = BACK_SHADERS[(cos and cos.value or R.cached_equip("back")) or ""]
+    if not sh then return end
+    card.children.back:draw_shader(sh, nil, card.ARGS.send_to_shader)
+end
+
+local function draw_preview(card, cos)
+    local m = card.children and card.children.center
+    if not (m and m.VT) then return end
+    prep_draw(m, 1)
+    local w, h = m.VT.w, m.VT.h
+    love.graphics.setColor(G.C.BLACK[1], G.C.BLACK[2], G.C.BLACK[3], 1)
+    love.graphics.rectangle("fill", w * 0.1, h * 0.075, w * 0.8, h * 0.85, 0.06, 0.06)
+    love.graphics.pop()
+    local f = card.mp_flame
+    if f then
+        f.timer = G.TIMERS.REAL
+        local col = R.flame_colours_of(cos.value)
+        if col then f.colour_1, f.colour_2 = col[1], col[2] end
+    end
+end
+
+function R.draw_tile(card)
+    local m = card.children and card.children.center
+    if not (m and m.VT) then return end
+    prep_draw(m, 1)
+    local w, h = m.VT.w, m.VT.h
+    local bg = G.C.L_BLACK or G.C.BLACK
+    love.graphics.setColor(bg[1], bg[2], bg[3], 1)
+    love.graphics.rectangle("fill", 0, 0, w, h, 0.1, 0.1)
+r 6 647 %20%20%20%20 -
+l 183
+        love.graphics.setLineWidth(0.05)
+        love.graphics.setColor(G.C.GOLD[1], G.C.GOLD[2], G.C.GOLD[3], 1)
+        love.graphics.rectangle("line", 0, 0, w, h, 0.1, 0.1)
+    end
+    love.graphics.pop()
+    local f = card.mp_flame
+    local cos = card.mp_cosmetic
+    if f and cos then
+        f.timer = G.TIMERS.REAL
+        local col = R.flame_colours_of(cos.value)
+        if col then f.colour_1, f.colour_2 = col[1], col[2] end
+    end
+end
+
+function R.draw_frame(card)
+    local cos = card.mp_cosmetic
+    local slot
+    if cos then slot = cos.type
+    elseif card.playing_card and (card.area == G.hand or card.area == G.play) then slot = "cframe"
+    elseif card.ability and card.ability.set == "Joker" and card.area == G.jokers then slot = "jframe" end
+    if not slot or (card.dissolve or 0) > 0 then return end
+    if slot == "back" then
+        if cos and card.children.back then
+            card.children.back:draw_shader("dissolve", nil, nil, nil, card.children.center)
+            R.draw_back(card)
+        end
+        return
+    end
+    if slot ~= "cframe" and slot ~= "jframe" then
+        if cos then draw_preview(card, cos) end
+        return
+    end
+    local r = id_rank(slot, cos and cos.id or R.cached_equip_id(slot))
+    local spr = r and card.children and card.children.center and shared_sprite("mp_rank_frames", r, slot == "cframe" and 0 or 1)
+    if spr then
+        card.ARGS.send_to_shader = card.ARGS.send_to_shader or {0, 0}
+        draw_rank_overlay(spr, card, card.children.center, r)
+        return
+    end
+    local c = hex_colour(cos and cos.value or R.cached_equip(slot))
+    local m = card.children and card.children.center
+    if not (c and m and m.VT) then return end
+    prep_draw(m, 1)
+    local w, h = m.VT.w, m.VT.h
+    local lw = 0.045
+    love.graphics.setLineWidth(lw)
+    love.graphics.setColor(c[1], c[2], c[3], 0.95)
+    love.graphics.rectangle("line", lw / 2, lw / 2, w - lw, h - lw, 0.09, 0.09)
+    love.graphics.setColor(math.min(1, c[1] * 0.5 + 0.5), math.min(1, c[2] * 0.5 + 0.5), math.min(1, c[3] * 0.5 + 0.5), 0.55 + 0.25 * math.sin(G.TIMERS.REAL * 2.2))
+    love.graphics.setLineWidth(lw * 0.45)
+    love.graphics.rectangle("line", lw * 1.6, lw * 1.6, w - lw * 3.2, h - lw * 3.2, 0.06, 0.06)
+    love.graphics.pop()
+end
+
+function R.equipped_rows()
+    local rows = {}
+    for _, slot in ipairs(R.SLOTS) do
+        local it = R.item(S.equipped and S.equipped[slot]) or cached_slot(slot)
+        rows[#rows + 1] = {label = R.SLOT_NAMES[slot], value = it and it.name or nil}
+    end
+    return rows
+end
+
+function R.cached_rank_name()
+    local p = S.profile
+    if p then return R.rank_name(p.rank, p.tier) end
+    local c = G and G.SETTINGS and G.SETTINGS.mp_ranked_rank
+    if type(c) == "table" and c.r then return R.rank_name(c.r, c.t) end
+    return nil
+end
+
+local CELEBRATION = {
+    confetti = function() return {G.C.RED, G.C.BLUE, G.C.GREEN, G.C.GOLD, G.C.PURPLE} end,
+    coins = function() return {G.C.GOLD, G.C.MONEY or G.C.GOLD, G.C.WHITE} end,
+    stars = function() return {G.C.WHITE, lighten(G.C.BLUE, 0.4), lighten(G.C.GOLD, 0.3)} end,
+}
+
+function R.fx(attach_to, colours, dur, scale)
+    if not (attach_to and attach_to.children) then return end
+    local p = Particles(1, 1, 0, 0, {timer = 0.01, scale = scale or 0.35, initialize = true, lifespan = 1.4, speed = 3.5,
+        padding = -1, attach = attach_to, colours = colours, fill = true})
+    p.fade_alpha = 1
+    local slot = "mp_ranked_fx_" .. tostring(p.ID)
+    attach_to.children[slot] = p
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = dur or 1.2, blockable = false, blocking = false, timer = "REAL", func = function()
+        p:fade(0.5, 0)
+        G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.6, blockable = false, blocking = false, timer = "REAL", func = function()
+            if attach_to.children then attach_to.children[slot] = nil end
+            p:remove()
+            return true
+        end}))
+        return true
+    end}))
+end
+
+function R.celebration_set(v)
+    local f = CELEBRATION[v or ""]
+    return f and f() or nil
+end
+
+function R.celebration_colours(rank)
+    local f = CELEBRATION[R.cached_equip("celebration") or ""]
+    if f then return f() end
+    local c = R.rank_colour(rank or 0)
+    return {c, G.C.WHITE, lighten(c, 0.3)}
+end
+
+function R.pvp_burst()
+    local c = hex_colour(R.cached_equip("burst"))
+    if not c or not G.HUD then return end
+    R.fx(G.HUD, {c, G.C.WHITE, lighten(c, 0.35)}, 0.9, 0.3)
+end
+
+local function results_blocked()
+    if bom_match and bom_match.get_phase and bom_match.PHASE and bom_match.get_phase() ~= bom_match.PHASE.NONE then return true end
+    local rj = bom_rejoin
+    if rj and (rj.exit_pending or rj.exiting or rj.prompt or rj.checking or (rj.has_match_session and rj.has_match_session())) then return true end
+    return false
+end
+
+S.games = S.games or {}
+
+function R.session_add(g)
+    local now = love.timer.getTime()
+    local last = S.games[#S.games]
+    if last and last.result == g.result and last.reason == g.reason and now - (last.at or 0) < 5 then return end
+    g.at = now
+    S.games[#S.games + 1] = g
+    if S.showing and R.session_refresh then pcall(R.session_refresh) end
+end
+
+function R.session_progress(p)
+    local g = S.games[#S.games]
+    if not (g and type(p) == "table" and p.before and p.after) or g.mp then return end
+    if love.timer.getTime() - (g.at or 0) > 15 then return end
+    g.mp = p
+    if S.showing and R.session_refresh then pcall(R.session_refresh) end
+end
+
+function R.flush_pending()
+    local d = S.pending
+    if not d then return end
+    S.pending = nil
+    S.seen[d.match or ""] = true
+    if G.SETTINGS then G.SETTINGS.mp_ranked_seen = d.match end
+    local hit = nil
+    for i = #S.games, 1, -1 do
+        local g = S.games[i]
+        if not g.ranked and (g.result == d.result or d.mode ~= "1v1") then hit = g break end
+    end
+    if not hit then
+        hit = {result = d.result, mode = d.mode, placement = d.placement, players = d.players, at = love.timer.getTime()}
+        S.games[#S.games + 1] = hit
+    end
+    hit.ranked = d
+    if S.showing and R.session_refresh then pcall(R.session_refresh) end
+end
+
+function R.maybe_show_results()
+    if S.pending then R.flush_pending() end
+    if S.showing or #S.games == 0 then return end
+    local from_mp = G and G.OVERLAY_MENU ~= nil and G.OVERLAY_MENU == G.BOM_MP_MENU
+    if not (G and G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI and (not G.OVERLAY_MENU or from_mp)) or results_blocked() then return end
+    if not R.show_results then return end
+    S.showing = true
+    S.back_to_mp = from_mp
+    local ok, err = pcall(R.show_results)
+    if not ok then
+        S.showing = false
+        S.games = {}
+        if mp_log then mp_log.error("BOM_RANKED", "results screen failed: %s", tostring(err)) end
+    end
+end
+
+function R.results_pending()
+    return S.showing == true or (#S.games > 0 and not results_blocked())
+end
+
+function R.init()
+    if G and G.SETTINGS and type(G.SETTINGS.mp_ranked_pending) == "table" then S.pending = G.SETTINGS.mp_ranked_pending end
+    if G and G.FUNCS and G.FUNCS.flame_handler and not R._flame_wrapped then
+        R._flame_wrapped = true
+        local orig = G.FUNCS.flame_handler
+r 13 1963 %20%20%20%20%20%20%20%20 -
+l 5
+            orig(e)
+            local tabs = G.ARGS.flame_handler
+            if not tabs then return end
+            local col = R.flame_colours()
+            for _, v in pairs(tabs) do
+r 13 1986 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 21
+                    local F = G.ARGS[v.arg_tab]
+                    if F then
+                        F.colour_1 = col and col[1] or v.colour
+                        F.colour_2 = col and col[2] or v.accent
+                    end
+                end
+            end
+        end
+    end
+    if bom_ui and bom_ui.show_pvp_result and not R._pvp_wrapped then
+        R._pvp_wrapped = true
+        local orig = bom_ui.show_pvp_result
+        bom_ui.show_pvp_result = function(result, ...)
+            local r = orig(result, ...)
+            if result == "win" then pcall(R.pvp_burst) end
+            return r
+        end
+    end
+end
+
+return R
+end

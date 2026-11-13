@@ -1,0 +1,675 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 27
+
+local OVT = require "functions/showcase_text"
+mod_loc_register(OVT.STRINGS)
+
+local function load_overhaul_text()
+    local tut = G.localization and G.localization.misc and G.localization.misc.tutorial
+    if not tut then return end
+    local lang = tostring(G.SETTINGS.language or "en-us")
+    local key = (lang == "fr" and "fr") or ((lang == "es_ES" or lang == "es_419") and "es") or "en"
+    local parsed = G.localization.tutorial_parsed
+    local parse = rawget(_G, "loc_parse_string")
+    for k, by_lang in pairs(OVT.TOUR) do
+        local lines = by_lang[key] or by_lang.en
+        tut[k] = lines
+        if parsed and parse then
+            local t = {multi_line = true}
+            for i, v in ipairs(lines) do t[i] = parse(v) end
+            parsed[k] = t
+        end
+    end
+end
+
+local function overhaul_mascot()
+    return G.P_CENTERS.j_hologram or G.P_CENTERS.j_joker
+end
+
+local function close_tutorial_overlay()
+r 13 6 %20%20%20%20 -
+r 13 2355 %20%20%20%20%20%20%20%20 -
+l 1
+        pcall(function()
+r 13 2357 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2358 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2359 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        end)
+r 13 2360 %20%20%20%20%20%20%20%20 -
+l 1
+    end
+r 13 2361 %20%20%20%20 -
+l 28
+    release_tutorial_buttons()
+end
+
+local function refresh_tutorial_ui()
+    if G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI then
+        G.MAIN_MENU_UI:remove()
+        G.MAIN_MENU_UI = nil
+        set_main_menu_UI()
+    end
+    if G.OVERLAY_MENU and UIK and UIK.refresh then UIK.refresh() end
+end
+
+local function save_tutorial_state()
+    pcall(function() G:save_settings() end)
+end
+
+G.FUNCS.overhaul_tutorial_done = function()
+    return G.SETTINGS.showcase_seen and G.SETTINGS.overhaul_tips_off and not G.OVERLAY_TUTORIAL and true or false
+end
+
+G.FUNCS.start_overhaul_showcase = function(e)
+    if not G or not G.SETTINGS then return end
+    if G.STAGE ~= G.STAGES.MAIN_MENU then return end
+
+    G.SETTINGS.sub_showcases_seen = {}
+    G.SETTINGS.showcase_seen = false
+    G.SETTINGS.overhaul_tips_off = nil
+
+r 23 214 %20%20%20%20 -
+l 48
+        local _close = G.FUNCS.overlay_menu_back_button or G.FUNCS.exit_overlay_menu
+        if _close then pcall(_close) end
+    end
+
+    close_tutorial_overlay()
+    local mpm = rawget(_G, "mpm_menu")
+    if mpm and mpm.active and mpm.exit then pcall(mpm.exit) end
+    load_overhaul_text()
+    G.FUNCS.showcase_run_steps()
+end
+
+G.FUNCS.replay_overhaul_tutorial = function(e)
+    G.FUNCS.start_overhaul_showcase(e)
+end
+
+local function skip_overhaul()
+    close_tutorial_overlay()
+    G.SETTINGS.showcase_seen = true
+    G.SETTINGS.overhaul_tips_off = true
+    save_tutorial_state()
+end
+
+G.FUNCS.skip_showcase = function(e)
+    local tip = G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.overhaul == 'tip'
+    if tip then
+        close_tutorial_overlay()
+        return
+    end
+    skip_overhaul()
+    refresh_tutorial_ui()
+end
+
+G.FUNCS.skip_overhaul_tutorial = function(e)
+    skip_overhaul()
+    refresh_tutorial_ui()
+end
+
+G.FUNCS.skip_tutorial = function(e)
+    local vanilla_left = not G.SETTINGS.tutorial_complete or (G.OVERLAY_TUTORIAL and not G.OVERLAY_TUTORIAL.overhaul)
+    skip_overhaul()
+    if vanilla_left and G.FUNCS.skip_vanilla_tutorial then
+        G.FUNCS.skip_vanilla_tutorial(e)
+    else
+        refresh_tutorial_ui()
+    end
+end
+
+G.FUNCS.showcase_next = function(e)
+r 13 6 %20%20%20%20 -
+r 13 7 %20%20%20%20%20%20%20%20 -
+r 13 8 %20%20%20%20%20%20%20%20 -
+r 13 9 %20%20%20%20%20%20%20%20 -
+l 139
+        G.OVERLAY_TUTORIAL.step = G.OVERLAY_TUTORIAL.step + 1
+    end
+end
+
+local function showcase_info(args)
+    args.button = args.button or {button = localize('b_next'), func = 'showcase_next'}
+    args.attach = args.attach or {major = G.ROOM_ATTACH, type = 'cm', offset = {x = 0, y = 0}}
+    local portrait = rawget(_G, "PORTRAIT")
+    local tall = portrait and portrait.on and portrait.on() or false
+    args.center = overhaul_mascot()
+    local touch = rawget(_G, "UIK") and UIK.touch() or false
+    args.mascot_scale = (tall and 1.6) or (touch and 1.3) or nil
+    args.skip_align = tall and 'tr' or 'cr'
+    local step = tutorial_info(args)
+    if G.OVERLAY_TUTORIAL and not G.OVERLAY_TUTORIAL.overhaul then G.OVERLAY_TUTORIAL.overhaul = args.overhaul or 'tour' end
+    return step
+end
+
+local function find_menu_button(id)
+    if not G or not G.MAIN_MENU_UI then return nil end
+    local ok, result = pcall(function()
+        return G.MAIN_MENU_UI:get_UIE_by_ID(id)
+    end)
+    if ok and result then return result end
+    return nil
+end
+
+local function find_menu_func(func)
+    if not G or not G.MAIN_MENU_UI or not G.MAIN_MENU_UI.UIRoot then return nil end
+    local function walk(node)
+        if node.config and (node.config.button == func or node.tutorial_disabled == func) then return node end
+        for _, child in ipairs(node.children or {}) do
+            local found = walk(child)
+            if found then return found end
+        end
+    end
+    local ok, result = pcall(walk, G.MAIN_MENU_UI.UIRoot)
+    if ok then return result end
+    return nil
+end
+
+local function menu_marks(...)
+    local ids = {...}
+    return function()
+        for _, id in ipairs(ids) do
+            local el = find_menu_button(id) or find_menu_func(id)
+            if el then return {el} end
+        end
+        return {}
+    end
+end
+
+local function find_overlay_element(id)
+    if not G or not G.OVERLAY_MENU then return nil end
+    local ok, result = pcall(function()
+        return G.OVERLAY_MENU:get_UIE_by_ID(id)
+    end)
+    if ok and result then return result end
+    return nil
+end
+
+local function find_overlay_prefix(prefix)
+    local out = {}
+    if not (G and G.OVERLAY_MENU and G.OVERLAY_MENU.UIRoot) then return out end
+    local function walk(node)
+        local id = node.config and node.config.id
+        if type(id) == 'string' and id:sub(1, #prefix) == prefix then out[#out + 1] = node end
+        for _, child in ipairs(node.children or {}) do walk(child) end
+    end
+    pcall(walk, G.OVERLAY_MENU.UIRoot)
+    return out
+end
+
+local function hl_step(text_key, element_id, jimbo_x, disabled_btns)
+    local attach = {major = G.ROOM_ATTACH, type = 'cm', offset = {x = jimbo_x or -5, y = 0}}
+    local function place(els)
+        local portrait = rawget(_G, "PORTRAIT")
+        if portrait and portrait.on and portrait.on() then
+            local el = els[1]
+            local room_h = G.ROOM and G.ROOM.T.h or 0
+            local upper = not el or (el.T.y + el.T.h / 2) < room_h / 2
+            attach.offset.x, attach.offset.y = 0, upper and room_h * 0.23 or -room_h * 0.21
+        end
+        return els
+    end
+    return {
+        text_key = text_key,
+        highlight = function()
+            if element_id:sub(-1) == '*' then return place(find_overlay_prefix(element_id:sub(1, -2))) end
+            local el = find_overlay_element(element_id)
+            return place(el and {el} or {})
+        end,
+        attach = attach,
+        disabled_buttons = disabled_btns,
+    }
+end
+
+local SETTINGS_BTNS = {
+    'open_performance_settings',
+    'profile_select', 'language_selection', 'start_tutorial', 'start_overhaul_showcase',
+    'replay_overhaul_tutorial', 'skip_overhaul_tutorial', 'skip_vanilla_tutorial',
+    'toggle_button', 'option_cycle', 'set_cat', 'uik_page',
+}
+
+local OPT_BTNS = {
+    'toggle_button', 'option_cycle',
+}
+
+local JIMBO_BTNS = { 'toggle_button' }
+
+local TOUR = {
+    {key = 'ovt_welcome'},
+    {key = 'ovt_play', mark = menu_marks('main_menu_play')},
+    {key = 'ovt_cheats', mark = menu_marks('main_menu_play')},
+    {key = 'ovt_multiplayer', mark = menu_marks('multiplayer_button')},
+    {key = 'ovt_lobbies', mark = menu_marks('multiplayer_button')},
+    {key = 'ovt_casino', mark = menu_marks('tavern_button')},
+    {key = 'ovt_casino_more', mark = menu_marks('tavern_button')},
+    {key = 'ovt_progression', mark = menu_marks('progression_button')},
+    {key = 'ovt_achievements', mark = menu_marks('achievements_button')},
+    {key = 'ovt_collection', mark = menu_marks('collection_button')},
+    {key = 'ovt_replays', mark = menu_marks('tavern_button')},
+    {key = 'ovt_speedrun', mark = menu_marks('tavern_button')},
+    {key = 'ovt_options', mark = menu_marks('options')},
+    {key = 'ovt_updates', mark = menu_marks('overhaul_update_button')},
+    {key = 'ovt_farewell', mark = menu_marks('options')},
+}
+
+G.FUNCS.showcase_run_steps = function()
+    local step = 1
+    for _, s in ipairs(TOUR) do
+        step = showcase_info({
+            text_key = s.key,
+            highlight = s.mark,
+            attach = {major = G.ROOM_ATTACH, type = 'cm', offset = {x = 0, y = -1}},
+            step = step,
+        })
+    end
+
+r 1 112 %20%20%20%20 -
+l 41
+        trigger = 'after',
+        delay = 0.3,
+        func = function()
+            if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.step >= step then
+                close_tutorial_overlay()
+                if G.SETTINGS then
+                    G.SETTINGS.showcase_seen = true
+                    save_tutorial_state()
+                end
+                refresh_tutorial_ui()
+                return true
+            end
+            return not G.OVERLAY_TUTORIAL or G.OVERLAY_TUTORIAL.skip_steps
+        end
+    }), 'tutorial')
+end
+
+
+local function ensure_sub_showcases_table()
+    if not G or not G.SETTINGS then return end
+    if not G.SETTINGS.sub_showcases_seen then
+        G.SETTINGS.sub_showcases_seen = {}
+    end
+end
+
+local function sub_showcase_seen(id)
+    ensure_sub_showcases_table()
+    if not G or not G.SETTINGS or not G.SETTINGS.sub_showcases_seen then return true end
+    return G.SETTINGS.sub_showcases_seen[id] == true
+end
+
+local function mark_sub_showcase_seen(id)
+    ensure_sub_showcases_table()
+    if not G or not G.SETTINGS then return end
+    G.SETTINGS.sub_showcases_seen[id] = true
+end
+
+local sub_showcase_in_menu = false
+
+local function end_sub_showcase()
+    sub_showcase_in_menu = false
+r 13 6 %20%20%20%20 -
+l 1
+        pcall(function()
+r 13 2357 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2358 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2359 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        end)
+r 13 2360 %20%20%20%20%20%20%20%20 -
+l 1
+    end
+r 13 2361 %20%20%20%20 -
+l 24
+    release_tutorial_buttons()
+end
+
+local _exit_overlay_menu_before_sub = G.FUNCS.exit_overlay_menu
+G.FUNCS.exit_overlay_menu = function(...)
+    if sub_showcase_in_menu then end_sub_showcase() end
+    return _exit_overlay_menu_before_sub(...)
+end
+
+G.FUNCS.end_menu_sub_showcase = function()
+    if sub_showcase_in_menu then end_sub_showcase() end
+end
+
+local function run_sub_showcase(id, steps)
+    if not G then return end
+    if sub_showcase_seen(id) then return end
+    if G.SETTINGS and G.SETTINGS.overhaul_tips_off then return end
+
+    if G.OVERLAY_TUTORIAL then return end
+    load_overhaul_text()
+
+    mark_sub_showcase_seen(id)
+    sub_showcase_in_menu = G.OVERLAY_MENU ~= nil
+
+r 13 2361 %20%20%20%20 -
+l 14
+    release_tutorial_buttons()
+
+    local step_num = 1
+    for _, s in ipairs(steps) do
+        step_num = showcase_info({
+            text_key = s.text_key,
+            highlight = s.highlight,
+            attach = s.attach or {major = G.ROOM_ATTACH, type = 'cm', offset = {x = 0, y = 0}},
+            disabled_buttons = s.disabled_buttons,
+            overhaul = 'tip',
+            step = step_num,
+        })
+    end
+
+r 1 112 %20%20%20%20 -
+l 5
+        trigger = 'after',
+        delay = 0.3,
+        func = function()
+            if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.step >= step_num then
+                pcall(function()
+r 13 2357 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2358 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2359 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                end)
+r 13 2360 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 123
+                release_tutorial_buttons()
+                sub_showcase_in_menu = false
+                return true
+            end
+            if not G.OVERLAY_TUTORIAL or G.OVERLAY_TUTORIAL.skip_steps then sub_showcase_in_menu = false return true end
+            return false
+        end
+    }), 'tutorial')
+end
+
+
+G.FUNCS.trigger_sub_showcase_tavern = function()
+    run_sub_showcase("casino_intro", {
+        {text_key = "ovt_tip_casino"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_quests = function()
+    run_sub_showcase("quests", {
+        {text_key = "ovt_tip_quests"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_profile = function()
+    run_sub_showcase("tailor", {
+        {text_key = "ovt_tip_tailor"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_shop = function()
+    run_sub_showcase("market", {
+        {text_key = "ovt_tip_market"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_achievements = function()
+    run_sub_showcase("achievements", {
+        {text_key = "ovt_tip_achievements"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_progression = function()
+    run_sub_showcase("progression", {
+        {text_key = "ovt_tip_progression"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_collection = function()
+    run_sub_showcase("collection", {
+        {text_key = "ovt_tip_collection"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_multiplayer = function()
+    run_sub_showcase("multiplayer", {
+        {text_key = "ovt_tip_multiplayer"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_settings = function()
+    run_sub_showcase("settings", {
+        {text_key = "sc_sub_settings_welcome"},
+        hl_step("sc_sub_settings_search",       "text_input",          -7, SETTINGS_BTNS),
+        hl_step("sc_sub_settings_cats",         "set_cat_*",            3, SETTINGS_BTNS),
+        hl_step("sc_sub_settings_gamespeed",    "set_gamespeed",       -7, SETTINGS_BTNS),
+        hl_step("sc_sub_tgl_skip_score",        "set_skip_score",      -7, SETTINGS_BTNS),
+        hl_step("sc_sub_tgl_drag",              "set_drag",            -7, SETTINGS_BTNS),
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_perf_settings = function()
+    run_sub_showcase("performance", {
+        {text_key = "ovt_tip_perf"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_optimizer_settings = function()
+    run_sub_showcase("optimizer_settings", {
+        {text_key = "sc_sub_opt_welcome"},
+        hl_step("sc_sub_opt_toggle",       "sc_opt_toggle",       5, OPT_BTNS),
+        hl_step("sc_sub_opt_beginner",     "sc_opt_beginner",     5, OPT_BTNS),
+        hl_step("sc_sub_opt_auto_compact", "sc_opt_auto_compact", 5, OPT_BTNS),
+        hl_step("sc_sub_opt_discards",     "sc_opt_discards",     5, OPT_BTNS),
+        hl_step("sc_sub_opt_outs",         "sc_opt_outs",         5, OPT_BTNS),
+        hl_step("sc_sub_opt_joker_order",  "sc_opt_joker_order",  5, OPT_BTNS),
+        hl_step("sc_sub_opt_mode",         "sc_opt_mode",        -5, OPT_BTNS),
+        hl_step("sc_sub_opt_perf",         "sc_opt_perf",        -5, OPT_BTNS),
+        hl_step("sc_sub_opt_scale",        "sc_opt_suggestions", -5, OPT_BTNS),
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_modmenu = function()
+    run_sub_showcase("modmenu", {
+        {text_key = "ovt_tip_cheats"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_custom_run = function()
+    run_sub_showcase("custom_run", {
+        {text_key = "sc_sub_custom_run"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_deck_creator = function()
+    run_sub_showcase("deck_creator", {
+        {text_key = "sc_sub_deck_creator"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_jukebox = function()
+    run_sub_showcase("jukebox", {
+        {text_key = rawget(_G, "RELEASE_BUILD") == true and "sc_sub_jukebox_own" or "sc_sub_jukebox"},
+    })
+end
+
+G.FUNCS.trigger_sub_showcase_seed_library = function()
+    run_sub_showcase("seed_library", {
+        {text_key = "sc_sub_seed_library"},
+    })
+end
+
+
+local _original_skip_tutorial = G.FUNCS.skip_tutorial_section
+r 13 2354 - -
+l 64
+    if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.overhaul then
+        G.FUNCS.skip_showcase(e)
+        return
+    end
+    if _original_skip_tutorial then
+        _original_skip_tutorial(e)
+    end
+end
+
+
+G.FUNCS.show_language_selector = function()
+    if not G then return end
+
+    local lang_options = {
+        {code = "en-us", label = "English"},
+        {code = "fr", label = "Français"},
+        {code = "es_ES", label = "Español"},
+    }
+
+    local title_text = mod_loc("Choose your language:")
+    pcall(function()
+        local loc = G.localization and G.localization.misc and G.localization.misc.tutorial
+        if loc and loc.sc_choose_language then
+            title_text = loc.sc_choose_language[1] or title_text
+        end
+    end)
+    title_text = tostring(title_text):gsub("%s*:%s*$", "")
+
+    local w = UIK.touch() and 6.4 or 5.6
+    local rows = {}
+    for _, lang in ipairs(lang_options) do
+        rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.06}, nodes={
+            UIK.button{label = lang.label, button = 'select_first_language', ref_table = {lang_code = lang.code}, colour = UIK.C.accent, w = w - 0.8},
+        }}
+    end
+
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    G.ESC_BACK_FUNCS.first_language_keep = true
+    return UIK.window{
+        id = 'first_language', compact = true, w = w,
+        title = title_text,
+        tabs = {{key = 'a', label = '', build = function() return UIK.stack(rows, {w = w - 0.4}) end}},
+        back_func = 'first_language_keep',
+    }
+end
+
+G.FUNCS.first_language_keep = function()
+    G.FUNCS.select_first_language({config = {ref_table = {lang_code = G.SETTINGS and G.SETTINGS.language or "en-us"}}})
+end
+
+G.FUNCS.select_first_language = function(e)
+    if not e or not e.config or not e.config.ref_table then return end
+    local lang_code = e.config.ref_table.lang_code
+    if not lang_code then return end
+    local modded = rawget(_G, 'SMODS') ~= nil
+    local same_language = G.SETTINGS and G.SETTINGS.language == lang_code
+
+    if G.SETTINGS then
+        G.SETTINGS.language = lang_code
+        G.SETTINGS.language_chosen = true
+        pcall(function() G:save_settings() end)
+    end
+
+
+r 23 214 %20%20%20%20 -
+l 6
+        pcall(function() G.OVERLAY_MENU:remove() end)
+        G.OVERLAY_MENU = nil
+    end
+
+    if modded then
+        if same_language then
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 23
+                trigger = 'after',
+                delay = 0.4,
+                no_delete = true,
+                blockable = false,
+                blocking = false,
+                func = function()
+                    pcall(function()
+                        if G.FUNCS.start_overhaul_showcase then G.FUNCS.start_overhaul_showcase() end
+                    end)
+                    return true
+                end
+            }))
+        else
+            G.SETTINGS.showcase_after_restart = true
+            G.FUNCS.restart_after_settings_save()
+        end
+        return
+    end
+
+    pcall(function()
+        if G.set_language then G:set_language() end
+    end)
+
+r 13 229 %20%20%20%20 -
+r 1 112 %20%20%20%20 -
+l 14
+        trigger = 'after',
+        delay = 0.1,
+        no_delete = true,
+        blockable = false,
+        blocking = false,
+        func = function()
+            pcall(function()
+                if G.delete_run then G:delete_run() end
+                if G.init_item_prototypes then G:init_item_prototypes() end
+            end)
+            local built = pcall(function()
+                if G.main_menu then G:main_menu() end
+            end)
+            if not built then return true end
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+                trigger = 'after',
+                delay = 0.4,
+                no_delete = true,
+                blockable = false,
+                blocking = false,
+                func = function()
+                    if G.STAGE ~= G.STAGES.MAIN_MENU then return true end
+                    if not G.MAIN_MENU_UI or G.OVERLAY_MENU then return false end
+                    pcall(function()
+                        if G.FUNCS.start_overhaul_showcase then
+                            G.FUNCS.start_overhaul_showcase()
+                        end
+                    end)
+                    return true
+                end
+            }))
+            return true
+        end
+    }))
+end
+
+G.FUNCS.check_first_launch = function()
+    if not G or not G.SETTINGS then return end
+    if G.SETTINGS.language_chosen and G.SETTINGS.showcase_after_restart and not G.SETTINGS.showcase_seen then
+        G.SETTINGS.showcase_after_restart = nil
+r 1 112 %20%20%20%20%20%20%20%20 -
+l 14
+            trigger = 'after',
+            delay = 0.8,
+            func = function()
+                pcall(function()
+                    if G.FUNCS.start_overhaul_showcase then G.FUNCS.start_overhaul_showcase() end
+                end)
+                return true
+            end
+        }))
+        return
+    end
+    if G.SETTINGS.language_chosen then return end
+    if G.SETTINGS.showcase_seen then return end
+
+r 1 112 %20%20%20%20 -
+l 12
+        trigger = 'after',
+        delay = 0.8,
+        func = function()
+            if not G or not G.SETTINGS then return true end
+            if G.SETTINGS.language_chosen then return true end
+            pcall(function()
+                G.FUNCS.overlay_menu{definition = G.FUNCS.show_language_selector()}
+            end)
+            return true
+        end
+    }))
+end
+end

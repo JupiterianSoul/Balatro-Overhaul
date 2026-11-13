@@ -1,0 +1,544 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 497
+SpeedrunBoard = SpeedrunBoard or {}
+local SB = SpeedrunBoard
+local SR = Speedrun
+
+SB.f = SB.f or {cat = 'any', deck = 'all', stake = 0, seed = 'all', page = 1}
+
+local function L(s) return mod_loc(s) end
+local function touch() return UIK.touch() end
+
+local function row_h() return touch() and 0.62 or 0.46 end
+local function row_scale() return touch() and 0.36 or 0.32 end
+local function ctl_scale() return touch() and 0.85 or 0.75 end
+local function ctl_h() return 0.8 * ctl_scale() end
+local ROW_GAP = 0.04
+local TPAD = 0.06
+
+function SB.rows_local()
+  local f = SB.f
+  local out = {}
+  for _, r in ipairs(SR.load().runs) do
+    if r.cat == f.cat and (f.deck == 'all' or r.deck == f.deck) and (f.stake == 0 or r.stake == f.stake) and (f.seed == 'all' or r.seed_type == f.seed) then
+      out[#out + 1] = r
+    end
+  end
+  table.sort(out, function(a, b)
+    if a.time ~= b.time then return a.time < b.time end
+    return (a.date or 0) < (b.date or 0)
+  end)
+  local best = {}
+  for _, r in ipairs(out) do
+    local k = SR.key(r.cat, r.deck, r.stake, r.seed_type)
+    if not best[k] then best[k] = r end
+  end
+  return out, best
+end
+
+local function date_text(t)
+  if not t then return '-' end
+  return os.date('%Y-%m-%d', t)
+end
+
+local function seed_kind(r)
+  return r.seed_type == 'weekly' and L("Weekly") or L("Random")
+end
+
+function SB.layout()
+  local t = touch()
+  local bar = (t and 0.16 or 0.12) + ctl_h() + 0.14
+  if UIK.portrait() then bar = bar + 3 * (ctl_h() + 0.1) end
+  local foot = (t and 0.82 or 0.66) + 0.12
+  local head = row_h() * 0.8
+  local avail = UIK.H - UIK.TOP - bar - foot - head - 2 * TPAD - 0.1
+  local n = math.max(3, math.floor(avail / (row_h() + ROW_GAP)))
+  return {bar = bar, foot = foot, head = head, n = n, table_h = head + n * (row_h() + ROW_GAP) + 2 * TPAD}
+end
+
+function SB.cols(kind)
+  local list
+  if kind == 'online' then
+    list = {{key = 'rank', w = 0.55}, {key = 'name', w = 2.5}, {key = 'time', w = 1.7}, {key = 'deck', w = 2.7, al = 'cl'},
+      {key = 'stake', w = 2.6, al = 'cl'}, {key = 'seed', w = 1.3}, {key = 'date', w = 1.9}}
+  else
+    list = {{key = 'rank', w = 0.6}, {key = 'time', w = 1.9}, {key = 'deck', w = 3.4, al = 'cl'}, {key = 'stake', w = 3.0, al = 'cl'},
+      {key = 'seed', w = 1.7}, {key = 'date', w = 1.9}}
+  end
+  if UIK.portrait() then
+    local keep = {}
+    for _, c in ipairs(list) do if c.key ~= 'seed' and c.key ~= 'date' then keep[#keep + 1] = c end end
+    list = keep
+  end
+  local ww = touch() and 1.75 or 1.6
+  local avail = UIK.W - 2 * TPAD - ww - 0.08
+  local sum = 0
+  for _, c in ipairs(list) do sum = sum + c.w end
+  for _, c in ipairs(list) do c.w = c.w * avail / sum end
+  return list, ww
+end
+
+local function text(s, scale, colour)
+  return {n = G.UIT.T, config = {text = tostring(s), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}}
+end
+
+local function clip(s, scale, w)
+  s = tostring(s or '')
+  if UIK.text_w(s, scale) <= w then return s end
+  local chars = {}
+  for ch in s:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+  while #chars > 1 and UIK.text_w(table.concat(chars) .. '...', scale) > w do chars[#chars] = nil end
+  return table.concat(chars) .. '...'
+end
+
+local function cell(nodes, w, h, align)
+  return {n = G.UIT.C, config = {align = align or 'cm', minw = w, maxw = w, minh = h, padding = 0}, nodes = nodes}
+end
+
+local function inset(nodes, w, h)
+  return cell({{n = G.UIT.C, config = {minw = 0.12}}, {n = G.UIT.C, config = {align = 'cm', maxw = w - 0.2, padding = 0}, nodes = nodes}}, w, h, 'cl')
+end
+
+local function deck_sprite(key, h)
+  local c = G.P_CENTERS[key] or G.P_CENTERS.b_red
+  local spr = Sprite(0, 0, h * 71 / 95, h, G.ASSET_ATLAS[c.atlas or 'centers'], c.pos)
+  spr.states.drag.can = false
+  return {n = G.UIT.O, config = {object = spr}}
+end
+
+local function stake_sprite(stake, size)
+  local ok, spr = pcall(get_stake_sprite, math.max(1, math.min(tonumber(stake) or 1, #G.P_CENTER_POOLS.Stake)), size)
+  if not ok or not spr then return nil end
+  return {n = G.UIT.O, config = {object = spr}}
+end
+
+local function icon_text(icon, label, sc, colour)
+  return {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = {icon}},
+    {n = G.UIT.C, config = {minw = 0.1}},
+    {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = {text(label, sc, colour)}},
+  }}
+end
+
+local function header_row(kind)
+  local labels = {rank = "#", name = L("Player"), time = L("Time"), deck = localize('k_deck'), stake = localize('k_stake'), seed = L("Seed"), date = L("Date")}
+  local cols, ww = SB.cols(kind)
+  local h = row_h() * 0.8
+  local sc = row_scale() * (UIK.touch() and 1.05 or 0.95)
+  local nodes = {}
+  for _, c in ipairs(cols) do
+    local tn = text(labels[c.key], sc, UIK.C.muted)
+    nodes[#nodes + 1] = c.al == 'cl' and inset({tn}, c.w, h) or cell({tn}, c.w, h)
+  end
+  return {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = nodes},
+    {n = G.UIT.C, config = {minw = 0.08}},
+    cell({}, ww, h),
+  }}
+end
+
+function SB.can_watch(r)
+  if SB.has_replay(SB.local_of(r)) then return true end
+  local SO = rawget(_G, 'SpeedrunOnline')
+  return r and r.online == true and r.has_rp and SO and SO.watch_online and true or false
+end
+
+local function run_row(i, r, hi, kind)
+  local sc = row_scale()
+  local h = row_h()
+  local gold = hi and G.C.GOLD or nil
+  local cols, ww = SB.cols(kind)
+  local vals = {
+    rank = function(w) return cell({text(r.rank or i, sc, gold or UIK.C.muted)}, w, h) end,
+    name = function(w) return cell({text(clip(r.name, sc, w - 0.2), sc, gold or G.C.WHITE)}, w, h) end,
+    time = function(w) return cell({text(SR.fmt(r.time), sc + 0.02, gold or G.C.WHITE)}, w, h) end,
+    deck = function(w) return inset({icon_text(deck_sprite(r.deck, h - 0.06), SR.deck_name(r.deck), sc)}, w, h) end,
+    stake = function(w) return inset({icon_text(stake_sprite(r.stake, h - 0.14) or text('', sc), SR.stake_name(r.stake), sc)}, w, h) end,
+    seed = function(w) return cell({text(seed_kind(r), sc, UIK.C.muted)}, w, h) end,
+    date = function(w) return cell({text(date_text(r.date), sc, UIK.C.muted)}, w, h) end,
+  }
+  local nodes = {}
+  for _, c in ipairs(cols) do nodes[#nodes + 1] = vals[c.key](c.w) end
+  local bg = i % 2 == 1 and {0, 0, 0, 0.28} or {0, 0, 0, 0.16}
+  local can = SB.can_watch(r)
+  return {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'cm', minh = h, r = 0.08, padding = 0, hover = true, shadow = true, colour = bg, outline = hi and 1 or nil, outline_colour = hi and G.C.GOLD or nil,
+      button = 'speedrun_board_detail', ref_table = r, id = 'sb_row_' .. i, focus_args = {snap_to = i == 1}}, nodes = nodes},
+    {n = G.UIT.C, config = {minw = 0.08}},
+    cell({UIK.button{label = L("Watch"), button = 'speedrun_board_watch', ref_table = r, colour = UIK.C.accent, disabled = not can,
+      w = ww - 0.04, h = h - 0.02, scale = sc + 0.02, col = true, id = 'sb_watch_' .. i}}, ww, h),
+  }}
+end
+
+local function fit_cycle(w)
+  local s = ctl_scale()
+  local aw = (G.F_MOBILE and 1.2 or 0.6) * s
+  return math.max(0.8, (w - 0.28 - 2 * aw) / s)
+end
+
+local function filter_bar()
+  local f = SB.f
+  local t = touch()
+  local h = ctl_h()
+  local bw = t and 1.7 or 1.55
+  local gap = 0.1
+  local cats = {}
+  for i, c in ipairs(SR.CATS) do
+    local on = c.key == f.cat
+    if i > 1 then cats[#cats + 1] = {n = G.UIT.C, config = {minw = gap}} end
+    cats[#cats + 1] = UIK.button{label = c.target < 8 and L("Ante %d (board)"):format(c.target) or L(c.label), button = 'speedrun_board_cat', ref_table = {key = c.key}, colour = on and UIK.C.tab or G.C.BLACK,
+      w = bw, h = h, scale = t and 0.42 or 0.38, col = true, id = 'sb_cat_' .. c.key}
+  end
+  local cats_w = 3 * bw + 2 * gap
+  local lead = 0.07
+  local sp = 0.2
+  local cg = 0
+  local cyc_w = (UIK.W - 2 * TPAD + 2 * lead - lead - cats_w - sp - 2 * cg) / 3
+  local cw = fit_cycle(cyc_w)
+  local decks, deck_names, di = {'all'}, {L("All decks")}, 1
+  for _, k in ipairs(SR.DECKS) do
+    if G.P_CENTERS[k] then
+      decks[#decks + 1] = k
+      deck_names[#deck_names + 1] = SR.deck_name(k)
+      if k == f.deck then di = #decks end
+    end
+  end
+  local stake_names = {L("All stakes")}
+  for i = 1, math.min(12, #G.P_CENTER_POOLS.Stake) do stake_names[i + 1] = SR.stake_name(i) end
+  local seeds = {'all', 'random', 'weekly'}
+  local seed_names = {L("All seeds"), L("Random seed"), L("Weekly seed")}
+  local si = 1
+  for i, s in ipairs(seeds) do if s == f.seed then si = i end end
+  local function changed() f.page = 1 SB.changed() end
+  local function cyc(id, opts, cur, cb)
+    return {n = G.UIT.C, config = {align = 'cm', minw = cyc_w, padding = 0}, nodes = {
+      UIK.cycle{id = id, options = opts, current = cur, w = cyc_w, cw = cw, no_pips = true, callback = cb},
+    }}
+  end
+  local lay = SB.layout()
+  if UIK.portrait() then
+    cyc_w = UIK.W - 2 * TPAD
+    cw = fit_cycle(cyc_w)
+    local rows = {{n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = cats}}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = {cyc('sb_deck', deck_names, di, function(i) f.deck = decks[i] changed() end)}}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = {cyc('sb_stake', stake_names, (f.stake or 0) + 1, function(i) f.stake = i - 1 changed() end)}}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = {cyc('sb_seed', seed_names, si, function(i) f.seed = seeds[i] changed() end)}}
+    return {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, minh = lay.bar, padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'cm', padding = 0, portrait_keep = true}, nodes = rows}}}
+  end
+  return {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, minh = lay.bar, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {minw = lead}},
+    {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = cats},
+    {n = G.UIT.C, config = {minw = sp}},
+    cyc('sb_deck', deck_names, di, function(i) f.deck = decks[i] changed() end),
+    {n = G.UIT.C, config = {minw = cg}},
+    cyc('sb_stake', stake_names, (f.stake or 0) + 1, function(i) f.stake = i - 1 changed() end),
+    {n = G.UIT.C, config = {minw = cg}},
+    cyc('sb_seed', seed_names, si, function(i) f.seed = seeds[i] changed() end),
+  }}
+end
+
+function SB.changed()
+  if UIK._last_tab.speedrun_board == 'online' and SpeedrunOnline then SpeedrunOnline.request() end
+  UIK.refresh()
+end
+
+local function table_block(kind, list, hi_of, empty, status)
+  local lay = SB.layout()
+  local n = lay.n
+  local pages = math.max(1, math.ceil(#list / n))
+  SB.f.page = math.max(1, math.min(SB.f.page or 1, pages))
+  local first = (SB.f.page - 1) * n
+  local rows = {header_row(kind)}
+  for i = first + 1, math.min(#list, first + n) do
+    rows[#rows + 1] = {n = G.UIT.R, config = {minh = ROW_GAP}}
+    rows[#rows + 1] = run_row(i, list[i], hi_of(list[i]), kind)
+  end
+  if empty then
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', minw = UIK.W - 2 * TPAD, minh = lay.table_h - lay.head - 2 * TPAD, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = 'cm', padding = 0.1}, nodes = empty},
+    }}
+  end
+  local foot
+  if pages > 1 then
+    local sw = 3.6
+    foot = UIK.pager{prev = 'speedrun_board_prev', next = 'speedrun_board_next', text = L("Page") .. " " .. SB.f.page .. "/" .. pages,
+      prev_disabled = SB.f.page <= 1, next_disabled = SB.f.page >= pages, w = UIK.W, side_w = status and sw or 0,
+      side_ref_table = status and {t = status} or nil, side_ref_value = 't'}
+  elseif status then
+    foot = {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, padding = 0}, nodes = {text(status, touch() and 0.4 or 0.36, G.C.GOLD)}}
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = {
+      filter_bar(),
+      {n = G.UIT.R, config = {minh = 0.1}},
+      {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, minh = lay.table_h, r = 0.12, padding = TPAD, colour = UIK.C.section}, nodes = {
+        {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = rows},
+      }},
+      {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, minh = lay.foot, padding = 0}, nodes = {foot}},
+    }},
+  }}
+end
+
+function SB.build_local()
+  local list = SB.rows_local()
+  local empty = #list == 0 and {UIK.text(L("No finished speedrun here yet"), {scale = row_scale() + 0.04, colour = UIK.C.muted})} or nil
+  return table_block('local', list, function(r) return r == list[1] end, empty, nil)
+end
+
+function SB.build_online()
+  local SO = SpeedrunOnline
+  local b = SO and SO.board or {state = 'offline', rows = {}}
+  local want = SO and SO.filter_msg() or {}
+  local w = b.want
+  if SO and (b.state == 'idle' or not w or w.cat ~= want.cat or w.deck ~= want.deck or w.stake ~= want.stake or w.seed_type ~= want.seed_type) then
+    SO.request()
+  end
+  local list = {}
+  if b.state == 'ready' then
+    for _, r in ipairs(b.rows or {}) do
+      list[#list + 1] = {rank = r.rank, name = r.name, time = tonumber(r.time) or 0, deck = r.deck, stake = tonumber(r.stake) or 1, seed_type = r.seed_type, seed = r.seed,
+        date = tonumber(r.at) and math.floor(tonumber(r.at) / 1000) or nil, splits = r.splits, mine = r.mine, cat = SB.f.cat, online = true,
+        id = r.id, has_rp = r.rp == true}
+    end
+  end
+  local sc = row_scale() + 0.04
+  local empty, status
+  if b.state == 'loading' then
+    empty = {UIK.text(L("Loading..."), {scale = sc, colour = UIK.C.muted})}
+  elseif b.state == 'offline' then
+    empty = {{n = G.UIT.R, config = {align = 'cm', padding = 0.08}, nodes = {UIK.text(L("Could not reach the server"), {scale = sc, colour = UIK.C.muted})}},
+      {n = G.UIT.R, config = {align = 'cm', padding = 0.04}, nodes = {UIK.button{label = L("Retry"), button = 'speedrun_online_retry', colour = UIK.C.accent, id = 'sb_retry'}}}}
+  elseif #list == 0 then
+    empty = {UIK.text(L("No times yet"), {scale = sc, colour = UIK.C.muted})}
+  end
+  if b.state == 'ready' and b.my_rank then
+    status = L("Your rank") .. ": " .. b.my_rank .. " / " .. (b.total or #list)
+  end
+  return table_block('online', list, function(r) return r.mine end, empty, status)
+end
+
+G.FUNCS.speedrun_online_retry = function()
+  if not SpeedrunOnline then return end
+  SpeedrunOnline.board.state = 'idle'
+  UIK.refresh()
+end
+
+function SB.open(tab)
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = 'speedrun_board',
+    title = L("SPEEDRUNS"),
+    tab = tab,
+    tabs = {
+      {key = 'mine', label = L("My runs"), build = SB.build_local},
+      {key = 'online', label = L("Online"), build = SB.build_online},
+    },
+    back_func = SB.back_func or 'speedrun_board_exit',
+  }}
+end
+
+G.FUNCS.speedrun_board_exit = function()
+  if G.FUNCS.open_tavern_hub then G.FUNCS.open_tavern_hub() else G.FUNCS.exit_overlay_menu() end
+end
+
+G.FUNCS.open_speedrun_board = function()
+  SB.open()
+end
+
+G.FUNCS.speedrun_board_cat = function(e)
+  local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not key or key == SB.f.cat then return end
+  SB.f.cat = key
+  SB.f.page = 1
+  SB.changed()
+end
+
+G.FUNCS.speedrun_board_prev = function()
+  SB.f.page = math.max(1, (SB.f.page or 1) - 1)
+  UIK.refresh()
+end
+
+G.FUNCS.speedrun_board_next = function()
+  SB.f.page = (SB.f.page or 1) + 1
+  UIK.refresh()
+end
+
+function SB.detail_def(r)
+  local t = touch()
+  local w = t and 7.4 or 6.8
+  local cat = SR.cat(r.cat)
+  local info = {
+    UIK.value{label = L("Time"), value = SR.fmt(r.time), colour = G.C.GOLD, w = w},
+  }
+  local lines = {
+    r.name and (L("Player") .. ": " .. tostring(r.name)) or nil,
+    L("Goal") .. ": " .. (cat and L(cat.label) or tostring(r.cat)),
+    localize('k_deck') .. ": " .. SR.deck_name(r.deck),
+    localize('k_stake') .. ": " .. SR.stake_name(r.stake),
+    L("Seed") .. ": " .. tostring(r.seed or '-') .. " (" .. (r.seed_type == 'weekly' and L("Weekly seed") or L("Random seed")) .. ")",
+    L("Date") .. ": " .. date_text(r.date),
+  }
+  local shown = {}
+  for i = 1, 6 do if lines[i] then shown[#shown + 1] = lines[i] end end
+  info[#info + 1] = UIK.note(shown, {w = w, colour = G.C.UI.TEXT_LIGHT, scale = t and 0.34 or 0.32})
+  local sc = row_scale()
+  local cw = {1.6, 2.2, 2.2}
+  local rh = row_h()
+  local function tc(v, cwi, colour) return cell({text(v, sc, colour)}, cwi, rh) end
+  local split_rows = {{n = G.UIT.R, config = {align = 'cm', minh = rh}, nodes = {
+    tc(localize('k_ante'), cw[1], UIK.C.muted), tc(L("Split"), cw[2], UIK.C.muted), tc(L("Segment"), cw[3], UIK.C.muted),
+  }}}
+  local antes = {}
+  for a in pairs(r.splits or {}) do if type(a) == 'number' then antes[#antes + 1] = a end end
+  table.sort(antes)
+  local prev = 0
+  for i, a in ipairs(antes) do
+    local s = r.splits[a]
+    split_rows[#split_rows + 1] = {n = G.UIT.R, config = {align = 'cm', minh = rh, r = 0.08, colour = i % 2 == 1 and {0, 0, 0, 0.28} or {0, 0, 0, 0.16}}, nodes = {
+      tc(a, cw[1], G.C.WHITE), tc(SR.fmt(s), cw[2], G.C.GOLD), tc(SR.fmt(s - prev), cw[3], G.C.WHITE),
+    }}
+    prev = s
+  end
+  return {n = G.UIT.R, config = {align = 'tm', padding = 0}, nodes = {
+    UIK.section(L("Run"), info, {w = w + 0.3, col = true}),
+    {n = G.UIT.C, config = {minw = 0.25}},
+    UIK.section(L("Splits"), {{n = G.UIT.R, config = {align = 'cm', padding = 0.04}, nodes = split_rows}}, {w = 6.4, col = true}),
+  }}
+end
+
+function SB.local_of(r)
+  if not (r and r.online == true) then return r end
+  if not r.mine then return nil end
+  for _, x in ipairs(SR.load().runs) do
+    if x.cat == r.cat and x.deck == r.deck and x.stake == r.stake and x.seed_type == r.seed_type and tostring(x.seed) == tostring(r.seed)
+      and math.abs((tonumber(x.time) or 0) - (tonumber(r.time) or 0)) < 0.01 then return x end
+  end
+  return nil
+end
+
+function SB.has_replay(r)
+  local SPR = rawget(_G, 'BO_SPREPLAY')
+  return r and r.sprp and SPR and SPR.exists and SPR.watch and SPR.exists(r.sprp) or false
+end
+
+function SB.open_detail(r)
+  local footer
+  if SB.can_watch(r) then
+    footer = {UIK.button{label = L("Watch"), button = 'speedrun_board_replay', ref_table = r, colour = UIK.C.accent, id = 'sb_replay'}}
+  end
+  SB.detail_row = r
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = 'speedrun_detail',
+    title = L("SPEEDRUN"),
+    tabs = {{key = 'run', label = L("Run"), build = function() return SB.detail_def(r) end}},
+    back_func = 'speedrun_board_reopen',
+    footer = footer,
+  }}
+end
+
+G.FUNCS.speedrun_board_detail = function(e)
+  local r = e and e.config and e.config.ref_table
+  if not r then return end
+  SB.open_detail(r)
+end
+
+function SB.watch(r, from)
+  if not r then return false end
+  local P = rawget(_G, 'bom_playback')
+  if P and P.active and P.active() then return false end
+  SB.after_replay = nil
+  local back = {from = from, row = r, tab = UIK._last_tab.speedrun_board}
+  local lr = SB.local_of(r)
+  if SB.has_replay(lr) then
+    local W = rawget(_G, 'SpeedrunWatch')
+    local ok
+    if W and W.begin then ok = W.begin(lr.sprp, {cat = lr.cat}) else ok = rawget(_G, 'BO_SPREPLAY').watch(lr.sprp) end
+    if ok then SB.after_replay = back end
+    return ok
+  end
+  local SO = rawget(_G, 'SpeedrunOnline')
+  if r.online == true and r.has_rp and SO and SO.watch_online then
+    SB.after_replay = back
+    return SO.watch_online(r)
+  end
+  return false
+end
+
+G.FUNCS.speedrun_board_replay = function(e)
+  local r = e and e.config and e.config.ref_table
+  if not SB.can_watch(r) then return end
+  SB.watch(r, 'detail')
+end
+
+G.FUNCS.speedrun_board_watch = function(e)
+  local r = e and e.config and e.config.ref_table
+  if not SB.can_watch(r) then return end
+  SB.watch(r, 'board')
+end
+
+function SB.tick()
+  local back = SB.after_replay
+  if not back then return end
+  local SPR = rawget(_G, 'BO_SPREPLAY')
+  if SPR and SPR.watching then return end
+  local SO = rawget(_G, 'SpeedrunOnline')
+  local W = rawget(_G, 'SpeedrunWatch')
+  if W and W.tick then W.tick() end
+  if SO and SO.fetching then return end
+  if not (G.STAGE == G.STAGES.MAIN_MENU and G.STATE == G.STATES.MENU and G.MAIN_MENU_UI and not G.screenwipe and not G.OVERLAY_MENU) then return end
+  SB.after_replay = nil
+  if back.from == 'detail' and back.row then
+    local r = back.row
+    if r.online ~= true and r.id then
+      for _, x in ipairs(SR.load().runs) do if x.id == r.id then r = x end end
+    end
+    return SB.open_detail(r)
+  end
+  SB.open(back.tab)
+end
+
+local _sb_game_update = Game.update
+r 9 2449 - -
+l 39
+  _sb_game_update(self, dt)
+  pcall(SB.tick)
+end
+
+G.FUNCS.speedrun_board_reopen = function()
+  SB.open()
+end
+
+function SB.tavern_button()
+  return {n = G.UIT.R, config = {align = 'cm', padding = 0.08}, nodes = {
+    UIBox_button({label = {L("SPEEDRUNS")}, button = 'open_speedrun_board', minw = 5, minh = 1, colour = G.C.SECONDARY_SET.Planet}),
+  }}
+end
+
+mod_loc_register{
+  ["en-us"] = {["Ante %d (board)"] = "Ante %d"},
+  fr = {
+    ["Ante %d (board)"] = "Ante %d",
+    ["SPEEDRUNS"] = "SPEEDRUNS", ["SPEEDRUN"] = "SPEEDRUN", ["My runs"] = "Mes parties", ["Date"] = "Date",
+    ["All decks"] = "Tous les jeux", ["All stakes"] = "Toutes les mises", ["All seeds"] = "Toutes les seeds",
+    ["No finished speedrun here yet"] = "Aucun speedrun terminé ici pour l'instant",
+    ["Could not reach the server"] = "Serveur injoignable",
+    ["Retry"] = "Réessayer", ["No times yet"] = "Pas encore de temps",
+    ["Split"] = "Passage", ["Segment"] = "Segment", ["Splits"] = "Passages",
+    ["Player"] = "Joueur", ["Your rank"] = "Votre rang", ["Watch"] = "Regarder",
+  },
+  es = {
+    ["Ante %d (board)"] = "Ante %d",
+    ["SPEEDRUNS"] = "SPEEDRUNS", ["SPEEDRUN"] = "SPEEDRUN", ["My runs"] = "Mis partidas", ["Date"] = "Fecha",
+    ["All decks"] = "Todas las barajas", ["All stakes"] = "Todos los pozos", ["All seeds"] = "Todos los códigos",
+    ["No finished speedrun here yet"] = "Aún no hay speedruns terminados aquí",
+    ["Could not reach the server"] = "No se pudo contactar con el servidor",
+    ["Retry"] = "Reintentar", ["No times yet"] = "Aún sin tiempos",
+    ["Split"] = "Parcial", ["Segment"] = "Segmento", ["Splits"] = "Parciales",
+    ["Player"] = "Jugador", ["Your rank"] = "Tu puesto", ["Watch"] = "Ver",
+  },
+}
+
+return SB
+end

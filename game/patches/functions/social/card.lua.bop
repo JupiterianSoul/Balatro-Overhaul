@@ -1,0 +1,310 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 218
+local SC = rawget(_G, "social_card") or {}
+social_card = SC
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function now() return love.timer.getTime() end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function state() return require("multiplayer.mps_state") end
+local function friends() return require("multiplayer.mps_friends") end
+
+SC.ASK_GAP = 15
+SC.h2h = SC.h2h or {}
+
+local function online()
+    local B = rawget(_G, "bom_social")
+    return bom_core and bom_core.is_connected and bom_core.is_connected() and B and B.S and B.S.hello and true or false
+end
+
+local function favs()
+    local s = G and G.SETTINGS
+    if not s then return {} end
+    if type(s.social_favs) ~= "table" then s.social_favs = {} end
+    return s.social_favs
+end
+
+function SC.is_fav(code)
+    return code ~= nil and favs()[code] == true
+end
+
+function SC.toggle_fav(code)
+    if not code then return end
+    local f = favs()
+    f[code] = (not f[code]) and true or nil
+    if G.save_settings then pcall(G.save_settings, G) end
+    local T = state()
+    T.sort_friends(T.friends())
+end
+
+function SC.ask_h2h(force)
+    if not online() then return false end
+    if not force and SC.asked_at and now() - SC.asked_at < SC.ASK_GAP then return false end
+    if not bom_core.send({type = "social_h2h"}) then return false end
+    SC.asked_at = now()
+    return true
+end
+
+function SC.is_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "social_card" and true or false
+end
+
+function SC.on_h2h(d)
+    if type(d) ~= "table" or type(d.items) ~= "table" then return end
+    SC.h2h = d.items
+    if SC.is_open() then UIK.refresh() end
+end
+
+function SC.record_text(r)
+    if type(r) ~= "table" then return nil end
+    local w, l, d = tonumber(r.w) or 0, tonumber(r.l) or 0, tonumber(r.d) or 0
+    if w + l + d == 0 then return nil end
+    local T = state()
+    if d > 0 then return T.fill("{w}W {l}L {d}D", {w = w, l = l, d = d}) end
+    return T.fill("{w}W {l}L", {w = w, l = l})
+end
+
+function SC.hook_name(node, f)
+    if type(node) ~= "table" or type(node.config) ~= "table" or not f or not f.code then return node end
+    node.config.button = "social_card_open"
+    node.config.ref_table = {code = f.code}
+    node.config.hover = true
+    node.config.shadow = true
+    if SC.is_fav(f.code) then node.config.colour = G.C.GOLD end
+    return node
+end
+
+local function recent_of(code)
+    local sr = rawget(_G, "social_recent")
+    for _, r in ipairs(sr and sr.items or {}) do
+        if r.code == code then return r end
+    end
+    return nil
+end
+
+local function action_for(f)
+    local T = state()
+    local k = friends().kit
+    local where = T.where_of(f)
+    local st = type(f.status) == "table" and f.status or {}
+    local on = T.is_online(f)
+    if on and where == "lobby" and type(st.room) == "string" and not k.in_lobby() then
+        return {label = L("Join"), button = "mps_f_join", ref = {room = st.room}, colour = G.C.BLUE}
+    end
+    if on and where == "lobby" and not k.in_lobby() and rawget(_G, "social_more") then
+        return {label = L("Ask to join"), button = "social_ask_join", ref = {code = f.code}, colour = G.C.BLUE}
+    end
+    if on and where == "match" and type(st.room) == "string" and k.watch_fn() ~= nil then
+        return {label = L("Watch"), button = "mps_f_watch", ref = {room = st.room, code = f.code}, colour = G.C.PURPLE}
+    end
+    local so = rawget(_G, "social_toasts")
+    if on and where ~= "match" and (k.in_lobby() or (so and so.joinable and so.joinable())) then
+        return {label = L("Invite"), button = k.in_lobby() and "mps_f_invite" or "social_play_with", ref = {code = f.code, name = f.name}, colour = G.C.GREEN, back = true}
+    end
+    return {label = L("Invite"), disabled = true}
+end
+
+local function stat(label, value, colour, w)
+    local t = touch()
+    return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, padding = 0.06, r = 0.1, colour = {0, 0, 0, 0.18}}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {UIK.text(tostring(value), {scale = t and 0.7 or 0.62, colour = colour, shadow = true})}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {UIK.text(label, {scale = t and 0.34 or 0.3, colour = UIK.C.muted})}},
+    }}
+end
+
+local function card_w() return touch() and 9.4 or 8.2 end
+
+local function btn(o)
+    local base = touch() and 0.5 or 0.47
+    local room = (o.w or 3) - 0.5
+    local need = bom_kit.text_w(o.label, base)
+    if need > room then o.scale = math.max(base * 0.75, base * room / need) end
+    return UIK.button(o)
+end
+
+function SC.body()
+    local T = state()
+    local code = SC.code
+    local f = code and T.friend(code)
+    local w = card_w()
+    local inner = w - 0.4
+    local t = touch()
+    local d = bom_kit.dims()
+    local bh = t and 0.78 or 0.62
+    local rows = {}
+    if not f then
+        rows[1] = UIK.note(L("Not on your friends list."), {w = w})
+        return UIK.stack(rows, {w = w})
+    end
+    SC.ask_h2h(false)
+    local rh = t and 0.72 or 0.6
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+        bom_kit.cell({}, {w = d.badge_w, h = rh}),
+        bom_kit.name_bar(f.name ~= "" and f.name or "?", {w = 3.6, h = rh, colour = SC.is_fav(code) and G.C.GOLD or bom_kit.colour("name_light"),
+            text_colour = bom_kit.colour("dark_text"), shadow = false}),
+        bom_badges.slot({name = f.name, rank = f.rank, dev = f.dev}, {h = rh}),
+    }}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+        T.dot(T.status_colour(f), {w = 0.3, h = 0.4, size = 0.12}),
+        UIK.text(bom_kit.fit(T.status_text(f), inner - 0.5, d.small), {scale = d.small, colour = T.status_colour(f)}),
+    }}
+    if f.real_name and f.real_name ~= "" and f.real_name ~= f.name then
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+            UIK.text(bom_kit.fit(T.fill("Name: {name}", {name = f.real_name}), inner, d.small), {scale = d.small, colour = UIK.C.muted}),
+        }}
+    end
+    rows[#rows + 1] = UIK.spacer(t and 0.05 or 0.1)
+    local r = SC.h2h[code]
+    local inside = {}
+    local sw = (inner - 0.4 - 0.3) / 3
+    if r and ((tonumber(r.w) or 0) + (tonumber(r.l) or 0) + (tonumber(r.d) or 0)) > 0 then
+        inside[#inside + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+            stat(L("Wins"), tonumber(r.w) or 0, G.C.GREEN, sw),
+            {n = G.UIT.C, config = {minw = 0.15}, nodes = {}},
+            stat(L("Losses"), tonumber(r.l) or 0, G.C.RED, sw),
+            {n = G.UIT.C, config = {minw = 0.15}, nodes = {}},
+            stat(L("Draws"), tonumber(r.d) or 0, G.C.UI.TEXT_LIGHT, sw),
+        }}
+    else
+        inside[#inside + 1] = {n = G.UIT.R, config = {align = "cm", minh = t and 0.7 or 0.8, padding = 0}, nodes = {
+            UIK.text(online() and L("No 1v1 match together yet.") or L("Connect to see your record."), {scale = d.small, colour = UIK.C.muted}),
+        }}
+    end
+    local last = recent_of(code)
+    if last then
+        local mode = last.ranked and L("Ranked") or (T.mode_name(last.mode) or L("Match"))
+        local ago = T.ago(last.at)
+        inside[#inside + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+            UIK.text(T.fill("Last played: {what}", {what = ago ~= "" and (mode .. ", " .. ago) or mode}), {scale = d.small, colour = UIK.C.muted}),
+        }}
+    end
+    rows[#rows + 1] = UIK.section(L("Head to head"), inside, {w = inner})
+    rows[#rows + 1] = UIK.spacer(t and 0.05 or 0.1)
+    local bw = (inner - 0.2) / 2
+    local a = action_for(f)
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        btn{label = L("Message"), button = "social_card_message", ref_table = {code = code}, colour = G.C.BLUE, w = bw, h = bh, id = "social_card_msg", col = true},
+        {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+        btn{label = a.label, button = a.disabled and nil or "social_card_act", ref_table = {code = code}, colour = a.colour, w = bw, h = bh, disabled = a.disabled, id = "social_card_act", col = true},
+    }}
+    rows[#rows + 1] = UIK.spacer(t and 0.06 or 0.12)
+    local more = rawget(_G, "social_more") ~= nil
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        btn{label = SC.is_fav(code) and L("Unpin") or L("Pin to top"), button = "social_card_pin", ref_table = {code = code}, colour = G.C.GOLD, w = more and bw or inner, h = bh, id = "social_card_pin", col = true},
+        more and {n = G.UIT.C, config = {minw = 0.2}, nodes = {}} or nil,
+        more and btn{label = L("Nickname"), button = "social_card_nick", ref_table = {code = code}, colour = G.C.ORANGE, w = bw, h = bh, id = "social_card_nick", col = true} or nil,
+    }}
+    if more then
+        rows[#rows + 1] = UIK.spacer(t and 0.06 or 0.12)
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            btn{label = L("Challenge"), button = "social_challenge_open", ref_table = {code = code}, colour = G.C.GREEN, w = bw, h = bh, id = "social_card_challenge", col = true},
+            {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+            btn{label = L("Share a seed"), button = "social_seed_open", ref_table = {code = code}, colour = G.C.BLUE, w = bw, h = bh, id = "social_card_seed", col = true},
+        }}
+        rows[#rows + 1] = UIK.spacer(t and 0.06 or 0.12)
+        local sure = SC.confirm_block == code
+        local gifts = rawget(_G, "social_gifts") ~= nil
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            gifts and btn{label = L("Gift"), button = "social_gift_open", ref_table = {code = code}, colour = G.C.PURPLE, w = bw, h = bh, id = "social_card_gift", col = true} or nil,
+            gifts and {n = G.UIT.C, config = {minw = 0.2}, nodes = {}} or nil,
+            btn{label = sure and L("Sure? Block") or L("Block"), button = "social_card_block", ref_table = {code = code},
+                colour = sure and G.C.ORANGE or G.C.RED, w = gifts and bw or inner, h = bh, id = "social_card_block", col = true},
+        }}
+    end
+    return UIK.stack(rows, {w = w})
+end
+
+function SC.open(code)
+    SC.code = code
+    SC.confirm_block = nil
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+r 13 1381 %20%20%20%20 -
+l 84
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "social_card", compact = true, w = card_w() + 0.2,
+        title = L("FRIEND"),
+        tabs = {{key = "main", label = L("Friend"), build = SC.body}},
+        back_func = "social_card_back",
+    }}
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+function SC.init()
+    G.FUNCS.social_card_open = function(e)
+        local code = ref(e).code
+        if code then SC.open(code) end
+    end
+    G.FUNCS.social_card_back = function()
+        SC.code = nil
+        friends().open("friends")
+    end
+    G.FUNCS.social_card_pin = function(e)
+        SC.toggle_fav(ref(e).code)
+        UIK.refresh()
+    end
+    G.FUNCS.social_card_nick = function(e)
+        local sx = rawget(_G, "social_more")
+        if sx and sx.open_nick and ref(e).code then sx.open_nick(ref(e).code) end
+    end
+    G.FUNCS.social_card_block = function(e)
+        local code = ref(e).code
+        if not code then return end
+        if SC.confirm_block ~= code then
+            SC.confirm_block = code
+            UIK.refresh()
+            return
+        end
+        SC.confirm_block = nil
+        local f = state().friend(code)
+        state().send({type = "social_block", code = code, name = f and (f.real_name or f.name) or nil})
+    end
+    G.FUNCS.social_card_message = function(e)
+        local code = ref(e).code
+        if not code then return end
+        local T = state()
+        T.S.dm_sel = code
+        T.S.dm_input.text = ""
+        friends().open("messages")
+    end
+    G.FUNCS.social_card_act = function(e)
+        local T = state()
+        local f = T.friend(ref(e).code)
+        if not f then return end
+        local a = action_for(f)
+        if a.disabled or not G.FUNCS[a.button] then return end
+        G.FUNCS[a.button]({config = {ref_table = a.ref}})
+        if a.back and SC.is_open() then friends().open("friends") end
+    end
+    if bom_events and bom_events.register then
+        bom_events.register("social_h2h", function(d)
+            SC.on_h2h(d)
+            return true
+        end)
+    end
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["FRIEND"] = "AMI", ["Friend"] = "Ami", ["Head to head"] = "Face à face", ["Wins"] = "Victoires", ["Losses"] = "Défaites", ["Draws"] = "Égalités",
+            ["No 1v1 match together yet."] = "Pas encore de match 1c1 ensemble.", ["Connect to see your record."] = "Connectez-vous pour voir votre bilan.",
+            ["Last played: {what}"] = "Dernier match : {what}", ["Message"] = "Message", ["Pin to top"] = "Épingler en haut", ["Unpin"] = "Désépingler",
+            ["{w}W {l}L"] = "{w}V {l}D", ["{w}W {l}L {d}D"] = "{w}V {l}D {d}N",
+            ["Ask to join"] = "Demander à rejoindre", ["Ask"] = "Demander", ["Challenge"] = "Défier", ["Share a seed"] = "Partager une seed",
+            ["Block"] = "Bloquer", ["Sure? Block"] = "Sûr ? Bloquer", ["Party invite"] = "Inviter en groupe",
+        },
+        es = {
+            ["FRIEND"] = "AMIGO", ["Friend"] = "Amigo", ["Head to head"] = "Cara a cara", ["Wins"] = "Victorias", ["Losses"] = "Derrotas", ["Draws"] = "Empates",
+            ["No 1v1 match together yet."] = "Aún no habéis jugado un 1v1.", ["Connect to see your record."] = "Conéctate para ver tu historial.",
+            ["Last played: {what}"] = "Última partida: {what}", ["Message"] = "Mensaje", ["Pin to top"] = "Fijar arriba", ["Unpin"] = "Desfijar",
+            ["{w}W {l}L"] = "{w}V {l}D", ["{w}W {l}L {d}D"] = "{w}V {l}D {d}E",
+            ["Ask to join"] = "Pedir unirte", ["Ask"] = "Pedir", ["Challenge"] = "Retar", ["Share a seed"] = "Compartir código",
+            ["Block"] = "Bloquear", ["Sure? Block"] = "¿Seguro? Bloquear", ["Party invite"] = "Invitar en grupo",
+        },
+    }
+end
+
+return SC
+end

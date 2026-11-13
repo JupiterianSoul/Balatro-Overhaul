@@ -1,0 +1,774 @@
+BOP 2
+eol lf
+final 1
+base 19
+l 2
+require "functions/release_flags"
+local MP = require("multiplayer.init")
+c 1
+l 40
+if (jit.arch == 'arm64' or jit.arch == 'arm') then
+	jit.off()
+else
+	jit.opt.start("maxtrace=8000", "maxrecord=16000", "maxmcode=65536", "sizemcode=256", "maxside=400", "maxsnap=1000")
+end
+
+if not love.platform then
+    love.platform = {
+        earlyInit = function() end,
+        hideSplashScreen = function() end,
+        isArcade = function() return false end,
+        isPremium = function() return true end,
+        isOffline = function() return false end,
+        anyButtonPressed = function() return false end,
+        isFirstTimePlaying = function() return false end,
+        getLocalPlayerName = function() return "" end,
+        getLocalPlayerAvatar = function() return nil end,
+        getPlatformId = function() return "" end,
+        getNotchPosition = function() return 0 end,
+        setProfileButtonActive = function() end,
+        requestTrackingPermission = function() end,
+        requestReview = function() end,
+        authenticateLocalPlayer = function() end,
+        setOnSaveInitializedCallback = function(cb) if cb then cb() end end,
+        setOnPlatformStatusChangedCallback = function() end,
+        setLoadGameCallback = function() end,
+        resolveConflict = function() end,
+        loadGameFile = function() end,
+        unlockAchievement = function() end,
+        unlockAward = function() end,
+        init = function(success_cb) if success_cb then success_cb("", "") end return true end,
+        update = function() end,
+        shutdown = function() end,
+        event = function() end,
+    }
+end
+
+_G._IS_DESKTOP = (love.system.getOS() == 'Windows' or love.system.getOS() == 'OS X' or love.system.getOS() == 'Linux');
+
+
+c 11
+l 1
+require "functions/perf_monitor"
+c 3
+l 1
+require "functions/mod_localization"
+c 5
+l 1
+require "functions/ui_kit"
+c 1
+s 1
+l 24
+require "functions/mod_menu"
+require "functions/progress_gate"
+require "functions/jukebox"
+require "functions/daily_challenge"
+require "functions/mod_guide"
+require "functions/corner_labels"
+require "functions/achievements_data"
+require "functions/achievements"
+require "functions/achievements_ui"
+require "functions/achievements_hooks"
+require "functions/overhaul_stats"
+require "functions/stats_ui"
+require "functions/progress_events"
+require "functions/quests"
+require "functions/quests_ui"
+require "functions/cosmetics"
+require "functions/profile_rewards"
+require "functions/shop_catalog"
+require "functions/shop"
+require "functions/debug_mode"
+require "functions/deck_creator_data"
+require "functions/deck_creator_utils"
+require "functions/deck_creator_card_utils"
+require "functions/deck_creator_persistence"
+c 7
+l 50
+require "functions/progression"
+require "functions/progression_ui"
+require "functions/score_preview"
+require "functions/drag_select"
+require "functions/bot_hand_engine"
+require "functions/hand_optimizer"
+require "functions/jimbo_comments"
+require "functions/showcase"
+require "functions/deck_creator_hooks"
+require "functions/run_rules"
+require "functions/randomizer"
+require "functions/custom_runs"
+require "functions/deck_creator_locale"
+require "functions/deck_creator_gui"
+require "functions/mods_ui"
+require "functions/mods_profile"
+require "functions/save_transfer"
+require "functions/title_tagline"
+require "functions/art/title_fx"
+require "functions/art/suit_palettes"
+require "functions/art/trap_pack_label"
+require "functions/art/booster_tints"
+require "functions/player_name"
+require "functions/mod_workshop"
+require "functions/mod_workshop_ui"
+require "functions/forge/forge"
+require "functions/crash_reports"
+require "functions/perf_options"
+require "functions/minigames/registry"
+require "functions/overhaul_update"
+require "functions/launcher_update"
+require "functions/bot_bridge"
+require "functions/bot_brain"
+require "functions/bot_rules"
+require "functions/bot_settings"
+require "functions/bot_ui"
+require "functions/bot_versus"
+require "functions/bot_difficulty"
+require "functions/bot_sim"
+require "functions/extras"
+require "functions/controls"
+require "functions/qol"
+require "functions/settings/init"
+require "functions/release_info"
+require "functions/new/loader"
+require "functions/play/init"
+require "functions/shop/tavern"
+require "functions/portrait"
+require "functions/hud_scale"
+if ReleaseFlags then ReleaseFlags.apply() end
+c 3
+l 51
+local FPS_CAP_VALUES = {30, 40, 60, 90, 120, 144, 165, 9999}
+local function fps_cap_index(gr)
+	if gr.fps_cap_v ~= 2 then
+		if gr.fps_cap == 7 then gr.fps_cap = 8 end
+		local r = gr._perf_mode_restore
+		if type(r) == "table" and r.fps_cap == 7 then r.fps_cap = 8 end
+		gr.fps_cap_v = 2
+	end
+	return gr.fps_cap
+end
+local frame_deadline = nil
+local function pace_frame(cap)
+	local target = 1 / cap
+	local now = love.timer.getTime()
+	if not frame_deadline or now - frame_deadline > target then
+		frame_deadline = now + target
+	else
+		frame_deadline = frame_deadline + target
+	end
+	local left = frame_deadline - now
+	if left > 0.002 then love.timer.sleep(left - 0.002) end
+	while love.timer.getTime() < frame_deadline do end
+end
+
+local mobile_swap = {cap = nil, interval = 1, last = nil}
+local function mobile_pace(cap)
+	local vs = love.window.getVSync and love.window.getVSync() or 1
+	if mobile_swap.cap ~= cap or vs ~= mobile_swap.interval then
+		mobile_swap.cap = cap
+		local interval = vs == 0 and 0 or 1
+		local _, _, flags = love.window.getMode()
+		local hz = flags and flags.refreshrate or 0
+		if interval == 1 and hz > 0 and cap < 9999 then
+			local n = hz / cap
+			local r = math.floor(n + 0.5)
+			if r >= 2 and math.abs(n - r) < 0.1 then interval = r end
+		end
+		if love.window.setVSync and interval ~= mobile_swap.interval then
+			pcall(love.window.setVSync, interval)
+			interval = love.window.getVSync and love.window.getVSync() or interval
+		end
+		mobile_swap.interval = interval
+	end
+	local now = love.timer.getTime()
+	if cap < 9999 and mobile_swap.last then
+		local left = mobile_swap.last + 1 / cap - 0.004 - now
+		if left > 0.001 then love.timer.sleep(left) end
+	end
+	mobile_swap.last = love.timer.getTime()
+end
+
+c 1
+s 1
+l 3
+	if _G._IS_DESKTOP then
+		if love.ps then love.ps.hideSceSplash() end
+		if love.load then love.load() end
+r 19 37 %09%09 -
+l 2
+
+		local dt = 0
+r 19 40 %09%09 -
+l 4
+		local run_time = 0
+
+		while true do
+			PERF_MON.loop_top()
+r 19 45 %09%09%09 -
+r 19 47 %09%09%09 -
+l 1
+				love.event.pump()
+r 19 49 %09%09%09%09 -
+l 5
+				local _held_release = G.CONTROLLER.held_release
+				G.CONTROLLER.held_release = nil
+				if _held_release then
+					love.handlers['mousereleased'](unpack(_held_release, 1, 5))
+				end
+r 19 50 %09%09%09%09 -
+r 19 51 %09%09%09%09%09 -
+r 19 52 %09%09%09%09%09%09 -
+l 3
+							return function() return a or 0 end
+						end
+					end
+r 19 56 %09%09%09%09%09 -
+l 1
+						touched = true
+r 19 58 %09%09%09%09%09 -
+r 19 59 %09%09%09%09%09%09 -
+l 3
+					elseif name == 'mousereleased' and _n and not G.CONTROLLER.held_release then
+						G.CONTROLLER.held_release = {a,b,c,d,e}
+					else
+r 19 61 %09%09%09%09%09%09 -
+l 14
+					end
+				end
+				if _n then
+					love.handlers['mousepressed'](_a,_b,_c,touched or _d)
+				end
+				if G.window_prev then
+					local _ww, _wh = love.graphics.getDimensions()
+					if not G.resized_to or G.resized_to.w ~= _ww or G.resized_to.h ~= _wh then
+						love.resize(_ww, _wh)
+					end
+				end
+			end
+
+			PERF_MON.lap("ev")
+r 19 70 %09%09%09 -
+l 1
+			if dt > 0 then
+r 19 71 %09%09%09%09 -
+l 16
+			end
+			if love.update then love.update(dt_smooth) end
+			PERF_MON.lap("upd")
+
+			if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.fps_cap then
+				G.FPS_CAP = FPS_CAP_VALUES[fps_cap_index(G.SETTINGS.GRAPHICS)] or 200
+			else
+				G.FPS_CAP = G.FPS_CAP or 200
+			end
+			if PERF_OPTS and PERF_OPTS.frame_cap then G.FPS_CAP = PERF_OPTS.frame_cap(G.FPS_CAP) end
+
+			if love.graphics then
+				local active = love.graphics.checkActive and love.graphics.checkActive() or love.graphics.isActive()
+				if active then
+					if love.graphics.clear then love.graphics.clear(0, 0, 0, 1) end
+					if love.graphics.beginFrame then love.graphics.beginFrame() end
+r 19 76 %09%09%09%09%09 -
+l 1
+					PERF_MON.lap("drw")
+r 11 123 %09%09%09%09%09 -
+l 8
+					PERF_MON.lap("pres")
+				end
+			end
+
+			if G.FPS_CAP < 9999 then pace_frame(G.FPS_CAP) end
+			PERF_MON.lap("pace")
+		end
+	else
+r 19 34 %09%09 -
+c 7
+l 1
+	local hard_frame_cap
+c 3
+l 1
+		PERF_MON.loop_top()
+c 5
+l 5
+			local _held_release = G.CONTROLLER.held_release
+			G.CONTROLLER.held_release = nil
+			if _held_release then
+				love.handlers['mousereleased'](unpack(_held_release, 1, 5))
+			end
+c 8
+s 1
+r 19 58 %09%09%09%09 -
+c 1
+l 2
+				elseif name == 'mousereleased' and _n and not G.CONTROLLER.held_release then
+					G.CONTROLLER.held_release = {a,b,c,d,e}
+c 4
+s 1
+l 1
+			if _n then
+c 4
+l 1
+		PERF_MON.lap("ev")
+c 2
+s 1
+l 1
+		if dt > 0 then
+r 19 71 %09%09%09 -
+l 1
+		end
+c 2
+l 8
+		PERF_MON.lap("upd")
+
+		if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.fps_cap then
+			G.FPS_CAP = FPS_CAP_VALUES[fps_cap_index(G.SETTINGS.GRAPHICS)] or 60
+		else
+			G.FPS_CAP = G.FPS_CAP or ((G.F_MOBILE and 60) or 200)
+		end
+		if PERF_OPTS and PERF_OPTS.frame_cap then G.FPS_CAP = PERF_OPTS.frame_cap(G.FPS_CAP) end
+c 3
+l 5
+			PERF_MON.lap("drw")
+			phone_gc()
+			PERF_MON.lap("pgc")
+			mobile_pace(G.FPS_CAP)
+			PERF_MON.lap("pace")
+c 1
+l 1
+			PERF_MON.lap("pres")
+c 3
+s 2
+l 1
+	end
+c 3
+s 1
+l 4
+function love.load()
+
+	G:init_window()
+	pcall(function() require("functions.app_icon").game_start() end)
+c 1
+s 27
+c 2
+s 1
+l 9
+	if love.mouse then love.mouse.setVisible(false) end
+	MP.init()
+	if Extras and Extras.init then pcall(Extras.init) end
+	if Controls and Controls.init then pcall(Controls.init) end
+	if QOL and QOL.init then pcall(QOL.init) end
+
+	if DeckCreatorHooks and DeckCreatorHooks.init then
+		pcall(DeckCreatorHooks.init)
+	end
+c 3
+l 17
+	PERF_MON.shutdown()
+	if G and G.send_saves and G.SAVE_MANAGER and G.SAVE_MANAGER.thread then
+		if G.FILE_HANDLER and G.FILE_HANDLER.update_queued then G.FILE_HANDLER.force = true end
+		pcall(G.send_saves, G)
+		local t = G.SAVE_MANAGER.thread
+		local ok, alive = pcall(t.isRunning, t)
+		if ok and alive then
+			G.SAVE_MANAGER.request_channel:push({type = 'kill'})
+			local deadline = love.timer.getTime() + 5
+			while love.timer.getTime() < deadline do
+				local ok2, still = pcall(t.isRunning, t)
+				if not (ok2 and still) then break end
+				love.timer.sleep(0.01)
+			end
+		end
+	end
+	if MODLOADER and MODLOADER.clean_exit then pcall(MODLOADER.clean_exit) end
+c 5
+l 5
+local function misc_update(dt)
+	if G.JUKEBOX_UPDATE then G.JUKEBOX_UPDATE(dt) end
+	if DRAG_SELECT then DRAG_SELECT.update(dt) end
+end
+
+c 1
+s 3
+l 6
+
+	if not PERF_MON._checked then PERF_MON.init() end
+	PERF_MON.frame_update_begin()
+
+	_perf_frame_count = (_perf_frame_count or 0) + 1
+	if G.F_ENABLE_PERF_OVERLAY or _perf_frame_count >= 10 then
+r 19 128 %09%09 -
+l 60
+		_perf_frame_count = 0
+	end
+
+	G:update(dt)
+	PERF_MON.checkpoint("after", "update")
+	menu_zoom_update()
+	if PORTRAIT then PORTRAIT.update(dt) end
+	if G.UI_SIZE_PENDING and not (G.CONTROLLER and G.CONTROLLER.dragging.target) and not love.mouse.isDown(1) then
+		G.UI_SIZE_PENDING = nil
+		if G.UI_SIZE_EDIT and G.SETTINGS and G.SETTINGS.GRAPHICS then
+			G.SETTINGS.GRAPHICS.ui_size = math.floor(G.UI_SIZE_EDIT.value + 0.5)
+			love.resize(love.graphics.getDimensions())
+			G:save_settings()
+		end
+	end
+
+	if AchievementManager and AchievementManager.update then
+		AchievementManager.update(dt)
+	end
+
+	pcall(misc_update, dt)
+	PERF_MON.checkpoint("misc", "update")
+
+	_subsystem_frame = (_subsystem_frame or 0) + 1
+
+
+	if OPTIMIZER and OPTIMIZER.update then
+		local _pm_t0 = PERF_MON.enabled and love.timer.getTime()
+		pcall(OPTIMIZER.update, dt)
+		if _pm_t0 then PERF_MON.add_sub("OPTIMIZER", (love.timer.getTime() - _pm_t0) * 1000) end
+	end
+
+	if JIMBO_COMMENTS and (_subsystem_frame % 3 == 0) then
+		local _pm_t0 = PERF_MON.enabled and love.timer.getTime()
+		pcall(JIMBO_COMMENTS.update, dt * 3)
+		if _pm_t0 then PERF_MON.add_sub("JIMBO_COMMENTS", (love.timer.getTime() - _pm_t0) * 1000) end
+	end
+
+	if BOT and BOT.needs_update and BOT.needs_update() then
+		local _pm_t0 = PERF_MON.enabled and love.timer.getTime()
+		local _bot_ok, _bot_err = xpcall(BOT.update, debug.traceback, dt)
+		if _pm_t0 then PERF_MON.add_sub("BOT", (love.timer.getTime() - _pm_t0) * 1000) end
+		if not _bot_ok then
+			BOT.last_error = _bot_err
+			print("[BOT_ERROR] " .. tostring(_bot_err))
+		end
+	end
+
+	local _mp_pm_t0 = PERF_MON.enabled and love.timer.getTime()
+	local _mp_ok, _mp_err = xpcall(MP.update, debug.traceback, dt)
+	if _mp_pm_t0 then PERF_MON.add_sub("MP", (love.timer.getTime() - _mp_pm_t0) * 1000) end
+	if not _mp_ok then
+		print("[MP_ERROR] " .. tostring(_mp_err))
+		pcall(function()
+			require("love.filesystem")
+			require("functions/fast_fs").append("mp_error_trace.log", os.date("%Y-%m-%d %H:%M:%S") .. " [MP.update] " .. tostring(_mp_err) .. "\n\n")
+		end)
+	end
+
+	PERF_MON.frame_update_end()
+c 3
+l 2
+
+	PERF_MON.frame_draw_begin()
+c 1
+s 1
+r 19 134 %09 -
+c 1
+l 41
+	PERF_MON.checkpoint("after", "draw")
+	G.BG_UNZOOM = nil
+
+	if G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.show_fps and love.timer then
+		local fps = love.timer.getFPS()
+		if fps ~= _fps_cached_val then
+			_fps_cached_val = fps
+			_fps_cached_text = "FPS: " .. tostring(fps)
+			_fps_cached_w = nil
+		end
+		local fps_text = _fps_cached_text or ("FPS: " .. tostring(fps))
+
+		local _cl_scale = CORNER_LABELS and CORNER_LABELS.scale() or 1
+		local text_w, text_h
+		if CORNER_LABELS then
+			text_w, text_h = CORNER_LABELS.box(fps_text, _cl_scale)
+		else
+			local font = love.graphics.getFont()
+			text_w = font:getWidth(fps_text) + 8
+			text_h = font:getHeight() + 4
+		end
+		local _sw, _sh = love.graphics.getWidth(), love.graphics.getHeight()
+
+		if not G.SETTINGS.GRAPHICS.fps_x then
+			G.SETTINGS.GRAPHICS.fps_x = _sw - text_w - 10
+		end
+		if not G.SETTINGS.GRAPHICS.fps_y then
+			G.SETTINGS.GRAPHICS.fps_y = 10
+		end
+		local x = math.max(0, math.min(G.SETTINGS.GRAPHICS.fps_x, _sw - text_w))
+		local y = math.max(0, math.min(G.SETTINGS.GRAPHICS.fps_y, _sh - text_h))
+
+		local gc = G.C and G.C.GREEN or {0.3, 1, 0.3, 1}
+		local fr, fg, fb = gc[1] or 0.3, gc[2] or 1, gc[3] or 0.3
+		local fps_alpha = (G.SETTINGS.GRAPHICS.fps_opacity or 80) / 100
+
+		if CORNER_LABELS then
+			CORNER_LABELS.draw(fps_text, x, y, {scale = _cl_scale, bg = {0, 0, 0, 0.6 * fps_alpha}, colour = {fr, fg, fb, fps_alpha}})
+			CORNER_LABELS.fps_box = {x = x, y = y, w = text_w, h = text_h}
+		else
+			love.graphics.push()
+r 19 278 %09%09%09 -
+l 29
+			love.graphics.setColor(0, 0, 0, 0.6 * fps_alpha)
+			love.graphics.rectangle("fill", x, y, text_w, text_h, 4, 4)
+			love.graphics.setColor(fr, fg, fb, fps_alpha)
+			love.graphics.print(fps_text, x + 4, y + 2)
+			love.graphics.setColor(1, 1, 1, 1)
+			love.graphics.pop()
+		end
+
+		if not G._fps_drag then G._fps_drag = {} end
+		local mx, my = love.mouse.getPosition()
+		local inside = mx >= x and mx <= (x + text_w) and my >= y and my <= (y + text_h)
+		if love.mouse.isDown(1) then
+			if G._fps_drag.active then
+				G.SETTINGS.GRAPHICS.fps_x = mx - G._fps_drag.ox
+				G.SETTINGS.GRAPHICS.fps_y = my - G._fps_drag.oy
+			elseif inside then
+				G._fps_drag.active = true
+				G._fps_drag.ox = mx - x
+				G._fps_drag.oy = my - y
+			end
+		else
+			G._fps_drag.active = false
+		end
+	end
+	MP.draw()
+	if CORNER_LABELS then CORNER_LABELS.draw_mode() end
+	if CORNER_LABELS and CORNER_LABELS.draw_modded then CORNER_LABELS.draw_modded() end
+	if CORNER_LABELS then CORNER_LABELS.draw_version() end
+	PERF_MON.frame_draw_end()
+c 3
+l 1
+
+c 7
+l 6
+function love.textinput(t)
+	if G and G.CONTROLLER and G.CONTROLLER.text_input_hook and G.FUNCS and G.FUNCS.text_input_char then
+		G.FUNCS.text_input_char(t)
+	end
+end
+
+c 1
+l 1
+
+c 22
+l 2
+    if TouchInput then touch = TouchInput.accept(touch) end
+    if touch and button ~= 1 then return end
+c 1
+s 1
+l 2
+    if button == 1 and CORNER_LABELS and CORNER_LABELS.mode_press(x, y) then return end
+    if button == 1 then
+c 1
+l 1
+		if DRAG_SELECT and not touch then DRAG_SELECT.left_press() end
+c 3
+l 1
+		if DRAG_SELECT then DRAG_SELECT._rclick_down = true end
+c 5
+l 2
+    if button == 1 and DRAG_SELECT then DRAG_SELECT.left_release() end
+    if button == 1 and CORNER_LABELS and CORNER_LABELS.mode_release(x, y) then return end
+c 1
+l 4
+    if button == 2 and DRAG_SELECT then
+        DRAG_SELECT._rclick_down = false
+        DRAG_SELECT.reset()
+    end
+c 4
+s 1
+l 3
+	local touching = istouch or next(love.touch.getTouches()) ~= nil
+	if TouchInput then touching = TouchInput.accept(touching) end
+	if touching then
+c 6
+s 1
+r 19 192 %09 -
+c 6
+l 12
+
+	local trace = debug.traceback(tostring(msg), 2)
+	print(trace)
+	pcall(function()
+		if MODLOADER and MODLOADER.record_plain_crash then MODLOADER.record_plain_crash(msg, debug.traceback("", 3)) end
+	end)
+	pcall(function()
+		require("love.filesystem")
+		require("functions/fast_fs").append("mp_error_trace.log", os.date("%Y-%m-%d %H:%M:%S") .. " " .. tostring(trace) .. "\n\n")
+	end)
+
+	if not G then return end
+c 3
+s 1
+l 1
+	if G.SETTINGS.crashreports and _RELEASE_MODE and G.F_CRASH_REPORTS and not rawget(_G, "CrashReports") then
+c 21
+s 1
+l 1
+
+c 17
+s 1
+r 19 242 %09%09%09 -
+c 38
+s 3
+e 19 281 %09 - =79,+%28%28%47%2E%43%52%41%53%48%5F%44%45%42%55%47%20%6F%72%20%27%27%29%2E%2E%27%5C%6E%27%2E%2E,=16,+%29,=32
+l 2
+		(CrashReports and CrashReports.screen_text and CrashReports.screen_text(true) or 'A crash report is being sent to the Overhaul team so this can be fixed.') or
+		(CrashReports and CrashReports.screen_text and CrashReports.screen_text(false) or 'Crash reports are off.'))
+c 40
+l 7
+UI_SIZE_MIN = 0.8
+UI_SIZE_OVER = 1.3
+UI_SIZE_EDGE = 0.3
+UI_SIZE_EDGE_W = 0.8
+
+function ui_size_fit(w, h)
+	local base
+r 19 330 %09 -
+l 71
+		base = G.window_prev.orig_scale*w/G.window_prev.w
+	else
+		base = G.window_prev.orig_scale*h/G.window_prev.h
+	end
+	local uw, uh = w/(G.TILESIZE*base), h/(G.TILESIZE*base)
+	return base, math.max(1, math.min(uw/(G.TILE_W + 2*UI_SIZE_EDGE_W), uh/(G.TILE_H + 2*UI_SIZE_EDGE)))
+end
+
+function ui_size_max(w, h)
+	if not (G and G.window_prev) then return 1 end
+	if not w then w, h = love.graphics.getDimensions() end
+	local _, m = ui_size_fit(w, h)
+	return math.floor(m*100)/100
+end
+
+function ui_size_wanted(w, h)
+	local max = ui_size_max(w, h)
+	local pct = G.SETTINGS and G.SETTINGS.GRAPHICS and tonumber(G.SETTINGS.GRAPHICS.ui_size)
+	local s = pct and pct/100 or (_G._IS_DESKTOP and 1 or max)
+	return math.min(max * UI_SIZE_OVER, math.max(UI_SIZE_MIN, s))
+end
+
+local WINDOW_FILL = {0, 0.75, 0.8, 0.85, 0.9, 0.95}
+
+function window_fill()
+	local i = G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.window_size
+	if not WINDOW_FILL[i or 0] then i = _G._IS_DESKTOP == false and 6 or 4 end
+	return WINDOW_FILL[i]
+end
+
+function menu_zoom_target(w, h)
+	local o = G.OVERLAY_MENU
+	local fill = window_fill()
+	if not o and PORTRAIT and PORTRAIT.on() then return PORTRAIT.idle_zoom(w, h, ui_size_fit(w, h)) end
+	local extra = G.UI_SIZE_EXTRA or 1
+	if not o or (fill <= 0 and extra <= 1) then return 1 end
+	local phone = _G._IS_DESKTOP == false
+	local plain = fill <= 0 or (not phone and not (o.definition and o.definition.config and o.definition.config.uik_zoom))
+	if plain and extra <= 1 then return 1 end
+	local zr = PORTRAIT and PORTRAIT.read_check and PORTRAIT.read_check(o) or 0
+	local t = o.T
+	if t and t.w > G.TILE_W * 2 and o.UIRoot and o.UIRoot.children and o.UIRoot.children[1] then t = o.UIRoot.children[1].T end
+	if o.infotip_node == nil and o.get_UIE_by_ID then o.infotip_node = o:get_UIE_by_ID('overlay_menu_infotip') or false end
+	local tip = o.infotip_node and o.infotip_node.config.object
+	if t and tip and tip.UIRoot and tip.T and tip.T.h > 0 then t = {w = math.max(t.w, tip.T.w), h = t.h + 2 * tip.T.h} end
+	if PORTRAIT and PORTRAIT.on() then t = PORTRAIT.fit_target(t) end
+	if not (t and t.w > 0 and t.h > 0) then return 1 end
+	local base = ui_size_fit(w, h)
+	local ui = G.UI_SIZE or 1
+	local uw, uh = w / (G.TILESIZE * base), h / (G.TILESIZE * base)
+	local z = math.min(0.95 * uw / (ui * t.w), 0.92 * uh / (ui * t.h))
+	if plain then
+		z = math.min(z, extra)
+	else
+		z = math.min(z, math.max(phone and 1.4 or 1.6, math.min(zr, PORTRAIT and PORTRAIT.READ_ZMAX or 1.6)) * extra, extra * uw * fill / t.w, extra * uh * math.min(fill, 0.92) / t.h)
+	end
+	if G.OVERLAY_TUTORIAL then z = math.min(z, 1) end
+	return math.max(0.5, math.floor(z * 20) / 20)
+end
+
+function menu_zoom_update()
+	if not (G and G.window_prev and G.UI_SIZE) then return end
+	if G.CONTROLLER and G.CONTROLLER.dragging and G.CONTROLLER.dragging.target then return end
+	local w, h = love.graphics.getDimensions()
+	local z = menu_zoom_target(w, h)
+	if math.abs(z - (G.MENU_ZOOM or 1)) > 0.01 then
+		G.MENU_ZOOM = z
+		love.resize(w, h)
+	end
+end
+
+c 1
+s 3
+l 3
+	if not G or not G.window_prev then return end
+	G.resized_to = {w = w, h = h}
+	local _portrait_changed = PORTRAIT and PORTRAIT.fit(w, h)
+c 2
+s 5
+l 9
+	local _base = ui_size_fit(w, h)
+	local _want = ui_size_wanted(w, h)
+	local _want_all = _want
+	if PORTRAIT and PORTRAIT.on() then _want = math.min(_want, 1) end
+	G.UI_SIZE = math.min(_want, math.max(UI_SIZE_MIN, ui_size_max(w, h)))
+	G.UI_SIZE_EXTRA = _want_all/G.UI_SIZE
+	local _zoom = G.MENU_ZOOM or 1
+	G.TILESCALE = _base*G.UI_SIZE*_zoom
+	local _uw, _uh = w/(G.TILESIZE*G.TILESCALE), h/(G.TILESIZE*G.TILESCALE)
+c 5
+s 1
+r 19 340 %09%09 -
+l 2
+		if G.SPLASH_BACK and G.SPLASH_BACK.T then G.SPLASH_BACK.T.w, G.SPLASH_BACK.T.h = G.ROOM.T.w + 60, G.ROOM.T.h + 22 end
+		if G.SPLASH_BACK and G.SPLASH_BACK.VT then G.SPLASH_BACK.VT.w, G.SPLASH_BACK.VT.h = G.SPLASH_BACK.T.w, G.SPLASH_BACK.T.h end
+c 1
+l 2
+		local _uw0, _uh0 = _uw*_zoom, _uh*_zoom
+		local _x0, _y0
+c 1
+s 2
+l 2
+			_x0 = (_uw0 - G.ROOM.T.w)/2
+			_y0 = (_uh0 - (G.ROOM.T.h+G.ROOM_PADDING_H))/2 + G.ROOM_PADDING_H/2
+c 1
+s 2
+l 12
+			_y0 = math.max((_uh0 - G.ROOM.T.h)/3, math.min(UI_SIZE_EDGE, (_uh0 - G.ROOM.T.h)/2))
+			_x0 = (_uw0 - (G.ROOM.T.w+G.ROOM_PADDING_W))/2 + G.ROOM_PADDING_W/2
+		end
+		G.ROOM_UNZOOMED = {x = _x0, y = _y0}
+		if _zoom ~= 1 then
+			G.ROOM.T.x = (_uw - G.ROOM.T.w)/2
+			G.ROOM.T.y = (_uh - G.ROOM.T.h)/2
+		else
+			G.ROOM.T.x, G.ROOM.T.y = _x0, _y0
+		end
+		if _zoom <= 1 and G.MAIN_MENU_UI and G.STAGE == G.STAGES.MAIN_MENU and main_menu_bar_offset then
+			G.MAIN_MENU_UI.alignment.offset.y = main_menu_bar_offset()
+r 12 759 %09%09%09 -
+c 14
+s 2
+r 19 362 %09%09 -
+e 19 363 %09%09 - =13,-1,+%33,=18
+c 4
+s 1
+l 2
+	local _res = (G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.perf_resolution) or 1
+	G.CANV_SCALE = (_res == 2 and 0.75) or (_res == 3 and 0.5) or 1
+c 1
+s 14
+l 2
+	local _cw, _ch = math.floor(w*G.CANV_SCALE), math.floor(h*G.CANV_SCALE)
+	if not (G.CANVAS and G.CANVAS:getWidth() == _cw and G.CANVAS:getHeight() == _ch) then
+r 19 386 %09%09 -
+r 19 387 %09%09 -
+c 1
+s 4
+l 3
+	if PORTRAIT and G.ROOM then PORTRAIT.after_resize(_portrait_changed) end
+	if HUD_SCALE and G.ROOM then HUD_SCALE.check() end
+end
+end

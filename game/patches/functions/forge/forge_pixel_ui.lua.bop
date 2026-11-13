@@ -1,0 +1,2240 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 125
+local math = require("functions.pure_math")
+local P = require("functions/forge/forge_pixel")
+local Store = require("functions/forge/forge_store")
+local FJ = require("functions/forge/forge_joker")
+
+local PX = {}
+ForgePixelUI = PX
+
+PX.SIMPLE = {"pencil", "eraser", "fill", "picker", "line", "box", "pan", "@flip", "@clear", "@import"}
+PX.GROUPS = {
+  {key = "draw", tools = {"pencil", "eraser", "fill", "picker", "dither", "gradient", "shade", "light"}},
+  {key = "shape", tools = {"line", "box", "block", "oval", "disc", "pan"}},
+  {key = "select", tools = {"select", "lasso", "wand", "move", "@copy", "@cut", "@paste", "@deselect"}},
+  {key = "edit", tools = {"@flip", "@flip_v", "@rotate", "@outline", "@clear", "@import", "@layer", "@soul"}},
+}
+PX.TOOLS = {"pencil", "eraser", "fill", "line", "box", "picker", "move"}
+PX.ZOOMS = {1, 1.5, 2, 3, 4, 6, 8}
+PX.BRUSH_MAX = 5
+PX.MINE_MAX = 24
+PX.PREVIEW = "j_forge_preview"
+PX.EDITIONS = {"base", "foil", "holo", "polychrome", "negative"}
+
+PX.KINDS = {
+  {key = "joker", label = "Joker", pool = "Joker", atlas = "Joker", soul = true},
+  {key = "tarot", label = "Tarot", pool = "Tarot", atlas = "Tarot", soul = true},
+  {key = "planet", label = "Planet", pool = "Planet", atlas = "Tarot"},
+  {key = "spectral", label = "Spectral", pool = "Spectral", atlas = "Tarot", soul = true},
+  {key = "voucher", label = "Voucher", pool = "Voucher", atlas = "Voucher"},
+  {key = "booster", label = "Booster", pool = "Booster", atlas = "Booster"},
+  {key = "back", label = "Deck back", pool = "Back", atlas = "centers"},
+  {key = "enhancement", label = "Enhancement", pool = "Enhanced", atlas = "centers"},
+  {key = "seal", label = "Seal", atlas = "centers", empty_blank = true},
+  {key = "skin", label = "Card skin", atlas = "cards_1"},
+  {key = "blind", label = "Blind chip", w = 34, h = 34, atlas = "blind_chips", game = 1.4},
+  {key = "tag", label = "Tag", w = 34, h = 34, atlas = "tags", game = 0.8},
+  {key = "stake", label = "Stake", w = 29, h = 29, atlas = "chips", game = 0.8},
+}
+PX.SEALS = {{key = "Gold", pos = {x = 2, y = 0}}, {key = "Red", pos = {x = 5, y = 4}}, {key = "Blue", pos = {x = 6, y = 4}}, {key = "Purple", pos = {x = 4, y = 4}}}
+
+local function settings() return G and G.SETTINGS or {} end
+
+PX.state = PX.state or {tool = "pencil", colour = P.hex("374244"), colour2 = P.hex("ffffff"), zoom_i = 1, pan = {x = 0, y = 0}, grid = false, mirror = false, guide = true,
+  target = nil, picker_page = 1, kind = "joker", group = "draw", panel = "options", pal = "balatro", brush = 1, tol = 0, every = false, grad = "smooth", edition = 1,
+  import_page = 1, snap = true, remove = false}
+
+local function touch() return UIK.touch() end
+
+function PX.kind(key)
+  key = key or PX.state.kind
+  for _, k in ipairs(PX.KINDS) do if k.key == key then return k end end
+  return PX.KINDS[1]
+end
+
+local function kind_size(k)
+  return k.w or P.W, k.h or P.H
+end
+
+local function is_card(k) return not k.w end
+
+function PX.mode()
+  local m = settings().forge_px_mode
+  return m == "advanced" and "advanced" or "simple"
+end
+
+local function adv() return PX.mode() == "advanced" end
+
+local LABELS = {
+  pencil = "Pencil", eraser = "Eraser", fill = "Fill", picker = "Pick colour", line = "Line", box = "Box", pan = "Pan", move = "Move",
+  dither = "Dither", gradient = "Gradient", shade = "Shade", light = "Light", block = "Block", oval = "Oval", disc = "Disc",
+  select = "Select", lasso = "Lasso", wand = "Wand",
+  ["@flip"] = "Flip", ["@flip_v"] = "Upside down", ["@rotate"] = "Rotate", ["@outline"] = "Outline", ["@clear"] = "Clear", ["@import"] = "Import",
+  ["@copy"] = "Copy", ["@cut"] = "Cut", ["@paste"] = "Paste", ["@deselect"] = "Deselect", ["@layer"] = "+ Layer", ["@soul"] = "+ Soul",
+}
+
+local function tool_label(t) return mod_loc(LABELS[t] or t) end
+
+local function rgba(c, a)
+  local r, g, b, al = P.unpack(c)
+  return {r / 255, g / 255, b / 255, a or al / 255}
+end
+
+local function fs_write(path, data)
+  local ok, F = pcall(require, "functions/fast_fs")
+  if ok and F and F.write then return F.write(path, data) end
+  return love.filesystem.write(path, data)
+end
+
+local function ensure_dir(dir)
+  if not love.filesystem.getInfo(dir) then love.filesystem.createDirectory(dir) end
+end
+
+function PX.target_path()
+  local t = PX.state.target
+  if t and t.kind == "creation" then return Store.art_path(t.id) end
+  if t and t.kind == "draft" then return "forge/art/draft.png" end
+  if PX.state.kind ~= "joker" then return "forge/art/scratch_" .. PX.state.kind .. ".png" end
+  return "forge/art/scratch.png"
+end
+
+function PX.paths(base)
+  base = base or PX.target_path()
+  local stem = base:gsub("%.png$", "")
+  return {x1 = base, x2 = stem .. "_2x.png", soul = stem .. "_soul.png", soul2x = stem .. "_soul_2x.png"}
+end
+
+function PX.atlas_name()
+  local t = PX.state.target
+  if t and t.kind == "creation" then return "forge_" .. t.id end
+  return "forge_preview"
+end
+
+local function find_atlas(name)
+  return (G.ASSET_ATLAS and G.ASSET_ATLAS[name]) or (G.ANIMATION_ATLAS and G.ANIMATION_ATLAS[name])
+end
+
+function PX.sprite_data(atlas_name, pos, w, h)
+  local atlas = find_atlas(atlas_name)
+  if not (atlas and atlas.image and pos) then return nil end
+  w, h = w or P.W, h or P.H
+  local ok, data = pcall(function()
+    local img = atlas.image
+    local fmin, fmag = img:getFilter()
+    img:setFilter("nearest", "nearest")
+    local canvas = love.graphics.newCanvas(w, h, {dpiscale = 1})
+    love.graphics.push("all")
+r 19 278 %20%20%20%20 -
+l 6
+    love.graphics.setCanvas(canvas)
+    love.graphics.clear(0, 0, 0, 0)
+    love.graphics.setBlendMode("replace")
+    love.graphics.setColor(1, 1, 1, 1)
+    local quad = love.graphics.newQuad(pos.x * atlas.px, pos.y * atlas.py, atlas.px, atlas.py, img:getDimensions())
+    love.graphics.draw(img, quad, 0, 0, 0, w / atlas.px, h / atlas.py)
+r 11 112 %20%20%20%20 -
+l 339
+    love.graphics.pop()
+    img:setFilter(fmin, fmag)
+    return canvas:newImageData()
+  end)
+  if ok and data then return P.from_image_data(data) end
+  print("[FORGE] could not read sprite: " .. tostring(data))
+  return nil
+end
+
+function PX.blank_card()
+  local ok, src = pcall(love.image.newImageData, "resources/textures/1x/Enhancers.png")
+  if not ok or not src then return P.new() end
+  local out = love.image.newImageData(P.W, P.H)
+  out:paste(src, 0, 0, 71, 0, 71, 95)
+  return P.from_image_data(out)
+end
+
+local function silhouette(doc)
+  local w, h = doc.w, doc.h
+  local out = P.new(w, h)
+  local fillc, edge = P.hex("5f7377"), P.hex("374244")
+  local function solid(x, y)
+    local c = P.get(doc, x, y)
+    return c and select(4, P.unpack(c)) > 0
+  end
+  for y = 0, h - 1 do
+    for x = 0, w - 1 do
+      if solid(x, y) then
+        local rim = not (solid(x - 1, y) and solid(x + 1, y) and solid(x, y - 1) and solid(x, y + 1))
+        out.px[y * w + x + 1] = rim and edge or fillc
+      end
+    end
+  end
+  return out
+end
+
+local function sorted_by_order(t)
+  local out = {}
+  for k, v in pairs(t or {}) do if type(v) == "table" and v.pos then out[#out + 1] = {key = k, c = v} end end
+  table.sort(out, function(a, b) return (a.c.order or 0) < (b.c.order or 0) or ((a.c.order or 0) == (b.c.order or 0) and a.key < b.key) end)
+  return out
+end
+
+function PX.sprites(kind_key)
+  local k = PX.kind(kind_key)
+  local out = {}
+  if k.pool then
+    for _, c in ipairs(G.P_CENTER_POOLS and G.P_CENTER_POOLS[k.pool] or {}) do
+      if c.pos and not c.forge_preview and not c.display_size and not c.pixel_size and (k.pool ~= "Joker" or c.unlocked ~= false or c.forge) then
+        out[#out + 1] = {key = c.key, atlas = c.atlas or k.atlas, pos = c.pos}
+      end
+    end
+  elseif k.key == "seal" then
+    for _, s in ipairs(PX.SEALS) do out[#out + 1] = {key = s.key, atlas = "centers", pos = s.pos} end
+  elseif k.key == "skin" then
+    local list = {}
+    for key, c in pairs(G.P_CARDS or {}) do if c.pos then list[#list + 1] = {key = key, c = c} end end
+    table.sort(list, function(a, b) return a.c.pos.y < b.c.pos.y or (a.c.pos.y == b.c.pos.y and a.c.pos.x < b.c.pos.x) end)
+    for _, e in ipairs(list) do out[#out + 1] = {key = e.key, atlas = "cards_1", pos = e.c.pos} end
+  elseif k.key == "blind" then
+    for _, e in ipairs(sorted_by_order(G.P_BLINDS)) do out[#out + 1] = {key = e.key, atlas = e.c.atlas or "blind_chips", pos = {x = 0, y = e.c.pos.y}} end
+  elseif k.key == "tag" then
+    for _, e in ipairs(sorted_by_order(G.P_TAGS)) do out[#out + 1] = {key = e.key, atlas = e.c.atlas or "tags", pos = e.c.pos} end
+  elseif k.key == "stake" then
+    for _, e in ipairs(sorted_by_order(G.P_STAKES)) do out[#out + 1] = {key = e.key, atlas = e.c.atlas or "chips", pos = e.c.pos} end
+  end
+  return out
+end
+
+local function sprite_of(kind_key, s)
+  local w, h = kind_size(PX.kind(kind_key))
+  return PX.sprite_data(s.atlas, s.pos, w, h)
+end
+
+function PX.blank_of(kind_key)
+  local k = PX.kind(kind_key)
+  local w, h = kind_size(k)
+  if k.empty_blank then return P.new(w, h) end
+  if is_card(k) then return PX.blank_card() end
+  local first = PX.sprites(k.key)[1]
+  local doc = first and sprite_of(k.key, first)
+  return doc and silhouette(doc) or P.new(w, h)
+end
+
+function PX.guide_of(kind_key)
+  local k = PX.kind(kind_key)
+  if k.key == "seal" then
+    local base = PX.blank_card()
+    local seal = PX.sprite_data("centers", PX.SEALS[1].pos)
+    if seal then
+      for i = 1, #base.px do if select(4, P.unpack(seal.px[i])) > 0 then base.px[i] = seal.px[i] end end
+    end
+    return base
+  end
+  if is_card(k) then return PX.blank_card() end
+  local first = PX.sprites(k.key)[1]
+  return first and sprite_of(k.key, first) or nil
+end
+
+local function to_image(px, w, h, old)
+  local data = love.image.newImageData(w, h)
+  data:mapPixel(function(x, y)
+    local r, g, b, a = P.unpack(px[y * w + x + 1])
+    return r / 255, g / 255, b / 255, a / 255
+  end)
+  if old and old:getWidth() == w and old:getHeight() == h then
+    old:replacePixels(data)
+    return old, data
+  end
+  local img = love.graphics.newImage(data)
+  img:setFilter("nearest", "nearest")
+  return img, data
+end
+
+function PX.build_guide()
+  PX.guide_image = nil
+  local g = PX.guide_of(PX.state.kind)
+  if g and PX.doc and g.w == PX.doc.w and g.h == PX.doc.h then PX.guide_image = to_image(g.px, g.w, g.h) end
+end
+
+local function stack_px(a, b)
+  local out = {}
+  for i = 1, #a do
+    local _, _, _, al = P.unpack(b[i])
+    out[i] = al > 0 and b[i] or a[i]
+  end
+  return out
+end
+
+function PX.composite()
+  local d = PX.doc
+  return stack_px(P.flatten(d, "art"), P.flatten(d, "soul"))
+end
+
+local function data_of(px, w, h)
+  local data = love.image.newImageData(w, h)
+  data:mapPixel(function(x, y)
+    local r, g, b, a = P.unpack(px[y * w + x + 1])
+    return r / 255, g / 255, b / 255, a / 255
+  end)
+  return data
+end
+PX.data_of = data_of
+
+local function doubled_px(px, w, h)
+  local d = P.new(w, h)
+  d.layers[1].px = px
+  P.relink(d)
+  local o = P.to_2x(d)
+  return o.px
+end
+
+local function make_atlas(name, px, w, h, cols)
+  if not (G and G.ASSET_ATLAS) then return nil end
+  local s = (G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.texture_scaling) or 1
+  local fw, fh = w * cols, h
+  local src = px
+  if s == 2 then src, fw, fh = doubled_px(px, fw, fh), fw * 2, fh * 2 end
+  local ok, img = pcall(love.graphics.newImage, data_of(src, fw, fh), {mipmaps = true, dpiscale = s})
+  if not ok or not img then return nil end
+  pcall(img.setFilter, img, "nearest", "nearest")
+  local atlas = G.ASSET_ATLAS[name] or {name = name, type = "asset_atli"}
+  atlas.image, atlas.px, atlas.py = img, w, h
+  G.ASSET_ATLAS[name] = atlas
+  return atlas
+end
+
+local function side_by_side(a, b, w, h)
+  local out = {}
+  for y = 0, h - 1 do
+    for x = 0, w - 1 do
+      out[y * 2 * w + x + 1] = a[y * w + x + 1]
+      out[y * 2 * w + w + x + 1] = b[y * w + x + 1]
+    end
+  end
+  return out
+end
+
+function PX.update_preview_atlas()
+  local d = PX.doc
+  if not d then return end
+  local art, soul = P.flatten(d, "art"), P.flatten(d, "soul")
+  PX.has_soul = P.has_pixels(soul)
+  if PX.state.kind == "seal" and d.w == P.W and d.h == P.H then
+    PX._blank_px = PX._blank_px or PX.blank_card().px
+    art = stack_px(PX._blank_px, art)
+  end
+  if is_card(PX.kind()) and d.w == P.W and d.h == P.H then
+    make_atlas("forge_px_preview", side_by_side(art, soul, d.w, d.h), d.w, d.h, 2)
+  else
+    make_atlas("forge_px_preview", stack_px(art, soul), d.w, d.h, 1)
+  end
+end
+
+local function read_png(path, w, h)
+  if not love.filesystem.getInfo(path) then return nil end
+  local ok, data = pcall(love.image.newImageData, path)
+  if ok and data and data:getWidth() == w and data:getHeight() == h then return P.from_image_data(data) end
+  return nil
+end
+
+function PX.load_target(target)
+  PX.state.target = target
+  if target and target.art_kind then PX.state.kind = PX.kind(target.art_kind).key end
+  if target and target.kind == "creation" and not target.art_kind then PX.state.kind = "joker" end
+  PX.state.zoom_i, PX.state.pan = 1, {x = 0, y = 0}
+  local w, h = kind_size(PX.kind())
+  local paths = PX.paths()
+  local doc = read_png(paths.x1, w, h)
+  if not doc and target and target.kind == "creation" then
+    local c = Store.get(target.id)
+    if c and c.art and c.art.atlas then doc = PX.sprite_data(c.art.atlas, {x = c.art.x or 0, y = c.art.y or 0}) end
+  end
+  doc = doc or PX.blank_of(PX.state.kind)
+  doc.layers[1].name = "art"
+  local soul = PX.kind().soul and read_png(paths.soul, w, h)
+  if soul then
+    P.add_layer(doc, "soul")
+    doc.layers[#doc.layers].px = soul.px
+    doc.active = 1
+    P.relink(doc)
+  end
+  doc.undo, doc.redo = {}, {}
+  PX.doc = doc
+  PX.doc.mirror = PX.state.mirror
+  PX.build_guide()
+  PX.sync_image()
+end
+
+function PX.ensure()
+  if not PX.doc then PX.load_target(PX.state.target) end
+end
+
+function PX.sync_image()
+  if not PX.doc then return end
+  local d = PX.doc
+  local px = PX.composite()
+  PX.image, PX.image_data = to_image(px, d.w, d.h, PX.image)
+  PX.update_preview_atlas()
+end
+
+function PX.flat_doc()
+  PX.ensure()
+  return PX.doc and P.flat_doc(PX.doc, "art") or nil
+end
+
+local function preview_center()
+  local c = G.P_CENTERS[PX.PREVIEW]
+  if not c then
+    c = {key = PX.PREVIEW, order = FJ.ORDER, unlocked = true, discovered = true, alerted = true, set = "Joker", effect = "", cost_mult = 1, name = "Preview", rarity = 1, cost = 1,
+      pos = {x = 0, y = 0}, config = {extra = {}}, no_collection = true, forge_preview = true}
+    G.P_CENTERS[PX.PREVIEW] = c
+  end
+  c.atlas = "forge_px_preview"
+  c.soul_pos = PX.has_soul and {x = 1, y = 0} or nil
+  local t = PX.state.target
+  local cr = t and t.kind == "creation" and Store.get(t.id)
+  local k = PX.kind()
+  local name = cr and cr.name or (k.key == "joker" and mod_loc("New joker") or mod_loc(k.label))
+  FJ.set_loc(PX.PREVIEW, name, {k.key == "joker" and mod_loc("Does nothing yet") or mod_loc("Art preview")})
+  return c
+end
+
+local function write_px(path, px, w, h)
+  local ok, raw = pcall(function() return data_of(px, w, h):encode("png"):getString() end)
+  if ok and raw then fs_write(path, raw) end
+  return ok
+end
+
+function PX.export_files(paths)
+  local d = PX.doc
+  if not d then return nil end
+  Store.ensure_dirs()
+  ensure_dir("forge")
+  ensure_dir("forge/art")
+  local art, soul = P.flatten(d, "art"), P.flatten(d, "soul")
+  write_px(paths.x1, art, d.w, d.h)
+  write_px(paths.x2, doubled_px(art, d.w, d.h), d.w * 2, d.h * 2)
+  local has_soul = P.has_pixels(soul)
+  if has_soul then
+    write_px(paths.soul, soul, d.w, d.h)
+    write_px(paths.soul2x, doubled_px(soul, d.w, d.h), d.w * 2, d.h * 2)
+  else
+    if love.filesystem.getInfo(paths.soul) then love.filesystem.remove(paths.soul) end
+    if love.filesystem.getInfo(paths.soul2x) then love.filesystem.remove(paths.soul2x) end
+  end
+  return {x1 = paths.x1, x2 = paths.x2, soul = has_soul and paths.soul or nil, soul2x = has_soul and paths.soul2x or nil, w = d.w, h = d.h, kind = PX.state.kind}
+end
+
+function PX.save()
+  if not PX.doc then return end
+  local info = PX.export_files(PX.paths())
+  if not info then return end
+  local name = PX.atlas_name()
+  if name ~= "forge_preview" or PX.state.kind == "joker" then
+    local data = data_of(P.flatten(PX.doc, "art"), PX.doc.w, PX.doc.h)
+    if PX.doc.w == P.W and PX.doc.h == P.H then FJ.atlas_from_data(name, data) end
+  end
+  local t = PX.state.target
+  if t and t.kind == "creation" then
+    local c = Store.get(t.id)
+    if c then
+      local a = c.art or {}
+      local was = a.file
+      if a.file ~= info.x1 or a.file2x ~= info.x2 or a.soul ~= info.soul or a.kind ~= info.kind then
+        c.art = {file = info.x1, file2x = info.x2, soul = info.soul, soul2x = info.soul2x, kind = info.kind}
+        Store.put(c)
+        if was ~= info.x1 then
+          FJ.refresh(t.id)
+          PX.rebuild_preview = true
+        end
+      end
+    end
+  end
+  local B = rawget(_G, "ForgeBuilder")
+  if t and t.kind == "draft" and B and B.art_changed then pcall(B.art_changed, info.x1, info) end
+end
+
+function PX.export(target)
+  if target then PX.open_for(target) end
+  PX.ensure()
+  if not PX.doc then return nil end
+  ensure_dir("forge")
+  ensure_dir("forge/export")
+  local t = PX.state.target
+  local cr = t and t.kind == "creation" and Store.get(t.id)
+  local stem = tostring((cr and cr.name) or PX.state.kind):lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
+  if stem == "" then stem = "art" end
+  local info = PX.export_files({x1 = "forge/export/" .. stem .. ".png", x2 = "forge/export/" .. stem .. "_2x.png", soul = "forge/export/" .. stem .. "_soul.png", soul2x = "forge/export/" .. stem .. "_soul_2x.png"})
+  PX.notice_t = love.timer.getTime()
+  PX.notice = info and string.format(mod_loc("Saved in %s"), "forge/export/" .. stem .. ".png") or nil
+  return info
+end
+
+local Canvas = Moveable:extend()
+PX.Canvas = Canvas
+
+function Canvas:init(w, h)
+  Moveable.init(self, 0, 0, w, h)
+r 2 14 %20%20 -
+r 2 22 %20%20 -
+r 3 21 %20%20 -
+r 3 19 %20%20 -
+l 128
+  self.map = nil
+end
+
+local function doc_wh()
+  local d = PX.doc
+  if d then return d.w, d.h end
+  return P.W, P.H
+end
+
+function Canvas:pixel_size()
+  local w, h = doc_wh()
+  return math.min(self.T.w / w, self.T.h / h) * PX.ZOOMS[PX.state.zoom_i]
+end
+
+function Canvas:origin()
+  local ps = self:pixel_size()
+  local pan = PX.state.pan
+  local w, h = doc_wh()
+  return (self.T.w - w * ps) / 2 + pan.x * ps, (self.T.h - h * ps) / 2 + pan.y * ps, ps
+end
+
+function Canvas:local_of(sx, sy)
+  local m = self.map
+  if not m then return nil end
+  local c = G.CANV_SCALE or 1
+  return (sx * c - m.x) / m.k, (sy * c - m.y) / m.k
+end
+
+function Canvas:cursor_pixel(sx, sy)
+  if not sx then sx, sy = love.mouse.getPosition() end
+  local lx, ly = self:local_of(sx, sy)
+  if not lx then return nil end
+  local ox, oy, ps = self:origin()
+  return math.floor((lx - ox) / ps), math.floor((ly - oy) / ps), lx, ly
+end
+
+function Canvas:over()
+  local px, py, lx, ly = self:cursor_pixel()
+  if not px then return false end
+  return lx >= 0 and ly >= 0 and lx <= self.T.w and ly <= self.T.h, px, py, lx, ly
+end
+
+function Canvas:handle_pinch()
+  local ok, touches = pcall(love.touch.getTouches)
+  if not ok or not touches or #touches < 2 then
+    self.two_finger = nil
+    return
+  end
+  local ax, ay = love.touch.getPosition(touches[1])
+  local bx, by = love.touch.getPosition(touches[2])
+  ax, ay = self:local_of(ax, ay)
+  bx, by = self:local_of(bx, by)
+  if not ax then return end
+  local d = math.max(0.01, math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2))
+  local mx, my = (ax + bx) / 2, (ay + by) / 2
+  if self.stroke then
+    if self.stroke.began then P.cancel(PX.doc) end
+    self.stroke = nil
+    PX.sync_image()
+  end
+  self.pinching = true
+  if not self.two_finger then
+    self.two_finger = {d = d, x = mx, y = my, zoom = PX.ZOOMS[PX.state.zoom_i], pan = {x = PX.state.pan.x, y = PX.state.pan.y}}
+    return
+  end
+  local want = self.two_finger.zoom * d / self.two_finger.d
+  local best = 1
+  for i, z in ipairs(PX.ZOOMS) do if math.abs(z - want) < math.abs(PX.ZOOMS[best] - want) then best = i end end
+  PX.state.zoom_i = best
+  local ps = self:pixel_size()
+  PX.state.pan.x = self.two_finger.pan.x + (mx - self.two_finger.x) / ps
+  PX.state.pan.y = self.two_finger.pan.y + (my - self.two_finger.y) / ps
+  PX.clamp_pan()
+end
+
+function PX.clamp_pan()
+  local z = PX.ZOOMS[PX.state.zoom_i]
+  local w, h = doc_wh()
+  local lim_x, lim_y = w * (z - 1) / (2 * z) + 8, h * (z - 1) / (2 * z) + 8
+  if z == 1 then lim_x, lim_y = 0, 0 end
+  PX.state.pan.x = math.max(-lim_x, math.min(lim_x, PX.state.pan.x))
+  PX.state.pan.y = math.max(-lim_y, math.min(lim_y, PX.state.pan.y))
+end
+
+local function sel_edges(d)
+  local s = d.sel
+  if not s then return nil end
+  if PX.edges_for == s then return PX.edges end
+  local e = {}
+  local w = d.w
+  local m = s.mask
+  for i in pairs(m) do
+    local x, y = (i - 1) % w, math.floor((i - 1) / w)
+    if x == 0 or not m[i - 1] then e[#e + 1] = {x, y, x, y + 1} end
+    if x == w - 1 or not m[i + 1] then e[#e + 1] = {x + 1, y, x + 1, y + 1} end
+    if y == 0 or not m[i - w] then e[#e + 1] = {x, y, x + 1, y} end
+    if y == d.h - 1 or not m[i + w] then e[#e + 1] = {x, y + 1, x + 1, y + 1} end
+  end
+  PX.edges_for, PX.edges = s, e
+  return e
+end
+
+local function shape_points(st)
+  local pts = {}
+  local d = PX.doc
+  if st.tool == "line" or st.tool == "gradient" then
+    pts = P.line_points(st.x0, st.y0, st.x1, st.y1)
+  elseif st.tool == "box" or st.tool == "block" or st.tool == "select" then
+    local tmp = P.new(d.w, d.h)
+    P.rect(tmp, st.x0, st.y0, st.x1, st.y1, 1, st.tool == "block")
+    for i = 1, #tmp.px do if tmp.px[i] == 1 then pts[#pts + 1] = {(i - 1) % d.w, math.floor((i - 1) / d.w)} end end
+  elseif st.tool == "oval" or st.tool == "disc" then
+    pts = P.ellipse_points(st.x0, st.y0, st.x1, st.y1, st.tool == "disc")
+  elseif st.tool == "lasso" and st.pts then
+    for k = 1, #st.pts - 1 do
+      for _, q in ipairs(P.line_points(st.pts[k][1], st.pts[k][2], st.pts[k + 1][1], st.pts[k + 1][2])) do pts[#pts + 1] = q end
+    end
+  end
+  if PX.state.mirror and st.tool ~= "select" and st.tool ~= "lasso" and st.tool ~= "gradient" then
+    local n = #pts
+    for k = 1, n do pts[#pts + 1] = {d.w - 1 - pts[k][1], pts[k][2]} end
+  end
+  return pts
+end
+
+local BRUSHES = {pencil = "paint", eraser = "erase", dither = "dither", shade = "shade", light = "light"}
+
+function Canvas:draw()
+r 2 447 %20%20 -
+l 36
+  PX.ensure()
+  local d = PX.doc
+  prep_draw(self, 1)
+  local sx0, sy0 = love.graphics.transformPoint(0, 0)
+  local sx1 = love.graphics.transformPoint(1, 0)
+  self.map = {x = sx0, y = sy0, k = math.max(0.0001, sx1 - sx0)}
+  local w, h = self.T.w, self.T.h
+  local ex, ey = love.graphics.transformPoint(w, h)
+  love.graphics.push("all")
+  love.graphics.intersectScissor(math.floor(sx0), math.floor(sy0), math.max(1, math.ceil(ex - sx0)), math.max(1, math.ceil(ey - sy0)))
+  love.graphics.setColor(0.16, 0.19, 0.2, 1)
+  love.graphics.rectangle("fill", 0, 0, w, h)
+  local ox, oy, ps = self:origin()
+  local cell = ps * 4
+  love.graphics.setColor(0.22, 0.26, 0.27, 1)
+  for cy = 0, math.ceil(d.h / 4) - 1 do
+    for cx = 0, math.ceil(d.w / 4) - 1 do
+      if (cx + cy) % 2 == 0 then
+        love.graphics.rectangle("fill", ox + cx * cell, oy + cy * cell, math.min(cell, (d.w - cx * 4) * ps), math.min(cell, (d.h - cy * 4) * ps))
+      end
+    end
+  end
+  if PX.state.guide and PX.guide_image then
+    love.graphics.setColor(1, 1, 1, 0.22)
+    love.graphics.draw(PX.guide_image, ox, oy, 0, ps, ps)
+  end
+  love.graphics.setColor(1, 1, 1, 1)
+  if PX.image then love.graphics.draw(PX.image, ox, oy, 0, ps, ps) end
+  local st = self.stroke
+  if st and st.x1 and (st.tool == "line" or st.tool == "box" or st.tool == "block" or st.tool == "oval" or st.tool == "disc" or st.tool == "select" or st.tool == "lasso" or st.tool == "gradient") then
+    local col = (st.tool == "select" or st.tool == "lasso") and {1, 1, 1, 0.7} or rgba(PX.state.colour, 0.85)
+    love.graphics.setColor(col)
+    for _, p in ipairs(shape_points(st)) do love.graphics.rectangle("fill", ox + p[1] * ps, oy + p[2] * ps, ps, ps) end
+  end
+  if PX.state.grid and ps * self.map.k >= 5 then
+    love.graphics.setColor(0, 0, 0, 0.22)
+r 9 1006 %20%20%20%20 -
+l 6
+    love.graphics.setLineWidth(1 / self.map.k)
+    for x = 0, d.w do love.graphics.line(ox + x * ps, oy, ox + x * ps, oy + d.h * ps) end
+    for y = 0, d.h do love.graphics.line(ox, oy + y * ps, ox + d.w * ps, oy + y * ps) end
+  end
+  local edges = sel_edges(d)
+  if edges then
+r 9 1006 %20%20%20%20 -
+l 16
+    love.graphics.setLineWidth(2 / self.map.k)
+    local phase = math.floor((love.timer.getTime() * 4) % 2)
+    for k, e in ipairs(edges) do
+      if (k + phase) % 2 == 0 then love.graphics.setColor(1, 1, 1, 0.95) else love.graphics.setColor(0, 0, 0, 0.95) end
+      love.graphics.line(ox + e[1] * ps, oy + e[2] * ps, ox + e[3] * ps, oy + e[4] * ps)
+    end
+  end
+  if PX.state.mirror then
+    love.graphics.setColor(1, 1, 1, 0.35)
+    love.graphics.setLineWidth(0.02)
+    love.graphics.line(ox + d.w * ps / 2, oy, ox + d.w * ps / 2, oy + d.h * ps)
+  end
+  if PX.pad.on then
+    local b = (BRUSHES[PX.state.tool] and PX.state.brush) or 1
+    local lo = -math.floor((b - 1) / 2)
+    local blink = math.floor(love.timer.getTime() * 3) % 2 == 0
+r 9 1006 %20%20%20%20 -
+l 11
+    love.graphics.setLineWidth(2 / self.map.k)
+    love.graphics.setColor(blink and 1 or 0, blink and 1 or 0, blink and 1 or 0, 1)
+    love.graphics.rectangle("line", ox + (PX.pad.x + lo) * ps, oy + (PX.pad.y + lo) * ps, b * ps, b * ps)
+  end
+  love.graphics.pop()
+  love.graphics.setColor(G.C.WHITE[1], G.C.WHITE[2], G.C.WHITE[3], 0.6)
+  love.graphics.setLineWidth(0.03)
+  love.graphics.rectangle("line", 0, 0, w, h, 0.05, 0.05)
+  love.graphics.pop()
+  self:handle_pinch()
+  self:poll()
+r 2 461 %20%20 -
+l 137
+end
+
+function Canvas:apply(px, py, first)
+  local st = self.stroke
+  local s = PX.state
+  local d = PX.doc
+  local mode = BRUSHES[st.tool]
+  if mode then
+    local c = mode == "erase" and P.CLEAR or s.colour
+    local m = (mode == "erase" or mode == "paint") and "paint" or mode
+    if first or not st.lx then P.stamp(d, px, py, c, s.brush, m, st.seen) else P.stroke(d, st.lx, st.ly, px, py, c, s.brush, m, st.seen) end
+    st.lx, st.ly = px, py
+  elseif st.tool == "fill" then
+    if first then P.fill(d, px, py, s.colour, adv() and s.tol or 0, adv() and s.every) end
+  elseif st.tool == "picker" then
+    local c = P.get(d, px, py)
+    if c and c ~= P.CLEAR then s.colour = c; PX.colour_changed = true end
+  elseif st.tool == "wand" then
+    if first then P.select_wand(d, px, py, s.tol, s.every, st.sel_mode) end
+  elseif st.tool == "lasso" then
+    st.pts = st.pts or {}
+    local last = st.pts[#st.pts]
+    if not last or last[1] ~= px or last[2] ~= py then st.pts[#st.pts + 1] = {px, py} end
+    st.x1 = px
+  elseif st.tool == "move" then
+    if first then
+      st.x0, st.y0 = px, py
+      st.base = P.snapshot(d)
+    else
+      local snap = st.base
+      local src, dst = snap.layers[d.active], d.px
+      if src then for k = 1, #src.px do dst[k] = src.px[k] end end
+      d.sel = nil
+      if snap.sel then
+        local m = {}
+        for k in pairs(snap.sel.mask) do m[k] = true end
+        P.set_mask(d, m)
+      end
+      P.move(d, px - st.x0, py - st.y0)
+    end
+  else
+    if first then st.x0, st.y0 = px, py end
+    st.x1, st.y1 = px, py
+  end
+end
+
+local SEL_TOOLS = {select = true, lasso = true, wand = true}
+
+local function sel_mode()
+  if love.keyboard.isDown("lshift", "rshift") then return "add" end
+  if love.keyboard.isDown("lalt", "ralt") then return "subtract" end
+  return nil
+end
+
+function Canvas:drag()
+  if self.pinching or not PX.doc or PX.pad.on then return end
+  local px, py, lx, ly = self:cursor_pixel()
+  if not px then return end
+  self:drag_at(px, py, lx, ly)
+end
+
+function Canvas:drag_at(px, py, lx, ly)
+  local s = PX.state
+  if not self.stroke then
+    local tool = s.tool
+    if love.keyboard.isDown("space") then tool = "pan" end
+    self.stroke = {tool = tool, start_lx = lx, start_ly = ly, pan = {x = s.pan.x, y = s.pan.y}, seen = {}, sel_mode = sel_mode()}
+    if tool == "pan" then return end
+    if not SEL_TOOLS[tool] then
+      P.begin(PX.doc)
+      self.stroke.began = true
+    end
+    self:apply(px, py, true)
+    PX.sync_image()
+    return
+  end
+  if self.stroke.tool == "pan" then
+    local ps = self:pixel_size()
+    s.pan.x = self.stroke.pan.x + (lx - self.stroke.start_lx) / ps
+    s.pan.y = self.stroke.pan.y + (ly - self.stroke.start_ly) / ps
+    PX.clamp_pan()
+    return
+  end
+  self:apply(px, py, false)
+  if BRUSHES[self.stroke.tool] or self.stroke.tool == "move" then PX.sync_image() end
+end
+
+function Canvas:tap_paint()
+  local C = G.CONTROLLER
+  local down = C and C.cursor_down
+  if self.stroke or self.pinching or self.two_finger or not PX.doc or PX.pad.on then return end
+  if not (down and down.T and down.target == self) then return end
+  local k = G.TILESCALE * G.TILESIZE
+  local px, py, lx, ly = self:cursor_pixel(down.T.x * k, down.T.y * k)
+  if not px or lx < 0 or ly < 0 or lx > self.T.w or ly > self.T.h then return end
+  self:drag_at(px, py, lx, ly)
+end
+
+function Canvas:stop_drag()
+  pcall(self.tap_paint, self)
+  local st = self.stroke
+  self.stroke = nil
+  self.pinching = false
+  self.two_finger = nil
+  if not st or st.tool == "pan" or not PX.doc then return end
+  local d, s = PX.doc, PX.state
+  if st.x1 then
+    if st.tool == "line" then P.line(d, st.x0, st.y0, st.x1, st.y1, s.colour)
+    elseif st.tool == "box" then P.rect(d, st.x0, st.y0, st.x1, st.y1, s.colour)
+    elseif st.tool == "block" then P.rect(d, st.x0, st.y0, st.x1, st.y1, s.colour, true)
+    elseif st.tool == "oval" then P.ellipse(d, st.x0, st.y0, st.x1, st.y1, s.colour)
+    elseif st.tool == "disc" then P.ellipse(d, st.x0, st.y0, st.x1, st.y1, s.colour, true)
+    elseif st.tool == "gradient" then P.gradient(d, st.x0, st.y0, st.x1, st.y1, s.colour, s.colour2, s.grad, s.tol, s.every)
+    elseif st.tool == "select" then
+      if st.x0 == st.x1 and st.y0 == st.y1 and not st.sel_mode then P.select_none(d) else P.select_rect(d, st.x0, st.y0, st.x1, st.y1, st.sel_mode) end
+    elseif st.tool == "lasso" and st.pts then
+      if #st.pts < 3 and not st.sel_mode then P.select_none(d) else P.select_lasso(d, st.pts, st.sel_mode) end
+    end
+  end
+  if not st.began then
+    if PX.colour_changed then
+      PX.colour_changed = nil
+      PX.later(UIK.refresh)
+    end
+    return
+  end
+  if P.finish(d) then
+    PX.sync_image()
+    PX.save()
+    PX.later(PX.after_change)
+  elseif PX.colour_changed then
+    PX.colour_changed = nil
+    PX.later(UIK.refresh)
+  end
+end
+
+function Canvas:move(dt)
+r 2 655 %20%20 -
+l 328
+  if PX.pad.on then
+    local H = G.CONTROLLER and G.CONTROLLER.HID
+    if H and (H.mouse or H.touch) and not H.controller then
+      PX.pad_leave()
+    else
+      pcall(PX.pad_stick, dt)
+    end
+  end
+end
+
+function PX.pad_stick(dt)
+  local C = G.CONTROLLER
+  local gp = C and C.GAMEPAD and C.GAMEPAD.object
+  local d, cv = PX.doc, PX.canvas
+  if not (gp and d and cv and PX.active()) then return end
+  local x, y = gp:getGamepadAxis("leftx") or 0, gp:getGamepadAxis("lefty") or 0
+  local m = math.sqrt(x * x + y * y)
+  local acc = PX.pad.acc or {0, 0}
+  PX.pad.acc = acc
+  if m < 0.22 then acc[1], acc[2] = 0, 0 return end
+  local cs = Controls and Controls.modules and Controls.modules.cursor
+  local speed = 6 + 34 * ((m - 0.22) / 0.78) ^ 1.6
+  speed = speed * ((cs and cs.get() or 100) / 100) * math.max(1, math.max(d.w, d.h) / 64)
+  acc[1] = acc[1] + x / m * speed * dt
+  acc[2] = acc[2] + y / m * speed * dt
+  local sx = acc[1] >= 0 and math.floor(acc[1]) or math.ceil(acc[1])
+  local sy = acc[2] >= 0 and math.floor(acc[2]) or math.ceil(acc[2])
+  if sx == 0 and sy == 0 then return end
+  acc[1], acc[2] = acc[1] - sx, acc[2] - sy
+  PX.pad.x = math.max(0, math.min(d.w - 1, PX.pad.x + sx))
+  PX.pad.y = math.max(0, math.min(d.h - 1, PX.pad.y + sy))
+  PX.pad_follow()
+  if cv.stroke then
+    local lx, ly = PX.pad_local()
+    cv:drag_at(PX.pad.x, PX.pad.y, lx, ly)
+  end
+end
+
+function Canvas:poll()
+  local r = PX.doc and love.mouse.isDown(2) or false
+  if r and not self.r_down then pcall(PX.right_click, nil, nil, 2) end
+  self.r_down = r
+  if not (PX.doc and love.mouse.isDown(3)) then
+    self.mid = nil
+    return
+  end
+  local inside, _, _, lx, ly = self:over()
+  if not self.mid then
+    if inside then self.mid = {lx = lx, ly = ly, pan = {x = PX.state.pan.x, y = PX.state.pan.y}} end
+    return
+  end
+  if not lx then return end
+  local ps = self:pixel_size()
+  PX.state.pan.x = self.mid.pan.x + (lx - self.mid.lx) / ps
+  PX.state.pan.y = self.mid.pan.y + (ly - self.mid.ly) / ps
+  PX.clamp_pan()
+end
+
+function PX.later(f)
+  G.E_MANAGER:add_event(Event({blocking = false, blockable = false, pause_force = true, func = function()
+    f()
+    return true
+  end}))
+end
+
+function Canvas:click() end
+
+function PX.after_change()
+  local d = PX.doc
+  local stale = d and (P.can_undo(d) ~= PX.built_undo or P.can_redo(d) ~= PX.built_redo)
+  if PX.rebuild_preview or PX.colour_changed or stale or (adv() and PX.state.pal == "art") then
+    PX.rebuild_preview, PX.colour_changed = nil, nil
+    UIK.refresh()
+  end
+end
+
+local function sp(w, h) return {n = G.UIT.C, config = {minw = w or 0.1, minh = h}, nodes = {}} end
+
+local function line_of(nodes, w, pad)
+  return {n = G.UIT.R, config = {align = "cm", minw = w, padding = pad or 0.04}, nodes = nodes}
+end
+
+local function fit_scale(labels, w, base)
+  local sc = base
+  for _, label in ipairs(labels) do
+    local lw = UIK.text_w(label, sc)
+    if lw > w - 0.2 then sc = sc * (w - 0.2) / lw end
+  end
+  return sc
+end
+
+local function bh() return touch() and 0.72 or 0.56 end
+local function base_sc() return touch() and 0.4 or 0.36 end
+
+local function btn(o)
+  o.col = true
+  o.h = o.h or bh()
+  return UIK.button(o)
+end
+
+function PX.preview_node()
+  local k = PX.kind()
+  if not is_card(k) then
+    local s = (k.game or 1) * (touch() and 1.05 or 1)
+    local atlas = G.ASSET_ATLAS.forge_px_preview
+    local box = touch() and 2.1 or 2.2
+    if not atlas then return {n = G.UIT.R, config = {align = "cm", minw = box, minh = box}, nodes = {}} end
+    local spr = Sprite(0, 0, s, s, atlas, {x = 0, y = 0})
+    spr.states.drag.can = false
+    PX.preview_card = nil
+    return {n = G.UIT.R, config = {align = "cm", minw = box, minh = box, padding = 0}, nodes = {{n = G.UIT.O, config = {object = spr}}}}
+  end
+  local center = preview_center()
+  local s = adv() and 1 or (touch() and 0.82 or 0.86)
+  local w, h = G.CARD_W * s, G.CARD_H * s
+  local area = CardArea(G.ROOM.T.x, G.ROOM.T.y, w * 1.1, h, {card_limit = 1, type = "title", highlight_limit = 0})
+  local card = Card(area.T.x, area.T.y, w, h, nil, center)
+  card.forge_preview = true
+  local fsp = card.children.floating_sprite
+  if fsp and G.ASSET_ATLAS.forge_px_preview then
+    fsp.atlas = G.ASSET_ATLAS.forge_px_preview
+    fsp:set_sprite_pos({x = 1, y = 0})
+  end
+  local ed = adv() and PX.EDITIONS[PX.state.edition] or "base"
+  if ed ~= "base" then card:set_edition({[ed] = true}, true, true) end
+  area:emplace(card)
+  PX.preview_card = card
+  return {n = G.UIT.R, config = {align = "cm", minw = w * 1.1, minh = h, padding = 0}, nodes = {{n = G.UIT.O, config = {object = area}}}}
+end
+
+local function action_of(t) return t:sub(1, 1) == "@" and t:sub(2) or nil end
+
+local function act_off(act)
+  local d = PX.doc
+  if not d then return true end
+  if act == "soul" then return not PX.kind().soul or P.count_role(d, "soul") > 0 end
+  if act == "layer" then return P.count_role(d, "art") >= P.MAX_ART end
+  if act == "paste" then return not PX.clip end
+  if act == "deselect" then return not d.sel end
+  return false
+end
+
+local function tool_button(t, w, h, sc)
+  local act = action_of(t)
+  if act then
+    return btn{label = tool_label(t), button = "forge_px_act", ref_table = {act = act}, colour = UIK.C.accent, w = w, h = h, scale = sc, disabled = act_off(act), id = "forge_px_act_" .. act}
+  end
+  local on = PX.state.tool == t
+  return btn{label = tool_label(t), button = "forge_px_tool", ref_table = {tool = t}, colour = on and UIK.C.ok or UIK.C.off, w = w, h = h, scale = sc, id = "forge_px_tool_" .. t}
+end
+
+local function pair(a, b, w)
+  return line_of({a, sp(0.1), b}, w)
+end
+
+function PX.group_tools()
+  if not adv() then return PX.SIMPLE end
+  for _, g in ipairs(PX.GROUPS) do if g.key == PX.state.group then return g.tools end end
+  return PX.GROUPS[1].tools
+end
+
+local GROUP_LABELS = {draw = "Draw", shape = "Shapes", select = "Select", edit = "Edit"}
+
+local function all_tool_labels()
+  local out = {mod_loc("Undo"), mod_loc("Redo")}
+  if not adv() then
+    for _, t in ipairs(PX.SIMPLE) do out[#out + 1] = tool_label(t) end
+    return out
+  end
+  for _, g in ipairs(PX.GROUPS) do for _, t in ipairs(g.tools) do out[#out + 1] = tool_label(t) end end
+  return out
+end
+
+local function left_column(w, avail)
+  local bw = (w - 0.1) / 2 - 0.08
+  local n_tools = math.ceil(#PX.group_tools() / 2)
+  local units = 2 + n_tools + (adv() and 1.6 or 0)
+  local h = math.max(bh(), math.min(touch() and 0.82 or 0.7, ((avail or UIK.H) - 0.55) / units - 0.08))
+  local sc = fit_scale(all_tool_labels(), bw, base_sc())
+  local rows = {}
+  local mode_sc = fit_scale({mod_loc("Simple"), mod_loc("Advanced")}, bw, base_sc())
+  rows[#rows + 1] = pair(
+    btn{label = mod_loc("Simple"), button = "forge_px_mode", ref_table = {mode = "simple"}, colour = adv() and UIK.C.off or UIK.C.accent, w = bw, h = h, scale = mode_sc, id = "forge_px_mode_simple"},
+    btn{label = mod_loc("Advanced"), button = "forge_px_mode", ref_table = {mode = "advanced"}, colour = adv() and UIK.C.accent or UIK.C.off, w = bw, h = h, scale = mode_sc, id = "forge_px_mode_advanced"}, w)
+  if adv() then
+    local labels = {}
+    for _, g in ipairs(PX.GROUPS) do labels[#labels + 1] = mod_loc(GROUP_LABELS[g.key]) end
+    local gsc = fit_scale(labels, bw, base_sc())
+    local function gb(i)
+      local g = PX.GROUPS[i]
+      return btn{label = labels[i], button = "forge_px_group", ref_table = {group = g.key}, colour = PX.state.group == g.key and UIK.C.danger or UIK.C.off, w = bw, h = h * 0.8, scale = gsc, id = "forge_px_group_" .. g.key}
+    end
+    rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.06}, nodes = {}}
+    rows[#rows + 1] = pair(gb(1), gb(2), w)
+    rows[#rows + 1] = pair(gb(3), gb(4), w)
+    rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.06}, nodes = {}}
+  else
+    rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.06}, nodes = {}}
+  end
+  local list = PX.group_tools()
+  for i = 1, #list, 2 do
+    rows[#rows + 1] = pair(tool_button(list[i], bw, h, sc), list[i + 1] and tool_button(list[i + 1], bw, h, sc) or sp(bw), w)
+  end
+  local d = PX.doc
+  PX.built_undo, PX.built_redo = d and P.can_undo(d) or false, d and P.can_redo(d) or false
+  rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.08}, nodes = {}}
+  rows[#rows + 1] = pair(
+    btn{label = mod_loc("Undo"), button = "forge_px_undo", colour = UIK.C.accent, w = bw, h = h, scale = sc, disabled = not (d and P.can_undo(d)), id = "forge_px_undo"},
+    btn{label = mod_loc("Redo"), button = "forge_px_redo", colour = UIK.C.accent, w = bw, h = h, scale = sc, disabled = not (d and P.can_redo(d)), id = "forge_px_redo"}, w)
+  return {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0}, nodes = rows}
+end
+
+local function swatch(c, size, func, on)
+  return {n = G.UIT.C, config = {align = "cm", minw = size, minh = size, padding = 0.03}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", minw = size - 0.08, minh = size - 0.08, r = 0.05, colour = rgba(c), button = func or "forge_px_colour", ref_table = {c = c}, hover = true, shadow = true,
+      outline = on and 1.5 or nil, outline_colour = on and G.C.WHITE or nil}, nodes = {}},
+  }}
+end
+
+local function mine()
+  local s = settings()
+  s.forge_px_mine = s.forge_px_mine or {}
+  return s.forge_px_mine
+end
+
+function PX.palette()
+  local s = PX.state
+  if adv() and s.pal == "art" then return PX.doc and P.colours(PX.doc, 48) or {} end
+  if adv() and s.pal == "mine" then
+    local out = {}
+    for _, h in ipairs(mine()) do out[#out + 1] = P.hex(h) end
+    return out
+  end
+  return P.palette_colours()
+end
+
+local function palette_grid(w, per, size)
+  local rows, row = {}, {}
+  local list = PX.palette()
+  local func = (adv() and PX.state.pal == "mine" and PX.state.remove) and "forge_px_mine_remove" or "forge_px_colour"
+  for i, c in ipairs(list) do
+    row[#row + 1] = swatch(c, size, func, PX.state.colour == c)
+    if #row == per or i == #list then
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = row}
+      row = {}
+    end
+  end
+  local h = size * 4
+  if #list == 0 then
+    local msg = PX.state.pal == "mine" and mod_loc("Press + to keep colour A here") or mod_loc("Nothing drawn yet")
+    rows[1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {UIK.text(msg, {scale = 0.34, colour = UIK.C.muted, shadow = false})}}
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = rows}}}
+end
+
+local function chip(c, w, h, func, ref)
+  return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, r = 0.08, colour = rgba(c, 1), outline = 1, outline_colour = G.C.WHITE, button = func, ref_table = ref, hover = func and true or nil, shadow = func and true or nil}, nodes = {}}
+end
+
+local function stepper(label, func, w, h, minus_off, plus_off, id)
+  local aw = touch() and 0.62 or 0.5
+  local mw = w - 2 * aw - 0.1
+  local sc = fit_scale({label}, mw + 0.1, base_sc())
+  return line_of({
+    btn{label = "-", button = func, ref_table = {d = -1}, colour = UIK.C.arrow, w = aw, h = h, disabled = minus_off, id = id and (id .. "_minus") or nil},
+    sp(0.05),
+    {n = G.UIT.C, config = {align = "cm", minw = mw, minh = h, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes = {UIK.text(label, {scale = sc, colour = G.C.UI.TEXT_LIGHT})}},
+    sp(0.05),
+    btn{label = "+", button = func, ref_table = {d = 1}, colour = UIK.C.arrow, w = aw, h = h, disabled = plus_off, id = id and (id .. "_plus") or nil},
+  }, w)
+end
+
+local function flag_button(label, key, w, h, sc)
+  local on = PX.state[key]
+  return btn{label = label, button = "forge_px_flag", ref_table = {key = key}, colour = on and UIK.C.ok or UIK.C.off, w = w, h = h, scale = sc, id = "forge_px_flag_" .. key}
+end
+
+local function zoom_label()
+  local z = PX.ZOOMS[PX.state.zoom_i]
+  return string.format(mod_loc("Zoom x%s"), z == math.floor(z) and tostring(z) or string.format("%.1f", z))
+end
+
+local function view_rows(w, h)
+  local tw = (w - 0.2) / 3 - 0.02
+  local labels = {mod_loc("Mirror"), mod_loc("Grid"), mod_loc("Guide")}
+  local sc = fit_scale(labels, tw, base_sc())
+  return {
+    stepper(zoom_label(), "forge_px_zoom", w, h, PX.state.zoom_i <= 1, PX.state.zoom_i >= #PX.ZOOMS, "forge_px_zoom"),
+    line_of({flag_button(labels[1], "mirror", tw, h, sc), sp(0.05), flag_button(labels[2], "grid", tw, h, sc), sp(0.05), flag_button(labels[3], "guide", tw, h, sc)}, w),
+  }
+end
+
+local function brush_row(w, h)
+  return stepper(string.format(mod_loc("Brush %d"), PX.state.brush), "forge_px_brush", w, h, PX.state.brush <= 1, PX.state.brush >= PX.BRUSH_MAX, "forge_px_brush")
+end
+
+local function edition_name(e)
+  if e == "base" then return mod_loc("Base") end
+  local ok, s = pcall(localize, {type = "name_text", set = "Edition", key = "e_" .. e})
+  if ok and type(s) == "string" and s ~= "" and s ~= "ERROR" then return s end
+  return e:sub(1, 1):upper() .. e:sub(2)
+end
+
+local TOL_TOOLS = {fill = true, wand = true, gradient = true}
+
+local function options_rows(w, h)
+  local s = PX.state
+  local rows = {brush_row(w, h)}
+  if not TOL_TOOLS[s.tool] then return rows end
+  rows[#rows + 1] = stepper(string.format(mod_loc("Tolerance %d"), s.tol), "forge_px_tol", w, h, s.tol <= 0, s.tol >= 100, "forge_px_tol")
+  if s.tool ~= "gradient" then
+    rows[#rows + 1] = line_of({flag_button(mod_loc("Every match"), "every", w, h, fit_scale({mod_loc("Every match")}, w, base_sc()))}, w)
+    return rows
+  end
+  local half = (w - 0.1) / 2 - 0.03
+  local glabel = s.grad == "dither" and mod_loc("Dithered") or mod_loc("Smooth")
+  rows[#rows + 1] = line_of({
+    flag_button(mod_loc("Every match"), "every", half, h, fit_scale({mod_loc("Every match")}, half, base_sc())),
+    sp(0.06),
+    btn{label = glabel, button = "forge_px_grad", colour = UIK.C.accent, w = half, h = h, scale = fit_scale({mod_loc("Dithered"), mod_loc("Smooth")}, half, base_sc()), id = "forge_px_grad"},
+  }, w)
+  return rows
+end
+
+local function eye(i, visible, size)
+  local nodes = {}
+  if visible then
+    local check = Sprite(0, 0, size * 0.8, size * 0.8, G.ASSET_ATLAS["icons"], {x = 1, y = 0})
+r 15 1916 %20%20%20%20 -
+l 859
+    nodes[1] = {n = G.UIT.O, config = {object = check}}
+  end
+  return {n = G.UIT.C, config = {align = "cm", minw = size, minh = size, r = 0.1, colour = visible and G.C.RED or G.C.BLACK, outline = 1.2, outline_colour = G.C.WHITE, line_emboss = 0.5,
+    button = "forge_px_layer_eye", ref_table = {i = i}, hover = true, shadow = true, id = "forge_px_eye_" .. i}, nodes = nodes}
+end
+
+local function layer_rows(w, h)
+  local d = PX.doc
+  local rows = {}
+  local lh = touch() and 0.56 or 0.44
+  local ew = touch() and 0.62 or 0.5
+  local nw = w - ew - 0.1
+  local art_i = 0
+  local names = {}
+  for i, l in ipairs(d.layers) do
+    if l.role == "art" then art_i = art_i + 1; names[i] = string.format(mod_loc("Art %d"), art_i) else names[i] = mod_loc("Soul") end
+  end
+  for i = #d.layers, 1, -1 do
+    local l = d.layers[i]
+    local on = d.active == i
+    rows[#rows + 1] = line_of({
+      {n = G.UIT.C, config = {align = "cm", minw = ew, minh = lh, padding = 0}, nodes = {eye(i, l.visible, lh - 0.06)}},
+      sp(0.06),
+      btn{label = names[i], button = "forge_px_layer_pick", ref_table = {i = i}, colour = on and UIK.C.ok or (l.role == "soul" and UIK.C.purple or UIK.C.off), w = nw, h = lh, scale = 0.34, id = "forge_px_layer_" .. i},
+    }, w, 0.025)
+  end
+  local qw = (w - 0.2) / 4 - 0.02
+  local labels = {mod_loc("Up"), mod_loc("Down"), mod_loc("Merge"), mod_loc("Delete")}
+  local sc = fit_scale(labels, qw + 0.1, touch() and 0.32 or 0.3)
+  local acts = {"up", "down", "merge", "delete"}
+  local cells = {}
+  for i, a in ipairs(acts) do
+    if i > 1 then cells[#cells + 1] = sp(0.05) end
+    cells[#cells + 1] = btn{label = labels[i], button = "forge_px_layer_act", ref_table = {act = a}, colour = a == "delete" and UIK.C.danger or UIK.C.accent, w = qw, h = h * 0.85, scale = sc, id = "forge_px_layer_" .. a}
+  end
+  rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.05}, nodes = {}}
+  rows[#rows + 1] = line_of(cells, w)
+  return rows
+end
+
+local PANELS = {{key = "options", label = "Options"}, {key = "view", label = "View"}, {key = "layers", label = "Layers"}}
+
+local function panel(w)
+  local h = bh()
+  local rows = {}
+  if adv() then
+    local tw = (w - 0.2) / 3 - 0.02
+    local labels = {}
+    for _, p in ipairs(PANELS) do labels[#labels + 1] = mod_loc(p.label) end
+    local sc = fit_scale(labels, tw + 0.1, touch() and 0.34 or 0.3)
+    local cells = {}
+    for i, p in ipairs(PANELS) do
+      if i > 1 then cells[#cells + 1] = sp(0.05) end
+      cells[#cells + 1] = btn{label = labels[i], button = "forge_px_panel", ref_table = {panel = p.key}, colour = PX.state.panel == p.key and UIK.C.danger or UIK.C.off, w = tw, h = h * 0.8, scale = sc, id = "forge_px_panel_" .. p.key}
+    end
+    rows[#rows + 1] = line_of(cells, w, 0.05)
+    local body
+    if PX.state.panel == "layers" then body = layer_rows(w, h)
+    elseif PX.state.panel == "view" then
+      body = view_rows(w, h)
+      if is_card(PX.kind()) then
+        body[#body + 1] = stepper(edition_name(PX.EDITIONS[PX.state.edition]), "forge_px_edition", w, h, false, false, "forge_px_edition")
+      end
+    else body = options_rows(w, h) end
+    for _, r in ipairs(body) do rows[#rows + 1] = r end
+  else
+    local cw = touch() and 0.9 or 0.8
+    local aw = w - cw - 0.15
+    rows[#rows + 1] = line_of({chip(PX.state.colour, cw, h), sp(0.15), btn{label = mod_loc("Any colour"), button = "forge_px_mix", colour = UIK.C.accent, w = aw, h = h, scale = fit_scale({mod_loc("Any colour")}, aw, base_sc()), id = "forge_px_mix"}}, w)
+    rows[#rows + 1] = brush_row(w, h)
+    for _, r in ipairs(view_rows(w, h)) do rows[#rows + 1] = r end
+  end
+  return {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0}, nodes = rows}
+end
+
+local function colour_row(w)
+  local h = bh()
+  local s = PX.state
+  local cw = touch() and 0.66 or 0.56
+  local srcs = {balatro = "Balatro", art = "This art", mine = "Mine"}
+  local rest = w - 2 * cw - 0.5
+  local bw = rest / 3 - 0.04
+  local sc = fit_scale({mod_loc("Swap"), mod_loc("Any colour"), mod_loc("Balatro"), mod_loc("This art"), mod_loc("Mine")}, bw, base_sc())
+  local nodes = {
+    chip(s.colour, cw, h, "forge_px_swap"),
+    sp(0.06),
+    chip(s.colour2, cw * 0.8, h * 0.8, "forge_px_swap"),
+    sp(0.12),
+    btn{label = mod_loc("Swap"), button = "forge_px_swap", colour = UIK.C.accent, w = bw, h = h, scale = sc, id = "forge_px_swap"},
+    sp(0.06),
+    btn{label = mod_loc("Any colour"), button = "forge_px_mix", colour = UIK.C.accent, w = bw, h = h, scale = sc, id = "forge_px_mix"},
+    sp(0.06),
+    btn{label = mod_loc(srcs[s.pal] or "Balatro"), button = "forge_px_pal", colour = UIK.C.purple, w = bw, h = h, scale = sc, id = "forge_px_pal"},
+  }
+  local out = {line_of(nodes, w)}
+  if s.pal == "mine" then
+    local hw = (w - 0.1) / 2 - 0.08
+    local msc = fit_scale({mod_loc("+ Add colour A"), mod_loc("Remove")}, hw, base_sc())
+    out[2] = line_of({
+      btn{label = mod_loc("+ Add colour A"), button = "forge_px_mine_add", colour = UIK.C.ok, w = hw, h = h * 0.85, scale = msc, disabled = #mine() >= PX.MINE_MAX, id = "forge_px_mine_add"},
+      sp(0.1),
+      btn{label = mod_loc("Remove"), button = "forge_px_flag", ref_table = {key = "remove"}, colour = s.remove and UIK.C.danger or UIK.C.off, w = hw, h = h * 0.85, scale = msc, id = "forge_px_mine_remove"},
+    }, w)
+  end
+  return out
+end
+
+local function right_column(w, stacked)
+  local per = stacked and 8 or 10
+  local size = math.min(touch() and 0.58 or 0.52, (w - 0.1) / per)
+  local rows = {}
+  if adv() then
+    for _, r in ipairs(colour_row(w)) do rows[#rows + 1] = r end
+  end
+  rows[#rows + 1] = palette_grid(w, per, size)
+  rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.1}, nodes = {}}
+  local card = PX.preview_node()
+  local cw = adv() and G.CARD_W * 1.1 or (touch() and 2.15 or 2.2)
+  local pw = w - cw - 0.15
+  if stacked then
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", minw = cw, padding = 0}, nodes = {card}}}}
+    rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.1}, nodes = {}}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "tm", minw = w, padding = 0}, nodes = {panel(w)}}
+  else
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "tm", minw = w, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = "tm", minw = cw, padding = 0}, nodes = {card}},
+      sp(0.15),
+      panel(pw),
+    }}
+  end
+  if PX.notice and love.timer.getTime() - (PX.notice_t or 0) < 8 then
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {UIK.text(PX.notice, {scale = 0.3, colour = UIK.C.muted, shadow = false})}}
+  end
+  return {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0}, nodes = rows}
+end
+
+function PX.tall()
+  return UIK.H > UIK.W
+end
+
+local function tall_tab()
+  local vh = UIK.H * 0.44
+  local vw = math.min(UIK.W - 0.4, vh * P.W / P.H)
+  vh = vw * P.H / P.W
+  local lw = UIK.W * 0.44
+  local rw = UIK.W - lw - 0.3
+  PX.canvas = Canvas(vw, vh)
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.O, config = {object = PX.canvas, id = "forge_px_canvas", focus_args = {type = "pixel_canvas"}}}}},
+    {n = G.UIT.R, config = {minh = 0.2}, nodes = {}},
+    {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {left_column(lw, UIK.H - vh - 0.2), sp(0.3), right_column(rw, true)}},
+  }}}}
+end
+
+function PX.tab()
+  PX.init()
+  PX.ensure()
+  if PX.tall() then return tall_tab() end
+  local vh = UIK.H - 0.35
+  local vw = vh * P.W / P.H
+  local lw = touch() and 3.8 or 3.6
+  local rw = UIK.W - lw - vw - 0.6
+  PX.canvas = Canvas(vw, vh)
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+    left_column(lw),
+    sp(0.3),
+    {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {{n = G.UIT.O, config = {object = PX.canvas, id = "forge_px_canvas", focus_args = {type = "pixel_canvas"}}}}},
+    sp(0.3),
+    right_column(rw),
+  }}
+end
+
+function PX.footer()
+  local t = PX.state.target
+  local list = {UIK.button{label = mod_loc("START FROM"), button = "forge_px_start", colour = UIK.C.accent}}
+  if adv() then list[#list + 1] = UIK.button{label = mod_loc("EXPORT"), button = "forge_px_export", colour = UIK.C.accent} end
+  if t and t.kind == "draft" then
+    list[#list + 1] = UIK.button{label = mod_loc("BACK TO THE BUILDER"), button = "forge_px_to_builder", colour = UIK.C.ok}
+  elseif not (t and t.kind == "creation") and PX.state.kind == "joker" then
+    list[#list + 1] = UIK.button{label = mod_loc("MAKE A JOKER"), button = "forge_px_make", colour = UIK.C.ok}
+  end
+  return list
+end
+
+function PX.open_for(target)
+  PX.doc = nil
+  PX.load_target(target)
+  if JokerForge and JokerForge.ui then JokerForge.ui.reopen("pixel") end
+end
+
+local function changed()
+  PX.sync_image()
+  PX.save()
+  UIK.refresh()
+end
+
+local function edit(f)
+  local d = PX.doc
+  if not d then return false end
+  P.begin(d)
+  f(d)
+  if P.finish(d) then
+    changed()
+    return true
+  end
+  UIK.refresh()
+  return false
+end
+PX.edit = edit
+
+local function refresh_footer()
+  local U = JokerForge and JokerForge.ui
+  if U and U.refresh_footer then pcall(U.refresh_footer) end
+end
+
+G.FUNCS.forge_px_mode = function(e)
+  local m = e and e.config and e.config.ref_table and e.config.ref_table.mode
+  if not m or m == PX.mode() then return end
+  settings().forge_px_mode = m
+  if m == "simple" then
+    local ok = false
+    for _, t in ipairs(PX.SIMPLE) do if t == PX.state.tool then ok = true end end
+    if not ok then PX.state.tool = "pencil" end
+  end
+  if G.save_settings then pcall(G.save_settings, G) end
+  UIK.refresh()
+  refresh_footer()
+end
+
+G.FUNCS.forge_px_group = function(e)
+  local g = e and e.config and e.config.ref_table and e.config.ref_table.group
+  if not g then return end
+  PX.state.group = g
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_panel = function(e)
+  local p = e and e.config and e.config.ref_table and e.config.ref_table.panel
+  if not p then return end
+  PX.state.panel = p
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_tool = function(e)
+  local t = e and e.config and e.config.ref_table and e.config.ref_table.tool
+  if not t then return end
+  PX.state.tool = t
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_colour = function(e)
+  local c = e and e.config and e.config.ref_table and e.config.ref_table.c
+  if not c then return end
+  PX.state.colour = c
+  local t = PX.state.tool
+  if t == "eraser" or t == "picker" or t == "pan" or t == "move" or SEL_TOOLS[t] then PX.state.tool = "pencil" end
+  play_sound("button", 1.1, 0.4)
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_swap = function()
+  local s = PX.state
+  s.colour, s.colour2 = s.colour2, s.colour
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_pal = function()
+  local order = {balatro = "art", art = "mine", mine = "balatro"}
+  PX.state.pal = order[PX.state.pal] or "balatro"
+  PX.state.remove = false
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_mine_add = function()
+  local list = mine()
+  local h = P.to_hex(PX.state.colour)
+  for _, v in ipairs(list) do if v == h then return end end
+  if #list >= PX.MINE_MAX then return end
+  list[#list + 1] = h
+  if G.save_settings then pcall(G.save_settings, G) end
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_mine_remove = function(e)
+  local c = e and e.config and e.config.ref_table and e.config.ref_table.c
+  if not c then return end
+  local list = mine()
+  local h = P.to_hex(c)
+  for i, v in ipairs(list) do if v == h then table.remove(list, i); break end end
+  if #list == 0 then PX.state.remove = false end
+  if G.save_settings then pcall(G.save_settings, G) end
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_flag = function(e)
+  local k = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not k then return end
+  PX.state[k] = not PX.state[k]
+  if k == "mirror" and PX.doc then PX.doc.mirror = PX.state.mirror end
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_brush = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  PX.state.brush = math.max(1, math.min(PX.BRUSH_MAX, PX.state.brush + d))
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_tol = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  PX.state.tol = math.max(0, math.min(100, PX.state.tol + d * 5))
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_grad = function()
+  PX.state.grad = PX.state.grad == "dither" and "smooth" or "dither"
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_edition = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  PX.state.edition = (PX.state.edition - 1 + d) % #PX.EDITIONS + 1
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_undo = function() if PX.doc and P.undo_step(PX.doc) then changed() end end
+G.FUNCS.forge_px_redo = function() if PX.doc and P.redo_step(PX.doc) then changed() end end
+
+G.FUNCS.forge_px_flip = function() edit(P.flip) end
+
+local ACTS = {
+  flip = function() edit(P.flip) end,
+  flip_v = function() edit(P.flip_v) end,
+  rotate = function() edit(P.rotate) end,
+  outline = function() edit(function(d) P.outline(d, PX.state.colour) end) end,
+  clear = function() edit(function(d) P.clear(d) end) end,
+  copy = function() if PX.doc then PX.clip = P.copy(PX.doc); UIK.refresh() end end,
+  cut = function() edit(function(d) PX.clip = P.cut(d) end) end,
+  paste = function()
+    if not PX.clip then return end
+    edit(function(d) P.paste(d, PX.clip) end)
+    PX.state.tool = "move"
+    UIK.refresh()
+  end,
+  deselect = function() if PX.doc then P.select_none(PX.doc); UIK.refresh() end end,
+  layer = function() edit(function(d) P.add_layer(d, "art") end); PX.state.panel = "layers"; UIK.refresh() end,
+  soul = function()
+    if not PX.kind().soul then return end
+    edit(function(d) P.add_layer(d, "soul") end)
+    PX.state.panel = "layers"
+    UIK.refresh()
+  end,
+  import = function() G.FUNCS.forge_px_import() end,
+}
+PX.ACTS = ACTS
+
+G.FUNCS.forge_px_act = function(e)
+  local a = e and e.config and e.config.ref_table and e.config.ref_table.act
+  local f = a and ACTS[a]
+  if f then f() end
+end
+
+G.FUNCS.forge_px_layer_eye = function(e)
+  local i = e and e.config and e.config.ref_table and e.config.ref_table.i
+  local d = PX.doc
+  if not (i and d and d.layers[i]) then return end
+  edit(function() d.layers[i].visible = not d.layers[i].visible end)
+end
+
+G.FUNCS.forge_px_layer_pick = function(e)
+  local i = e and e.config and e.config.ref_table and e.config.ref_table.i
+  local d = PX.doc
+  if not (i and d and d.layers[i]) then return end
+  d.active = i
+  P.relink(d)
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_layer_act = function(e)
+  local a = e and e.config and e.config.ref_table and e.config.ref_table.act
+  local d = PX.doc
+  if not (a and d) then return end
+  if a == "up" then edit(function() P.move_layer(d, d.active, 1) end)
+  elseif a == "down" then edit(function() P.move_layer(d, d.active, -1) end)
+  elseif a == "merge" then edit(function() P.merge_down(d) end)
+  elseif a == "delete" then edit(function() P.delete_layer(d) end) end
+end
+
+function PX.zoom_to(i, lx, ly)
+  local cv = PX.canvas
+  i = math.max(1, math.min(#PX.ZOOMS, i))
+  if i == PX.state.zoom_i then return false end
+  if cv and lx then
+    local ox, oy, ps = cv:origin()
+    local qx, qy = (lx - ox) / ps, (ly - oy) / ps
+    PX.state.zoom_i = i
+    local w, h = doc_wh()
+    local ps2 = cv:pixel_size()
+    PX.state.pan.x = (lx - qx * ps2 - (cv.T.w - w * ps2) / 2) / ps2
+    PX.state.pan.y = (ly - qy * ps2 - (cv.T.h - h * ps2) / 2) / ps2
+  else
+    PX.state.zoom_i = i
+  end
+  PX.clamp_pan()
+  return true
+end
+
+G.FUNCS.forge_px_zoom = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  PX.zoom_to(PX.state.zoom_i + d)
+  PX.clamp_pan()
+  UIK.refresh()
+end
+
+PX.mix = PX.mix or {r = 0, g = 0, b = 0}
+PX.mix_col = PX.mix_col or {0, 0, 0, 1}
+
+G.FUNCS.forge_px_mix = function()
+  local r, g, b = P.unpack(PX.state.colour)
+  PX.mix.r, PX.mix.g, PX.mix.b = r, g, b
+  local function cb()
+    PX.state.colour = P.pack(PX.mix.r, PX.mix.g, PX.mix.b, 255)
+    PX.mix_col[1], PX.mix_col[2], PX.mix_col[3] = PX.mix.r / 255, PX.mix.g / 255, PX.mix.b / 255
+  end
+  cb()
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_mix", compact = true, w = 7, keep_w = true, title = mod_loc("ANY COLOUR"),
+    tabs = {{key = "a", label = "", build = function()
+      return UIK.stack({
+        {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {{n = G.UIT.C, config = {align = "cm", minw = 2.4, minh = touch() and 0.8 or 0.64, r = 0.1, colour = PX.mix_col, outline = 1, outline_colour = G.C.WHITE}, nodes = {}}}},
+        UIK.slider{label = mod_loc("Red"), ref_table = PX.mix, ref_value = "r", min = 0, max = 255, w = 6.4, callback = cb},
+        UIK.slider{label = mod_loc("Green"), ref_table = PX.mix, ref_value = "g", min = 0, max = 255, w = 6.4, callback = cb},
+        UIK.slider{label = mod_loc("Blue"), ref_table = PX.mix, ref_value = "b", min = 0, max = 255, w = 6.4, callback = cb},
+      }, {w = 6.6})
+    end}},
+    back_func = "forge_px_back", back_inline = true,
+    footer = {UIK.button{label = mod_loc("USE IT"), button = "forge_px_mix_done", colour = UIK.C.ok}},
+  }}
+end
+
+G.FUNCS.forge_px_mix_done = function()
+  PX.state.colour = P.pack(PX.mix.r, PX.mix.g, PX.mix.b, 255)
+  local t = PX.state.tool
+  if t == "eraser" or t == "picker" or t == "pan" or t == "move" or SEL_TOOLS[t] then PX.state.tool = "pencil" end
+  G.FUNCS.forge_px_back()
+end
+
+G.FUNCS.forge_px_back = function()
+  if JokerForge and JokerForge.ui then JokerForge.ui.reopen("pixel") end
+end
+
+local function locked_kind()
+  local t = PX.state.target
+  return t and (t.kind == "creation" or t.kind == "draft")
+end
+
+local function kind_index(key)
+  for i, k in ipairs(PX.KINDS) do if k.key == key then return i end end
+  return 1
+end
+
+local function start_dialog_body()
+  local w = touch() and 9.4 or 9
+  local pick = PX.state.pick_kind or PX.state.kind
+  local k = PX.kind(pick)
+  local list = PX.sprites(k.key)
+  local per_row, rows_n = 8, 2
+  local per = per_row * rows_n
+  local pages = math.max(1, math.ceil(#list / per))
+  PX.state.picker_page = math.min(math.max(1, PX.state.picker_page or 1), pages)
+  local first = (PX.state.picker_page - 1) * per
+  local sw, sh = 0.95, 0.95 * 95 / 71
+  if not is_card(k) then sw, sh = 0.95, 0.95 end
+  local rows = {}
+  for r = 0, rows_n - 1 do
+    local cells = {}
+    for c = 1, per_row do
+      local s = list[first + r * per_row + c]
+      if s then
+        local atlas = find_atlas(s.atlas)
+        if atlas then
+          local spr = Sprite(0, 0, sw, sh, atlas, s.pos)
+          spr.states.drag.can = false
+          cells[#cells + 1] = {n = G.UIT.C, config = {align = "cm", padding = 0.04, button = "forge_px_from_sprite", ref_table = {i = first + r * per_row + c}, hover = true, r = 0.05, colour = G.C.CLEAR}, nodes = {
+            {n = G.UIT.O, config = {object = spr}},
+          }}
+        end
+      end
+    end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = cells}
+  end
+  local bw = touch() and 2.8 or 2.6
+  local blank_label = mod_loc(k.empty_blank and "Empty" or (is_card(k) and "Blank card" or "Blank"))
+  local ssc = fit_scale({blank_label, mod_loc("Empty"), mod_loc("Import picture")}, bw, touch() and 0.45 or 0.42)
+  local kind_row
+  if locked_kind() then
+    kind_row = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {UIK.text(mod_loc(k.label), {scale = 0.45, colour = UIK.C.text})}}
+  else
+    kind_row = UIK.pager{prev = "forge_px_pick_kind", next = "forge_px_pick_kind", prev_ref = {d = -1}, next_ref = {d = 1}, text = mod_loc(k.label), w = w}
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0.05}, nodes = {
+    kind_row,
+    {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {
+      UIK.button{label = blank_label, button = "forge_px_from", ref_table = {src = "blank"}, colour = UIK.C.accent, w = bw, col = true, scale = ssc, id = "forge_px_from_blank"},
+      sp(0.2),
+      UIK.button{label = mod_loc("Empty"), button = "forge_px_from", ref_table = {src = "empty"}, colour = UIK.C.accent, w = bw, col = true, scale = ssc, id = "forge_px_from_empty"},
+      sp(0.2),
+      UIK.button{label = mod_loc("Import picture"), button = "forge_px_from", ref_table = {src = "import"}, colour = UIK.C.accent, w = bw, col = true, scale = ssc, id = "forge_px_from_import"},
+    }},
+    {n = G.UIT.R, config = {align = "cm", padding = 0.02, portrait_keep = true}, nodes = {UIK.text(PX.import_where(), {scale = fit_scale({PX.import_where()}, w, 0.3), colour = UIK.C.muted, shadow = false})}},
+    {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {UIK.text(mod_loc("Or start from the game's art:"), {scale = 0.4, colour = UIK.C.muted, shadow = false})}},
+    {n = G.UIT.R, config = {align = "cm", minh = 2 * (math.max(sh, 0.95 * 95 / 71) + 0.08), padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = rows}}},
+    pages > 1 and UIK.pager{prev = "forge_px_pick_page", next = "forge_px_pick_page", prev_ref = {d = -1}, next_ref = {d = 1}, text = string.format(mod_loc("Page %d of %d"), PX.state.picker_page, pages), w = w} or nil,
+  }}}}
+end
+
+G.FUNCS.forge_px_start = function()
+  PX.state.pick_kind = PX.state.kind
+  PX.state.picker_page = 1
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_px_start", compact = true, w = touch() and 9.6 or 9.2, keep_w = true, title = mod_loc("START FROM"),
+    tabs = {{key = "a", label = "", build = start_dialog_body}},
+    back_func = "forge_px_back",
+  }}
+end
+
+G.FUNCS.forge_px_pick_kind = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  local i = kind_index(PX.state.pick_kind or PX.state.kind)
+  PX.state.pick_kind = PX.KINDS[(i - 1 + d) % #PX.KINDS + 1].key
+  PX.state.picker_page = 1
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_pick_page = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  local pages = math.max(1, math.ceil(#PX.sprites(PX.state.pick_kind or PX.state.kind) / 16))
+  PX.state.picker_page = ((PX.state.picker_page or 1) - 1 + d) % pages + 1
+  UIK.refresh()
+end
+
+local function replace_doc(doc, kind_key)
+  if not doc then return end
+  PX.ensure()
+  kind_key = kind_key or PX.state.kind
+  PX.state.zoom_i, PX.state.pan = 1, {x = 0, y = 0}
+  if kind_key ~= PX.state.kind or not PX.doc or doc.w ~= PX.doc.w or doc.h ~= PX.doc.h then
+    PX.state.kind = kind_key
+    doc.undo, doc.redo = {}, {}
+    doc.mirror = PX.state.mirror
+    PX.doc = doc
+    PX.build_guide()
+    PX.sync_image()
+    PX.save()
+    return
+  end
+  local d = PX.doc
+  P.begin(d)
+  d.layers = {{name = "art", role = "art", px = doc.px, visible = true}}
+  d.active, d.sel = 1, nil
+  P.relink(d)
+  if P.finish(d) then
+    PX.sync_image()
+    PX.save()
+  end
+end
+PX.replace_doc = replace_doc
+
+G.FUNCS.forge_px_from = function(e)
+  local src = e and e.config and e.config.ref_table and e.config.ref_table.src
+  local key = PX.state.pick_kind or PX.state.kind
+  if src == "import" then
+    PX.state.kind_after_import = key
+    return G.FUNCS.forge_px_import()
+  end
+  PX.ensure()
+  local w, h = kind_size(PX.kind(key))
+  if src == "blank" then replace_doc(PX.blank_of(key), key) elseif src == "empty" then replace_doc(P.new(w, h), key) end
+  G.FUNCS.forge_px_back()
+end
+
+G.FUNCS.forge_px_from_sprite = function(e)
+  local i = e and e.config and e.config.ref_table and e.config.ref_table.i
+  local key = PX.state.pick_kind or PX.state.kind
+  local s = i and PX.sprites(key)[i]
+  PX.ensure()
+  if s then replace_doc(sprite_of(key, s), key) end
+  G.FUNCS.forge_px_back()
+end
+
+G.FUNCS.forge_px_from_joker = function(e)
+  local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+  local c = key and G.P_CENTERS[key]
+  PX.ensure()
+  if c then replace_doc(PX.sprite_data(c.atlas or "Joker", c.pos), "joker") end
+  G.FUNCS.forge_px_back()
+end
+
+function PX.load_data(data)
+  PX.ensure()
+  if not data then return end
+  local doc = P.from_image_data(data)
+  if PX.doc and (doc.w ~= PX.doc.w or doc.h ~= PX.doc.h) then
+    doc = P.fit(doc.px, doc.w, doc.h, PX.doc.w, PX.doc.h)
+  end
+  replace_doc(doc)
+end
+
+function PX.import_data(data, snap)
+  PX.ensure()
+  if not data then return false end
+  local key = PX.state.kind_after_import or PX.state.kind
+  PX.state.kind_after_import = nil
+  local w, h = kind_size(PX.kind(key))
+  local src = P.from_image_data(data)
+  local doc = P.fit(src.px, src.w, src.h, w, h, snap and P.palette_colours() or nil)
+  replace_doc(doc, key)
+  return true
+end
+
+PX.IMPORT_DIR = "forge/import"
+
+function PX.import_where()
+  if love.system.getOS() == "Android" then return mod_loc("File picker > Balatro Overhaul > forge > import") end
+  return love.filesystem.getSaveDirectory() .. "/" .. PX.IMPORT_DIR
+end
+
+function PX.import_files()
+  ensure_dir("forge")
+  ensure_dir(PX.IMPORT_DIR)
+  local out = {}
+  for _, f in ipairs(love.filesystem.getDirectoryItems(PX.IMPORT_DIR) or {}) do
+    local l = f:lower()
+    if l:match("%.png$") or l:match("%.jpe?g$") or l:match("%.bmp$") or l:match("%.tga$") then out[#out + 1] = f end
+  end
+  table.sort(out)
+  return out
+end
+
+local function import_body()
+  local w = touch() and 9.4 or 9
+  local files = PX.import_files()
+  local per = 6
+  local pages = math.max(1, math.ceil(#files / per))
+  PX.state.import_page = math.min(math.max(1, PX.state.import_page or 1), pages)
+  local first = (PX.state.import_page - 1) * per
+  local bw = (w - 0.4) / 2 - 0.1
+  local rows = {}
+  for r = 0, 2 do
+    local a, b = files[first + r * 2 + 1], files[first + r * 2 + 2]
+    if a and not b then
+      rows[#rows + 1] = line_of({UIK.button{label = a, button = "forge_px_import_file", ref_table = {f = a}, colour = UIK.C.accent, w = bw, col = true, scale = fit_scale({a}, bw, base_sc())}}, w)
+    elseif a then
+      rows[#rows + 1] = line_of({
+        UIK.button{label = a, button = "forge_px_import_file", ref_table = {f = a}, colour = UIK.C.accent, w = bw, col = true, scale = fit_scale({a}, bw, base_sc())},
+        sp(0.2),
+        b and UIK.button{label = b, button = "forge_px_import_file", ref_table = {f = b}, colour = UIK.C.accent, w = bw, col = true, scale = fit_scale({b}, bw, base_sc())} or sp(bw),
+      }, w)
+    end
+  end
+  if #files == 0 then rows[1] = {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {UIK.text(mod_loc("No pictures yet"), {scale = 0.4, colour = UIK.C.muted, shadow = false})}} end
+  local dir = PX.import_where()
+  local msg = PX.import_msg
+  local msg_rows = {}
+  for i, l in ipairs(msg and not (PORTRAIT and PORTRAIT.on()) and UIK.wrap(msg.text, 0.36, w - 0.2, 3) or {}) do
+    msg_rows[i] = {n = G.UIT.R, config = {align = "cm"}, nodes = {UIK.text(l, {scale = fit_scale({l}, w, 0.36), colour = msg.colour or UIK.C.text, shadow = false})}}
+  end
+  local nodes = {
+    {n = G.UIT.R, config = {align = "cm", padding = msg and 0.03 or 0}, nodes = {msg and (msg_rows[1] and {n = G.UIT.C, config = {align = "cm"}, nodes = msg_rows} or UIK.text(msg.text, {scale = 0.36, colour = msg.colour or UIK.C.text, shadow = false})) or nil}},
+    {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {UIK.text(touch() and mod_loc("Put a picture in this folder:") or mod_loc("Drop a picture on the game window, or put it in this folder:"), {scale = 0.36, colour = UIK.C.text, shadow = false})}},
+    {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {UIK.text(dir, {scale = fit_scale({dir}, w, 0.3), colour = UIK.C.muted, shadow = false})}},
+    {n = G.UIT.R, config = {align = "cm", minh = 3 * ((touch() and 0.9 or 0.78) + 0.08), padding = 0.04}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = rows}}},
+    pages > 1 and UIK.pager{prev = "forge_px_import_page", next = "forge_px_import_page", prev_ref = {d = -1}, next_ref = {d = 1}, text = string.format(mod_loc("Page %d of %d"), PX.state.import_page, pages), w = w} or nil,
+    UIK.toggle{label = mod_loc("Balatro colours"), ref_table = PX.state, ref_value = "snap", w = w},
+  }
+  return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0.05}, nodes = nodes}}}
+end
+
+local function file_picker()
+  local ok, FP = pcall(require, "functions/file_picker")
+  return ok and type(FP) == "table" and FP or nil
+end
+
+PX.IMPORT_MAX = 10 * 1024 * 1024
+
+G.FUNCS.forge_px_import = function(e)
+  if not (e and e.keep_msg) then PX.import_msg = nil end
+  PX.state.import_page = 1
+  local footer = {}
+  local FP = file_picker()
+  if FP and FP.browse_available() then footer[#footer + 1] = UIK.button{label = mod_loc("PICK A FILE"), button = "forge_px_import_pick", colour = UIK.C.ok} end
+  if not touch() then footer[#footer + 1] = UIK.button{label = mod_loc("OPEN THE FOLDER"), button = "forge_px_import_open", colour = UIK.C.accent} end
+  PX.import_open = true
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_px_import", compact = true, w = touch() and 9.6 or 9.2, keep_w = true, title = mod_loc("IMPORT A PICTURE"),
+    tabs = {{key = "a", label = "", build = import_body}},
+    back_func = "forge_px_import_back", back_inline = #footer > 0,
+    footer = #footer > 0 and footer or nil,
+  }}
+end
+
+G.FUNCS.forge_px_import_back = function()
+  PX.import_open = nil
+  PX.state.kind_after_import = nil
+  G.FUNCS.forge_px_back()
+end
+
+G.FUNCS.forge_px_import_page = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  local pages = math.max(1, math.ceil(#PX.import_files() / 6))
+  PX.state.import_page = ((PX.state.import_page or 1) - 1 + d) % pages + 1
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_import_open = function()
+  ensure_dir("forge")
+  ensure_dir(PX.IMPORT_DIR)
+  love.system.openURL("file://" .. love.filesystem.getSaveDirectory() .. "/" .. PX.IMPORT_DIR)
+end
+
+G.FUNCS.forge_px_import_pick = function()
+  local FP = file_picker()
+  ensure_dir("forge")
+  ensure_dir(PX.IMPORT_DIR)
+  local dir = love.filesystem.getSaveDirectory() .. "/" .. PX.IMPORT_DIR
+  local function say(text, colour)
+    PX.import_msg = {text = text, colour = colour}
+    if PX.import_open then G.FUNCS.forge_px_import({keep_msg = true}) end
+  end
+  local started = FP and FP.browse("image", dir, PX.IMPORT_MAX, function(res)
+    if not PX.import_open then return end
+    local name = res.added[1] or res.same[1]
+    if name then
+      local ok, data = pcall(love.image.newImageData, PX.IMPORT_DIR .. "/" .. name)
+      if ok and data and data:getWidth() <= 4096 and data:getHeight() <= 4096 then
+        return G.FUNCS.forge_px_import_file({config = {ref_table = {f = name}}})
+      end
+      return say(string.format(mod_loc("%s is not a picture the game can open."), name), G.C.RED)
+    end
+    if res.wrong[1] then return say(string.format(mod_loc("%s is not a picture the game can open."), res.wrong[1]), G.C.RED) end
+    if res.big[1] then return say(string.format(mod_loc("%s is too big."), res.big[1]), G.C.RED) end
+    if res.failed[1] or res.status == "error" then return say(mod_loc("Could not read that file."), G.C.RED) end
+    if res.status == "none" then return say(mod_loc("No file picker on this computer. Put the file in the import folder instead."), G.C.ORANGE) end
+  end, mod_loc("Pick a picture"))
+  if not started then say(mod_loc(require("functions/file_picker").missing_text()), G.C.RED) end
+end
+
+G.FUNCS.forge_px_import_file = function(e)
+  local f = e and e.config and e.config.ref_table and e.config.ref_table.f
+  if not f then return end
+  local ok, data = pcall(love.image.newImageData, PX.IMPORT_DIR .. "/" .. f)
+  PX.import_open = nil
+  if ok and data then PX.import_data(data, PX.state.snap) end
+  G.FUNCS.forge_px_back()
+end
+
+G.FUNCS.forge_px_export = function()
+  PX.export()
+  UIK.refresh()
+end
+
+G.FUNCS.forge_px_make = function()
+  if not PX.doc then return end
+  local id = Store.new_id()
+  Store.ensure_dirs()
+  local path = Store.art_path(id)
+  local info = PX.export_files(PX.paths(path))
+  if not info then return end
+  local c = Store.put({id = id, name = mod_loc("New joker"), rarity = 1, cost = 4, enabled = false, art = {file = info.x1, file2x = info.x2, soul = info.soul, soul2x = info.soul2x, kind = info.kind}, rules = {}})
+  FJ.register_all()
+  local B = rawget(_G, "ForgeBuilder")
+  if B and B.edit and c then
+    pcall(B.edit, c.id)
+    JokerForge.ui.reopen("builder")
+  else
+    JokerForge.ui.reopen("my")
+  end
+end
+
+G.FUNCS.forge_px_to_builder = function()
+  JokerForge.ui.reopen("builder")
+end
+
+PX.pad = PX.pad or {on = false, x = 0, y = 0}
+
+function PX.pad_local()
+  local cv = PX.canvas
+  local ox, oy, ps = cv:origin()
+  return ox + (PX.pad.x + 0.5) * ps, oy + (PX.pad.y + 0.5) * ps
+end
+
+function PX.pad_follow()
+  local cv = PX.canvas
+  if not cv then return end
+  local lx, ly = PX.pad_local()
+  local ps = cv:pixel_size()
+  local m = ps * 2
+  if lx < m then PX.state.pan.x = PX.state.pan.x + (m - lx) / ps end
+  if lx > cv.T.w - m then PX.state.pan.x = PX.state.pan.x - (lx - cv.T.w + m) / ps end
+  if ly < m then PX.state.pan.y = PX.state.pan.y + (m - ly) / ps end
+  if ly > cv.T.h - m then PX.state.pan.y = PX.state.pan.y - (ly - cv.T.h + m) / ps end
+  PX.clamp_pan()
+end
+
+function PX.pad_enter()
+  local d = PX.doc
+  if not (d and PX.canvas) then return false end
+  PX.pad.on = true
+  PX.pad.x = math.max(0, math.min(d.w - 1, PX.pad.x ~= 0 and PX.pad.x or math.floor(d.w / 2)))
+  PX.pad.y = math.max(0, math.min(d.h - 1, PX.pad.y ~= 0 and PX.pad.y or math.floor(d.h / 2)))
+  play_sound("button", 1.1, 0.4)
+  return true
+end
+
+function PX.pad_leave()
+  local cv = PX.canvas
+  if cv and cv.stroke then cv:stop_drag() end
+  PX.pad.on = false
+end
+
+local PAD_DIRS = {dpleft = {-1, 0}, dpright = {1, 0}, dpup = {0, -1}, dpdown = {0, 1}}
+
+local function canvas_focused()
+  local f = G.CONTROLLER and G.CONTROLLER.focused and G.CONTROLLER.focused.target
+  return f and f.config and f.config.id == "forge_px_canvas"
+end
+
+function PX.pad_press(button)
+  if not PX.active() then
+    PX.pad.on = false
+    return false
+  end
+  if not PX.pad.on then
+    if (button == "a" or PAD_DIRS[button]) and canvas_focused() then
+      if not PX.pad_enter() then return false end
+      if button ~= "a" then return true end
+    else
+      return false
+    end
+  end
+  local cv, d = PX.canvas, PX.doc
+  local dir = PAD_DIRS[button]
+  local ab = G.CONTROLLER and G.CONTROLLER.axis_buttons
+  if dir and ab and ab.l_stick and ab.l_stick.current == button then return true end
+  if dir then
+    local nx, ny = PX.pad.x + dir[1], PX.pad.y + dir[2]
+    if not cv.stroke and (nx < 0 or ny < 0 or nx > d.w - 1 or ny > d.h - 1) then
+      PX.pad_leave()
+      return false
+    end
+    PX.pad.x = math.max(0, math.min(d.w - 1, nx))
+    PX.pad.y = math.max(0, math.min(d.h - 1, ny))
+    PX.pad_follow()
+    if cv.stroke then
+      local lx, ly = PX.pad_local()
+      cv:drag_at(PX.pad.x, PX.pad.y, lx, ly)
+    end
+    return true
+  end
+r 23 722 %20%20 -
+l 23
+    if cv.stroke then cv:stop_drag() end
+    local lx, ly = PX.pad_local()
+    cv:drag_at(PX.pad.x, PX.pad.y, lx, ly)
+    return true
+  end
+  if button == "b" then
+    PX.pad_leave()
+    return true
+  end
+  if button == "x" then
+    if cv.stroke then cv:stop_drag() end
+    G.FUNCS.forge_px_undo()
+    return true
+  end
+  if button == "y" then
+    G.FUNCS.forge_px_swap()
+    return true
+  end
+  return false
+end
+
+function PX.pad_release(button)
+  if not (PX.pad.on and PX.active()) then return false end
+r 23 722 %20%20 -
+l 115
+    if PX.canvas.stroke then PX.canvas:stop_drag() end
+    return true
+  end
+  return PAD_DIRS[button] ~= nil
+end
+
+function PX.active()
+  local w = UIK and UIK._win
+  return w and w.id == "forge" and w._cur == "pixel" and G.OVERLAY_MENU and PX.canvas and not PX.canvas.REMOVED and true or false
+end
+
+local function kp_on()
+  local KP = package.loaded["functions/extras/keyboard_play"]
+  if type(KP) ~= "table" or not KP.enabled then return false end
+  local ok, on = pcall(KP.enabled)
+  return ok and on
+end
+
+PX.KEYS = {b = "pencil", g = "fill", i = "picker", l = "line", u = "box", o = "oval", m = "select", w = "wand", v = "move", h = "pan", d = "dither"}
+
+function PX.key(key)
+  if not PX.active() or not PX.doc then return false end
+  local ctrl = G.CONTROLLER
+  if ctrl and ctrl.text_input_hook then return false end
+  local mod = love.keyboard.isDown("lctrl", "rctrl", "lgui", "rgui")
+  local shift = love.keyboard.isDown("lshift", "rshift")
+  if mod then
+    if key == "z" and shift then G.FUNCS.forge_px_redo(); return true end
+    if key == "z" then G.FUNCS.forge_px_undo(); return true end
+    if key == "y" then G.FUNCS.forge_px_redo(); return true end
+    if not adv() then return false end
+    if key == "c" then ACTS.copy(); return true end
+    if key == "x" then ACTS.cut(); return true end
+    if key == "v" then ACTS.paste(); return true end
+    if key == "a" then P.select_all(PX.doc); return true end
+    return false
+  end
+  if key == "e" and not kp_on() then G.FUNCS.forge_px_tool({config = {ref_table = {tool = "eraser"}}}); return true end
+  local t = PX.KEYS[key]
+  if t then
+    local simple_ok = false
+    for _, s in ipairs(PX.SIMPLE) do if s == t then simple_ok = true end end
+    if not adv() and not simple_ok then return false end
+    if adv() then
+      for _, g in ipairs(PX.GROUPS) do for _, gt in ipairs(g.tools) do if gt == t then PX.state.group = g.key end end end
+    end
+    G.FUNCS.forge_px_tool({config = {ref_table = {tool = t}}})
+    return true
+  end
+  if key == "x" then G.FUNCS.forge_px_swap(); return true end
+  if key == "[" then G.FUNCS.forge_px_brush({config = {ref_table = {d = -1}}}); return true end
+  if key == "]" then G.FUNCS.forge_px_brush({config = {ref_table = {d = 1}}}); return true end
+  if key == "=" or key == "kp+" then G.FUNCS.forge_px_zoom({config = {ref_table = {d = 1}}}); return true end
+  if key == "-" or key == "kp-" then G.FUNCS.forge_px_zoom({config = {ref_table = {d = -1}}}); return true end
+  if (key == "delete" or key == "backspace") and PX.doc.sel then ACTS.clear(); return true end
+  return false
+end
+
+function PX.wheel(_, y)
+  if not PX.active() or y == 0 then return false end
+  local inside, _, _, lx, ly = PX.canvas:over()
+  if not inside then return false end
+  if PX.zoom_to(PX.state.zoom_i + (y > 0 and 1 or -1), lx, ly) then UIK.refresh() end
+  return true
+end
+
+function PX.right_click(x, y, button)
+  if button ~= 2 or not PX.active() or not PX.doc then return false end
+  local inside, px, py = PX.canvas:over()
+  if not inside then return false end
+  local c = P.get(PX.doc, px, py)
+  if c and c ~= P.CLEAR then
+    PX.state.colour = c
+    PX.later(UIK.refresh)
+  end
+  return true
+end
+
+function PX.dropped(file)
+  if not PX.active() and not PX.import_open then return false end
+  local ok, data = pcall(function()
+    file:open("r")
+    local raw = file:read()
+    file:close()
+    return love.image.newImageData(love.filesystem.newFileData(raw, "drop.png"))
+  end)
+  if ok and data then
+    PX.import_data(data, PX.state.snap)
+    PX.import_open = nil
+    G.FUNCS.forge_px_back()
+  end
+  return true
+end
+
+function PX.init()
+  if PX._wrapped or not Controller then return end
+  PX._wrapped = true
+  local kpu = Controller.key_press_update
+  Controller.key_press_update = function(self, key, ...)
+    local ok, used = pcall(PX.key, key)
+    if not ok then print("[FORGE] pixel key: " .. tostring(used)) end
+    if ok and used then return end
+    return kpu(self, key, ...)
+  end
+  local wheel = love.wheelmoved
+  love.wheelmoved = function(x, y, ...)
+    local ok, used = pcall(PX.wheel, x, y)
+    if ok and used then return end
+    if wheel then return wheel(x, y, ...) end
+  end
+  local bpu = Controller.button_press_update
+  Controller.button_press_update = function(self, button, ...)
+    local ok, used = pcall(PX.pad_press, button)
+    if not ok then print("[FORGE] pixel pad: " .. tostring(used)) end
+    if ok and used then
+r 23 692 %20%20%20%20%20%20 -
+l 8
+      return
+    end
+    return bpu(self, button, ...)
+  end
+  local bru = Controller.button_release_update
+  Controller.button_release_update = function(self, button, ...)
+    local ok, used = pcall(PX.pad_release, button)
+    if ok and used then
+r 23 762 %20%20%20%20%20%20 -
+l 66
+      return
+    end
+    return bru(self, button, ...)
+  end
+  local fd = love.filedropped
+  love.filedropped = function(file, ...)
+    local ok, used = pcall(PX.dropped, file)
+    if ok and used then return end
+    if fd then return fd(file, ...) end
+  end
+end
+
+local function register_strings()
+  if not mod_loc_register then return end
+  mod_loc_register{
+    fr = {
+      ["Pencil"] = "Crayon", ["Eraser"] = "Gomme", ["Fill"] = "Remplir", ["Pick colour"] = "Pipette", ["Line"] = "Ligne", ["Box"] = "Cadre", ["Pan"] = "Main", ["Move"] = "Déplacer",
+      ["Dither"] = "Trame", ["Gradient"] = "Dégradé", ["Shade"] = "Ombre", ["Light"] = "Lumière", ["Block"] = "Pavé", ["Oval"] = "Ovale", ["Disc"] = "Disque",
+      ["Select"] = "Sélection", ["Lasso"] = "Lasso", ["Wand"] = "Baguette", ["Flip"] = "Retourner", ["Upside down"] = "À l'envers", ["Rotate"] = "Pivoter", ["Outline"] = "Contour",
+      ["Clear"] = "Effacer", ["Import"] = "Importer", ["Copy"] = "Copier", ["Cut"] = "Couper", ["Paste"] = "Coller", ["Deselect"] = "Lâcher", ["+ Layer"] = "+ Calque", ["+ Soul"] = "+ L'âme",
+      ["Undo"] = "Annuler", ["Redo"] = "Rétablir", ["Mirror"] = "Miroir", ["Grid"] = "Grille", ["Guide"] = "Guide",
+      ["Simple"] = "Simple", ["Advanced"] = "Avancé", ["Draw"] = "Dessin", ["Shapes"] = "Formes", ["Edit"] = "Édition",
+      ["Options"] = "Options", ["View"] = "Vue", ["Layers"] = "Calques", ["Up"] = "Monter", ["Down"] = "Descendre", ["Merge"] = "Fusionner", ["Delete"] = "Supprimer",
+      ["Art %d"] = "Dessin %d", ["Soul"] = "L'âme", ["Brush %d"] = "Pinceau %d", ["Zoom x%s"] = "Zoom x%s", ["Tolerance %d"] = "Tolérance %d",
+      ["Every match"] = "Partout", ["Smooth"] = "Doux", ["Dithered"] = "Tramé", ["Base"] = "Base",
+      ["Swap"] = "Échanger", ["Any colour"] = "Autre couleur", ["ANY COLOUR"] = "AUTRE COULEUR", ["Balatro"] = "Balatro", ["This art"] = "Ce dessin", ["Mine"] = "Les miennes",
+      ["+ Add colour A"] = "+ Garder la couleur A", ["Remove"] = "Retirer", ["Press + to keep colour A here"] = "Appuyez sur + pour garder la couleur A ici", ["Nothing drawn yet"] = "Rien de dessiné pour l'instant",
+      ["Red"] = "Rouge", ["Green"] = "Vert", ["Blue"] = "Bleu", ["USE IT"] = "VALIDER",
+      ["START FROM"] = "PARTIR DE", ["BACK TO THE BUILDER"] = "RETOUR AU CRÉATEUR", ["MAKE A JOKER"] = "CRÉER UN JOKER", ["EXPORT"] = "EXPORTER",
+      ["Blank card"] = "Carte vierge", ["Blank"] = "Vierge", ["Empty"] = "Vide", ["Import picture"] = "Importer une image", ["Or start from the game's art:"] = "Ou partir d'un dessin du jeu :",
+      ["Page %d of %d"] = "Page %d sur %d", ["New joker"] = "Nouveau joker", ["Does nothing yet"] = "Ne fait rien pour l'instant", ["Art preview"] = "Aperçu du dessin",
+      ["Saved in %s"] = "Enregistré dans %s",
+      ["Joker"] = "Joker", ["Tarot"] = "Tarot", ["Planet"] = "Planète", ["Spectral"] = "Spectrale", ["Voucher"] = "Bon", ["Booster"] = "Paquet", ["Deck back"] = "Dos de jeu",
+      ["Enhancement"] = "Amélioration", ["Seal"] = "Sceau", ["Card skin"] = "Apparence de carte", ["Blind chip"] = "Jeton de blind", ["Tag"] = "Étiquette", ["Stake"] = "Mise",
+      ["IMPORT A PICTURE"] = "IMPORTER UNE IMAGE", ["%s is not a picture the game can open."] = "%s n'est pas une image que le jeu peut ouvrir.", ["Pick a picture"] = "Choisir une image", ["PICK A FILE"] = "CHOISIR UN FICHIER", ["Drop a picture on the game window, or put it in this folder:"] = "Déposez une image sur la fenêtre du jeu, ou mettez-la dans ce dossier :",
+      ["Put a picture in this folder:"] = "Mettez une image dans ce dossier :", ["No pictures yet"] = "Aucune image pour l'instant", ["File picker > Balatro Overhaul > forge > import"] = "Sélecteur de fichiers > Balatro Overhaul > forge > import", ["Balatro colours"] = "Couleurs Balatro", ["OPEN THE FOLDER"] = "OUVRIR LE DOSSIER",
+    },
+    es = {
+      ["Pencil"] = "Lápiz", ["Eraser"] = "Goma", ["Fill"] = "Rellenar", ["Pick colour"] = "Cuentagotas", ["Line"] = "Línea", ["Box"] = "Marco", ["Pan"] = "Mano", ["Move"] = "Mover",
+      ["Dither"] = "Trama", ["Gradient"] = "Degradado", ["Shade"] = "Sombra", ["Light"] = "Luz", ["Block"] = "Bloque", ["Oval"] = "Óvalo", ["Disc"] = "Disco",
+      ["Select"] = "Selección", ["Lasso"] = "Lazo", ["Wand"] = "Varita", ["Flip"] = "Voltear", ["Upside down"] = "Al revés", ["Rotate"] = "Girar", ["Outline"] = "Contorno",
+      ["Clear"] = "Limpiar", ["Import"] = "Importar", ["Copy"] = "Copiar", ["Cut"] = "Cortar", ["Paste"] = "Pegar", ["Deselect"] = "Soltar", ["+ Layer"] = "+ Capa", ["+ Soul"] = "+ Alma",
+      ["Undo"] = "Deshacer", ["Redo"] = "Rehacer", ["Mirror"] = "Espejo", ["Grid"] = "Cuadrícula", ["Guide"] = "Guía",
+      ["Simple"] = "Simple", ["Advanced"] = "Avanzado", ["Draw"] = "Dibujo", ["Shapes"] = "Formas", ["Edit"] = "Editar",
+      ["Options"] = "Opciones", ["View"] = "Vista", ["Layers"] = "Capas", ["Up"] = "Subir", ["Down"] = "Bajar", ["Merge"] = "Unir", ["Delete"] = "Borrar",
+      ["Art %d"] = "Dibujo %d", ["Soul"] = "Alma", ["Brush %d"] = "Pincel %d", ["Zoom x%s"] = "Zoom x%s", ["Tolerance %d"] = "Tolerancia %d",
+      ["Every match"] = "En todo", ["Smooth"] = "Suave", ["Dithered"] = "Tramado", ["Base"] = "Base",
+      ["Swap"] = "Cambiar", ["Any colour"] = "Otro color", ["ANY COLOUR"] = "OTRO COLOR", ["Balatro"] = "Balatro", ["This art"] = "Este dibujo", ["Mine"] = "Los míos",
+      ["+ Add colour A"] = "+ Guardar el color A", ["Remove"] = "Quitar", ["Press + to keep colour A here"] = "Pulsa + para guardar aquí el color A", ["Nothing drawn yet"] = "Aún no hay nada dibujado",
+      ["Red"] = "Rojo", ["Green"] = "Verde", ["Blue"] = "Azul", ["USE IT"] = "USARLO",
+      ["START FROM"] = "EMPEZAR DESDE", ["BACK TO THE BUILDER"] = "VOLVER AL CREADOR", ["MAKE A JOKER"] = "CREAR UN COMODÍN", ["EXPORT"] = "EXPORTAR",
+      ["Blank card"] = "Carta en blanco", ["Blank"] = "En blanco", ["Empty"] = "Vacío", ["Import picture"] = "Importar imagen", ["Or start from the game's art:"] = "O empezar desde un dibujo del juego:",
+      ["Page %d of %d"] = "Página %d de %d", ["New joker"] = "Nuevo joker", ["Does nothing yet"] = "Aún no hace nada", ["Art preview"] = "Vista del dibujo",
+      ["Saved in %s"] = "Guardado en %s",
+      ["Joker"] = "Comodín", ["Tarot"] = "Tarot", ["Planet"] = "Planeta", ["Spectral"] = "Espectral", ["Voucher"] = "Vale", ["Booster"] = "Sobre", ["Deck back"] = "Reverso",
+      ["Enhancement"] = "Mejora", ["Seal"] = "Sello", ["Card skin"] = "Aspecto de carta", ["Blind chip"] = "Ficha de ciega", ["Tag"] = "Etiqueta", ["Stake"] = "Apuesta",
+      ["IMPORT A PICTURE"] = "IMPORTAR UNA IMAGEN", ["%s is not a picture the game can open."] = "%s no es una imagen que el juego pueda abrir.", ["Pick a picture"] = "Elegir una imagen", ["PICK A FILE"] = "ELEGIR ARCHIVO", ["Drop a picture on the game window, or put it in this folder:"] = "Suelta una imagen en la ventana del juego, o ponla en esta carpeta:",
+      ["Put a picture in this folder:"] = "Pon una imagen en esta carpeta:", ["No pictures yet"] = "Aún no hay imágenes", ["File picker > Balatro Overhaul > forge > import"] = "Selector de archivos > Balatro Overhaul > forge > import", ["Balatro colours"] = "Colores Balatro", ["OPEN THE FOLDER"] = "ABRIR LA CARPETA",
+    },
+  }
+end
+
+register_strings()
+PX.init()
+
+return PX
+end

@@ -1,0 +1,483 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 315
+local SX = rawget(_G, "social_more") or {}
+social_more = SX
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function now() return love.timer.getTime() end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function state() return require("multiplayer.mps_state") end
+local function friends() return require("multiplayer.mps_friends") end
+
+SX.TYPING_SECS = 4
+SX.TYPING_SEND_GAP = 2
+SX.ASK_SECS = 60
+SX.NICK_MAX = 16
+SX.typing = SX.typing or {}
+SX.blocks = SX.blocks or {}
+SX.view = SX.view or {nick = "", hidden = false}
+SX.page = SX.page or 1
+
+local function settings() return G and G.SETTINGS or {} end
+local function save() if G.save_settings then pcall(G.save_settings, G) end end
+
+local function online()
+    local B = rawget(_G, "bom_social")
+    return bom_core and bom_core.is_connected and bom_core.is_connected() and B and B.S and B.S.hello and true or false
+end
+
+local function raw_send(msg)
+    if not online() then return false end
+    return bom_core.send(msg)
+end
+
+function SX.hidden()
+    return settings().social_hidden == true
+end
+
+function SX.set_hidden(on)
+    G.SETTINGS.social_hidden = on and true or false
+    save()
+    raw_send({type = "social_hide", on = on and true or false})
+end
+
+local function nicks()
+    local s = settings()
+    if type(s.social_nicks) ~= "table" then s.social_nicks = {} end
+    return s.social_nicks
+end
+
+function SX.nick(code)
+    local n = code and nicks()[code]
+    return type(n) == "string" and n ~= "" and n or nil
+end
+
+function SX.real_name(f)
+    if type(f) ~= "table" then return "?" end
+    local n = f.real_name or f.name
+    return n ~= nil and n ~= "" and tostring(n) or "?"
+end
+
+function SX.apply_nicks(list)
+    for _, f in ipairs(list or {}) do
+        if f.real_name == nil then f.real_name = f.name end
+        f.name = SX.nick(f.code) or f.real_name
+    end
+end
+
+function SX.set_nick(code, name)
+    if not code then return end
+    name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if #name > SX.NICK_MAX then name = name:sub(1, SX.NICK_MAX) end
+    nicks()[code] = name ~= "" and name or nil
+    save()
+    local T = state()
+    SX.apply_nicks(T.friends())
+    T.sort_friends(T.friends())
+end
+
+function SX.is_blocked(code)
+    for _, b in ipairs(SX.blocks) do
+        if b.code == code then return true end
+    end
+    return false
+end
+
+function SX.ask_blocks()
+    SX.blocks_asked = true
+    return raw_send({type = "social_blocks"})
+end
+
+function SX.typing_line(code)
+    local at = code and SX.typing[code]
+    if not at or now() - at > SX.TYPING_SECS then return nil end
+    local T = state()
+    local f = T.friend(code)
+    return T.fill("{name} is typing...", {name = f and f.name ~= "" and f.name or "?"})
+end
+
+local function thread_open(code)
+    local T = state()
+    local S = T.S
+    local F = friends()
+    return S and S.dm_open and S.dm_sel == code and F.is_open and F.is_open() and F.thread_def and true or false
+end
+
+local function redraw_thread()
+    local F = friends()
+    if F.thread_def then state().swap("mps_thread", F.thread_def) end
+end
+
+function SX.update()
+    local T = state()
+    local S = T.S
+    if not S then return end
+    local t = now()
+    local cur = S.dm_input and tostring(S.dm_input.text or "") or ""
+    if S.dm_open and S.dm_sel and T.typing() then
+        if cur ~= SX.last_text then
+            SX.last_text = cur
+            if cur ~= "" and t >= (SX.typing_sent_at or 0) + SX.TYPING_SEND_GAP then
+                SX.typing_sent_at = t
+                raw_send({type = "social_typing", to = S.dm_sel})
+            end
+        end
+    else
+        SX.last_text = cur
+    end
+    for code, at in pairs(SX.typing) do
+        if t - at > SX.TYPING_SECS then
+            SX.typing[code] = nil
+            if thread_open(code) then redraw_thread() end
+        end
+    end
+end
+
+function SX.on_typing(d)
+    if type(d) ~= "table" or type(d.from) ~= "string" then return end
+    local fresh = SX.typing[d.from] == nil
+    SX.typing[d.from] = now()
+    if fresh and thread_open(d.from) then redraw_thread() end
+end
+
+function SX.on_dm(d)
+    if type(d) == "table" and type(d.from) == "string" and SX.typing[d.from] then
+        SX.typing[d.from] = nil
+    end
+end
+
+local function toasts() return rawget(_G, "social_toasts") end
+
+function SX.on_ask(d)
+    if type(d) ~= "table" or type(d.from) ~= "string" then return end
+    local ST = toasts()
+    if not (ST and ST.ask) then return end
+    local T = state()
+    local f = T.friend(d.from)
+    ST.ask({code = d.from, name = f and f.name ~= "" and f.name or tostring(d.name or "?"), until_t = now() + SX.ASK_SECS})
+end
+
+function SX.on_ask_no(d)
+    local ST = toasts()
+    if type(d) ~= "table" or not (ST and ST.info) then return end
+    local f = state().friend(d.from)
+    ST.info(f and f.name ~= "" and f.name or tostring(d.name or "?"), L("said no this time."))
+end
+
+local REASONS = {
+    not_in_lobby = "They are not in a lobby any more.",
+    slow_down = "Too fast, try again in a moment.",
+    not_friend = "Not on your friends list.",
+    no_room = "Open a lobby first.",
+    blocked = "You blocked this player.",
+}
+
+function SX.on_result(d)
+    if type(d) ~= "table" then return end
+    local ST = toasts()
+    if d.action == "social_ask" and SX.asking then
+        local who = SX.asking
+        SX.asking = nil
+        if ST and ST.info then ST.info(who, d.ok and L("Asked to join. Wait for their answer.") or L(REASONS[d.reason] or "Could not connect.")) end
+    elseif d.action == "social_block" and d.ok then
+        local SC = rawget(_G, "social_card")
+        if SC and SC.is_open and SC.is_open() then friends().open("friends") end
+    elseif d.action == "social_add" and not d.ok and d.reason == "blocked" then
+        local B = rawget(_G, "bom_social")
+        if B and B.S then B.S.note, B.S.note_bad = L(REASONS.blocked), true end
+    end
+end
+
+function SX.on_blocks(d)
+    if type(d) ~= "table" or type(d.items) ~= "table" then return end
+    SX.blocks = d.items
+    if SX.blocked_open() then UIK.refresh() end
+end
+
+function SX.ask_join(code)
+    local T = state()
+    local f = T.friend(code)
+    if not f then return end
+    SX.asking = f.name ~= "" and f.name or "?"
+    if not T.send({type = "social_ask", code = code}) then SX.asking = nil end
+end
+
+local function rank_text(d)
+    local name
+    pcall(function()
+        if bom_ranked and bom_ranked.rank_name then name = bom_ranked.rank_name(d.rank, d.tier) end
+    end)
+    return name or tostring(d.rank or "?")
+end
+
+local function game_name(key)
+    local mg = rawget(_G, "Minigames")
+    local def = mg and mg.def and mg.def(key)
+    return def and L(def.name) or tostring(key or "?")
+end
+
+local function game_score(key, v)
+    local mg = rawget(_G, "Minigames")
+    local def = mg and mg.def and mg.def(key)
+    if def and def.format then
+        local ok, s = pcall(def.format, v)
+        if ok and s then return tostring(s) end
+    end
+    return tostring(v or "?")
+end
+SX.game_name, SX.game_score = game_name, game_score
+
+function SX.activity_text(d)
+    local T = state()
+    local f = T.friend(d.from)
+    local who = f and f.name ~= "" and f.name or tostring(d.name or "?")
+    if d.what == "rank_up" then return T.fill("{name} reached {rank}.", {name = who, rank = rank_text(d)}) end
+    if d.what == "mg_best" then return T.fill("{name} set a new best on {game}: {score}.", {name = who, game = game_name(d.game), score = game_score(d.game, d.score)}) end
+    if d.what == "daily" then
+        if d.won then return T.fill("{name} won the daily seed (rank {rank}).", {name = who, rank = tostring(d.rank or "?")}) end
+        return T.fill("{name} played the daily seed: ante {ante}, rank {rank}.", {name = who, ante = tostring(d.ante or "?"), rank = tostring(d.rank or "?")})
+    end
+    return T.fill("{name} has news.", {name = who})
+end
+
+function SX.activity_go(d)
+    if d.what == "mg_best" and G.FUNCS.open_minigames then
+        local mg = rawget(_G, "Minigames")
+        if mg and mg.def and mg.def(d.game) then
+            if mg.set_last then pcall(mg.set_last, d.game) end
+            if mg.pick then mg.pick.cur = d.game end
+        end
+        G.FUNCS.open_minigames()
+        return true
+    end
+    if d.what == "daily" and G.FUNCS.bo_daily_board_open then
+        G.FUNCS.bo_daily_board_open({config = {ref_table = {}}})
+        return true
+    end
+    friends().open("friends")
+    return true
+end
+
+local function win_w() return touch() and 9.6 or 8.4 end
+
+function SX.blocked_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "social_blocked" and true or false
+end
+
+function SX.nick_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "social_nick" and true or false
+end
+
+local function per_page() return touch() and 4 or 5 end
+
+local function blocked_body()
+    local w = win_w()
+    local inner = w - 0.4
+    local t = touch()
+    local rh = t and 0.78 or 0.62
+    local bw = t and 2.0 or 1.8
+    local rows = {}
+    if not online() then
+        rows[1] = UIK.note(L("Connect to see your blocked players."), {w = inner})
+        return UIK.stack(rows, {w = w})
+    end
+    if not SX.blocks_asked then SX.ask_blocks() end
+    local list = SX.blocks
+    local n = math.max(1, math.ceil(#list / per_page()))
+    SX.page = math.max(1, math.min(SX.page, n))
+    local list_h = per_page() * (rh + 0.12)
+    local body = {}
+    if #list == 0 then
+        body[1] = {n = G.UIT.R, config = {align = "cm", minw = inner, minh = list_h, padding = 0}, nodes = {
+            UIK.text(L("Nobody is blocked."), {scale = bom_kit.dims().small, colour = UIK.C.muted}),
+        }}
+    else
+        local items = {}
+        for i = (SX.page - 1) * per_page() + 1, math.min(#list, SX.page * per_page()) do
+            local b = list[i]
+            items[#items + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {
+                bom_kit.name_bar(b.name ~= "" and b.name or b.code, {w = inner - bw - 0.3, h = rh, colour = bom_kit.colour("name_light"), text_colour = bom_kit.colour("dark_text"), shadow = false}),
+                {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+                UIK.button{label = L("Unblock"), button = "social_unblock", ref_table = {code = b.code}, colour = G.C.GREEN, w = bw, h = rh, col = true},
+            }}
+        end
+        body[1] = {n = G.UIT.R, config = {align = "tm", minw = inner, minh = list_h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = items}}}
+    end
+    rows[#rows + 1] = UIK.note(L("They cannot send you requests, invites, messages or emotes."), {w = inner})
+    rows[#rows + 1] = UIK.spacer(0.1)
+    rows[#rows + 1] = body[1]
+    if n > 1 then
+        rows[#rows + 1] = UIK.pager{prev = "social_blocked_page", next = "social_blocked_page", prev_ref = {d = -1}, next_ref = {d = 1},
+            text = tostring(SX.page) .. " / " .. tostring(n), prev_disabled = SX.page <= 1, next_disabled = SX.page >= n, w = inner}
+    end
+    return UIK.stack(rows, {w = w})
+end
+
+function SX.open_blocked()
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+r 13 1381 %20%20%20%20 -
+l 42
+    SX.page = 1
+    SX.ask_blocks()
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "social_blocked", compact = true, w = win_w() + 0.2,
+        title = L("BLOCKED"),
+        tabs = {{key = "main", label = L("Blocked players"), build = blocked_body}},
+        back_func = "social_blocked_back",
+    }}
+end
+
+local function nick_body()
+    local w = win_w()
+    local inner = w - 0.4
+    local t = touch()
+    local T = state()
+    local f = SX.nick_code and T.friend(SX.nick_code)
+    if not f then return UIK.stack({UIK.note(L("Not on your friends list."), {w = inner})}, {w = w}) end
+    local bh = t and 0.78 or 0.62
+    local bw = (inner - 0.2) / 2
+    return UIK.stack({
+        {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+            UIK.text(T.fill("Name: {name}", {name = SX.real_name(f)}), {scale = bom_kit.dims().small, colour = UIK.C.muted}),
+        }},
+        {n = G.UIT.R, config = {align = "cm", minw = inner, minh = t and 0.9 or 0.76, padding = 0.04}, nodes = {
+            create_text_input({w = inner - 0.1, h = t and 0.7 or 0.58, max_length = SX.NICK_MAX, text_scale = t and 0.36 or 0.32,
+                prompt_text = L("Nickname"), ref_table = SX.view, ref_value = "nick", extended_corpus = true, keyboard_offset = 1,
+                callback = function() G.FUNCS.social_nick_save() end}),
+        }},
+        UIK.note(L("Only you see it."), {w = inner}),
+        UIK.spacer(0.1),
+        {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            UIK.button{label = L("Save"), button = "social_nick_save", colour = G.C.GREEN, w = bw, h = bh, col = true, id = "social_nick_save"},
+            {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+            UIK.button{label = L("Clear"), button = "social_nick_clear", colour = G.C.RED, w = bw, h = bh, col = true, disabled = SX.nick(f.code) == nil, id = "social_nick_clear"},
+        }},
+    }, {w = w})
+end
+
+function SX.open_nick(code)
+    SX.nick_code = code
+    SX.view.nick = SX.nick(code) or ""
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+r 13 1381 %20%20%20%20 -
+l 116
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "social_nick", compact = true, w = win_w() + 0.2,
+        title = L("NICKNAME"),
+        tabs = {{key = "main", label = L("Nickname"), build = nick_body}},
+        back_func = "social_nick_back",
+    }}
+end
+
+local function back_to_card(code)
+    local SC = rawget(_G, "social_card")
+    if code and SC and SC.open then SC.open(code) else friends().open("friends") end
+end
+SX.back_to_card = back_to_card
+
+function SX.privacy_rows(w)
+    SX.view.hidden = SX.hidden()
+    return {
+        UIK.toggle{label = L("Appear offline"), info = L("Friends see you as offline. You still see them."), w = w,
+            ref_table = SX.view, ref_value = "hidden", id = "social_opt_hidden", callback = function(v) SX.set_hidden(v) end},
+        UIK.action{label = L("Blocked players"), button_label = L("Open"), button = "social_blocked_open", w = w, id = "social_opt_blocked"},
+    }
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+local function register_funcs()
+    G.FUNCS.social_blocked_open = function() SX.open_blocked() end
+    G.FUNCS.social_blocked_back = function() friends().open("options") end
+    G.FUNCS.social_blocked_page = function(e)
+        SX.page = SX.page + (ref(e).d or 0)
+        UIK.refresh()
+    end
+    G.FUNCS.social_unblock = function(e)
+        local code = ref(e).code
+        if code then state().send({type = "social_unblock", code = code}) end
+    end
+    G.FUNCS.social_nick_back = function() back_to_card(SX.nick_code) end
+    G.FUNCS.social_nick_save = function()
+        local code = SX.nick_code
+        if not code then return end
+        SX.set_nick(code, SX.view.nick)
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        back_to_card(code)
+    end
+    G.FUNCS.social_nick_clear = function()
+        local code = SX.nick_code
+        if not code then return end
+        SX.set_nick(code, "")
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        back_to_card(code)
+    end
+    G.FUNCS.social_ask_join = function(e)
+        local code = ref(e).code
+        if code then SX.ask_join(code) end
+    end
+end
+
+function SX.init()
+    register_funcs()
+    if bom_events and bom_events.register then
+        bom_events.register("social_typing", function(d) SX.on_typing(d) return true end)
+        bom_events.register("social_ask", function(d) SX.on_ask(d) return true end)
+        bom_events.register("social_ask_no", function(d) SX.on_ask_no(d) return true end)
+        bom_events.register("social_blocks", function(d) SX.on_blocks(d) return true end)
+        bom_events.register("social_result", function(d) pcall(SX.on_result, d) return false end)
+        bom_events.register("social_me", function()
+            SX.blocks_asked = nil
+            return false
+        end)
+    end
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["{name} is typing..."] = "{name} écrit...",
+            ["said no this time."] = "a dit non cette fois.",
+            ["They are not in a lobby any more."] = "Il n'est plus dans un salon.",
+            ["You blocked this player."] = "Vous avez bloqué ce joueur.",
+            ["Asked to join. Wait for their answer."] = "Demande envoyée. Attendez sa réponse.",
+            ["{name} reached {rank}."] = "{name} a atteint {rank}.",
+            ["{name} set a new best on {game}: {score}."] = "{name} a battu son record à {game} : {score}.",
+            ["{name} won the daily seed (rank {rank})."] = "{name} a gagné la seed du jour (rang {rank}).",
+            ["{name} played the daily seed: ante {ante}, rank {rank}."] = "{name} a joué la seed du jour : mise initiale {ante}, rang {rank}.",
+            ["{name} has news."] = "{name} a du nouveau.",
+            ["Connect to see your blocked players."] = "Connectez-vous pour voir les joueurs bloqués.",
+            ["Nobody is blocked."] = "Personne n'est bloqué.",
+            ["They cannot send you requests, invites, messages or emotes."] = "Ils ne peuvent plus vous envoyer de demandes, d'invitations, de messages ni d'émotes.",
+            ["Unblock"] = "Débloquer", ["BLOCKED"] = "BLOQUÉS", ["Blocked players"] = "Joueurs bloqués",
+            ["NICKNAME"] = "SURNOM", ["Nickname"] = "Surnom", ["Name: {name}"] = "Nom : {name}", ["Only you see it."] = "Vous seul le voyez.",
+            ["Save"] = "Enregistrer", ["Clear"] = "Effacer",
+            ["Appear offline"] = "Apparaître hors ligne", ["Friends see you as offline. You still see them."] = "Vos amis vous voient hors ligne. Vous les voyez toujours.",
+            ["Open"] = "Ouvrir", ["Privacy"] = "Confidentialité",
+        },
+        es = {
+            ["{name} is typing..."] = "{name} está escribiendo...",
+            ["said no this time."] = "ha dicho que no esta vez.",
+            ["They are not in a lobby any more."] = "Ya no está en una sala.",
+            ["You blocked this player."] = "Has bloqueado a este jugador.",
+            ["Asked to join. Wait for their answer."] = "Petición enviada. Espera su respuesta.",
+            ["{name} reached {rank}."] = "{name} ha llegado a {rank}.",
+            ["{name} set a new best on {game}: {score}."] = "{name} ha batido su récord en {game}: {score}.",
+            ["{name} won the daily seed (rank {rank})."] = "{name} ha ganado el código del día (puesto {rank}).",
+            ["{name} played the daily seed: ante {ante}, rank {rank}."] = "{name} ha jugado el código del día: apuesta inicial {ante}, puesto {rank}.",
+            ["{name} has news."] = "{name} tiene novedades.",
+            ["Connect to see your blocked players."] = "Conéctate para ver a los jugadores bloqueados.",
+            ["Nobody is blocked."] = "No hay nadie bloqueado.",
+            ["They cannot send you requests, invites, messages or emotes."] = "No pueden enviarte solicitudes, invitaciones, mensajes ni emotes.",
+            ["Unblock"] = "Desbloquear", ["BLOCKED"] = "BLOQUEADOS", ["Blocked players"] = "Jugadores bloqueados",
+            ["NICKNAME"] = "APODO", ["Nickname"] = "Apodo", ["Name: {name}"] = "Nombre: {name}", ["Only you see it."] = "Solo tú lo ves.",
+            ["Save"] = "Guardar", ["Clear"] = "Borrar",
+            ["Appear offline"] = "Aparecer desconectado", ["Friends see you as offline. You still see them."] = "Tus amigos te ven desconectado. Tú sigues viéndolos.",
+            ["Open"] = "Abrir", ["Privacy"] = "Privacidad",
+        },
+    }
+end
+
+return SX
+end

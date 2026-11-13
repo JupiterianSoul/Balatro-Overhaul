@@ -1,0 +1,1429 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 429
+JIMBO_COMMENTS = JIMBO_COMMENTS or {}
+local JC = JIMBO_COMMENTS
+
+JC.DISPLAY = 5.5
+JC.GAPS = {30, 14, 7}
+JC.IDLE = {{150, 260}, {70, 140}, {40, 80}}
+JC.RATE_LABELS = {"Rarely", "Sometimes", "Often"}
+
+local LINES = {
+    new_run = {
+        "Fresh deck, fresh start. Let's make it count.",
+        "New run! I already like this one.",
+        "Shuffle up. Somewhere in there is a winning run.",
+        "Ante 1. Everybody's a genius at Ante 1.",
+        "Let's see what this seed is hiding.",
+        "Deep breath. Small Blind first, glory later.",
+    },
+    one_shot = {
+        "{score} in one hand. The blind never stood a chance.",
+        "One hand, one blind, done. Clean.",
+        "{hand} for {score}? That blind just folded.",
+        "Why use many hand when one hand do trick?",
+        "You didn't beat that blind, you deleted it.",
+        "That {hand} cleared the whole thing by itself.",
+        "One and done. Save the rest for the shop.",
+    },
+    huge_hand = {
+        "{score}?! Somebody check the deck for cheats.",
+        "That was ten blinds' worth of chips. At least.",
+        "I felt that one from over here. {score}!",
+        "The scoreboard needs a bigger screen now.",
+        "Okay, now you're just showing off. I love it.",
+    },
+    best_hand = {
+        "New best hand this run: {score}!",
+        "{score}! That's your biggest hand yet.",
+        "Look at that {hand}. Run record!",
+        "Best hand of the run. Keep stacking.",
+        "Your engine is warming up. {score} and climbing.",
+    },
+    weak_hand = {
+        "Only {score}? The blind barely noticed.",
+        "That {hand} needs some help. Maybe a Joker or two.",
+        "Hmm. We need way more than that.",
+        "Small hand, big gap. Time for something bold.",
+        "That's a start. A small one.",
+    },
+    last_hand = {
+        "Last hand. {left} to go. No pressure.",
+        "Final hand. Make it a big one.",
+        "One hand left and {left} short. You've got this. Probably.",
+        "All in on this one. {left} to clear.",
+        "This is the hand they'll write songs about. Or not.",
+        "Last chance. Pick your best and pray.",
+        "Everything rides on this hand.",
+    },
+    clutch_win = {
+        "On the very last hand! My heart can't take this.",
+        "Clutch! I never doubted you. Mostly.",
+        "Last hand, and you pulled it off!",
+        "That's how you close it out.",
+        "Down to the wire and still standing.",
+        "Phew. Let's not do that again. Unless it's fun.",
+    },
+    close_win = {
+        "Just barely over. A win's a win!",
+        "That was close. Like, really close.",
+        "Squeaked through! Maybe buy something strong.",
+        "Made it by a hair. The next blind is bigger, though.",
+    },
+    near_miss = {
+        "So close! Just {left} short.",
+        "Agh, {left} away from making it. That one hurts.",
+        "Almost had it. One more Joker and that was yours.",
+        "Missed by a whisker. Next run is yours.",
+        "That close?! The blind got lucky.",
+        "So near. Don't worry, I won't tell anyone.",
+    },
+    loss = {
+        "Well, that's the run. Shuffle up and go again?",
+        "Every great player loses. A lot. Like, a lot a lot.",
+        "The blind wins this time. Rematch?",
+        "Don't look at me, I was rooting for you.",
+        "That's just Balatro. Next run will be better.",
+        "We learned something. Probably. Let's go again.",
+        "Ouch. Back to Ante 1 we go.",
+    },
+    win = {
+        "You beat Ante {ante}! Take a bow!",
+        "Run won! I'm framing this one.",
+        "Victory! The Jokers are throwing a party.",
+        "That's a win! Endless mode is calling, if you dare.",
+        "Champion! I knew it from the first hand.",
+    },
+    boss = {
+        "Boss time: {boss}. Read its rule twice.",
+        "Here comes {boss}. Play around it.",
+        "{boss} is up. Don't let it mess with your hand.",
+        "Boss blind! {boss} hits harder than it looks.",
+        "Careful, {boss} changes the rules.",
+        "{boss}. Ugh. You can take it though.",
+    },
+    boss_bl_psychic = {"The Psychic wants all five cards. No sneaky Pairs."},
+    boss_bl_eye = {"The Eye: no repeating hand types. Plan your order."},
+    boss_bl_mouth = {"The Mouth: only one hand type this round. Pick your best."},
+    boss_bl_needle = {"The Needle. One hand. Make it your biggest."},
+    boss_bl_water = {"The Water: no discards. Play what you're dealt."},
+    boss_bl_wall = {"The Wall. It's a big one. Bring your biggest hand."},
+    boss_bl_flint = {"The Flint halves your base chips and mult. Ouch."},
+    boss_bl_plant = {"The Plant debuffs face cards. Kings, take a nap."},
+    boss_bl_head = {"The Head debuffs Hearts. Sorry, lovers."},
+    boss_bl_club = {"The Club debuffs Clubs. Spread out your suits."},
+    boss_bl_window = {"The Window debuffs Diamonds. Shiny but useless now."},
+    boss_bl_goad = {"The Goad debuffs Spades. Dig in with the other suits."},
+    boss_bl_hook = {"The Hook throws away two cards each hand. Keep extras."},
+    boss_bl_tooth = {"The Tooth takes a dollar per card played. Small hands save cash."},
+    boss_bl_ox = {"The Ox takes your money if you play your most played hand."},
+    boss_bl_arm = {"The Arm lowers the level of every hand you play."},
+    boss_bl_house = {"The House deals your first hand face down. Spooky."},
+    boss_bl_wheel = {"The Wheel flips some cards face down. Trust your gut."},
+    boss_bl_fish = {"The Fish flips new cards face down after each hand."},
+    boss_bl_manacle = {"The Manacle takes a card from your hand size."},
+    boss_bl_pillar = {"The Pillar debuffs cards you already played this ante."},
+    boss_bl_serpent = {"The Serpent: you always draw three. Discards hit different."},
+    boss_bl_final_vessel = {"Violet Vessel. The biggest blind in the game. Everything you've got."},
+    boss_bl_final_leaf = {"Verdant Leaf: every card is debuffed until you sell a Joker."},
+    boss_bl_final_acorn = {"Amber Acorn flips and shuffles your Jokers. Remember the order!"},
+    boss_bl_final_heart = {"Crimson Heart disables a random Joker each hand."},
+    boss_bl_final_bell = {"Cerulean Bell forces a card into every hand. Work around it."},
+    boss_beaten = {
+        "Boss down! Off to the shop.",
+        "{boss} beaten. Next ante, here we come.",
+        "That boss didn't know who it was dealing with.",
+        "Boss cleared. Treat yourself in the shop.",
+        "Another boss in the bin.",
+    },
+    rare_joker = {
+        "{joker}! That's a rare one. Build around it.",
+        "Ooh, {joker}. Now we're cooking.",
+        "{joker} joins the crew. Good pickup.",
+        "A rare Joker! {joker} can carry a run.",
+        "{joker}, nice. Make room for it.",
+    },
+    legendary_joker = {
+        "{joker}?! A Legendary! This run just changed.",
+        "A Legendary Joker. Bow to {joker}.",
+        "{joker}! I need to sit down.",
+        "You found {joker}. This is not a drill.",
+    },
+    money_rich = {
+        "${money} in the bank. You could buy the whole shop.",
+        "${money}! Spend some, or keep stacking interest?",
+        "Look at all that cash. ${money}!",
+        "${money}. Is this a Balatro run or a bank?",
+    },
+    money_saved = {
+        "${money} saved up. Interest loves you.",
+        "Nice savings. ${money} makes a good cushion.",
+        "${money} in the pocket. Patience pays.",
+        "Saving pays off. Literally.",
+    },
+    money_broke = {
+        "${money}. The shopkeeper is looking at you funny.",
+        "Running on fumes. Maybe skip a reroll.",
+        "Broke again. Sell something or save up.",
+        "${money}. Window shopping it is.",
+        "Empty pockets. Next round pays, hopefully.",
+    },
+    ante_up = {
+        "Ante {ante}. The blinds just got bigger.",
+        "Welcome to Ante {ante}. Check your scaling.",
+        "Ante {ante}! Is your build ready for it?",
+        "Up to Ante {ante}. The chips needed just jumped.",
+        "Ante {ante}. Things get serious from here.",
+    },
+    final_ante = {
+        "Ante 8. The last one. Everything you've got.",
+        "Final ante! One boss stands between you and a win.",
+        "This is it. Ante 8. No holding back.",
+    },
+    endless = {
+        "Endless mode, Ante {ante}. How far can you go?",
+        "Ante {ante}. The numbers are getting silly now.",
+        "Still going? Ante {ante}! Legend.",
+    },
+    skip_blind = {
+        "Skipped! Hope that tag was worth it.",
+        "Bold skip. Your Jokers better be strong.",
+        "Skipping for the tag. I like your style.",
+        "No blind, just the tag. Living dangerously.",
+    },
+    rare_hand = {
+        "{hand}! I don't see that every day.",
+        "A {hand}?! Frame it.",
+        "{hand}! That's a rare sight.",
+        "Did you just play a {hand}? Wow.",
+    },
+    hand_streak = {
+        "{hand} again? It's your thing now.",
+        "Another {hand}. Level it up at the next planet.",
+        "{hand}, {hand}, {hand}. I see the plan.",
+        "You really love {hand}s, huh.",
+    },
+    shop = {
+        "Shop time. Look for something that fits your build.",
+        "Check the Jokers first, then the packs.",
+        "Spend smart. Interest is free money.",
+        "Anything here help your best hand?",
+        "Reroll or save? The eternal question.",
+        "New stuff on the shelves. Take a look.",
+    },
+    pack = {
+        "Let's see what's inside!",
+        "Pack time. Pick what helps your build.",
+        "Ooh, a pack. Fingers crossed.",
+        "Choose wisely. Or just pick the shiny one.",
+    },
+    mp_pvp = {
+        "PvP blind! Outscore your opponent.",
+        "Head to head now. Every chip counts.",
+        "Your rival is playing this blind too. Beat their score!",
+        "PvP round. Big hands only.",
+        "Showdown time. Make them sweat.",
+    },
+    mp_life_lost = {
+        "You lost a life. Shake it off.",
+        "Ouch, one life down. Time to build up.",
+        "That one stings. {lives} lives left.",
+        "Down a life. The shop can fix this.",
+    },
+    mp_last_life = {
+        "Last life. Play it safe. Or don't.",
+        "One life left. Every hand matters now.",
+        "No more room for mistakes. Last life!",
+    },
+    mp_opp_life = {
+        "Your opponent lost a life! Keep pushing.",
+        "They're down a life. Momentum is yours.",
+        "Ha! That's a life off them.",
+        "Opponent took a hit. Don't let up.",
+    },
+    mp_won = {
+        "Match won! Your opponent is speechless.",
+        "Victory! Good game, good game.",
+        "You won the match! Rematch?",
+    },
+    mp_lost = {
+        "Match lost. Good game though!",
+        "They got this one. Get them next time.",
+        "Close match. Rematch and take it back?",
+    },
+    menu = {
+        "Ready for another run? I am.",
+        "Try a new deck today. Mix things up.",
+        "The Casino has quests waiting for you.",
+        "Psst. Multiplayer is open if you want a rival.",
+        "Daily challenge looks fun today.",
+        "A new stake is a new kind of pain. Try it.",
+        "I've been practicing my shuffle.",
+        "The cards miss you. So do I.",
+        "Have you checked the collection lately?",
+        "Every run starts with one click on Play.",
+        "Still here? Let's play something.",
+        "Somewhere a Legendary Joker is waiting for you.",
+    },
+    collection = {
+        "Some of these are still locked. Go get them.",
+        "So many Jokers. Which one is your favourite?",
+        "Reading card text is the real strategy.",
+        "Look at all you've discovered!",
+        "Every card here has a trick. Learn them all.",
+    },
+}
+
+local POOL_RULES = {
+    new_run = {p = 3, cd = 0, chance = 0.8},
+    one_shot = {p = 3, cd = 50},
+    huge_hand = {p = 4, cd = 60},
+    best_hand = {p = 2, cd = 60, chance = 0.7},
+    weak_hand = {p = 1, cd = 90, chance = 0.5},
+    last_hand = {p = 3, cd = 40},
+    clutch_win = {p = 4, cd = 30},
+    close_win = {p = 2, cd = 60, chance = 0.8},
+    near_miss = {p = 5, cd = 0},
+    loss = {p = 5, cd = 0},
+    win = {p = 5, cd = 0},
+    boss = {p = 3, cd = 0},
+    boss_beaten = {p = 2, cd = 60, chance = 0.6},
+    rare_joker = {p = 3, cd = 20},
+    legendary_joker = {p = 4, cd = 0},
+    money_rich = {p = 2, cd = 240},
+    money_saved = {p = 1, cd = 240, chance = 0.6},
+    money_broke = {p = 1, cd = 240, chance = 0.6},
+    ante_up = {p = 2, cd = 0, chance = 0.7},
+    final_ante = {p = 3, cd = 0},
+    endless = {p = 2, cd = 0, chance = 0.6},
+    skip_blind = {p = 2, cd = 90, chance = 0.6},
+    rare_hand = {p = 4, cd = 0},
+    hand_streak = {p = 1, cd = 180, chance = 0.6},
+    shop = {p = 0, cd = 150, chance = 0.3},
+    pack = {p = 0, cd = 150, chance = 0.25},
+    mp_pvp = {p = 3, cd = 60},
+    mp_life_lost = {p = 4, cd = 0},
+    mp_last_life = {p = 4, cd = 0},
+    mp_opp_life = {p = 3, cd = 0},
+    mp_won = {p = 5, cd = 0},
+    mp_lost = {p = 5, cd = 0},
+    menu = {p = 0, cd = 0},
+    collection = {p = 0, cd = 0},
+}
+
+local RARE_HANDS = {["Flush Five"] = true, ["Flush House"] = true, ["Five of a Kind"] = true, ["Straight Flush"] = true, ["Royal Flush"] = true}
+
+JC.LINES = LINES
+JC.POOL_RULES = POOL_RULES
+
+local rng = love and love.math and love.math.newRandomGenerator and love.math.newRandomGenerator(os.time()) or nil
+local function rand(a, b)
+    if rng then
+        if a then return rng:random(a, b) end
+        return rng:random()
+    end
+    if a then return a + math.floor((b - a + 1) * ((os.clock() * 7919) % 1)) end
+    return (os.clock() * 7919) % 1
+end
+
+local function now()
+    return love.timer.getTime()
+end
+
+local function enabled()
+    return G and G.SETTINGS and G.SETTINGS.jimbo_comments_enabled == true
+end
+
+local function rate()
+    local r = G and G.SETTINGS and tonumber(G.SETTINGS.jimbo_comments_rate) or 2
+    if r < 1 or r > 3 then r = 2 end
+    return math.floor(r)
+end
+
+JC._bags = JC._bags or {}
+JC._last_pool_at = JC._last_pool_at or {}
+JC._last_at = JC._last_at or 0
+
+local function pick(pool)
+    local lines = LINES[pool]
+    if not lines or #lines == 0 then return nil end
+    local bag = JC._bags[pool]
+    if not bag or #bag == 0 then
+        bag = {}
+        for i = 1, #lines do bag[i] = i end
+        for i = #bag, 2, -1 do
+            local j = rand(1, i)
+            bag[i], bag[j] = bag[j], bag[i]
+        end
+        if JC._last_line and #bag > 1 and lines[bag[#bag]] == JC._last_line then
+            bag[1], bag[#bag] = bag[#bag], bag[1]
+        end
+        JC._bags[pool] = bag
+    end
+    local i = table.remove(bag)
+    return lines[i]
+end
+
+local function fill(text, vars)
+    text = mod_loc and mod_loc(text) or text
+    if vars then
+        text = text:gsub("{(%w+)}", function(k)
+            local v = vars[k]
+            if v == nil then return "{" .. k .. "}" end
+            return tostring(v)
+        end)
+    end
+    return text
+end
+
+local function fmt_num(v)
+    local ok, s = pcall(number_format, v)
+    if ok and type(s) == "string" then return s end
+    return tostring(v)
+end
+
+local function ulen(s)
+    local _, n = s:gsub("[^\128-\191]", "")
+    return n
+end
+
+local function wrap_greedy(str, max_chars)
+    local out, cur = {}, ""
+    for word in str:gmatch("%S+") do
+        if cur == "" then cur = word
+        elseif ulen(cur) + 1 + ulen(word) <= max_chars then cur = cur .. " " .. word
+        else out[#out + 1] = cur; cur = word end
+    end
+    if cur ~= "" then out[#out + 1] = cur end
+    return out
+end
+
+local function wrap(str, max_chars)
+    local best = wrap_greedy(str, max_chars)
+    if #best < 2 then return best end
+    for w = max_chars - 1, 6, -1 do
+        local t = wrap_greedy(str, w)
+        if #t > #best then break end
+        best = t
+    end
+    return best
+end
+
+local function touch()
+    return UIK and UIK.touch and UIK.touch() or (G and G.F_MOBILE_UI) or false
+end
+
+local function portrait()
+    return UIK and UIK.portrait and UIK.portrait() or false
+end
+
+local function jimbo_center()
+    local key = "j_joker"
+    pcall(function()
+        if JimboSkinManager_get_equipped then key = JimboSkinManager_get_equipped() or "j_joker" end
+    end)
+    return G.P_CENTERS[key] or G.P_CENTERS.j_joker
+end
+
+local function make_card()
+    local s = touch() and 0.55 or 0.48
+    local card = Card(0, 0, G.CARD_W * s, G.CARD_H * s, G.P_CARDS.empty, jimbo_center(), {bypass_discovery_center = true})
+    card._is_jimbo_visual = true
+r 6 220 %20%20%20%20 -
+r 9 1460 %20%20%20%20 -
+r 6 219 %20%20%20%20 -
+r 15 4154 %20%20%20%20 -
+l 508
+    card.no_ui = true
+    return card
+end
+
+local function build(text, card, card_left, chars, vertical)
+    local t = touch()
+    local scale = t and 0.42 or 0.36
+    local rows = {}
+    for _, line in ipairs(wrap(text, chars)) do
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+            {n = G.UIT.T, config = {text = line, scale = scale, colour = G.C.UI.TEXT_DARK}},
+        }}
+    end
+    local bubble = {n = G.UIT.C, config = {align = "cm", padding = 0.12, r = 0.12, colour = G.C.WHITE, emboss = 0.05, minh = G.CARD_H * (t and 0.5 or 0.42) * 0.8}, nodes = {
+        {n = G.UIT.R, config = {align = "cm"}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = rows}}},
+    }}
+    local face = {n = G.UIT.C, config = {align = "cm"}, nodes = {{n = G.UIT.O, config = {object = card}}}}
+    if vertical then
+        return {n = G.UIT.ROOT, config = {align = "cm", padding = 0.08, r = 0.15, colour = G.C.CLEAR}, nodes = {
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {face}},
+            {n = G.UIT.R, config = {minh = 0.1}},
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {bubble}},
+        }}
+    end
+    local gap = {n = G.UIT.C, config = {minw = 0.1}}
+    local row = card_left and {face, gap, bubble} or {bubble, gap, face}
+    return {n = G.UIT.ROOT, config = {align = "cm", padding = 0.08, r = 0.15, colour = G.C.CLEAR}, nodes = {
+        {n = G.UIT.R, config = {align = "cm"}, nodes = row},
+    }}
+end
+
+local function rect_of(m, pad)
+    if type(m) ~= "table" or type(m.T) ~= "table" then return nil end
+    if m.REMOVED or (m.states and m.states.visible == false) then return nil end
+    local T = m.VT or m.T
+    if not (T.w and T.h) or T.w <= 0 or T.h <= 0 then return nil end
+    pad = pad or 0
+    return {x = T.x - pad, y = T.y - pad, w = T.w + 2 * pad, h = T.h + 2 * pad}
+end
+
+local function hits(a, b)
+    return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
+end
+
+local function is_ours(box)
+    return JC._box and box == JC._box
+end
+
+local function room_rect()
+    local W, H = G.ROOM and G.ROOM.T.w or 20, G.ROOM and G.ROOM.T.h or 11.5
+    local m = 0.2
+    return {x = m, y = m, w = W - 2 * m, h = H - 2 * m}
+end
+
+function JC.obstacles(ignore)
+    local out = {}
+    local room = room_rect()
+    local function add(r)
+        if r and not (r.w >= room.w * 0.98 and r.h >= room.h * 0.98) then out[#out + 1] = r end
+    end
+    for _, area in ipairs(G.I and G.I.CARDAREA or {}) do
+        if not area.REMOVED and not (area.states and area.states.visible == false) then
+            local has = area.cards and #area.cards > 0
+            if has or area == G.hand or area == G.jokers or area == G.deck then
+                local r = rect_of(area, 0.1)
+                if r then
+                    if area == G.hand then r.y = r.y - 0.7 r.h = r.h + 0.7 end
+                    add(r)
+                end
+                for _, c in ipairs(area.cards or {}) do add(rect_of(c, 0.05)) end
+            end
+        end
+    end
+    local cons = G.consumeables
+    local empty_cons = cons and cons.children and (not cons.cards or #cons.cards == 0) and cons.children.area_uibox or nil
+    for _, box in ipairs(G.I and G.I.UIBOX or {}) do
+        if not is_ours(box) and box ~= ignore and box ~= empty_cons and box.states and box.states.visible ~= false and not box.REMOVED then
+            local r = rect_of(box, 0.15)
+            if r and not (r.w >= room.w * 0.95 and r.h >= room.h * 0.95) then add(r) end
+        end
+    end
+    if empty_cons then
+        local a, u = rect_of(cons, 0), rect_of(empty_cons, 0.15)
+        if a and u then
+            local top = math.max(u.y, a.y + a.h - 0.35)
+            if u.y + u.h > top then add({x = u.x, y = top, w = u.w, h = u.y + u.h - top}) end
+        end
+    end
+    local logo = rect_of(G.SPLASH_LOGO, 0.1)
+    if logo then
+        local inset = logo.w * 0.05
+        add({x = logo.x + inset, y = logo.y, w = logo.w - 2 * inset, h = logo.h})
+    end
+    add(rect_of(G.title_top, 0.1))
+    return out
+end
+
+local function free(r, obs)
+    for i = 1, #obs do
+        if hits(r, obs[i]) then return false end
+    end
+    return true
+end
+
+local function inside(r, room)
+    return r.x >= room.x and r.y >= room.y and r.x + r.w <= room.x + room.w and r.y + r.h <= room.y + room.h
+end
+
+function JC.find_spot(w, h, focus, obs)
+    local room = room_rect()
+    obs = obs or JC.obstacles()
+    local fx = focus and focus.x or room.x + room.w / 2
+    local fy = focus and focus.y or room.y + room.h * 0.45
+    local best, best_d = nil, nil
+    local step = 0.2
+    local y = room.y
+    while y + h <= room.y + room.h + 0.001 do
+        local x = room.x
+        while x + w <= room.x + room.w + 0.001 do
+            local r = {x = x, y = y, w = w, h = h}
+            local cx, cy = x + w / 2, y + h / 2
+            local d = (cx - fx) ^ 2 + ((cy - fy) * 1.3) ^ 2
+            if (not best_d or d < best_d) and free(r, obs) then best, best_d = r, d end
+            x = x + step
+        end
+        y = y + step
+    end
+    return best
+end
+
+local function center_of(m)
+    local r = rect_of(m)
+    if not r then return nil end
+    return {x = r.x + r.w / 2, y = r.y + r.h / 2}
+end
+
+local FOCUS = {
+    hand = function() return (G.play and G.play.cards and #G.play.cards > 0 and center_of(G.play)) or center_of(G.play) or center_of(G.hand) end,
+    blind = function() return center_of(G.HUD_blind) or center_of(G.play) end,
+    money = function()
+        local e = G.HUD and G.HUD.get_UIE_by_ID and G.HUD:get_UIE_by_ID("dollar_text_UI")
+        return center_of(e) or center_of(G.HUD)
+    end,
+    joker = function() return center_of(G.jokers) end,
+    center = function() return center_of(G.play) end,
+}
+
+function JC.hide()
+    if JC._box then
+        pcall(function() JC._box:remove() end)
+    end
+    JC._box, JC._msg, JC._until, JC._prio = nil, nil, 0, nil
+end
+
+local function say_sound()
+    pcall(play_sound, "voice" .. rand(1, 11), (G.SPEEDFACTOR or 1) * (rand() * 0.2 + 1), 0.35)
+end
+
+local function place(box, focus)
+    local w, h = box.T.w, box.T.h
+    local spot = JC.find_spot(w, h, focus)
+    if not spot then return false end
+    box.alignment.offset.x = spot.x - (G.ROOM_ATTACH.T.x or 0)
+    box.alignment.offset.y = spot.y - (G.ROOM_ATTACH.T.y or 0)
+    box:align_to_major()
+    return true
+end
+
+local function widths()
+    if portrait() then return {{24}, {18}, {14}, {14, true}, {12, true}} end
+    if touch() then return {{30}, {22}, {16}, {16, true}, {14, true}, {12, true}} end
+    return {{32}, {22}, {16}, {16, true}, {14, true}, {12, true}}
+end
+
+local function build_placed(text, focus)
+    local card_left = true
+    if focus and G.ROOM then card_left = focus.x >= G.ROOM.T.w / 2 end
+    for _, wd in ipairs(widths()) do
+        local card = make_card()
+        local box = UIBox{
+            definition = build(text, card, card_left, wd[1], wd[2]),
+            config = {align = "tli", offset = {x = -30, y = -30}, major = G.ROOM_ATTACH, bond = "Weak", instance_type = "POPUP"},
+        }
+        JC._box = box
+        if place(box, focus) then
+            box:hard_set_VT()
+            box.states.collide.can = false
+            return box, card
+        end
+        pcall(function() box:remove() end)
+        JC._box = nil
+    end
+    return nil
+end
+
+function JC.show(text, prio, focus_kind, keep_time)
+    if not (G and G.ROOM_ATTACH and G.UIT and Card) then return false end
+    local until_t = keep_time and JC._until
+    JC.hide()
+    local focus_fn = FOCUS[focus_kind or ""]
+    local focus = focus_fn and focus_fn() or nil
+    local ok, box, card = pcall(build_placed, text, focus)
+    if not ok or not box then
+        JC.hide()
+        if not ok then JC.last_error = box end
+        return false
+    end
+    if not keep_time then card:juice_up(0.3, 0.3) end
+    JC._msg, JC._until, JC._prio, JC._focus = text, until_t or (now() + JC.DISPLAY + math.min(3, #text / 30)), prio or 0, focus_kind
+    JC._shown_at = now()
+    if not keep_time then say_sound() end
+    return true
+end
+
+local function blocked()
+    if not enabled() then return true end
+    if G.OVERLAY_TUTORIAL then return true end
+    if G.SETTINGS and G.SETTINGS.paused and G.STAGE == G.STAGES.RUN then return true end
+    if G.STAGE == G.STAGES.SANDBOX then return true end
+    if G.STAGE == G.STAGES.RUN and G.OVERLAY_MENU then return true end
+    return false
+end
+
+function JC.fire(pool, vars, focus_kind, force)
+    if blocked() and not force then JC.last_fail = "blocked" return false end
+    local rule = POOL_RULES[pool] or {p = 1, cd = 60}
+    local t = now()
+    if not force then
+        if rule.chance and rand() > rule.chance then JC.last_fail = "chance " .. pool return false end
+        local last = JC._last_pool_at[pool]
+        if last and rule.cd > 0 and t - last < rule.cd then return false end
+        if JC._msg and (JC._prio or 0) >= rule.p then return false end
+        local gap = JC.GAPS[rate()]
+        if rule.p < 3 and t - (JC._last_at or 0) < gap then return false end
+        if rule.p >= 3 and t - (JC._last_at or 0) < 3 then return false end
+    end
+    local line = pick(pool)
+    if not line then return false end
+    local text = fill(line, vars)
+    JC.last_fail = "no room " .. pool
+    if JC.show(text, rule.p, focus_kind) then
+        JC.last_fail = nil
+        JC._last_pool_at[pool] = t
+        JC._last_at = t
+        JC._last_line = line
+        JC._last_pool = pool
+        return true
+    end
+    return false
+end
+
+local function blind_key()
+    local b = G.GAME and G.GAME.blind
+    return b and b.config and b.config.blind and b.config.blind.key
+end
+
+local function blind_name()
+    local key = blind_key()
+    local ok, name = pcall(localize, {type = "name_text", key = key, set = "Blind"})
+    if ok and type(name) == "string" and name ~= "ERROR" then return name end
+    local b = G.GAME and G.GAME.blind
+    return b and b.name or "the boss"
+end
+
+local function joker_name(card)
+    local key = card.config and card.config.center and card.config.center.key
+    local ok, name = pcall(localize, {type = "name_text", key = key, set = "Joker"})
+    if ok and type(name) == "string" and name ~= "ERROR" then return name end
+    return card.ability and card.ability.name or "that Joker"
+end
+
+local function hand_label(name)
+    local ok, s = pcall(localize, name, "poker_hands")
+    if ok and type(s) == "string" and s ~= "ERROR" then return s end
+    return name
+end
+
+local function in_mp()
+    return G.GAME and G.GAME.multiplayer and true or false
+end
+
+local function pvp_now()
+    local ok, r = pcall(function() return bom_match and bom_match.is_pvp_blind and bom_match.is_pvp_blind() end)
+    return ok and r or false
+end
+
+local PACK_STATES = {}
+local function is_pack(state)
+    if not next(PACK_STATES) then
+        for _, k in ipairs({"TAROT_PACK", "PLANET_PACK", "SPECTRAL_PACK", "STANDARD_PACK", "BUFFOON_PACK", "SMODS_BOOSTER_OPENED"}) do
+            if G.STATES[k] then PACK_STATES[G.STATES[k]] = true end
+        end
+    end
+    return PACK_STATES[state] or false
+end
+
+local S = {}
+JC._snap = S
+
+local function reset_run(game)
+    S.game = game
+    S.jokers = {}
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do S.jokers[j] = true end
+    S.ante = G.GAME.round_resets and G.GAME.round_resets.ante or 1
+    S.dollars = G.GAME.dollars or 0
+    S.skips = G.GAME.skips or 0
+    S.won = G.GAME.won
+    S.mp_lives = tonumber(G.GAME.mp_lives)
+    S.opp_lives = tonumber(G.GAME.mp_opponent_lives) or (type(G.GAME.mp_opponent_panel) == "table" and tonumber(G.GAME.mp_opponent_panel.lives)) or nil
+    S.rare_seen = {}
+    S.streak = {}
+    S.blind_seen = nil
+    S.last_hand_blind = nil
+    S.chips_before = nil
+    S.target = nil
+    S.boss = nil
+    S.over = false
+    S.money_band = nil
+end
+
+local function money_band(d)
+    if d >= 100 then return 3 end
+    if d >= 25 then return 2 end
+    if d <= 2 then return 0 end
+    return 1
+end
+
+local function on_hand_done()
+    local score = (tonumber(G.GAME.chips) or 0) - (S.chips_before or 0)
+    S.chips_before = nil
+    local name = G.GAME.last_hand_played
+    if not name or score <= 0 then return end
+    local target = S.target or tonumber(G.GAME.blind and G.GAME.blind.chips) or 0
+    local vars = {score = fmt_num(score), hand = hand_label(name)}
+    S.streak[#S.streak + 1] = name
+    if #S.streak > 5 then table.remove(S.streak, 1) end
+    if RARE_HANDS[name] and not S.rare_seen[name] then
+        S.rare_seen[name] = true
+        if JC.fire("rare_hand", vars, "hand") then return end
+    end
+    if target > 0 and score >= target * 10 and JC.fire("huge_hand", vars, "hand") then return end
+    if target > 0 and score >= target and (S.first_hand_of_blind) and JC.fire("one_shot", vars, "hand") then return end
+    local best = G.GAME.round_scores and G.GAME.round_scores.hand and tonumber(G.GAME.round_scores.hand.amt) or 0
+    if score >= best and (G.GAME.hands_played or 0) > 4 and JC.fire("best_hand", vars, "hand") then return end
+    if #S.streak == 5 then
+        local same = true
+        for i = 2, 5 do if S.streak[i] ~= S.streak[1] then same = false end end
+        if same and JC.fire("hand_streak", vars, "hand") then S.streak = {} return end
+    end
+    local hl = G.GAME.current_round and G.GAME.current_round.hands_left or 0
+    local need = target - (tonumber(G.GAME.chips) or 0)
+    if target > 0 and hl >= 1 and need > 0 and score * hl < need * 0.4 then JC.fire("weak_hand", vars, "hand") end
+end
+
+local function poll_run()
+    local g = G.GAME
+    if S.game ~= g then
+        reset_run(g)
+        if (g.round or 0) == 0 and S.ante <= 1 then
+            S.pending_new = true
+        end
+    end
+    local st = G.STATE
+    local prev = S.state
+    S.state = st
+
+    if S.pending_new and st == G.STATES.BLIND_SELECT then
+        S.pending_new = nil
+        JC.fire("new_run", nil, "center")
+    end
+
+    if st == G.STATES.HAND_PLAYED and prev ~= st then
+        S.chips_before = tonumber(g.chips) or 0
+        S.first_hand_of_blind = (g.current_round and (g.current_round.hands_played or 0) <= 1) or false
+    elseif prev == G.STATES.HAND_PLAYED and st ~= prev and S.chips_before then
+        on_hand_done()
+    end
+
+    if st == G.STATES.SELECTING_HAND then
+        local key = blind_key()
+        local id = tostring(key) .. ":" .. tostring(g.round)
+        if S.blind_seen ~= id then
+            S.blind_seen = id
+            S.target = tonumber(g.blind and g.blind.chips) or 0
+            S.boss = g.blind and g.blind.boss and key or nil
+            if in_mp() and pvp_now() then
+                JC.fire("mp_pvp", nil, "blind")
+            elseif S.boss then
+                local pool = LINES["boss_" .. key] and (rand() < 0.75) and ("boss_" .. key) or "boss"
+                if pool ~= "boss" then POOL_RULES[pool] = POOL_RULES[pool] or {p = 3, cd = 0} end
+                JC.fire(pool, {boss = blind_name()}, "blind")
+            end
+        end
+        local cr = g.current_round
+        if cr and cr.hands_left == 1 and S.last_hand_blind ~= id then
+            local need = (tonumber(g.blind and g.blind.chips) or 0) - (tonumber(g.chips) or 0)
+            if need > 0 then
+                S.last_hand_blind = id
+                JC.fire("last_hand", {left = fmt_num(need)}, "hand")
+            end
+        end
+    end
+
+    if st == G.STATES.ROUND_EVAL and prev ~= st then
+        local cr = g.current_round
+        local chips, target = tonumber(g.chips) or 0, S.target or 0
+        if cr and cr.hands_left == 0 then
+            JC.fire("clutch_win", nil, "center")
+        elseif target > 0 and chips < target * 1.1 then
+            JC.fire("close_win", nil, "center")
+        elseif S.boss then
+            JC.fire("boss_beaten", {boss = blind_name()}, "center")
+        end
+    end
+
+    if st == G.STATES.GAME_OVER and not S.over then
+        S.over = true
+        local chips, target = tonumber(g.chips) or 0, S.target or tonumber(g.blind and g.blind.chips) or 0
+        if in_mp() then
+            JC.fire("mp_lost", nil, "center", true)
+        elseif target > 0 and chips >= target * 0.85 then
+            JC.fire("near_miss", {left = fmt_num(math.max(0, target - chips))}, "center", true)
+        else
+            JC.fire("loss", nil, "center", true)
+        end
+    end
+
+    if g.won and not S.won then
+        S.won = true
+        JC.fire(in_mp() and "mp_won" or "win", {ante = g.win_ante or 8}, "center", true)
+    end
+
+    local ante = g.round_resets and g.round_resets.ante or S.ante
+    if ante > (S.ante or ante) then
+        S.ante = ante
+        local win_ante = g.win_ante or 8
+        if ante == win_ante then JC.fire("final_ante", {ante = ante}, "blind")
+        elseif ante > win_ante then JC.fire("endless", {ante = ante}, "blind")
+        else JC.fire("ante_up", {ante = ante}, "blind") end
+    end
+
+    if (g.skips or 0) > (S.skips or 0) then
+        S.skips = g.skips
+        JC.fire("skip_blind", nil, "blind")
+    end
+
+    local cur = {}
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do
+        cur[j] = true
+        if not S.jokers[j] and not j._is_jimbo_visual then
+            local r = j.config and j.config.center and j.config.center.rarity
+            if r == 4 then JC.fire("legendary_joker", {joker = joker_name(j)}, "joker")
+            elseif r == 3 then JC.fire("rare_joker", {joker = joker_name(j)}, "joker") end
+        end
+    end
+    S.jokers = cur
+
+    local d = tonumber(g.dollars) or 0
+    local band = money_band(d)
+    if S.money_band == nil then S.money_band = band end
+    if band ~= S.money_band then
+        local vars = {money = fmt_num(d)}
+        if band == 3 and S.money_band < 3 then JC.fire("money_rich", vars, "money")
+        elseif band == 2 and S.money_band < 2 then JC.fire("money_saved", vars, "money") end
+        S.money_band = band
+    end
+
+    if st == G.STATES.SHOP and prev ~= st then
+        if d <= 2 then JC.fire("money_broke", {money = fmt_num(d)}, "money")
+        else JC.fire("shop", nil, "joker") end
+    end
+    if is_pack(st) and not is_pack(prev or -1) then JC.fire("pack", nil, "center") end
+
+    if in_mp() then
+        local panel = type(g.mp_opponent_panel) == "table" and g.mp_opponent_panel or nil
+        local ml, ol = tonumber(g.mp_lives), tonumber(g.mp_opponent_lives) or (panel and tonumber(panel.lives))
+        if ml and S.mp_lives and ml < S.mp_lives then
+            if ml == 1 then JC.fire("mp_last_life", {lives = ml}, "center")
+            elseif ml > 1 then JC.fire("mp_life_lost", {lives = ml}, "center") end
+        end
+        if ol and S.opp_lives and ol < S.opp_lives and ol > 0 then JC.fire("mp_opp_life", {lives = ol}, "center") end
+        S.mp_lives, S.opp_lives = ml or S.mp_lives, ol or S.opp_lives
+    end
+end
+
+local COLLECTION_IDS = {"your_collection_jokers", "your_collection_tarots", "your_collection_planets", "your_collection_spectrals", "your_collection_vouchers", "your_collection_boosters", "your_collection_tags", "your_collection_blinds", "your_collection_stakes", "your_collection_enhancements", "your_collection_seals", "your_collection_editions", "your_collection_decks"}
+
+local function in_collection()
+    local o = G.OVERLAY_MENU
+    if not (o and o.get_UIE_by_ID) then return false end
+    for _, id in ipairs(COLLECTION_IDS) do
+        local ok, n = pcall(o.get_UIE_by_ID, o, id)
+        if ok and n then return true end
+    end
+    return false
+end
+
+local function poll_menu()
+    S.game = nil
+    local t = now()
+    if not JC._idle_at then
+        local r = JC.IDLE[rate()]
+        JC._idle_at = t + rand(r[1], r[2])
+        return
+    end
+    if t < JC._idle_at then return end
+    local r = JC.IDLE[rate()]
+    JC._idle_at = t + rand(r[1], r[2])
+r 23 214 %20%20%20%20 -
+l 479
+        if in_collection() then JC.fire("collection") end
+        return
+    end
+    JC.fire("menu")
+end
+
+local function keep_placed()
+    local box = JC._box
+    if not box or box.REMOVED then JC.hide() return end
+    local t = now()
+    if t >= (JC._until or 0) then JC.hide() return end
+    if t - (JC._check_at or 0) < 0.4 then return end
+    JC._check_at = t
+    local obs = JC.obstacles()
+    local r = rect_of(box)
+    if r and free(r, obs) and inside(r, room_rect()) then return end
+    local fn = FOCUS[JC._focus or ""]
+    local focus = fn and fn() or nil
+    local spot = JC.find_spot(box.T.w, box.T.h, focus, obs)
+    if not spot then
+        JC.show(JC._msg, JC._prio, JC._focus, true)
+        return
+    end
+    box.alignment.offset.x = spot.x - (G.ROOM_ATTACH.T.x or 0)
+    box.alignment.offset.y = spot.y - (G.ROOM_ATTACH.T.y or 0)
+    box:align_to_major()
+end
+
+local OLD_KEYS = {"ho_advisor", "jimbo_advanced", "jimbo_beginner", "advisor_jimbo_pos", "ho_auto_compact", "ho_num_suggestions", "ho_show_discards", "ho_show_outs",
+    "ho_show_joker_order", "ho_mode", "ho_show_probs", "ho_show_reasons", "ho_perf_mode", "ho_compact_scale", "ho_panel_scale", "ho_beginner_mode"}
+
+function JC.clean_settings()
+    if JC._cleaned or not (G and G.SETTINGS) then return end
+    JC._cleaned = true
+    local dirty = false
+    for _, k in ipairs(OLD_KEYS) do
+        if G.SETTINGS[k] ~= nil then G.SETTINGS[k] = nil dirty = true end
+    end
+    if G.SETTINGS.jimbo_comments_rate == nil then G.SETTINGS.jimbo_comments_rate = 2 end
+    if dirty and G.save_settings then pcall(function() G:save_settings() end) end
+end
+
+function JC.update(dt)
+    if not G or not G.STAGES then return end
+    JC.clean_settings()
+    if JC._box then
+        if not enabled() or G.OVERLAY_TUTORIAL or (G.STAGE == G.STAGES.RUN and G.OVERLAY_MENU) then JC.hide() else keep_placed() end
+    end
+    if not enabled() then return end
+    if G.STAGE == G.STAGES.RUN and G.GAME then
+        JC._idle_at = nil
+        poll_run()
+    elseif G.STAGE == G.STAGES.MAIN_MENU then
+        poll_menu()
+    end
+end
+
+function JC.say(pool, vars, focus_kind)
+    return JC.fire(pool, vars, focus_kind, true)
+end
+
+function JC.clear()
+    JC.hide()
+end
+
+function JC.rect()
+    return JC._box and rect_of(JC._box) or nil
+end
+
+local _orig_start_run = Game and Game.start_run
+if _orig_start_run then
+    Game.start_run = function(self, ...)
+        JC.hide()
+        return _orig_start_run(self, ...)
+    end
+end
+
+mod_loc_register{
+    fr = {
+        ["Rarely"] = "Rarement",
+        ["Sometimes"] = "Parfois",
+        ["Often"] = "Souvent",
+        ["Fresh deck, fresh start. Let's make it count."] = "Nouveau deck, nouveau départ. On fait ça bien.",
+        ["New run! I already like this one."] = "Nouvelle partie ! Je la sens bien, celle-là.",
+        ["Shuffle up. Somewhere in there is a winning run."] = "On mélange. Il y a une victoire cachée là-dedans.",
+        ["Ante 1. Everybody's a genius at Ante 1."] = "Mise 1. Tout le monde est un génie à la mise 1.",
+        ["Let's see what this seed is hiding."] = "Voyons ce que cette seed nous réserve.",
+        ["Deep breath. Small Blind first, glory later."] = "On respire. D'abord la Petite Blinde, la gloire après.",
+        ["{score} in one hand. The blind never stood a chance."] = "{score} en une main. La blinde n'avait aucune chance.",
+        ["One hand, one blind, done. Clean."] = "Une main, une blinde, terminé. Propre.",
+        ["{hand} for {score}? That blind just folded."] = "{hand} pour {score} ? La blinde vient de se coucher.",
+        ["Why use many hand when one hand do trick?"] = "Pourquoi jouer plusieurs mains quand une seule suffit ?",
+        ["You didn't beat that blind, you deleted it."] = "Tu n'as pas battu cette blinde, tu l'as effacée.",
+        ["That {hand} cleared the whole thing by itself."] = "Avec {hand}, tout est réglé d'un coup.",
+        ["One and done. Save the rest for the shop."] = "Une main et c'est plié. Garde le reste pour la boutique.",
+        ["{score}?! Somebody check the deck for cheats."] = "{score} ?! Quelqu'un peut vérifier le deck ?",
+        ["That was ten blinds' worth of chips. At least."] = "Ça valait dix blindes en jetons. Au moins.",
+        ["I felt that one from over here. {score}!"] = "Je l'ai sentie d'ici, celle-là. {score} !",
+        ["The scoreboard needs a bigger screen now."] = "Il va falloir un plus grand écran pour le score.",
+        ["Okay, now you're just showing off. I love it."] = "Bon, là tu frimes. Et j'adore.",
+        ["New best hand this run: {score}!"] = "Meilleure main de la partie : {score} !",
+        ["{score}! That's your biggest hand yet."] = "{score} ! C'est ta plus grosse main jusqu'ici.",
+        ["Look at that {hand}. Run record!"] = "Regarde-moi ça : {hand}. Record de la partie !",
+        ["Best hand of the run. Keep stacking."] = "Meilleure main de la partie. Continue comme ça.",
+        ["Your engine is warming up. {score} and climbing."] = "Ta machine chauffe. {score} et ça monte.",
+        ["Only {score}? The blind barely noticed."] = "Seulement {score} ? La blinde n'a presque rien senti.",
+        ["That {hand} needs some help. Maybe a Joker or two."] = "{hand}, c'est un peu juste. Un Joker ou deux, peut-être.",
+        ["Hmm. We need way more than that."] = "Hmm. Il nous faut bien plus que ça.",
+        ["Small hand, big gap. Time for something bold."] = "Petite main, gros écart. Il faut oser.",
+        ["That's a start. A small one."] = "C'est un début. Un petit début.",
+        ["Last hand. {left} to go. No pressure."] = "Dernière main. Encore {left}. Pas de pression.",
+        ["Final hand. Make it a big one."] = "Dernière main. Fais-en une grosse.",
+        ["One hand left and {left} short. You've got this. Probably."] = "Une main et {left} à faire. Tu vas y arriver. Sûrement.",
+        ["All in on this one. {left} to clear."] = "Tout sur celle-là. Encore {left}.",
+        ["This is the hand they'll write songs about. Or not."] = "On chantera cette main un jour. Ou pas.",
+        ["Last chance. Pick your best and pray."] = "Dernière chance. Prends tes meilleures cartes et croise les doigts.",
+        ["Everything rides on this hand."] = "Tout se joue sur cette main.",
+        ["On the very last hand! My heart can't take this."] = "À la toute dernière main ! Mon cœur ne tiendra pas.",
+        ["Clutch! I never doubted you. Mostly."] = "In extremis ! Je n'ai jamais douté. Enfin, presque.",
+        ["Last hand, and you pulled it off!"] = "Dernière main, et ça passe !",
+        ["That's how you close it out."] = "Voilà comment on conclut.",
+        ["Down to the wire and still standing."] = "Jusqu'au bout, et toujours debout.",
+        ["Phew. Let's not do that again. Unless it's fun."] = "Ouf. Évitons de recommencer. Sauf si c'est drôle.",
+        ["Just barely over. A win's a win!"] = "De justesse. Une victoire reste une victoire !",
+        ["That was close. Like, really close."] = "C'était serré. Vraiment très serré.",
+        ["Squeaked through! Maybe buy something strong."] = "Passé de peu ! Achète peut-être quelque chose de costaud.",
+        ["Made it by a hair. The next blind is bigger, though."] = "À un cheveu. Mais la prochaine blinde est plus grosse.",
+        ["So close! Just {left} short."] = "Si près ! Il manquait juste {left}.",
+        ["Agh, {left} away from making it. That one hurts."] = "Aïe, à {left} du but. Celle-là fait mal.",
+        ["Almost had it. One more Joker and that was yours."] = "Presque. Un Joker de plus et c'était à toi.",
+        ["Missed by a whisker. Next run is yours."] = "Raté d'un poil. La prochaine est pour toi.",
+        ["That close?! The blind got lucky."] = "Si près ?! La blinde a eu de la chance.",
+        ["So near. Don't worry, I won't tell anyone."] = "Si proche. T'inquiète, je ne dirai rien.",
+        ["Well, that's the run. Shuffle up and go again?"] = "Bon, c'est fini pour cette partie. On remélange ?",
+        ["Every great player loses. A lot. Like, a lot a lot."] = "Tous les grands joueurs perdent. Souvent. Très souvent.",
+        ["The blind wins this time. Rematch?"] = "La blinde gagne cette fois. Revanche ?",
+        ["Don't look at me, I was rooting for you."] = "Me regarde pas, j'étais de ton côté.",
+        ["That's just Balatro. Next run will be better."] = "C'est ça, Balatro. La prochaine sera meilleure.",
+        ["We learned something. Probably. Let's go again."] = "On a appris quelque chose. Sans doute. On y retourne.",
+        ["Ouch. Back to Ante 1 we go."] = "Aïe. Retour à la mise 1.",
+        ["You beat Ante {ante}! Take a bow!"] = "Tu as battu la mise {ante} ! Salue la foule !",
+        ["Run won! I'm framing this one."] = "Partie gagnée ! Je l'encadre, celle-là.",
+        ["Victory! The Jokers are throwing a party."] = "Victoire ! Les Jokers font la fête.",
+        ["That's a win! Endless mode is calling, if you dare."] = "Victoire ! Le mode infini t'appelle, si tu l'oses.",
+        ["Champion! I knew it from the first hand."] = "Champion ! Je le savais dès la première main.",
+        ["Boss time: {boss}. Read its rule twice."] = "C'est l'heure du boss : {boss}. Lis bien sa règle.",
+        ["Here comes {boss}. Play around it."] = "Voilà {boss}. Joue autour.",
+        ["{boss} is up. Don't let it mess with your hand."] = "{boss} arrive. Ne le laisse pas gâcher ta main.",
+        ["Boss blind! {boss} hits harder than it looks."] = "Blinde de boss ! {boss} frappe plus fort qu'il n'y paraît.",
+        ["Careful, {boss} changes the rules."] = "Attention, {boss} change les règles.",
+        ["{boss}. Ugh. You can take it though."] = "{boss}. Pfff. Mais tu peux le battre.",
+        ["The Psychic wants all five cards. No sneaky Pairs."] = "Le Psychique veut cinq cartes. Pas de petite Paire en douce.",
+        ["The Eye: no repeating hand types. Plan your order."] = "L'Œil : pas deux fois la même main. Prévois ton ordre.",
+        ["The Mouth: only one hand type this round. Pick your best."] = "La Bouche : un seul type de main cette manche. Choisis ta meilleure.",
+        ["The Needle. One hand. Make it your biggest."] = "L'Aiguille. Une seule main. Fais ta plus grosse.",
+        ["The Water: no discards. Play what you're dealt."] = "L'Eau : pas de défausse. Joue ce que tu as.",
+        ["The Wall. It's a big one. Bring your biggest hand."] = "Le Mur. Il est énorme. Sors ta plus grosse main.",
+        ["The Flint halves your base chips and mult. Ouch."] = "Le Silex divise par deux tes jetons et ton mult de base. Aïe.",
+        ["The Plant debuffs face cards. Kings, take a nap."] = "La Plante affaiblit les figures. Les Rois, au lit.",
+        ["The Head debuffs Hearts. Sorry, lovers."] = "La Tête affaiblit les Cœurs. Désolé pour les amoureux.",
+        ["The Club debuffs Clubs. Spread out your suits."] = "Le Gourdin affaiblit les Trèfles. Varie tes couleurs.",
+        ["The Window debuffs Diamonds. Shiny but useless now."] = "La Fenêtre affaiblit les Carreaux. Brillants, mais inutiles.",
+        ["The Goad debuffs Spades. Dig in with the other suits."] = "L'Aiguillon affaiblit les Piques. Joue les autres couleurs.",
+        ["The Hook throws away two cards each hand. Keep extras."] = "Le Crochet jette deux cartes à chaque main. Garde de la marge.",
+        ["The Tooth takes a dollar per card played. Small hands save cash."] = "La Dent prend un dollar par carte jouée. Les petites mains économisent.",
+        ["The Ox takes your money if you play your most played hand."] = "Le Bœuf prend ton argent si tu joues ta main la plus jouée.",
+        ["The Arm lowers the level of every hand you play."] = "Le Bras baisse le niveau de chaque main jouée.",
+        ["The House deals your first hand face down. Spooky."] = "La Maison distribue ta première main face cachée. Flippant.",
+        ["The Wheel flips some cards face down. Trust your gut."] = "La Roue retourne des cartes face cachée. Fie-toi à ton instinct.",
+        ["The Fish flips new cards face down after each hand."] = "Le Poisson retourne les nouvelles cartes après chaque main.",
+        ["The Manacle takes a card from your hand size."] = "La Menotte réduit ta main d'une carte.",
+        ["The Pillar debuffs cards you already played this ante."] = "Le Pilier affaiblit les cartes déjà jouées dans cette mise.",
+        ["The Serpent: you always draw three. Discards hit different."] = "Le Serpent : tu pioches toujours trois cartes. Les défausses changent tout.",
+        ["Violet Vessel. The biggest blind in the game. Everything you've got."] = "Vase violet. La plus grosse blinde du jeu. Donne tout.",
+        ["Verdant Leaf: every card is debuffed until you sell a Joker."] = "Feuille verdoyante : toutes les cartes sont affaiblies tant que tu ne vends pas de Joker.",
+        ["Amber Acorn flips and shuffles your Jokers. Remember the order!"] = "Gland d'ambre retourne et mélange tes Jokers. Retiens l'ordre !",
+        ["Crimson Heart disables a random Joker each hand."] = "Cœur pourpre désactive un Joker au hasard à chaque main.",
+        ["Cerulean Bell forces a card into every hand. Work around it."] = "Cloche céruléenne impose une carte à chaque main. Fais avec.",
+        ["Boss down! Off to the shop."] = "Boss au tapis ! Direction la boutique.",
+        ["{boss} beaten. Next ante, here we come."] = "{boss} battu. Mise suivante, nous voilà.",
+        ["That boss didn't know who it was dealing with."] = "Ce boss ne savait pas à qui il avait affaire.",
+        ["Boss cleared. Treat yourself in the shop."] = "Boss vaincu. Fais-toi plaisir à la boutique.",
+        ["Another boss in the bin."] = "Encore un boss à la poubelle.",
+        ["{joker}! That's a rare one. Build around it."] = "{joker} ! C'est un rare. Construis autour.",
+        ["Ooh, {joker}. Now we're cooking."] = "Oh, {joker}. Là, ça devient sérieux.",
+        ["{joker} joins the crew. Good pickup."] = "{joker} rejoint l'équipe. Bien vu.",
+        ["A rare Joker! {joker} can carry a run."] = "Un Joker rare ! {joker} peut porter une partie.",
+        ["{joker}, nice. Make room for it."] = "{joker}, joli. Fais-lui de la place.",
+        ["{joker}?! A Legendary! This run just changed."] = "{joker} ?! Un Légendaire ! Cette partie vient de changer.",
+        ["A Legendary Joker. Bow to {joker}."] = "Un Joker Légendaire. Inclinez-vous devant {joker}.",
+        ["{joker}! I need to sit down."] = "{joker} ! Il faut que je m'assoie.",
+        ["You found {joker}. This is not a drill."] = "Tu as trouvé {joker}. Ce n'est pas un exercice.",
+        ["${money} in the bank. You could buy the whole shop."] = "{money} $ en banque. Tu pourrais acheter toute la boutique.",
+        ["${money}! Spend some, or keep stacking interest?"] = "{money} $ ! Tu dépenses ou tu laisses grimper les intérêts ?",
+        ["Look at all that cash. ${money}!"] = "Regarde-moi tout cet argent. {money} $ !",
+        ["${money}. Is this a Balatro run or a bank?"] = "{money} $. C'est une partie de Balatro ou une banque ?",
+        ["${money} saved up. Interest loves you."] = "{money} $ de côté. Les intérêts t'adorent.",
+        ["Nice savings. ${money} makes a good cushion."] = "Belles économies. {money} $, ça fait un bon matelas.",
+        ["${money} in the pocket. Patience pays."] = "{money} $ en poche. La patience paie.",
+        ["Saving pays off. Literally."] = "Économiser, ça rapporte. Littéralement.",
+        ["${money}. The shopkeeper is looking at you funny."] = "{money} $. Le marchand te regarde de travers.",
+        ["Running on fumes. Maybe skip a reroll."] = "Tu roules sur la réserve. Évite peut-être une relance.",
+        ["Broke again. Sell something or save up."] = "Encore fauché. Vends quelque chose ou économise.",
+        ["${money}. Window shopping it is."] = "{money} $. On fera du lèche-vitrine.",
+        ["Empty pockets. Next round pays, hopefully."] = "Poches vides. La prochaine manche paiera, espérons.",
+        ["Ante {ante}. The blinds just got bigger."] = "Mise {ante}. Les blindes viennent de grossir.",
+        ["Welcome to Ante {ante}. Check your scaling."] = "Bienvenue à la mise {ante}. Vérifie que ton jeu suit.",
+        ["Ante {ante}! Is your build ready for it?"] = "Mise {ante} ! Ton jeu est prêt ?",
+        ["Up to Ante {ante}. The chips needed just jumped."] = "Mise {ante}. Les jetons à faire viennent de bondir.",
+        ["Ante {ante}. Things get serious from here."] = "Mise {ante}. Ça devient sérieux.",
+        ["Ante 8. The last one. Everything you've got."] = "Mise 8. La dernière. Donne tout.",
+        ["Final ante! One boss stands between you and a win."] = "Dernière mise ! Un seul boss te sépare de la victoire.",
+        ["This is it. Ante 8. No holding back."] = "On y est. Mise 8. Pas de retenue.",
+        ["Endless mode, Ante {ante}. How far can you go?"] = "Mode infini, mise {ante}. Jusqu'où iras-tu ?",
+        ["Ante {ante}. The numbers are getting silly now."] = "Mise {ante}. Les chiffres deviennent ridicules.",
+        ["Still going? Ante {ante}! Legend."] = "Toujours là ? Mise {ante} ! Une légende.",
+        ["Skipped! Hope that tag was worth it."] = "Passée ! J'espère que l'étiquette en valait la peine.",
+        ["Bold skip. Your Jokers better be strong."] = "Audacieux. Tes Jokers ont intérêt à être solides.",
+        ["Skipping for the tag. I like your style."] = "Tu passes pour l'étiquette. J'aime ton style.",
+        ["No blind, just the tag. Living dangerously."] = "Pas de blinde, juste l'étiquette. Tu vis dangereusement.",
+        ["{hand}! I don't see that every day."] = "{hand} ! On ne voit pas ça tous les jours.",
+        ["A {hand}?! Frame it."] = "{hand} ?! À encadrer.",
+        ["{hand}! That's a rare sight."] = "{hand} ! C'est rare, ça.",
+        ["Did you just play a {hand}? Wow."] = "Tu viens de jouer {hand} ? Waouh.",
+        ["{hand} again? It's your thing now."] = "Encore {hand} ? C'est ta spécialité.",
+        ["Another {hand}. Level it up at the next planet."] = "Encore {hand}. Monte son niveau avec la prochaine planète.",
+        ["{hand}, {hand}, {hand}. I see the plan."] = "{hand}, {hand}, {hand}. Je vois le plan.",
+        ["You really love {hand}s, huh."] = "Tu adores vraiment ça, hein : {hand}.",
+        ["Shop time. Look for something that fits your build."] = "Boutique ! Cherche ce qui va avec ton jeu.",
+        ["Check the Jokers first, then the packs."] = "Regarde d'abord les Jokers, ensuite les paquets.",
+        ["Spend smart. Interest is free money."] = "Dépense malin. Les intérêts, c'est de l'argent gratuit.",
+        ["Anything here help your best hand?"] = "Quelque chose ici aide ta meilleure main ?",
+        ["Reroll or save? The eternal question."] = "Relancer ou économiser ? L'éternelle question.",
+        ["New stuff on the shelves. Take a look."] = "Nouveautés en rayon. Jette un œil.",
+        ["Let's see what's inside!"] = "Voyons ce qu'il y a dedans !",
+        ["Pack time. Pick what helps your build."] = "Un paquet ! Prends ce qui aide ton jeu.",
+        ["Ooh, a pack. Fingers crossed."] = "Oh, un paquet. Croisons les doigts.",
+        ["Choose wisely. Or just pick the shiny one."] = "Choisis bien. Ou prends juste celle qui brille.",
+        ["PvP blind! Outscore your opponent."] = "Blinde JcJ ! Fais mieux que ton adversaire.",
+        ["Head to head now. Every chip counts."] = "Face à face. Chaque jeton compte.",
+        ["Your rival is playing this blind too. Beat their score!"] = "Ton rival joue aussi cette blinde. Bats son score !",
+        ["PvP round. Big hands only."] = "Manche JcJ. Que des grosses mains.",
+        ["Showdown time. Make them sweat."] = "L'heure du duel. Fais-le transpirer.",
+        ["You lost a life. Shake it off."] = "Tu as perdu une vie. Secoue-toi.",
+        ["Ouch, one life down. Time to build up."] = "Aïe, une vie en moins. Il faut se renforcer.",
+        ["That one stings. {lives} lives left."] = "Ça pique. Plus que {lives} vies.",
+        ["Down a life. The shop can fix this."] = "Une vie de moins. La boutique peut arranger ça.",
+        ["Last life. Play it safe. Or don't."] = "Dernière vie. Joue prudent. Ou pas.",
+        ["One life left. Every hand matters now."] = "Une seule vie. Chaque main compte.",
+        ["No more room for mistakes. Last life!"] = "Plus droit à l'erreur. Dernière vie !",
+        ["Your opponent lost a life! Keep pushing."] = "Ton adversaire a perdu une vie ! Continue.",
+        ["They're down a life. Momentum is yours."] = "Il a perdu une vie. Tu as l'avantage.",
+        ["Ha! That's a life off them."] = "Ha ! Une vie de moins pour lui.",
+        ["Opponent took a hit. Don't let up."] = "L'adversaire a pris un coup. Ne lâche rien.",
+        ["Match won! Your opponent is speechless."] = "Match gagné ! Ton adversaire est sans voix.",
+        ["Victory! Good game, good game."] = "Victoire ! Bien joué, bien joué.",
+        ["You won the match! Rematch?"] = "Tu as gagné le match ! Revanche ?",
+        ["Match lost. Good game though!"] = "Match perdu. Mais bien joué !",
+        ["They got this one. Get them next time."] = "Il a eu celui-là. Tu l'auras la prochaine fois.",
+        ["Close match. Rematch and take it back?"] = "Match serré. Une revanche pour te rattraper ?",
+        ["Ready for another run? I am."] = "Prêt pour une autre partie ? Moi, oui.",
+        ["Try a new deck today. Mix things up."] = "Essaie un nouveau deck aujourd'hui. Change un peu.",
+        ["The Casino has quests waiting for you."] = "Le Casino a des quêtes qui t'attendent.",
+        ["Psst. Multiplayer is open if you want a rival."] = "Psst. Le multijoueur est ouvert si tu veux un rival.",
+        ["Daily challenge looks fun today."] = "Le défi du jour a l'air sympa.",
+        ["A new stake is a new kind of pain. Try it."] = "Une nouvelle mise, une nouvelle souffrance. Essaie.",
+        ["I've been practicing my shuffle."] = "Je me suis entraîné à mélanger.",
+        ["The cards miss you. So do I."] = "Les cartes s'ennuient de toi. Moi aussi.",
+        ["Have you checked the collection lately?"] = "Tu as regardé ta collection récemment ?",
+        ["Every run starts with one click on Play."] = "Chaque partie commence par un clic sur Jouer.",
+        ["Still here? Let's play something."] = "Toujours là ? Allez, on joue.",
+        ["Somewhere a Legendary Joker is waiting for you."] = "Quelque part, un Joker Légendaire t'attend.",
+        ["Some of these are still locked. Go get them."] = "Certaines sont encore verrouillées. Va les chercher.",
+        ["So many Jokers. Which one is your favourite?"] = "Tant de Jokers. Lequel est ton préféré ?",
+        ["Reading card text is the real strategy."] = "Lire les cartes, c'est ça la vraie stratégie.",
+        ["Look at all you've discovered!"] = "Regarde tout ce que tu as découvert !",
+        ["Every card here has a trick. Learn them all."] = "Chaque carte a son astuce. Apprends-les toutes.",
+    },
+    es = {
+        ["Rarely"] = "Pocas veces",
+        ["Sometimes"] = "A veces",
+        ["Often"] = "A menudo",
+        ["Fresh deck, fresh start. Let's make it count."] = "Baraja nueva, comienzo nuevo. Que valga la pena.",
+        ["New run! I already like this one."] = "¡Nueva partida! Esta ya me gusta.",
+        ["Shuffle up. Somewhere in there is a winning run."] = "A barajar. Ahí dentro hay una victoria escondida.",
+        ["Ante 1. Everybody's a genius at Ante 1."] = "Apuesta 1. En la apuesta 1 todos somos genios.",
+        ["Let's see what this seed is hiding."] = "Veamos qué esconde este código.",
+        ["Deep breath. Small Blind first, glory later."] = "Respira. Primero la Ciega pequeña, la gloria después.",
+        ["{score} in one hand. The blind never stood a chance."] = "{score} en una mano. La ciega no tuvo ninguna oportunidad.",
+        ["One hand, one blind, done. Clean."] = "Una mano, una ciega, listo. Limpio.",
+        ["{hand} for {score}? That blind just folded."] = "¿{hand} por {score}? La ciega se acaba de retirar.",
+        ["Why use many hand when one hand do trick?"] = "¿Para qué jugar muchas manos si basta con una?",
+        ["You didn't beat that blind, you deleted it."] = "No venciste a esa ciega, la borraste.",
+        ["That {hand} cleared the whole thing by itself."] = "Con {hand} lo resolviste todo de golpe.",
+        ["One and done. Save the rest for the shop."] = "Una y listo. Guarda el resto para la tienda.",
+        ["{score}?! Somebody check the deck for cheats."] = "¡¿{score}?! Que alguien revise esa baraja.",
+        ["That was ten blinds' worth of chips. At least."] = "Eso valía fichas para diez ciegas. Como mínimo.",
+        ["I felt that one from over here. {score}!"] = "Esa la sentí desde aquí. ¡{score}!",
+        ["The scoreboard needs a bigger screen now."] = "El marcador va a necesitar una pantalla más grande.",
+        ["Okay, now you're just showing off. I love it."] = "Vale, ahora solo estás presumiendo. Me encanta.",
+        ["New best hand this run: {score}!"] = "Mejor mano de la partida: ¡{score}!",
+        ["{score}! That's your biggest hand yet."] = "¡{score}! Tu mano más grande hasta ahora.",
+        ["Look at that {hand}. Run record!"] = "Mira eso: {hand}. ¡Récord de la partida!",
+        ["Best hand of the run. Keep stacking."] = "La mejor mano de la partida. Sigue así.",
+        ["Your engine is warming up. {score} and climbing."] = "Tu máquina se está calentando. {score} y subiendo.",
+        ["Only {score}? The blind barely noticed."] = "¿Solo {score}? La ciega casi ni lo notó.",
+        ["That {hand} needs some help. Maybe a Joker or two."] = "{hand} se queda corto. Quizá un comodín o dos.",
+        ["Hmm. We need way more than that."] = "Mmm. Necesitamos mucho más que eso.",
+        ["Small hand, big gap. Time for something bold."] = "Mano pequeña, gran distancia. Toca arriesgar.",
+        ["That's a start. A small one."] = "Es un comienzo. Uno pequeño.",
+        ["Last hand. {left} to go. No pressure."] = "Última mano. Faltan {left}. Sin presión.",
+        ["Final hand. Make it a big one."] = "Última mano. Que sea grande.",
+        ["One hand left and {left} short. You've got this. Probably."] = "Queda una mano y faltan {left}. Puedes hacerlo. Seguramente.",
+        ["All in on this one. {left} to clear."] = "Todo a esta mano. Faltan {left}.",
+        ["This is the hand they'll write songs about. Or not."] = "De esta mano harán canciones. O no.",
+        ["Last chance. Pick your best and pray."] = "Última oportunidad. Elige lo mejor y reza.",
+        ["Everything rides on this hand."] = "Todo depende de esta mano.",
+        ["On the very last hand! My heart can't take this."] = "¡En la última mano! Mi corazón no lo aguanta.",
+        ["Clutch! I never doubted you. Mostly."] = "¡Por los pelos! Nunca dudé de ti. Casi nunca.",
+        ["Last hand, and you pulled it off!"] = "¡Última mano y lo lograste!",
+        ["That's how you close it out."] = "Así se cierra una ronda.",
+        ["Down to the wire and still standing."] = "Hasta el final y sigues en pie.",
+        ["Phew. Let's not do that again. Unless it's fun."] = "Uf. No lo repitamos. A menos que sea divertido.",
+        ["Just barely over. A win's a win!"] = "Justo por encima. ¡Una victoria es una victoria!",
+        ["That was close. Like, really close."] = "Eso estuvo cerca. Muy, muy cerca.",
+        ["Squeaked through! Maybe buy something strong."] = "¡Pasaste de milagro! Quizá compra algo potente.",
+        ["Made it by a hair. The next blind is bigger, though."] = "Por un pelo. Aunque la siguiente ciega es más grande.",
+        ["So close! Just {left} short."] = "¡Casi! Faltaron solo {left}.",
+        ["Agh, {left} away from making it. That one hurts."] = "Ay, a {left} de lograrlo. Esa duele.",
+        ["Almost had it. One more Joker and that was yours."] = "Casi. Un comodín más y era tuya.",
+        ["Missed by a whisker. Next run is yours."] = "Por un pelo. La próxima partida es tuya.",
+        ["That close?! The blind got lucky."] = "¡¿Tan cerca?! La ciega tuvo suerte.",
+        ["So near. Don't worry, I won't tell anyone."] = "Tan cerca. Tranquilo, no se lo diré a nadie.",
+        ["Well, that's the run. Shuffle up and go again?"] = "Bueno, se acabó la partida. ¿Barajamos otra vez?",
+        ["Every great player loses. A lot. Like, a lot a lot."] = "Todo gran jugador pierde. Mucho. Muchísimo.",
+        ["The blind wins this time. Rematch?"] = "Esta vez gana la ciega. ¿Revancha?",
+        ["Don't look at me, I was rooting for you."] = "No me mires, yo iba contigo.",
+        ["That's just Balatro. Next run will be better."] = "Así es Balatro. La próxima saldrá mejor.",
+        ["We learned something. Probably. Let's go again."] = "Algo aprendimos. Seguramente. Otra vez.",
+        ["Ouch. Back to Ante 1 we go."] = "Ay. De vuelta a la apuesta 1.",
+        ["You beat Ante {ante}! Take a bow!"] = "¡Superaste la apuesta {ante}! ¡Haz una reverencia!",
+        ["Run won! I'm framing this one."] = "¡Partida ganada! Esta la enmarco.",
+        ["Victory! The Jokers are throwing a party."] = "¡Victoria! Los comodines están de fiesta.",
+        ["That's a win! Endless mode is calling, if you dare."] = "¡Victoria! El modo infinito te llama, si te atreves.",
+        ["Champion! I knew it from the first hand."] = "¡Campeón! Lo supe desde la primera mano.",
+        ["Boss time: {boss}. Read its rule twice."] = "Hora del jefe: {boss}. Lee su regla dos veces.",
+        ["Here comes {boss}. Play around it."] = "Ahí viene {boss}. Juega a su alrededor.",
+        ["{boss} is up. Don't let it mess with your hand."] = "Le toca a {boss}. No dejes que te arruine la mano.",
+        ["Boss blind! {boss} hits harder than it looks."] = "¡Ciega jefe! {boss} pega más fuerte de lo que parece.",
+        ["Careful, {boss} changes the rules."] = "Cuidado, {boss} cambia las reglas.",
+        ["{boss}. Ugh. You can take it though."] = "{boss}. Uf. Pero puedes con él.",
+        ["The Psychic wants all five cards. No sneaky Pairs."] = "El Psíquico quiere las cinco cartas. Nada de Parejas a escondidas.",
+        ["The Eye: no repeating hand types. Plan your order."] = "El Ojo: no repitas tipos de mano. Planea el orden.",
+        ["The Mouth: only one hand type this round. Pick your best."] = "La Boca: un solo tipo de mano esta ronda. Elige la mejor.",
+        ["The Needle. One hand. Make it your biggest."] = "La Aguja. Una sola mano. Que sea la más grande.",
+        ["The Water: no discards. Play what you're dealt."] = "El Agua: sin descartes. Juega lo que te toque.",
+        ["The Wall. It's a big one. Bring your biggest hand."] = "El Muro. Es enorme. Saca tu mano más grande.",
+        ["The Flint halves your base chips and mult. Ouch."] = "El Pedernal reduce a la mitad tus fichas y multi base. Ay.",
+        ["The Plant debuffs face cards. Kings, take a nap."] = "La Planta debilita las figuras. Reyes, a dormir la siesta.",
+        ["The Head debuffs Hearts. Sorry, lovers."] = "La Cabeza debilita los Corazones. Lo siento, enamorados.",
+        ["The Club debuffs Clubs. Spread out your suits."] = "El Garrote debilita los Tréboles. Reparte tus palos.",
+        ["The Window debuffs Diamonds. Shiny but useless now."] = "La Ventana debilita los Diamantes. Brillan, pero no sirven.",
+        ["The Goad debuffs Spades. Dig in with the other suits."] = "La Aguijada debilita las Picas. Tira de los otros palos.",
+        ["The Hook throws away two cards each hand. Keep extras."] = "El Gancho tira dos cartas en cada mano. Guarda de sobra.",
+        ["The Tooth takes a dollar per card played. Small hands save cash."] = "El Diente cobra un dólar por carta jugada. Las manos pequeñas ahorran.",
+        ["The Ox takes your money if you play your most played hand."] = "El Buey se lleva tu dinero si juegas tu mano más usada.",
+        ["The Arm lowers the level of every hand you play."] = "El Brazo baja el nivel de cada mano que juegas.",
+        ["The House deals your first hand face down. Spooky."] = "La Casa reparte tu primera mano boca abajo. Qué miedo.",
+        ["The Wheel flips some cards face down. Trust your gut."] = "La Rueda pone cartas boca abajo. Confía en tu instinto.",
+        ["The Fish flips new cards face down after each hand."] = "El Pez pone boca abajo las cartas nuevas tras cada mano.",
+        ["The Manacle takes a card from your hand size."] = "El Grillete te quita una carta del tamaño de mano.",
+        ["The Pillar debuffs cards you already played this ante."] = "El Pilar debilita las cartas ya jugadas en esta apuesta.",
+        ["The Serpent: you always draw three. Discards hit different."] = "La Serpiente: siempre robas tres. Los descartes cambian.",
+        ["Violet Vessel. The biggest blind in the game. Everything you've got."] = "Vasija violeta. La ciega más grande del juego. Dalo todo.",
+        ["Verdant Leaf: every card is debuffed until you sell a Joker."] = "Hoja verde: todas las cartas están debilitadas hasta que vendas un comodín.",
+        ["Amber Acorn flips and shuffles your Jokers. Remember the order!"] = "Bellota ámbar voltea y mezcla tus comodines. ¡Recuerda el orden!",
+        ["Crimson Heart disables a random Joker each hand."] = "Corazón carmesí desactiva un comodín al azar en cada mano.",
+        ["Cerulean Bell forces a card into every hand. Work around it."] = "Campana cerúlea obliga a usar una carta en cada mano. Adáptate.",
+        ["Boss down! Off to the shop."] = "¡Jefe derrotado! A la tienda.",
+        ["{boss} beaten. Next ante, here we come."] = "{boss} vencido. Siguiente apuesta, allá vamos.",
+        ["That boss didn't know who it was dealing with."] = "Ese jefe no sabía con quién se metía.",
+        ["Boss cleared. Treat yourself in the shop."] = "Jefe superado. Date un capricho en la tienda.",
+        ["Another boss in the bin."] = "Otro jefe a la basura.",
+        ["{joker}! That's a rare one. Build around it."] = "¡{joker}! Es raro. Construye a su alrededor.",
+        ["Ooh, {joker}. Now we're cooking."] = "Uh, {joker}. Ahora sí que vamos en serio.",
+        ["{joker} joins the crew. Good pickup."] = "{joker} se une al equipo. Buena elección.",
+        ["A rare Joker! {joker} can carry a run."] = "¡Un comodín raro! {joker} puede cargar con una partida.",
+        ["{joker}, nice. Make room for it."] = "{joker}, genial. Hazle sitio.",
+        ["{joker}?! A Legendary! This run just changed."] = "¡¿{joker}?! ¡Un Legendario! Esta partida acaba de cambiar.",
+        ["A Legendary Joker. Bow to {joker}."] = "Un comodín Legendario. Inclínate ante {joker}.",
+        ["{joker}! I need to sit down."] = "¡{joker}! Necesito sentarme.",
+        ["You found {joker}. This is not a drill."] = "Encontraste a {joker}. No es un simulacro.",
+        ["${money} in the bank. You could buy the whole shop."] = "${money} en el banco. Podrías comprar toda la tienda.",
+        ["${money}! Spend some, or keep stacking interest?"] = "¡${money}! ¿Gastas algo o sigues sumando intereses?",
+        ["Look at all that cash. ${money}!"] = "Mira cuánto dinero. ¡${money}!",
+        ["${money}. Is this a Balatro run or a bank?"] = "${money}. ¿Esto es una partida de Balatro o un banco?",
+        ["${money} saved up. Interest loves you."] = "${money} ahorrados. Los intereses te adoran.",
+        ["Nice savings. ${money} makes a good cushion."] = "Buen ahorro. ${money} es un buen colchón.",
+        ["${money} in the pocket. Patience pays."] = "${money} en el bolsillo. La paciencia paga.",
+        ["Saving pays off. Literally."] = "Ahorrar sale a cuenta. Literalmente.",
+        ["${money}. The shopkeeper is looking at you funny."] = "${money}. El tendero te mira raro.",
+        ["Running on fumes. Maybe skip a reroll."] = "Vas en la reserva. Quizá sáltate una renovación.",
+        ["Broke again. Sell something or save up."] = "Otra vez sin blanca. Vende algo o ahorra.",
+        ["${money}. Window shopping it is."] = "${money}. Toca mirar escaparates.",
+        ["Empty pockets. Next round pays, hopefully."] = "Bolsillos vacíos. La próxima ronda paga, ojalá.",
+        ["Ante {ante}. The blinds just got bigger."] = "Apuesta {ante}. Las ciegas acaban de crecer.",
+        ["Welcome to Ante {ante}. Check your scaling."] = "Bienvenido a la apuesta {ante}. Revisa si tu mazo escala.",
+        ["Ante {ante}! Is your build ready for it?"] = "¡Apuesta {ante}! ¿Está listo tu mazo?",
+        ["Up to Ante {ante}. The chips needed just jumped."] = "Apuesta {ante}. Las fichas necesarias acaban de dispararse.",
+        ["Ante {ante}. Things get serious from here."] = "Apuesta {ante}. A partir de aquí va en serio.",
+        ["Ante 8. The last one. Everything you've got."] = "Apuesta 8. La última. Dalo todo.",
+        ["Final ante! One boss stands between you and a win."] = "¡Última apuesta! Solo un jefe te separa de la victoria.",
+        ["This is it. Ante 8. No holding back."] = "Llegó el momento. Apuesta 8. Sin contenerse.",
+        ["Endless mode, Ante {ante}. How far can you go?"] = "Modo infinito, apuesta {ante}. ¿Hasta dónde llegarás?",
+        ["Ante {ante}. The numbers are getting silly now."] = "Apuesta {ante}. Los números ya son ridículos.",
+        ["Still going? Ante {ante}! Legend."] = "¿Sigues? ¡Apuesta {ante}! Leyenda.",
+        ["Skipped! Hope that tag was worth it."] = "¡Saltada! Ojalá esa etiqueta valga la pena.",
+        ["Bold skip. Your Jokers better be strong."] = "Salto atrevido. Más vale que tus comodines sean fuertes.",
+        ["Skipping for the tag. I like your style."] = "Saltas por la etiqueta. Me gusta tu estilo.",
+        ["No blind, just the tag. Living dangerously."] = "Sin ciega, solo la etiqueta. Vives al límite.",
+        ["{hand}! I don't see that every day."] = "¡{hand}! Eso no se ve todos los días.",
+        ["A {hand}?! Frame it."] = "¡¿{hand}?! Para enmarcar.",
+        ["{hand}! That's a rare sight."] = "¡{hand}! Eso es raro de ver.",
+        ["Did you just play a {hand}? Wow."] = "¿Acabas de jugar {hand}? Guau.",
+        ["{hand} again? It's your thing now."] = "¿Otra vez {hand}? Ya es lo tuyo.",
+        ["Another {hand}. Level it up at the next planet."] = "Otra vez {hand}. Súbele el nivel con el próximo planeta.",
+        ["{hand}, {hand}, {hand}. I see the plan."] = "{hand}, {hand}, {hand}. Ya veo el plan.",
+        ["You really love {hand}s, huh."] = "Te encanta de verdad: {hand}, ¿eh?",
+        ["Shop time. Look for something that fits your build."] = "Hora de la tienda. Busca algo que encaje con tu mazo.",
+        ["Check the Jokers first, then the packs."] = "Mira primero los comodines y luego los paquetes.",
+        ["Spend smart. Interest is free money."] = "Gasta con cabeza. Los intereses son dinero gratis.",
+        ["Anything here help your best hand?"] = "¿Algo de aquí ayuda a tu mejor mano?",
+        ["Reroll or save? The eternal question."] = "¿Renovar o ahorrar? La eterna pregunta.",
+        ["New stuff on the shelves. Take a look."] = "Cosas nuevas en los estantes. Échales un vistazo.",
+        ["Let's see what's inside!"] = "¡A ver qué hay dentro!",
+        ["Pack time. Pick what helps your build."] = "Hora del paquete. Elige lo que ayude a tu mazo.",
+        ["Ooh, a pack. Fingers crossed."] = "Uh, un paquete. Crucemos los dedos.",
+        ["Choose wisely. Or just pick the shiny one."] = "Elige bien. O coge la que más brille.",
+        ["PvP blind! Outscore your opponent."] = "¡Ciega JcJ! Supera la puntuación de tu rival.",
+        ["Head to head now. Every chip counts."] = "Cara a cara. Cada ficha cuenta.",
+        ["Your rival is playing this blind too. Beat their score!"] = "Tu rival también juega esta ciega. ¡Supera su puntuación!",
+        ["PvP round. Big hands only."] = "Ronda JcJ. Solo manos grandes.",
+        ["Showdown time. Make them sweat."] = "Hora del duelo. Hazle sudar.",
+        ["You lost a life. Shake it off."] = "Perdiste una vida. Sacúdetelo.",
+        ["Ouch, one life down. Time to build up."] = "Ay, una vida menos. Toca reforzarse.",
+        ["That one stings. {lives} lives left."] = "Eso escuece. Quedan {lives} vidas.",
+        ["Down a life. The shop can fix this."] = "Una vida menos. La tienda puede arreglarlo.",
+        ["Last life. Play it safe. Or don't."] = "Última vida. Juega seguro. O no.",
+        ["One life left. Every hand matters now."] = "Queda una vida. Cada mano cuenta.",
+        ["No more room for mistakes. Last life!"] = "Ya no hay margen de error. ¡Última vida!",
+        ["Your opponent lost a life! Keep pushing."] = "¡Tu rival perdió una vida! Sigue presionando.",
+        ["They're down a life. Momentum is yours."] = "Tiene una vida menos. La racha es tuya.",
+        ["Ha! That's a life off them."] = "¡Ja! Una vida menos para él.",
+        ["Opponent took a hit. Don't let up."] = "Tu rival recibió un golpe. No aflojes.",
+        ["Match won! Your opponent is speechless."] = "¡Partida ganada! Tu rival se quedó sin palabras.",
+        ["Victory! Good game, good game."] = "¡Victoria! Buena partida, buena partida.",
+        ["You won the match! Rematch?"] = "¡Ganaste la partida! ¿Revancha?",
+        ["Match lost. Good game though!"] = "Partida perdida. ¡Pero bien jugada!",
+        ["They got this one. Get them next time."] = "Esta se la llevó él. La próxima es tuya.",
+        ["Close match. Rematch and take it back?"] = "Partida reñida. ¿Revancha para recuperarla?",
+        ["Ready for another run? I am."] = "¿Listo para otra partida? Yo sí.",
+        ["Try a new deck today. Mix things up."] = "Prueba una baraja nueva hoy. Cambia un poco.",
+        ["The Casino has quests waiting for you."] = "El Casino tiene misiones esperándote.",
+        ["Psst. Multiplayer is open if you want a rival."] = "Psst. El multijugador está abierto si quieres un rival.",
+        ["Daily challenge looks fun today."] = "El desafío diario pinta bien hoy.",
+        ["A new stake is a new kind of pain. Try it."] = "Una apuesta nueva es un dolor nuevo. Pruébala.",
+        ["I've been practicing my shuffle."] = "He estado practicando cómo barajar.",
+        ["The cards miss you. So do I."] = "Las cartas te echan de menos. Yo también.",
+        ["Have you checked the collection lately?"] = "¿Has mirado la colección últimamente?",
+        ["Every run starts with one click on Play."] = "Toda partida empieza con un clic en Jugar.",
+        ["Still here? Let's play something."] = "¿Sigues aquí? Juguemos algo.",
+        ["Somewhere a Legendary Joker is waiting for you."] = "En algún lugar te espera un comodín Legendario.",
+        ["Some of these are still locked. Go get them."] = "Algunas siguen bloqueadas. Ve a por ellas.",
+        ["So many Jokers. Which one is your favourite?"] = "Cuántos comodines. ¿Cuál es tu favorito?",
+        ["Reading card text is the real strategy."] = "Leer las cartas es la verdadera estrategia.",
+        ["Look at all you've discovered!"] = "¡Mira todo lo que has descubierto!",
+        ["Every card here has a trick. Learn them all."] = "Cada carta tiene su truco. Apréndelos todos.",
+    },
+}
+end

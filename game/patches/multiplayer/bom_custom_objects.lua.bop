@@ -1,0 +1,1116 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 573
+local O = {
+    initialized = false,
+    centers_registered = false,
+    patches_applied = false,
+    pools_on = nil,
+}
+
+O.REMOVED = {
+    j_mp_pacifist = 'j_mp_truce',
+    j_mp_defensive_joker = 'j_mp_bulwark',
+    j_mp_skip_off = 'j_mp_shortcut',
+    j_mp_taxes = 'j_mp_tariff',
+    j_mp_conjoined_joker = 'j_mp_mirror_match',
+    j_mp_heckler = 'j_mp_envy',
+    j_mp_pickpocket = 'j_mp_shortcut',
+    j_mp_lightning_rod = 'j_mp_bulwark',
+    j_mp_bloodhound = 'j_mp_grudge',
+    j_mp_getaway = 'j_mp_shortcut',
+}
+
+O.JOKER_KEYS = {
+    'j_mp_truce', 'j_mp_bulwark', 'j_mp_shortcut', 'j_mp_tariff', 'j_mp_mirror_match',
+    'j_mp_envy', 'j_mp_leftovers', 'j_mp_photo_finish', 'j_mp_high_roller', 'j_mp_grudge',
+}
+
+local PVP_BLINDS = { bl_mp_nemesis = true, bl_mp_royale = true, bl_mp_clash = true, bl_mp_raid = true }
+
+local MSG_FR = {
+    ["Oops!"] = "Oups !", ["Filed!"] = "Taxé !", ["Grudge!"] = "Rancune !",
+    ["High Roller misfire: +$"] = "Raté du Flambeur : +$",
+}
+local MSG_ES = {
+    ["Oops!"] = "¡Ups!", ["Filed!"] = "¡Gravado!", ["Grudge!"] = "¡Rencor!",
+    ["High Roller misfire: +$"] = "Fallo del Apostador: +$",
+}
+
+local function clone_table(value)
+    if type(value) ~= 'table' then return value end
+    local out = {}
+    for k, v in pairs(value) do out[k] = clone_table(v) end
+    return out
+end
+O.clone_table = clone_table
+
+local function L(s)
+    if mod_loc then
+        local ok, r = pcall(mod_loc, s)
+        if ok and r then return r end
+    end
+    return s
+end
+
+function O.lang()
+    local l = G and G.SETTINGS and G.SETTINGS.language or 'en-us'
+    if l == 'fr' then return 'fr' end
+    if type(l) == 'string' and l:sub(1, 2) == 'es' then return 'es' end
+    return 'en'
+end
+
+function O.pick(tr)
+    if type(tr) ~= 'table' then return nil end
+    return tr[O.lang()] or tr.en
+end
+
+function O.parsed(entry)
+    local e = { name = entry.name, text = clone_table(entry.text or {}) }
+    if loc_parse_string then
+        e.text_parsed = {}
+        for _, line in ipairs(e.text) do e.text_parsed[#e.text_parsed + 1] = loc_parse_string(line) end
+        e.name_parsed = {}
+        for _, line in ipairs(type(e.name) == 'table' and e.name or { e.name }) do
+            e.name_parsed[#e.name_parsed + 1] = loc_parse_string(line)
+        end
+    end
+    return e
+end
+
+local LOC = {}
+local LOC_ORDER = {}
+local LANG_HOOKS = {}
+
+function O.register_loc(set, key, tr)
+    local id = set .. '|' .. key
+    if not LOC[id] then LOC_ORDER[#LOC_ORDER + 1] = id end
+    LOC[id] = { set = set, key = key, tr = tr }
+end
+
+function O.inject_loc()
+    if not G or not G.localization or not G.localization.descriptions then return end
+    local d = G.localization.descriptions
+    for _, id in ipairs(LOC_ORDER) do
+        local e = LOC[id]
+        local entry = O.pick(e.tr)
+        if entry then
+            d[e.set] = d[e.set] or {}
+            d[e.set][e.key] = O.parsed(entry)
+        end
+    end
+end
+
+function O.on_language(fn)
+    LANG_HOOKS[#LANG_HOOKS + 1] = fn
+end
+
+local function run_lang_hooks()
+    O.inject_loc()
+    for _, fn in ipairs(LANG_HOOKS) do pcall(fn) end
+end
+
+local function party_active()
+    if not (bom_party and bom_party.active) then return false end
+    local ok, r = pcall(bom_party.active)
+    return ok and r or false
+end
+
+local function mp_jokers_on()
+    if not G or not G.GAME or not G.GAME.multiplayer then return false end
+    if not (bom_match and bom_match.get_state) then return false end
+    local ok, state = pcall(bom_match.get_state)
+    if not ok or not state then return false end
+    if not state.settings then return true end
+    return state.settings.multiplayer_jokers ~= false
+end
+O.enabled = mp_jokers_on
+
+local function in_sandbox()
+    local P = rawget(_G, 'PREVIEW')
+    return type(P) == 'table' and P._in_sandbox == true
+end
+
+local function is_pvp_blind()
+    local r = false
+    pcall(function() r = bom_nemesis and bom_nemesis.is_pvp_boss and bom_nemesis.is_pvp_boss() or false end)
+    return r and true or false
+end
+
+local function pvp_ended()
+    if is_pvp_blind() then return true end
+    local b = G and G.GAME and G.GAME.blind
+    if not b then return false end
+    if b.mp_pvp_over then return true end
+    local key = b.config and b.config.blind and b.config.blind.key
+    return key and PVP_BLINDS[key] and true or false
+end
+
+local function is_pvp_setting(context)
+    if context and context.blind and context.blind.key and PVP_BLINDS[context.blind.key] then return true end
+    return is_pvp_blind()
+end
+
+local function panel()
+    return G and G.GAME and G.GAME.mp_opponent_panel or nil
+end
+
+local function my_lives()
+    return tonumber(G and G.GAME and G.GAME.mp_lives) or 0
+end
+
+local function opp_lives()
+    local p = panel()
+    return tonumber(G and G.GAME and G.GAME.mp_opponent_lives) or tonumber(p and p.lives) or 0
+end
+
+local function opp_hands_left()
+    local p = panel()
+    return tonumber(p and p.hands_left) or 0
+end
+
+local function opp_stats()
+    return G and G.GAME and type(G.GAME.mp_opp_stats) == 'table' and G.GAME.mp_opp_stats or nil
+end
+
+local function opp_skips()
+    local st = opp_stats()
+    if st and st.skips ~= nil then return tonumber(st.skips) end
+    local p = panel()
+    if not p or p.skips == nil then return nil end
+    return tonumber(p.skips)
+end
+
+local function opp_sells_total()
+    local st = opp_stats()
+    if st and st.sells_total ~= nil then return tonumber(st.sells_total) or 0 end
+    local p = panel()
+    return tonumber(p and p.sells_total) or 0
+end
+
+local function opp_already_at_pvp()
+    local loc = nil
+    pcall(function()
+        local st = bom_match and bom_match.get_state and bom_match.get_state()
+        loc = st and st.opp_location
+    end)
+    if type(loc) ~= 'string' then return false end
+    if loc:find('^loc_ready') or loc:find('^loc_wait') then return true end
+    if loc:find('^loc_playing%-bl_mp_') then return true end
+    return false
+end
+
+local function pvp_first()
+    local f = G and G.GAME and G.GAME.mp_pvp_first
+    if f ~= nil then return f end
+    return not opp_already_at_pvp()
+end
+
+local function odds_hit(seed, odds)
+    local normal = (G.GAME.probabilities and G.GAME.probabilities.normal) or 1
+    return pseudorandom(seed) < normal / odds
+end
+
+local function msg_x(x) return localize { type = 'variable', key = 'a_xmult', vars = { x } } end
+local function msg_mult(m) return localize { type = 'variable', key = 'a_mult', vars = { m } } end
+local function msg_chips(c) return localize { type = 'variable', key = 'a_chips', vars = { c } } end
+
+local function bulwark_per_life(card)
+    local cfg = card.ability.extra or {}
+    if (G.GAME.stake or 1) >= 6 then return cfg.high or 60 end
+    return cfg.chips or 100
+end
+
+local function bulwark_chips(card)
+    if not mp_jokers_on() then return 0 end
+    local gap = math.max(opp_lives() - my_lives(), 0)
+    local v = gap * bulwark_per_life(card)
+    if is_pvp_blind() then v = v * 2 end
+    return v
+end
+
+local function mirror_x(card)
+    local cfg = card.ability.extra or {}
+    local cap = (my_lives() < opp_lives()) and (cfg.cap_behind or 4) or (cfg.cap or 3)
+    return math.max(1, math.min(1 + opp_hands_left() * (cfg.per or 0.5), cap))
+end
+
+local function shortcut_status(card)
+    local mine, theirs = G.GAME.skips or 0, opp_skips()
+    if theirs == nil then return 0, 0 end
+    local cfg = card.ability.extra or {}
+    local diff = mine - theirs
+    return math.max(diff, 0) * (cfg.hands or 1), math.max(-diff, 0) * (cfg.discards or 1)
+end
+
+local function envy_dollars(card)
+    local cfg = card.ability.extra or {}
+    local st = opp_stats()
+    local d = tonumber(st and st.dollars) or 0
+    return math.max(0, math.min(math.floor(d / (cfg.per or 8)), cfg.max or 5))
+end
+
+local function leftovers_amount(card)
+    local cfg = card.ability.extra or {}
+    local n = cfg.discards or 2
+    if my_lives() < opp_lives() then n = n + (cfg.behind or 1) end
+    return n
+end
+
+local function nemesis_word()
+    return ({ en = 'The Rival', fr = 'Le Rival', es = 'El Rival' })[O.lang()] or 'The Rival'
+end
+
+local DEFS = {
+    j_mp_truce = {
+        order = 1101, rarity = 1, cost = 4, name = 'Truce', atlas = 'mp_jokers', pos = { x = 3, y = 0 },
+        blueprint_compat = true, perishable_compat = true, eternal_compat = true,
+        config = { extra = { x_mult = 8, mult = 8 } },
+        vars = function(c) local e = c.ability.extra or {} return { e.x_mult or 8, e.mult or 8 } end,
+        loc = {
+            en = { name = 'Truce', text = { '{X:mult,C:white} X#1# {} Mult while no', '{C:attention}PvP Blind{} is on, only', '{C:mult}+#2#{} Mult during one' } },
+            fr = { name = 'Trêve', text = { '{X:mult,C:white} X#1# {} Multi tant qu\'aucune', '{C:attention}Blinde JcJ{} n\'a lieu, seulement', '{C:mult}+#2#{} Multi pendant l\'une d\'elles' } },
+            es = { name = 'Tregua', text = { '{X:mult,C:white} X#1# {} multi mientras no', 'haya una {C:attention}ciega JcJ{}, solo', '{C:mult}+#2#{} multi durante una' } },
+        },
+    },
+    j_mp_bulwark = {
+        order = 1102, rarity = 1, cost = 4, name = 'Bulwark', atlas = 'mp_jokers', pos = { x = 4, y = 0 }, duel = true,
+        blueprint_compat = true, perishable_compat = true, eternal_compat = true,
+        config = { extra = { chips = 100, high = 60 } },
+        vars = function(c) return { bulwark_per_life(c), c.ability.mp_cur_chips or 0 } end,
+        loc = {
+            en = { name = 'Bulwark', text = { '{C:chips}+#1#{} Chips per {C:red}life{} of lead', 'your {C:attention}Rival{} holds over you,', '{C:attention}PvP Blinds{} double it', '{C:inactive}(Currently {C:chips}+#2#{C:inactive} Chips)' } },
+            fr = { name = 'Rempart', text = { '{C:chips}+#1#{} jetons par {C:red}vie{} d\'avance', 'que votre {C:attention}Rival{} a sur vous,', 'doublé en {C:attention}Blinde JcJ{}', '{C:inactive}(Actuellement {C:chips}+#2#{C:inactive} jetons)' } },
+            es = { name = 'Baluarte', text = { '{C:chips}+#1#{} fichas por {C:red}vida{} de ventaja', 'que tu {C:attention}Rival{} te lleva,', 'el doble en las {C:attention}ciegas JcJ{}', '{C:inactive}(Actual: {C:chips}+#2#{C:inactive} fichas)' } },
+        },
+    },
+    j_mp_shortcut = {
+        order = 1103, rarity = 2, cost = 5, name = 'Leapfrog', atlas = 'mp_jokers', pos = { x = 5, y = 0 }, duel = true,
+        blueprint_compat = false, perishable_compat = true, eternal_compat = true,
+        config = { extra = { hands = 1, discards = 1 } },
+        vars = function(c)
+            local h, d = shortcut_status(c)
+            local e = c.ability.extra or {}
+            return { e.hands or 1, e.discards or 1, h, d }
+        end,
+        loc = {
+            en = { name = 'Leapfrog', text = { 'When a Blind is selected, gain', '{C:blue}+#1#{} Hand per skip you lead', 'your {C:attention}Rival{} by, or {C:red}+#2#{} Discard', 'per skip they lead you by', '{C:inactive}(Currently {C:blue}+#3#{C:inactive} / {C:red}+#4#{C:inactive})' } },
+            fr = { name = 'Saute-mouton', text = { 'Quand une Blinde est choisie,', '{C:blue}+#1#{} main par saut d\'avance', 'sur votre {C:attention}Rival{}, ou {C:red}+#2#{} défausse', 'par saut de retard', '{C:inactive}(Actuellement {C:blue}+#3#{C:inactive} / {C:red}+#4#{C:inactive})' } },
+            es = { name = 'Pídola', text = { 'Al elegir una ciega, gana', '{C:blue}+#1#{} mano por salto de ventaja', 'sobre tu {C:attention}Rival{}, o {C:red}+#2#{} descarte', 'por salto de desventaja', '{C:inactive}(Actual: {C:blue}+#3#{C:inactive} / {C:red}+#4#{C:inactive})' } },
+        },
+    },
+    j_mp_tariff = {
+        order = 1104, rarity = 1, cost = 5, name = 'Tariff', atlas = 'mp_jokers', pos = { x = 6, y = 0 }, duel = true,
+        blueprint_compat = true, perishable_compat = false, eternal_compat = true,
+        config = { extra = { gain = 3, self_gain = 1, mult = 0 } },
+        vars = function(c) local e = c.ability.extra or {} return { e.gain or 3, e.self_gain or 1, e.mult or 0 } end,
+        loc = {
+            en = { name = 'Tariff', text = { 'Every card your {C:attention}Rival{} sells', 'is billed {C:mult}+#1#{} Mult, paid out when', 'the next {C:attention}PvP Blind{} starts', 'Your own sales add {C:mult}+#2#{} Mult', '{C:inactive}(Currently {C:mult}+#3#{C:inactive} Mult)' } },
+            fr = { name = 'Tarif', text = { 'Chaque carte vendue par votre', '{C:attention}Rival{} est taxée {C:mult}+#1#{} Multi,', 'encaissé au début de la {C:attention}Blinde JcJ{}', 'Vos ventes ajoutent {C:mult}+#2#{} Multi', '{C:inactive}(Actuellement {C:mult}+#3#{C:inactive} Multi)' } },
+            es = { name = 'Arancel', text = { 'Cada carta que vende tu', '{C:attention}Rival{} se grava con {C:mult}+#1#{} multi,', 'se cobra al empezar la {C:attention}ciega JcJ{}', 'Tus ventas suman {C:mult}+#2#{} multi', '{C:inactive}(Actual: {C:mult}+#3#{C:inactive} multi)' } },
+        },
+    },
+    j_mp_mirror_match = {
+        order = 1105, rarity = 2, cost = 6, name = 'Mirror Match', atlas = 'mp_jokers', pos = { x = 7, y = 0 }, duel = true,
+        blueprint_compat = true, perishable_compat = true, eternal_compat = true,
+        config = { extra = { per = 0.5, cap = 3, cap_behind = 4 } },
+        vars = function(c)
+            local e = c.ability.extra or {}
+            return { e.per or 0.5, e.cap or 3, e.cap_behind or 4, c.ability.mp_cur_x or 1 }
+        end,
+        loc = {
+            en = { name = 'Mirror Match', text = { 'In a {C:attention}PvP Blind{}, every {C:blue}Hand{}', 'your {C:attention}Rival{} still holds', 'adds {X:mult,C:white} X#1# {} Mult', '{C:inactive}(Up to {X:mult,C:white} X#2# {C:inactive}, {X:mult,C:white} X#3# {C:inactive} while behind on lives)', '{C:inactive}(Currently {X:mult,C:white} X#4# {C:inactive} Mult)' } },
+            fr = { name = 'Duel miroir', text = { 'En {C:attention}Blinde JcJ{}, chaque {C:blue}main{}', 'qu\'il reste à votre {C:attention}Rival{}', 'ajoute {X:mult,C:white} X#1# {} Multi', '{C:inactive}(Jusqu\'à {X:mult,C:white} X#2# {C:inactive}, {X:mult,C:white} X#3# {C:inactive} avec moins de vies)', '{C:inactive}(Actuellement {X:mult,C:white} X#4# {C:inactive} Multi)' } },
+            es = { name = 'Duelo espejo', text = { 'En una {C:attention}ciega JcJ{}, cada {C:blue}mano{}', 'que le queda a tu {C:attention}Rival{}', 'suma {X:mult,C:white} X#1# {} multi', '{C:inactive}(Hasta {X:mult,C:white} X#2# {C:inactive}, {X:mult,C:white} X#3# {C:inactive} con menos vidas)', '{C:inactive}(Actual: {X:mult,C:white} X#4# {C:inactive} multi)' } },
+        },
+    },
+    j_mp_envy = {
+        order = 1106, rarity = 1, cost = 4, name = 'Envy', atlas = 'mp_jokers', pos = { x = 8, y = 0 }, duel = true,
+        blueprint_compat = false, perishable_compat = true, eternal_compat = true,
+        config = { extra = { per = 8, max = 5 } },
+        vars = function(c) local e = c.ability.extra or {} return { e.per or 8, e.max or 5, envy_dollars(c) } end,
+        loc = {
+            en = { name = 'Envy', text = { 'Earn {C:money}$1{} at end of round', 'for every {C:money}$#1#{} your', '{C:attention}Rival{} has', '{C:inactive}(Max {C:money}$#2#{C:inactive}, currently {C:money}$#3#{C:inactive})' } },
+            fr = { name = 'Envie', text = { 'Gagnez {C:money}$1{} en fin de manche', 'pour chaque {C:money}$#1#{} que possède', 'votre {C:attention}Rival{}', '{C:inactive}(Max {C:money}$#2#{C:inactive}, actuellement {C:money}$#3#{C:inactive})' } },
+            es = { name = 'Envidia', text = { 'Gana {C:money}$1{} al final de la ronda', 'por cada {C:money}$#1#{} que tiene', 'tu {C:attention}Rival{}', '{C:inactive}(Máx. {C:money}$#2#{C:inactive}, actual: {C:money}$#3#{C:inactive})' } },
+        },
+    },
+    j_mp_leftovers = {
+        order = 1107, rarity = 1, cost = 4, name = 'Leftovers', atlas = 'mp_jokers', pos = { x = 9, y = 0 },
+        blueprint_compat = false, perishable_compat = true, eternal_compat = false,
+        config = { extra = { discards = 2, behind = 1 } },
+        vars = function(c) local e = c.ability.extra or {} return { e.discards or 2, (e.discards or 2) + (e.behind or 1) } end,
+        loc = {
+            en = { name = 'Leftovers', text = { 'When a {C:attention}PvP Blind{} ends, eat this:', '{C:red}+#1#{} Discards every round until', 'the end of the next {C:attention}Ante{}', '{C:inactive}({C:red}+#2#{C:inactive} with fewer lives than your Rival)' } },
+            fr = { name = 'Restes', text = { 'À la fin d\'une {C:attention}Blinde JcJ{}, mangez-le :', '{C:red}+#1#{} défausses à chaque manche', 'jusqu\'à la fin de la prochaine {C:attention}mise initiale{}', '{C:inactive}({C:red}+#2#{C:inactive} avec moins de vies que votre Rival)' } },
+            es = { name = 'Sobras', text = { 'Al terminar una {C:attention}ciega JcJ{}, se come:', '{C:red}+#1#{} descartes cada ronda hasta', 'el final de la siguiente {C:attention}apuesta inicial{}', '{C:inactive}({C:red}+#2#{C:inactive} con menos vidas que tu Rival)' } },
+        },
+    },
+    j_mp_photo_finish = {
+        order = 1108, rarity = 2, cost = 6, name = 'Photo Finish', atlas = 'mp_jokers', pos = { x = 10, y = 0 }, duel = true,
+        blueprint_compat = true, perishable_compat = true, eternal_compat = true,
+        config = { extra = {} },
+        vars = function() return {} end,
+        loc = {
+            en = { name = 'Photo Finish', text = { 'Beat your {C:attention}Rival{} to a', '{C:attention}PvP Blind{} to win a random', '{C:spectral}Spectral{} card', '{C:inactive}(Must have room)' } },
+            fr = { name = 'Photo-finish', text = { 'Arrivez à une {C:attention}Blinde JcJ{}', 'avant votre {C:attention}Rival{} pour gagner', 'une carte {C:spectral}Spectrale{} au hasard', '{C:inactive}(Doit avoir de la place)' } },
+            es = { name = 'Foto finish', text = { 'Llega a una {C:attention}ciega JcJ{}', 'antes que tu {C:attention}Rival{} y gana', 'una carta {C:spectral}espectral{} al azar', '{C:inactive}(Debe haber espacio)' } },
+        },
+    },
+    j_mp_high_roller = {
+        order = 1109, rarity = 2, cost = 6, name = 'High Roller', atlas = 'mp_jokers', pos = { x = 11, y = 0 }, duel = true,
+        blueprint_compat = true, perishable_compat = true, eternal_compat = true,
+        config = { extra = { odds = 4, x_mult = 4, dollars = 4, misfire_odds = 4, misfire_dollars = 3 } },
+        vars = function(c)
+            local e = c.ability.extra or {}
+            local n = (G.GAME and G.GAME.probabilities and G.GAME.probabilities.normal) or 1
+            return { n, e.odds or 4, e.x_mult or 4, e.dollars or 4, n, e.misfire_odds or 4, e.misfire_dollars or 3 }
+        end,
+        loc = {
+            en = { name = 'High Roller', text = { 'Each hand, {C:green}#1# in #2#{} to hit', '{X:mult,C:white} X#3# {} Mult and {C:money}$#4#{}', 'In a {C:attention}PvP Blind{}, {C:green}#5# in #6#{} to', 'tip your {C:attention}Rival{} {C:money}$#7#{}' } },
+            fr = { name = 'Flambeur', text = { 'À chaque main, {C:green}#1# chance(s) sur #2#{}', 'de {X:mult,C:white} X#3# {} Multi et {C:money}$#4#{}', 'En {C:attention}Blinde JcJ{}, {C:green}#5# chance(s) sur #6#{}', 'd\'offrir {C:money}$#7#{} à votre {C:attention}Rival{}' } },
+            es = { name = 'Apostador', text = { 'En cada mano, {C:green}#1# de #2#{} de', 'ganar {X:mult,C:white} X#3# {} multi y {C:money}$#4#{}', 'En una {C:attention}ciega JcJ{}, {C:green}#5# de #6#{}', 'de regalar {C:money}$#7#{} a tu {C:attention}Rival{}' } },
+        },
+    },
+    j_mp_grudge = {
+        order = 1110, rarity = 2, cost = 6, name = 'Grudge', atlas = 'mp_jokers', pos = { x = 12, y = 0 },
+        blueprint_compat = true, perishable_compat = false, eternal_compat = true,
+        config = { extra = { gain = 0.5, x_mult = 1 } },
+        vars = function(c) local e = c.ability.extra or {} return { e.gain or 0.5, e.x_mult or 1 } end,
+        loc = {
+            en = { name = 'Grudge', text = { 'Gains {X:mult,C:white} X#1# {} Mult each', 'time you lose a {C:red}life{}', '{C:inactive}(Currently {X:mult,C:white} X#2# {C:inactive} Mult)' } },
+            fr = { name = 'Rancune', text = { 'Gagne {X:mult,C:white} X#1# {} Multi chaque', 'fois que vous perdez une {C:red}vie{}', '{C:inactive}(Actuellement {X:mult,C:white} X#2# {C:inactive} Multi)' } },
+            es = { name = 'Rencor', text = { 'Gana {X:mult,C:white} X#1# {} multi cada', 'vez que pierdes una {C:red}vida{}', '{C:inactive}(Actual: {X:mult,C:white} X#2# {C:inactive} multi)' } },
+        },
+    },
+}
+O.DEFS = DEFS
+
+local PHANTOM_LOC = {
+    en = { name = 'Phantom', text = { 'Makes the card {C:attention}Eternal{}', 'and marks it as {C:red}Rival-linked{}' } },
+    fr = { name = 'Fantôme', text = { 'Rend la carte {C:attention}Éternelle{}', 'et la lie à votre {C:red}Rival{}' } },
+    es = { name = 'Fantasma', text = { 'Hace la carta {C:attention}Eterna{}', 'y la vincula a tu {C:red}Rival{}' } },
+}
+
+function O.remap(key)
+    return O.REMOVED[key] or key
+end
+
+function O.list()
+    local out = {}
+    if not G or not G.P_CENTERS then return out end
+    for _, k in ipairs(O.JOKER_KEYS) do
+        if G.P_CENTERS[k] then out[#out + 1] = G.P_CENTERS[k] end
+    end
+    return out
+end
+
+local function sort_pool(pool)
+    table.sort(pool, function(a, b)
+        local oa, ob = a.order or 9999, b.order or 9999
+        if oa ~= ob then return oa < ob end
+        return tostring(a.key) < tostring(b.key)
+    end)
+end
+O.sort_pool = sort_pool
+
+local function pool_index(pool, center)
+    for i, v in ipairs(pool) do if v == center then return i end end
+    return nil
+end
+O.pool_index = pool_index
+
+local function sync_pools(on, force)
+    if O.pools_on == on and not force then return end
+    if not G or not G.P_CENTERS or not G.P_JOKER_RARITY_POOLS or not G.P_CENTER_POOLS then return end
+    local pools = { G.P_CENTER_POOLS.Joker }
+    for _, pool in pairs(G.P_JOKER_RARITY_POOLS) do pools[#pools + 1] = pool end
+    for _, pool in ipairs(pools) do
+        for i = #pool, 1, -1 do
+            if type(pool[i]) == 'table' and pool[i].mp_joker then table.remove(pool, i) end
+        end
+    end
+    if on then
+        local touched = {}
+        for _, k in ipairs(O.JOKER_KEYS) do
+            local c = G.P_CENTERS[k]
+            if c then
+                for _, pool in ipairs({ G.P_JOKER_RARITY_POOLS[c.rarity], G.P_CENTER_POOLS.Joker }) do
+                    if pool then
+                        pool[#pool + 1] = c
+                        touched[pool] = true
+                    end
+                end
+            end
+        end
+        for pool in pairs(touched) do sort_pool(pool) end
+    end
+    O.pools_on = on
+end
+O.sync_pools = sync_pools
+
+local function set_pool_flag()
+    if not G or not G.GAME then return end
+    G.GAME.pool_flags = G.GAME.pool_flags or {}
+    local on = mp_jokers_on()
+    G.GAME.pool_flags.mp_custom_objects = on or nil
+    G.GAME.pool_flags.mp_duel_jokers = (on and not party_active()) or nil
+    G.GAME.pool_flags.mp_heckle_jokers = nil
+    sync_pools(on and true or false)
+end
+O.set_pool_flag = set_pool_flag
+
+local function get_or_create_round_stats()
+    if not G or not G.GAME then return nil end
+    G.GAME.mp_custom_stats = G.GAME.mp_custom_stats or { last_ante = nil, sells_this_ante = 0, sells_total = 0 }
+    local stats = G.GAME.mp_custom_stats
+    local ante = (G.GAME.round_resets and G.GAME.round_resets.ante) or 1
+    if stats.last_ante ~= ante then
+        stats.last_ante = ante
+        stats.sells_this_ante = 0
+    end
+    return stats
+end
+
+local function build_custom_badges(card)
+    if not card or not card.ability then return nil end
+    local badges = {}
+    if card.edition and card.edition.type == 'mp_phantom' then badges[#badges + 1] = 'mp_phantom' end
+    if card.ability.mp_sticker_persistent then badges[#badges + 1] = 'mp_sticker_persistent' end
+    if card.ability.mp_sticker_unreliable then badges[#badges + 1] = 'mp_sticker_unreliable' end
+    if card.ability.mp_sticker_draining then badges[#badges + 1] = 'mp_sticker_draining' end
+    if card.ability.mp_sticker_balanced then badges[#badges + 1] = 'mp_sticker_balanced' end
+    return (#badges > 0) and badges or nil
+end
+
+local function register_centers()
+    if not G or not G.P_CENTERS then return end
+    if O.centers_registered and G.P_CENTERS.j_mp_truce then return end
+    if not G.P_CENTERS.j_mp_truce then O.pools_on = nil end
+    for _, key in ipairs(O.JOKER_KEYS) do
+        local d = DEFS[key]
+        if not G.P_CENTERS[key] then
+            G.P_CENTERS[key] = {
+                key = key, order = d.order, unlocked = true, discovered = true, omit = true,
+                blueprint_compat = d.blueprint_compat, perishable_compat = d.perishable_compat,
+                eternal_compat = d.eternal_compat, rarity = d.rarity, cost = d.cost, name = d.name,
+                pos = clone_table(d.pos), atlas = d.atlas, set = 'Joker', effect = '', cost_mult = 1.0,
+                config = clone_table(d.config), mp_joker = true, mp_duel = d.duel or nil,
+                yes_pool_flag = d.duel and 'mp_duel_jokers' or 'mp_custom_objects',
+            }
+        end
+    end
+    for old, new in pairs(O.REMOVED) do
+        if G.P_CENTERS[new] and (not G.P_CENTERS[old] or G.P_CENTERS[old].key == old) then
+            G.P_CENTERS[old] = G.P_CENTERS[new]
+        end
+    end
+    if not G.P_CENTERS.e_mp_phantom then
+        G.P_CENTERS.e_mp_phantom = {
+            key = 'e_mp_phantom', order = 1001, discovered = true, unlocked = true, omit = true,
+            name = 'Phantom', set = 'Edition', pos = { x = 4, y = 0 }, config = { extra = 0 },
+            badge_colour = (G.C and (G.C.PURPLE or G.C.MULT or G.C.BLUE)) or { 0.6, 0.2, 0.9, 1 },
+        }
+    end
+    O.centers_registered = true
+    if mp_log then mp_log.info('BOM_OBJECTS', 'registered MP2 jokers') end
+end
+
+local function register_loc()
+    for _, key in ipairs(O.JOKER_KEYS) do O.register_loc('Joker', key, DEFS[key].loc) end
+    O.register_loc('Edition', 'e_mp_phantom', PHANTOM_LOC)
+    if mod_loc_register then pcall(mod_loc_register, { fr = MSG_FR, es = MSG_ES }) end
+end
+
+function O.apply_phantom(card)
+    if not card or not card.ability then return end
+    card.edition = card.edition or {}
+    card.edition.type = 'mp_phantom'
+    card.edition.phantom = true
+    card.ability.eternal = true
+    card.ability.mp_phantom = true
+    card.ability.mp_sticker_nemesis = true
+    pcall(function() if card.set_cost then card:set_cost() end end)
+end
+
+function O.remove_phantom(card)
+    if not card or not card.ability then return end
+    if card.edition and card.edition.type == 'mp_phantom' then card.edition = nil end
+    card.ability.mp_phantom = nil
+    card.ability.mp_sticker_nemesis = nil
+    if not card.ability.perishable and not card.ability.mp_sticker_persistent then card.ability.eternal = false end
+    pcall(function() if card.set_cost then card:set_cost() end end)
+end
+
+function O.apply_sticker(card, sticker_key, enabled)
+    if not card or not card.ability then return end
+    if sticker_key == 'persistent' then
+        card.ability.mp_sticker_persistent = enabled and true or nil
+        if enabled then
+            card.ability.mp_extra_sell_price = card.ability.mp_extra_sell_price or 0
+            card.ability.eternal = true
+        else
+            card.ability.mp_extra_sell_price = nil
+            card.ability.mp_sell_price = nil
+            if not card.ability.mp_phantom then card.ability.eternal = nil end
+        end
+    elseif sticker_key == 'unreliable' then
+        card.ability.mp_sticker_unreliable = enabled and true or nil
+    elseif sticker_key == 'draining' then
+        card.ability.mp_sticker_draining = enabled and true or nil
+    elseif sticker_key == 'balanced' then
+        card.ability.mp_sticker_balanced = enabled and true or nil
+    elseif sticker_key == 'nemesis' then
+        card.ability.mp_sticker_nemesis = enabled and true or nil
+    end
+    pcall(function() if card.set_cost then card:set_cost() end end)
+end
+
+local function key_of(card)
+    return card and card.config and card.config.center and card.config.center.key
+end
+
+local function create_spectral(card)
+    if not G.consumeables then return false end
+    if #G.consumeables.cards + (G.GAME.consumeable_buffer or 0) >= G.consumeables.config.card_limit then return false end
+    G.GAME.consumeable_buffer = (G.GAME.consumeable_buffer or 0) + 1
+r 1 112 %20%20%20%20 -
+l 5
+        trigger = 'before', delay = 0.0,
+        func = function()
+            local c = create_card('Spectral', G.consumeables, nil, nil, nil, nil, nil, 'mp_photo')
+            c:add_to_deck()
+            G.consumeables:emplace(c)
+r 3 1057 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 8
+            return true
+        end,
+    }))
+    return true
+end
+
+local function eat_card(card)
+    card.getting_sliced = true
+r 1 112 %20%20%20%20 -
+l 6
+        func = function()
+            play_sound('tarot1')
+            card.T.r = -0.2
+            card:juice_up(0.3, 0.4)
+            card.states.drag.is = true
+            card.children.center.pinch.x = true
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                trigger = 'after', delay = 0.3, blockable = false,
+                func = function()
+r 13 2209 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 71
+                    card:remove()
+                    return true
+                end,
+            }))
+            return true
+        end,
+    }))
+end
+
+local function mp_joker_calc(self, key, context)
+    local e = self.ability.extra or {}
+    local main = context.cardarea == G.jokers and context.joker_main
+    if key == 'j_mp_truce' and main then
+        if is_pvp_blind() then
+            local m = e.mult or 8
+            return { message = msg_mult(m), mult_mod = m }
+        end
+        local x = e.x_mult or 8
+        return { message = msg_x(x), Xmult_mod = x }
+    elseif key == 'j_mp_bulwark' and main then
+        local c = bulwark_chips(self)
+        if c > 0 then return { message = msg_chips(c), chip_mod = c } end
+    elseif key == 'j_mp_mirror_match' and main then
+        if is_pvp_blind() and not self.ability.mp_phantom and mp_jokers_on() then
+            local x = mirror_x(self)
+            if x > 1 then return { message = msg_x(x), Xmult_mod = x } end
+        end
+    elseif key == 'j_mp_tariff' then
+        if main and (e.mult or 0) > 0 then
+            return { message = msg_mult(e.mult), mult_mod = e.mult }
+        end
+        if context.setting_blind and not context.blueprint and is_pvp_setting(context) and mp_jokers_on() then
+            local total = opp_sells_total()
+            local gain = math.max(0, total - (tonumber(e.mark) or 0)) * (e.gain or 3)
+            e.mark = total
+            if gain > 0 then
+                e.mult = (e.mult or 0) + gain
+                return { message = L('Filed!'), colour = G.C.MULT }
+            end
+        end
+        if context.selling_card and not context.blueprint and context.card ~= self then
+            e.mult = (e.mult or 0) + (e.self_gain or 1)
+            return { message = localize('k_upgrade_ex'), colour = G.C.MULT }
+        end
+    elseif key == 'j_mp_grudge' and main then
+        local x = e.x_mult or 1
+        if x > 1 then return { message = msg_x(x), Xmult_mod = x } end
+    elseif key == 'j_mp_high_roller' and main and not self.ability.mp_phantom then
+        local ret = nil
+        if odds_hit('mp_high_roller', e.odds or 4) then
+            local dollars = e.dollars or 4
+            if not in_sandbox() then
+                G.GAME.dollar_buffer = (G.GAME.dollar_buffer or 0) + dollars
+                ease_dollars(dollars)
+                G.E_MANAGER:add_event(Event({ func = function() G.GAME.dollar_buffer = 0 return true end }))
+            end
+            ret = { message = msg_x(e.x_mult or 4), Xmult_mod = e.x_mult or 4 }
+        end
+        if is_pvp_blind() and mp_jokers_on() and odds_hit('mp_high_roller_misfire', e.misfire_odds or 4) and not in_sandbox() then
+            pcall(function()
+                if bom_core and bom_core.send then
+                    bom_core.send({ type = 'sabotage', sabotage_id = 'mpj_high_roller', key = 'mpj_high_roller', amount = e.misfire_dollars or 3 })
+                end
+                card_eval_status_text(self, 'extra', nil, nil, nil, { message = L('Oops!'), colour = G.C.MONEY })
+            end)
+        end
+        return ret
+    elseif key == 'j_mp_shortcut' then
+        if context.setting_blind and not context.blueprint and mp_jokers_on() then
+            local h, d = shortcut_status(self)
+            if h > 0 or d > 0 then
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 161
+                    func = function()
+                        if h > 0 then ease_hands_played(h) end
+                        if d > 0 then ease_discard(d, nil, true) end
+                        return true
+                    end,
+                }))
+                return { message = localize('k_upgrade_ex'), colour = G.C.BLUE }
+            end
+        end
+    elseif key == 'j_mp_photo_finish' then
+        if context.setting_blind and is_pvp_setting(context) and mp_jokers_on() and pvp_first() then
+            if create_spectral(self) then
+                return { message = localize('k_plus_spectral'), colour = G.C.SECONDARY_SET.Spectral }
+            end
+        end
+    elseif key == 'j_mp_leftovers' then
+        if context.end_of_round and not context.individual and not context.repetition and not context.blueprint
+            and not self.getting_sliced and pvp_ended() then
+            local n = leftovers_amount(self)
+            local ante = (G.GAME.round_resets and G.GAME.round_resets.ante) or 1
+            G.GAME.round_resets.discards = (G.GAME.round_resets.discards or 0) + n
+            G.GAME.mp_leftovers = G.GAME.mp_leftovers or {}
+            table.insert(G.GAME.mp_leftovers, { until_ante = ante + 1, n = n })
+            eat_card(self)
+            return { message = localize('k_eaten_ex'), colour = G.C.RED }
+        end
+    end
+    return nil
+end
+
+local function update_leftovers()
+    local list = G.GAME and G.GAME.mp_leftovers
+    if type(list) ~= 'table' or not G.GAME.round_resets then return end
+    local ante = G.GAME.round_resets.ante or 1
+    for i = #list, 1, -1 do
+        local it = list[i]
+        if type(it) ~= 'table' or ante > (tonumber(it.until_ante) or 0) then
+            if type(it) == 'table' then
+                G.GAME.round_resets.discards = math.max(0, (G.GAME.round_resets.discards or 0) - (tonumber(it.n) or 0))
+            end
+            table.remove(list, i)
+        end
+    end
+    if #list == 0 then G.GAME.mp_leftovers = nil end
+end
+
+local function stats_tick()
+    if not G.GAME or not G.GAME.multiplayer or not mp_jokers_on() or party_active() or in_sandbox() then return end
+    if not bom_core or not bom_core.send then return end
+    local stats = G.GAME.mp_custom_stats or {}
+    local skips = G.GAME.skips or 0
+    local sells = stats.sells_total or 0
+    local dollars = math.floor(tonumber(G.GAME.dollars) or 0)
+    local bucket = math.max(0, math.min(math.floor(dollars / 8), 10))
+    local last = O.stats_last
+    if last and last[1] == skips and last[2] == sells and last[3] == bucket then return end
+    local now = (love and love.timer and love.timer.getTime and love.timer.getTime()) or os.clock()
+    if O.stats_at and now - O.stats_at < 2 then return end
+    O.stats_last, O.stats_at = {skips, sells, bucket}, now
+    bom_core.send({ type = 'sabotage', sabotage_id = 'mpj_stats', key = 'mpj_stats', skips = skips, sells_total = sells, dollars = dollars })
+end
+
+local function update_grudge()
+    if not G.GAME or not G.GAME.multiplayer then return end
+    local lives = tonumber(G.GAME.mp_lives)
+    if not lives then return end
+    local last = tonumber(G.GAME.mp_grudge_lives)
+    G.GAME.mp_grudge_lives = lives
+    if not last or lives >= last or not G.jokers or not G.jokers.cards then return end
+    local lost = last - lives
+    for _, c in ipairs(G.jokers.cards) do
+        if key_of(c) == 'j_mp_grudge' and not c.debuff then
+            local e = c.ability.extra or {}
+            c.ability.extra = e
+            e.x_mult = (e.x_mult or 1) + lost * (e.gain or 0.5)
+            pcall(function()
+                card_eval_status_text(c, 'extra', nil, nil, nil, { message = L('Grudge!'), colour = G.C.RED })
+            end)
+        end
+    end
+end
+
+local function fresh_ability(old_ability, center)
+    local ab = type(old_ability) == 'table' and old_ability or {}
+    ab.name = center.name
+    ab.effect = center.effect
+    ab.set = center.set
+    ab.extra = clone_table(center.config.extra)
+    ab.mult = center.config.mult or 0
+    ab.x_mult = center.config.Xmult or 1
+    ab.t_mult = center.config.t_mult or 0
+    ab.t_chips = center.config.t_chips or 0
+    ab.h_size = center.config.h_size or 0
+    ab.d_size = center.config.d_size or 0
+    ab.mp_life_chips = nil
+    ab.mp_cur_chips = nil
+    ab.mp_cur_x = nil
+    return ab
+end
+
+local function patch_card_behavior()
+    if O.patches_applied then return end
+
+    pcall(function()
+        if not O.set_ability_wrapped then
+            O.set_ability_wrapped = true
+            local original_set_ability = Card.set_ability
+            Card.set_ability = function(self, center, ...)
+                local r = original_set_ability(self, center, ...)
+                local k = self.config and self.config.center_key
+                if k and O.REMOVED[k] and type(center) == 'table' and center.key and G.P_CENTERS[center.key] == center then
+                    self.config.center_key = center.key
+                end
+                return r
+            end
+        end
+        local original_load = Card.load
+        Card.load = function(self, cardTable, other_card)
+            pcall(function()
+                local sf = cardTable and cardTable.save_fields
+                local new = sf and O.REMOVED[sf.center]
+                if new and G.P_CENTERS[new] then
+                    sf.center = new
+                    cardTable.ability = fresh_ability(cardTable.ability, G.P_CENTERS[new])
+                end
+                local c = sf and G.P_CENTERS[sf.center]
+                local ab = cardTable and cardTable.ability
+                if c and c.mp_joker and type(ab) == 'table' and ab.name ~= c.name then ab.name = c.name end
+            end)
+            return original_load(self, cardTable, other_card)
+        end
+    end)
+
+    pcall(function()
+        local original_update = Card.update
+        Card.update = function(self, dt)
+            if not self or not self.ability then return end
+            original_update(self, dt)
+            if not self or not self.config or not self.config.center or not self.ability then return end
+            local key = self.config.center.key
+            if key == 'j_mp_bulwark' then
+                self.ability.mp_cur_chips = bulwark_chips(self)
+            elseif key == 'j_mp_mirror_match' then
+                self.ability.mp_cur_x = (mp_jokers_on() and is_pvp_blind()) and mirror_x(self) or 1
+            end
+            if self.ability.mp_sticker_persistent then
+                self.ability.eternal = true
+                self.sell_cost_label = self.facing == 'back' and '?' or (self.ability.mp_sell_price or self.sell_cost or 0)
+            end
+        end
+    end)
+
+    pcall(function()
+        local original_calculate_joker = Card.calculate_joker
+        Card.calculate_joker = function(self, context)
+            if self and self.ability and self.ability.mp_sticker_unreliable and G and G.GAME and G.GAME.current_round then
+                if (G.GAME.current_round.hands_left or 0) == 0 and not self.ability.mp_phantom then return nil end
+            end
+            local key = key_of(self)
+            local ret = original_calculate_joker(self, context)
+            if key and DEFS[key] and context then
+r 3 1094 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 49
+                local ok, r = pcall(mp_joker_calc, self, key, context)
+                if ok then ret = r or ret elseif mp_log then mp_log.warn('BOM_OBJECTS', 'joker calc failed: %s', tostring(r)) end
+            end
+            if not self or not self.ability or not context then return ret end
+            if self.ability.mp_sticker_draining and context.cardarea == G.jokers and context.joker_main and not self.ability.mp_phantom then
+                ret = ret or {}
+                ret.Xmult_mod = (ret.Xmult_mod or 1) * 0.75
+            end
+            if self.ability.mp_sticker_persistent and context.end_of_round and not context.repetition and not context.individual then
+                self.ability.mp_extra_sell_price = (self.ability.mp_extra_sell_price or 0) + 3
+                pcall(function()
+                    card_eval_status_text(self, 'extra', nil, nil, nil, { message = localize('k_cost_up'), colour = G.C.RED, delay = 0.45 })
+                end)
+            end
+            return ret
+        end
+    end)
+
+    pcall(function()
+        local original_dollar_bonus = Card.calculate_dollar_bonus
+        Card.calculate_dollar_bonus = function(self)
+            if key_of(self) == 'j_mp_envy' then
+                if self.debuff or not mp_jokers_on() then return nil end
+                local d = envy_dollars(self)
+                if d > 0 then return d end
+                return nil
+            end
+            return original_dollar_bonus(self)
+        end
+    end)
+
+    pcall(function()
+        local original_generate_ui = Card.generate_UIBox_ability_table
+        Card.generate_UIBox_ability_table = function(self, vars_only, ...)
+            if vars_only then return original_generate_ui(self, vars_only, ...) end
+            local ui = nil
+            local key = key_of(self)
+            if key and DEFS[key] and self.ability then
+                local prev = O.describing
+                O.describing = self
+                local ok, r = pcall(original_generate_ui, self, vars_only, ...)
+                O.describing = prev
+                if ok then ui = r elseif mp_log then mp_log.warn('BOM_OBJECTS', 'joker ui failed: %s', tostring(r)) end
+            end
+            ui = ui or original_generate_ui(self)
+            if ui and self and self.ability then
+                if self.edition and self.edition.type == 'mp_phantom' then generate_card_ui({ key = 'e_mp_phantom', set = 'Edition' }, ui) end
+                if self.ability.mp_sticker_persistent then
+                    generate_card_ui({ key = 'mp_sticker_persistent', set = 'Other' }, ui)
+r 3 349 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 25
+                        generate_card_ui({ key = 'mp_internal_sell_value', set = 'Other', vars = { self.ability.mp_sell_price or self.sell_cost or 0 } }, ui)
+                    end
+                end
+                if self.ability.mp_sticker_unreliable then generate_card_ui({ key = 'mp_sticker_unreliable', set = 'Other' }, ui) end
+                if self.ability.mp_sticker_draining then generate_card_ui({ key = 'mp_sticker_draining', set = 'Other' }, ui) end
+                if self.ability.mp_sticker_balanced then generate_card_ui({ key = 'mp_sticker_balanced', set = 'Other' }, ui) end
+            end
+            return ui
+        end
+    end)
+
+    pcall(function()
+        local original_card_ui = generate_card_ui
+        generate_card_ui = function(_c, full_UI_table, specific_vars, card_type, badges, ...)
+            local card = O.describing
+            if card and not full_UI_table and type(_c) == 'table' and card.config and _c == card.config.center and DEFS[_c.key] then
+                O.describing = nil
+                if not (type(specific_vars) == 'table' and specific_vars.debuffed) then
+                    local ok, v = pcall(DEFS[_c.key].vars, card)
+                    v = ok and type(v) == 'table' and v or {}
+                    if type(specific_vars) == 'table' then
+                        for k, x in pairs(specific_vars) do if type(k) ~= 'number' then v[k] = x end end
+                    end
+                    specific_vars = v
+                end
+r 15 1170 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 63
+                for _, b in ipairs(build_custom_badges(card) or {}) do
+                    local dup = false
+                    for _, x in ipairs(badges) do if x == b then dup = true end end
+                    if not dup then badges[#badges + 1] = b end
+                end
+            end
+            return original_card_ui(_c, full_UI_table, specific_vars, card_type, badges, ...)
+        end
+    end)
+
+    pcall(function()
+        local original_set_cost = Card.set_cost
+        Card.set_cost = function(self)
+            original_set_cost(self)
+            if self and self.ability and self.ability.mp_sticker_persistent then
+                self.ability.mp_sell_price = (self.sell_cost or 0) + (self.ability.mp_extra_sell_price or 0)
+                self.sell_cost_label = self.facing == 'back' and '?' or self.ability.mp_sell_price
+            end
+        end
+    end)
+
+    pcall(function()
+        local original_sell_card = Card.sell_card
+        Card.sell_card = function(self)
+            local is_persistent = self and self.ability and self.ability.mp_sticker_persistent
+            local persistent_price = is_persistent and (self.ability.mp_sell_price or self.sell_cost or 0) or 0
+            if is_persistent and G and G.GAME and (G.GAME.dollars or 0) < persistent_price then return nil end
+            local sell_cost = self and self.sell_cost or 0
+            local ret = original_sell_card(self)
+            pcall(function()
+                local stats = get_or_create_round_stats()
+                if stats then
+                    stats.sells_this_ante = (stats.sells_this_ante or 0) + 1
+                    stats.sells_total = (stats.sells_total or 0) + 1
+                end
+            end)
+            if is_persistent and persistent_price > 0 then
+                pcall(function() ease_dollars(-(sell_cost + persistent_price)) end)
+            end
+            return ret
+        end
+    end)
+
+    pcall(function()
+        if bom_ui and bom_ui.update_opponent_panel then
+            local original_update_panel = bom_ui.update_opponent_panel
+            bom_ui.update_opponent_panel = function(data)
+                local ret = original_update_panel(data)
+                if data and G and G.GAME and G.GAME.mp_opponent_panel then
+                    local p = G.GAME.mp_opponent_panel
+                    if data.skips ~= nil then p.skips = data.skips end
+                    if data.sells_this_ante ~= nil then p.sells_this_ante = data.sells_this_ante end
+                    if data.sells_total ~= nil then p.sells_total = data.sells_total end
+                    if data.ante ~= nil then p.ante = data.ante end
+                end
+                return ret
+            end
+        end
+    end)
+
+    pcall(function()
+        if G and G.FUNCS and G.FUNCS.can_sell_card then
+            local original_can_sell_card = G.FUNCS.can_sell_card
+r 13 2122 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                if e and e.config and e.config.ref_table and e.config.ref_table.ability and e.config.ref_table.ability.mp_sticker_persistent then
+r 13 2157 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                    local can_afford = G and G.GAME and (G.GAME.dollars or 0) >= (card.ability.mp_sell_price or card.sell_cost or 0)
+                    if card:can_sell_card() and can_afford then
+r 13 268 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 2125 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    else
+r 13 57 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 58 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 115
+                    end
+                    return
+                end
+                return original_can_sell_card(e)
+            end
+        end
+    end)
+
+    pcall(function()
+        if Game and Game.init_item_prototypes then
+            local original_init_item_prototypes = Game.init_item_prototypes
+            Game.init_item_prototypes = function(self, ...)
+                local r = original_init_item_prototypes(self, ...)
+                pcall(sync_pools, mp_jokers_on() and true or false, true)
+                return r
+            end
+        end
+    end)
+
+    pcall(function()
+        if type(get_current_pool) == 'function' then
+            local original_get_current_pool = get_current_pool
+            get_current_pool = function(_type, _rarity, _legendary, _append)
+                set_pool_flag()
+                return original_get_current_pool(_type, _rarity, _legendary, _append)
+            end
+        end
+    end)
+
+    pcall(function()
+        if Game and Game.set_language then
+            local original_set_language = Game.set_language
+            Game.set_language = function(self, ...)
+                local r = original_set_language(self, ...)
+                pcall(run_lang_hooks)
+                return r
+            end
+        end
+    end)
+
+    pcall(function()
+        if bom_events and bom_events.register then
+            bom_events.register('sabotage', function(d)
+                local id = d and d.sabotage_id
+                if type(id) ~= 'string' or id:sub(1, 4) ~= 'mpj_' then return nil end
+                if id == 'mpj_stats' and G and G.GAME and G.GAME.multiplayer then
+                    G.GAME.mp_opp_stats = {
+                        skips = tonumber(d.skips) or 0, sells_total = tonumber(d.sells_total) or 0,
+                        dollars = tonumber(d.dollars) or 0,
+                    }
+                    local p = G.GAME.mp_opponent_panel
+                    if p then p.skips = G.GAME.mp_opp_stats.skips; p.sells_total = G.GAME.mp_opp_stats.sells_total end
+                    return true
+                end
+                if id == 'mpj_high_roller' and G and G.GAME and G.GAME.multiplayer then
+                    local n = math.max(0, math.min(tonumber(d.amount) or 5, 10))
+                    if n > 0 then
+                        ease_dollars(n)
+                        pcall(function()
+                            attention_text({
+                                text = L('High Roller misfire: +$') .. tostring(n), scale = 0.6, hold = 1.6,
+                                major = G.play, align = 'cm', offset = { x = 0, y = -2.5 }, silent = true,
+                            })
+                        end)
+                    end
+                end
+                return true
+            end)
+        end
+    end)
+
+    O.patches_applied = true
+    if mp_log then mp_log.info('BOM_OBJECTS', 'patched card behavior for MP2 jokers') end
+end
+
+function O.nemesis_word() return nemesis_word() end
+O.is_pvp = is_pvp_blind
+O.leftovers_amount = leftovers_amount
+
+local function apply_art()
+    if bom_joker_art and bom_joker_art.apply then pcall(bom_joker_art.apply) end
+end
+
+function O.ensure_registered()
+    register_centers()
+    apply_art()
+    if bom_decks and bom_decks.ensure_registered then pcall(bom_decks.ensure_registered) end
+end
+
+function O.update(dt)
+    set_pool_flag()
+    pcall(get_or_create_round_stats)
+    pcall(update_grudge)
+    pcall(update_leftovers)
+    pcall(stats_tick)
+end
+
+function O.init()
+    if O.initialized then
+        set_pool_flag()
+        pcall(get_or_create_round_stats)
+        return
+    end
+    register_centers()
+    apply_art()
+    register_loc()
+    O.inject_loc()
+    patch_card_behavior()
+    set_pool_flag()
+    pcall(get_or_create_round_stats)
+    O.initialized = true
+    if mp_log then mp_log.info('BOM_OBJECTS', 'MP2 custom objects initialized') end
+end
+
+return O
+end

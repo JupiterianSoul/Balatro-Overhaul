@@ -1,0 +1,752 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 430
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+local CH = require "functions/minigames/rhythm_charts"
+
+local min, max, floor, abs, pi, sin = math.min, math.max, math.floor, math.abs, math.pi, math.sin
+
+local Game = {}
+Game.__index = Game
+
+local PITCH = 0.7
+local LANES = 4
+local SUITS = {"S", "H", "C", "D"}
+local SUIT_NAMES = {"Spades", "Hearts", "Clubs", "Diamonds"}
+local SONGS = {"short", "long"}
+local DIFFS = {
+    {name = "Easy", travel = 2.0},
+    {name = "Normal", travel = 1.6},
+    {name = "Hard", travel = 1.3},
+}
+local PERFECT, GOOD = 0.065, 0.14
+local LEAD = 1.4
+local KEYS = {left = 1, down = 2, up = 3, right = 4}
+local PADS = {dpleft = 1, x = 1, leftshoulder = 1, dpdown = 2, a = 2, dpup = 3, y = 3, dpright = 4, b = 4, rightshoulder = 4}
+local PAD_FACE = {"x", "a", "y", "b"}
+local KB_ARROW = {{-1, 0}, {0, 1}, {0, -1}, {1, 0}}
+local NUMS = {"2", "3", "4", "5", "6", "7", "8", "9", "T"}
+
+local pick = {song = 1, diff = 2, id = "short"}
+local BEAT_ALGO = 1
+local BEAT_CACHE = "jimbo_jam"
+local beat_jobs = {}
+
+local function per_slot(c) return 60 / c.bpm / 4 end
+
+local function song_len(item)
+    local c = item.chart
+    if not c then return item.len end
+    return (c.first + c.slots * per_slot(c)) / item.pitch + 1.5
+end
+
+local function song_list()
+    local list = {}
+    for _, key in ipairs(SONGS) do
+        list[#list + 1] = {id = key, chart = CH[key], name = CH[key].name, file = CH[key].file, pitch = PITCH, builtin = true}
+    end
+    local J = (G and G.JUKEBOX_STATE) or rawget(_G, "Jukebox")
+    if type(J) == "table" and type(J.songs) == "table" then
+        for _, sg in ipairs(J.songs) do
+            if type(sg) == "table" and not sg.broken and type(sg.path) == "string" then
+                list[#list + 1] = {id = "jb:" .. tostring(sg.id), name = sg.name or sg.filename or "?", song = sg, pitch = 1}
+            end
+        end
+    end
+    return list
+end
+
+local function parse_chart(text)
+    local chunk = text and loadstring(text, "=jimbo_jam_chart")
+    if not chunk then return nil end
+    setfenv(chunk, {})
+    local ok, c = pcall(chunk)
+    if not ok or type(c) ~= "table" or type(c.s) ~= "string" or type(c.l) ~= "string" then return nil end
+    if not (tonumber(c.bpm) and c.bpm > 20 and tonumber(c.first) and tonumber(c.slots) and c.slots > 0) then return nil end
+    return c
+end
+
+local function beat_job(item)
+    local j = beat_jobs[item.id]
+    if j then return j end
+    local sg = item.song
+    local chan = "jimbo_jam_" .. tostring(item.id):gsub("[^%w]", "_")
+    love.thread.getChannel(chan):clear()
+    local ok, th = pcall(love.thread.newThread, "functions/minigames/rhythm_beat.lua")
+    if ok and th then
+        th:start(sg.path, sg.kind or sg.ext or "ogg", chan, BEAT_CACHE, BEAT_ALGO)
+        j = {state = "working", p = 0, th = th, chan = chan}
+    else
+        j = {state = "failed"}
+    end
+    beat_jobs[item.id] = j
+    return j
+end
+
+local function beat_poll(item)
+    local j = beat_jobs[item.id]
+    if not j or j.state ~= "working" then return j end
+    local ch = love.thread.getChannel(j.chan)
+    while true do
+        local m = ch:pop()
+        if not m then break end
+        if m.p then
+            j.p = m.p
+        elseif m.done then
+            local c = parse_chart(m.done)
+            if c then
+                c.name = item.name
+                item.chart = c
+                item.len = nil
+                j.state = "ready"
+            else
+                j.state = "failed"
+            end
+        elseif m.err then
+            j.state = "failed"
+            print("[JIMBO_JAM] " .. tostring(item.name) .. ": " .. tostring(m.err))
+        end
+    end
+    if j.state == "working" and j.th and not j.th:isRunning() and ch:getCount() == 0 then
+        j.state = "failed"
+        print("[JIMBO_JAM] " .. tostring(j.th:getError()))
+    end
+    return j
+end
+
+local function open_song(item)
+    if item.file then return love.audio.newSource(item.file, "stream") end
+    local sg = item.song
+    if sg.kind and sg.kind ~= sg.ext then
+        return love.audio.newSource(love.filesystem.newFileData(love.filesystem.read(sg.path), "song." .. sg.kind), "stream")
+    end
+    return love.audio.newSource(sg.path, "stream")
+end
+
+local function song_name(item)
+    return item.builtin and L(item.name) or tostring(item.name)
+end
+
+local function clock(secs)
+    secs = floor(secs + 0.5)
+    return string.format("%d:%02d", floor(secs / 60), secs % 60)
+end
+
+local function rank(k, s)
+    if s >= 9 then return "A" elseif s == 8 then return "K" elseif s == 7 then return "Q" elseif s == 6 then return "J" end
+    return NUMS[k % #NUMS + 1]
+end
+
+local function build(item, diff)
+    local c = item.chart
+    local pitch = item.pitch
+    local per = per_slot(c)
+    local notes, last, run, run_lane = {}, -10, 0, nil
+    for k = 0, c.slots - 1 do
+        local s = tonumber(c.s:sub(k + 1, k + 1)) or 0
+        local lane = (tonumber(c.l:sub(k + 1, k + 1)) or 0) + 1
+        local on, gap
+        if diff == 1 then
+            on, gap = (k % 4 == 0 and s >= 3) or (k % 2 == 0 and s >= 6), 2
+        elseif diff == 2 then
+            on, gap = (k % 2 == 0 and s >= 3) or s >= 8, 1
+        else
+            on, gap = s >= 2, 1
+        end
+        if on and k - last >= gap then
+            if diff < 3 and lane == run_lane then
+                run = run + 1
+                if run >= 3 then lane = lane % LANES + 1 run = 0 end
+            else
+                run = 0
+            end
+            run_lane = lane
+            local t = (c.first + k * per) / pitch
+            local suit = SUITS[lane]
+            notes[#notes + 1] = {t = t, lane = lane, front = suit .. "_" .. rank(k, s)}
+            if diff == 3 and k % 8 == 0 and s >= 9 then
+                local l2 = (lane + 1) % LANES + 1
+                notes[#notes + 1] = {t = t, lane = l2, front = SUITS[l2] .. "_" .. rank(k + 3, s)}
+            end
+            last = k
+        end
+    end
+    table.sort(notes, function(a, b) return a.t < b.t or (a.t == b.t and a.lane < b.lane) end)
+    return notes
+end
+
+local function music_volume()
+    local S = G.SETTINGS and G.SETTINGS.SOUND
+    if not S then return 0.6 end
+    return 0.6 * (S.volume or 100) / 100 * (S.music_volume or 100) / 100
+end
+
+local function jukebox_source()
+    local J = (G and G.JUKEBOX_STATE) or rawget(_G, "Jukebox")
+    return J and J.source or nil
+end
+
+local function suit_col(lane)
+    return (G.C.SUITS and G.C.SUITS[SUIT_NAMES[lane]]) or G.C.WHITE
+end
+
+function Game:start()
+    self.state = "setup"
+    self.demo = true
+    self.score = 0
+    self.pops = K.pops(8)
+    self.focus = 3
+    self.W, self.H = self.W or 10.6, self.H or 5.4
+    self.hy = self.H - 0.78
+    self.ty = 0.12
+    self.bw = min(self.W * 0.5, 5.6)
+    self.tw = self.bw * 0.5
+    self.cx = self.W / 2
+    local lane_w = self.bw / LANES
+    self.ns = lane_w * 0.84 / K.card_h()
+    self.flash = {0, 0, 0, 0}
+    self.bursts = {}
+    self.end_sound = "whoosh1"
+    self.input = UIK.touch() and "touch" or (G.CONTROLLER and G.CONTROLLER.HID and G.CONTROLLER.HID.controller) and "pad" or "kb"
+    self.songs = song_list()
+    pick.song = 1
+    for i, it in ipairs(self.songs) do
+        if it.id == pick.id then pick.song = i end
+    end
+    self:setup_ui()
+end
+
+function Game:item()
+    return self.songs[pick.song] or self.songs[1]
+end
+
+function Game:step_song(d)
+    pick.song = (pick.song - 1 + d) % #self.songs + 1
+    pick.id = self:item().id
+    self.waiting = nil
+    self.beat_failed = nil
+    local it = self:item()
+    if not it.chart then beat_job(it) end
+    K.sound("paper1", 1, 0.4)
+end
+
+function Game:setup_ui()
+    local pw = min(self.W - 0.8, 7.6)
+    local ph = min(self.H - 0.3, 4.7)
+    local px, py = self.W / 2 - pw / 2, self.H / 2 - ph / 2
+    self.panel = {x = px, y = py, w = pw, h = ph}
+    local touch = UIK.touch()
+    local bh = touch and 0.72 or 0.62
+    local sc = touch and 0.44 or 0.4
+    local gap = 0.18
+    self.diff_btns = {}
+    local y1 = py + 1.12
+    local aw = touch and 0.9 or 0.72
+    self.prev_btn = {x = px + 0.4, y = y1, w = aw, h = bh, scale = sc, label = "<", colour = G.C.RED}
+    self.next_btn = {x = px + pw - 0.4 - aw, y = y1, w = aw, h = bh, scale = sc, label = ">", colour = G.C.RED}
+    self.song_btn = {x = px + 0.4 + aw + gap, y = y1, w = pw - 0.8 - 2 * (aw + gap), h = bh, scale = sc}
+    local dw = (pw - 0.8 - gap * 2) / 3
+    local y2 = y1 + bh + 0.43
+    for i = 1, #DIFFS do
+        self.diff_btns[i] = {x = px + 0.4 + (i - 1) * (dw + gap), y = y2, w = dw, h = bh, scale = sc}
+    end
+    local stw = min(pw - 0.8, 3.4)
+    self.start_btn = {x = self.W / 2 - stw / 2, y = y2 + bh + 0.33, w = stw, h = touch and 0.82 or 0.72, scale = touch and 0.55 or 0.5, colour = G.C.GREEN}
+    self.song_label_y = y1 - 0.2
+    self.diff_label_y = y2 - 0.2
+end
+
+function Game:begin()
+    local item = self:item()
+    if not item.chart then
+        local j = beat_poll(item) or beat_job(item)
+        if j.state == "failed" then
+            self.beat_failed = true
+            K.sound("cancel", 1, 0.4)
+            return
+        end
+        self.waiting = true
+        return
+    end
+    self.waiting = nil
+    self.chart, self.pitch = item.chart, item.pitch
+    self.notes = build(item, pick.diff)
+    self.travel = DIFFS[pick.diff].travel
+    self.head = 1
+    self.t = -LEAD
+    self.combo, self.max_combo, self.mult = 0, 0, 1
+    self.perfect, self.good, self.miss = 0, 0, 0
+    self.score = 0
+    self.end_t = song_len(item)
+    self.last_t = (#self.notes > 0 and self.notes[#self.notes].t or 0) + 1.2
+    self.state = "song"
+    self.fade = 1
+    local ok, src = pcall(open_song, item)
+    self.src = ok and src or nil
+    if self.src then
+        pcall(function()
+            self.src:setPitch(item.pitch)
+            self.src:setVolume(music_volume())
+        end)
+    end
+    G.MG_MUSIC = true
+    K.sound("cardSlide1", 1.1, 0.4)
+end
+
+function Game:stop()
+    if self.src then
+        pcall(function() self.src:stop() self.src:release() end)
+        self.src = nil
+    end
+    if self.muted_jb then
+        local js = jukebox_source()
+        if js then pcall(function()
+            local S = G.SETTINGS.SOUND
+            js:setVolume((S.volume or 100) / 100 * (S.music_volume or 100) / 100)
+        end) end
+        self.muted_jb = nil
+    end
+    G.MG_MUSIC = nil
+end
+
+function Game:lane_geo(lane, u)
+    local w = self.tw + (self.bw - self.tw) * u
+    return self.cx - w / 2 + (lane - 0.5) * w / LANES, w / LANES
+end
+
+function Game:y_at(u)
+    return self.ty + (self.hy - self.ty) * u
+end
+
+function Game:judge(n, dt_abs)
+    n.done = true
+    local perfect = dt_abs <= PERFECT
+    self.combo = self.combo + 1
+    self.max_combo = max(self.max_combo, self.combo)
+    local old = self.mult
+    self.mult = min(4, 1 + floor(self.combo / 10))
+    if perfect then self.perfect = self.perfect + 1 else self.good = self.good + 1 end
+    self.score = self.score + (perfect and 100 or 50) * self.mult
+    self.jt, self.jcol, self.j0 = L(perfect and "Perfect" or "Good"), perfect and G.C.GOLD or G.C.GREEN, K.now()
+    self.bursts[#self.bursts + 1] = {lane = n.lane, front = n.front, t0 = K.now(), perfect = perfect}
+    if #self.bursts > 12 then table.remove(self.bursts, 1) end
+    K.sound("card1", perfect and 1.15 or 1, 0.22)
+    if self.mult > old then
+        K.pop(self.pops, "x" .. self.mult, self.cx - self.bw / 2 - 1.0, self.H / 2 + 0.5, G.C.GOLD, 0.7)
+        K.sound("multhit1", 0.9 + self.mult * 0.1, 0.4)
+        K.flash(G.C.GOLD, 0.08)
+    end
+end
+
+function Game:missed(n)
+    n.done = true
+    n.missed = true
+    self.miss = self.miss + 1
+    if self.combo >= 10 then
+        K.sound("cancel", 0.9, 0.35)
+        K.shake(0.03)
+    end
+    self.combo = 0
+    self.mult = 1
+    self.jt, self.jcol, self.j0 = L("Miss"), G.C.RED, K.now()
+end
+
+function Game:hit(lane)
+    if self.state ~= "song" or self.ending then return end
+    self.flash[lane] = K.now()
+    local best, bd
+    for i = self.head, #self.notes do
+        local n = self.notes[i]
+        if n.t > self.t + GOOD then break end
+        if not n.done and n.lane == lane then
+            local d = abs(n.t - self.t)
+            if d <= GOOD and (not bd or d < bd) then best, bd = n, d end
+        end
+    end
+    if best then self:judge(best, bd) end
+end
+
+function Game:confirm()
+    if self.focus < 3 then
+        self.focus = self.focus + 1
+        K.sound("card1", 1.3, 0.25)
+        return
+    end
+    K.press(self.start_btn)
+    self:begin()
+end
+
+function Game:key(k)
+    self.input = "kb"
+    if self.state == "setup" then
+        if k == "up" then self.focus = max(1, self.focus - 1) K.sound("card1", 1.3, 0.2)
+        elseif k == "down" then self.focus = min(3, self.focus + 1) K.sound("card1", 1.3, 0.2)
+        elseif k == "left" or k == "right" then
+            local d = k == "left" and -1 or 1
+            if self.focus == 1 then self:step_song(d)
+            elseif self.focus == 2 then pick.diff = (pick.diff - 1 + d) % #DIFFS + 1 K.sound("paper1", 1, 0.4) end
+        elseif k == "return" or k == "space" then
+            self:confirm()
+        end
+        return
+    end
+    local lane = KEYS[k]
+    if lane then self:hit(lane) end
+end
+
+function Game:pad_hit()
+    self.input = "pad"
+    if self.state == "setup" then self:confirm() return end
+    self:hit(2)
+end
+
+function Game:pad_btn(b)
+    self.input = "pad"
+    if self.state ~= "song" then return false end
+    if b == "start" or b == "back" then
+        if MG.host and MG.host.key then MG.host.key("escape") end
+        return true
+    end
+    local lane = PADS[b]
+    if lane then self:hit(lane) return true end
+    return false
+end
+
+function Game:press(x, y)
+    self.input = UIK.touch() and "touch" or "kb"
+    if self.state == "setup" then
+        if K.hit(self.prev_btn, x, y, 0.05) then self.focus = 1 K.press(self.prev_btn) self:step_song(-1) return end
+        if K.hit(self.next_btn, x, y, 0.05) then self.focus = 1 K.press(self.next_btn) self:step_song(1) return end
+        if K.hit(self.song_btn, x, y, 0.05) then self.focus = 1 K.press(self.song_btn) self:step_song(1) return end
+        for i, b in ipairs(self.diff_btns) do
+            if K.hit(b, x, y, 0.05) then pick.diff = i self.focus = 2 K.press(b) return end
+        end
+        if K.hit(self.start_btn, x, y, 0.05) then self.focus = 3 self:confirm() end
+        return
+    end
+    local left = self.cx - self.bw / 2
+    local lane = floor((x - left) / (self.bw / LANES)) + 1
+    self:hit(max(1, min(LANES, lane)))
+end
+
+r 9 2449 - -
+l 314
+    self.demo = false
+    if self.state == "setup" and self.songs then
+        local it = self:item()
+        if it and not it.chart and beat_jobs[it.id] then
+            local j = beat_poll(it)
+            if self.waiting and j then
+                if j.state == "ready" then self:begin()
+                elseif j.state == "failed" then self.waiting = nil self.beat_failed = true K.sound("cancel", 1, 0.4) end
+            end
+        end
+        return
+    end
+    if self.state ~= "song" then return end
+    if self.t < 0 then
+        self.t = self.t + dt
+        if self.t >= 0 then
+            self.t = 0
+            if self.src then pcall(function() self.src:play() end) end
+        end
+    else
+        self.t = self.t + dt
+        local src = self.src
+        if src then
+            local ok, pos = pcall(src.tell, src, "seconds")
+            if ok and pos and src:isPlaying() then
+                local real = pos / (self.pitch or PITCH)
+                if abs(real - self.t) > 0.1 then self.t = real else self.t = self.t + (real - self.t) * min(1, dt * 4) end
+            end
+        end
+    end
+    local js = jukebox_source()
+    if js then pcall(function() js:setVolume(0) end) self.muted_jb = true end
+    while self.head <= #self.notes do
+        local n = self.notes[self.head]
+        if n.done then
+            self.head = self.head + 1
+        elseif n.t < self.t - GOOD then
+            self:missed(n)
+            self.head = self.head + 1
+        else
+            break
+        end
+    end
+    for i = self.head, #self.notes do
+        local n = self.notes[i]
+        if n.t > self.t - GOOD then break end
+        if not n.done then self:missed(n) end
+    end
+    local stop_at = min(self.end_t, self.last_t + 1.6)
+    if self.t >= self.last_t then
+        self.fade = max(0, 1 - (self.t - self.last_t) / 1.6)
+    end
+    if self.src then pcall(function() self.src:setVolume(music_volume() * self.fade) end) end
+    if self.t >= stop_at or self.fade <= 0 then
+        self:finish()
+    end
+end
+
+function Game:finish()
+    if self.over then return end
+    self:stop()
+    local total = self.perfect + self.good + self.miss
+    local acc = total > 0 and floor((self.perfect + self.good * 0.5) / total * 100 + 0.5) or 0
+    if self.miss == 0 and total > 0 then
+        self.result = "Full combo!"
+        self.result_col = G.C.GOLD
+    else
+        self.result = "Song complete!"
+        self.result_col = G.C.GREEN
+    end
+    self.summary = string.format(L("Accuracy %d%%   Max combo %d   Misses %d"), acc, self.max_combo, self.miss)
+    self.over = true
+end
+
+local hw_col = {0, 0, 0, 0.42}
+local edge_col = {1, 1, 1, 0.16}
+local beat_col = {1, 1, 1, 0.07}
+local bar_col = {1, 1, 1, 0.16}
+local dim_col = {0, 0, 0, 0.55}
+
+function Game:draw_highway(ox, oy)
+    local bu = (self.H - 0.05 - self.ty) / (self.hy - self.ty)
+    local tl = self.cx - self.tw / 2
+    local w_b = self.tw + (self.bw - self.tw) * bu
+    local yb = self:y_at(bu)
+    K.poly(hw_col, 1, ox + tl, oy + self.ty, ox + tl + self.tw, oy + self.ty, ox + self.cx + w_b / 2, oy + yb, ox + self.cx - w_b / 2, oy + yb)
+    for i = 0, LANES do
+        local xt = tl + self.tw * i / LANES
+        local xb = self.cx - w_b / 2 + w_b * i / LANES
+        local th = (i == 0 or i == LANES) and 0.035 or 0.018
+        K.poly(edge_col, 1, ox + xt - th, oy + self.ty, ox + xt + th, oy + self.ty, ox + xb + th * 1.6, oy + yb, ox + xb - th * 1.6, oy + yb)
+    end
+    if self.state == "song" and self.t then
+        local c = self.chart
+        local beat = 60 / c.bpm / self.pitch
+        local first = c.first / self.pitch
+        local b0 = max(0, floor((self.t - first) / beat))
+        for b = b0, b0 + floor(self.travel / beat) + 1 do
+            local tb = first + b * beat
+            local u = 1 - (tb - self.t) / self.travel
+            if u >= 0 and u <= bu then
+                local w = self.tw + (self.bw - self.tw) * u
+                local y = self:y_at(u)
+                K.rect(ox + self.cx - w / 2, oy + y - 0.012, w, 0.024, b % 4 == 0 and bar_col or beat_col, 0)
+            end
+        end
+    end
+end
+
+function Game:draw_targets(ox, oy, now)
+    local cw, ch = K.card_h() * self.ns, K.card_w() * self.ns
+    for lane = 1, LANES do
+        local x = self:lane_geo(lane, 1)
+        local col = suit_col(lane)
+        local f = max(0, 1 - (now - (self.flash[lane] or 0)) / 0.14)
+        if f > 0 then K.rect(ox + x - cw / 2, oy + self.hy - ch / 2, cw, ch, col, 0.08, 0.45 * f) end
+        K.outline(ox + x - cw / 2, oy + self.hy - ch / 2, cw, ch, col, 0.08, 0.05 + 0.03 * f, 0.85)
+        local label
+        if self.input == "kb" then
+            local dx, dy = KB_ARROW[lane][1], KB_ARROW[lane][2]
+            local ax, ay, r = ox + x, oy + self.hy + ch / 2 + 0.2, 0.13
+            local px, py = -dy, dx
+            K.poly(G.C.UI.TEXT_LIGHT, 0.85, ax + dx * r, ay + dy * r, ax - dx * r + px * r, ay - dy * r + py * r, ax - dx * r - px * r, ay - dy * r - py * r)
+        elseif self.input == "pad" then
+            local P = Controls and Controls.pad
+            label = P and P.name and P.name(PAD_FACE[lane]) or PAD_FACE[lane]:upper()
+        end
+        if label then K.text(label, ox + x, oy + self.hy + ch / 2 + 0.2, 0.36, G.C.UI.TEXT_LIGHT, "c", 0.85) end
+    end
+end
+
+function Game:draw_note(n, ox, oy, a)
+    local u = 1 - (n.t - self.t) / self.travel
+    if u < -0.02 or u > 1.25 then return end
+    local x = self:lane_geo(n.lane, u)
+    local y = self:y_at(u)
+    local s = self.ns * (0.5 + 0.5 * min(1, u))
+    local alpha = min(1, max(0, u) * 6) * (a or 1)
+    if n.missed then alpha = alpha * max(0, 1 - (u - 1) * 5) end
+    if alpha <= 0 then return end
+    K.card(n.front, ox + x, oy + y, s, {r = pi / 2, a = alpha})
+end
+
+function Game:draw_bursts(ox, oy, now)
+    local cw, ch = K.card_h() * self.ns, K.card_w() * self.ns
+    for _, b in ipairs(self.bursts) do
+        local t = now - b.t0
+        if t < 0.35 then
+            local k = t / 0.35
+            local x = self:lane_geo(b.lane, 1)
+            local grow = 1 + k * 0.5
+            K.outline(ox + x - cw * grow / 2, oy + self.hy - ch * grow / 2, cw * grow, ch * grow, b.perfect and G.C.GOLD or G.C.GREEN, 0.1, 0.05, 1 - k)
+            K.card(b.front, ox + x, oy + self.hy - k * 0.5, self.ns * (1 + k * 0.15), {r = pi / 2, a = 1 - k, shadow = false})
+        end
+    end
+end
+
+function Game:draw_hud(ox, oy)
+    local lx = self.cx - self.bw / 2 - 1.0
+    local rx = self.cx + self.bw / 2 + 1.0
+    local mid = self.H / 2
+    K.text(tostring(self.combo or 0), ox + lx, oy + mid - 0.35, 0.95, (self.combo or 0) >= 10 and G.C.GOLD or G.C.UI.TEXT_LIGHT, "c")
+    K.text(L("Combo"), ox + lx, oy + mid + 0.18, 0.36, UIK.C.muted, "c")
+    local mcol = self.mult > 1 and G.C.GOLD or UIK.C.muted
+    K.text("x" .. self.mult, ox + lx, oy + mid + 0.75, 0.6, mcol, "c")
+    local sname = song_name(self:item())
+    K.text(sname, ox + rx, oy + mid - 0.9, K.fit(sname, 0.38, 2.0), G.C.UI.TEXT_LIGHT, "c")
+    K.text(L(DIFFS[pick.diff].name), ox + rx, oy + mid - 0.52, 0.34, UIK.C.muted, "c")
+    K.bar(ox + rx - 0.9, oy + mid - 0.18, 1.8, 0.14, max(0, self.t or 0) / max(1, self.last_t), G.C.BLUE)
+    K.text(string.format(L("Perfect %d"), self.perfect), ox + rx, oy + mid + 0.3, 0.32, G.C.GOLD, "c")
+    K.text(string.format(L("Good %d"), self.good), ox + rx, oy + mid + 0.62, 0.32, G.C.GREEN, "c")
+    K.text(string.format(L("Miss %d"), self.miss), ox + rx, oy + mid + 0.94, 0.32, G.C.RED, "c")
+    if self.jt then
+        local t = K.now() - self.j0
+        if t < 0.5 then
+            local k = K.out_back(min(1, t / 0.12))
+            K.text(self.jt, ox + self.cx, oy + self.hy - 1.15, 0.6 * k, self.jcol, "c", t < 0.35 and 1 or (0.5 - t) / 0.15)
+        end
+    end
+    if self.t < 0 then
+        local n = math.ceil(-self.t / (LEAD / 3))
+        K.text(tostring(min(3, n)), ox + self.cx, oy + self.H / 2 - 0.4, 1.2 * K.out_back(min(1, ((-self.t) % (LEAD / 3)) / 0.15 + 0.3)), G.C.WHITE, "c")
+    end
+end
+
+function Game:draw_setup(ox, oy)
+    local p = self.panel
+    K.rect(ox, oy, self.W, self.H, dim_col, 0.12)
+    K.panel(ox + p.x, oy + p.y, p.w, p.h, G.C.BLACK, 0.15, 0.92, 0.08)
+    local title = L("Pick a song")
+    K.text(title, ox + self.W / 2, oy + p.y + 0.45, K.fit(title, 0.62, p.w - 0.6), G.C.GOLD, "c")
+    K.text(L("Song"), ox + p.x + 0.45, oy + self.song_label_y, 0.32, UIK.C.muted, "l")
+    K.text(L("Difficulty"), ox + p.x + 0.45, oy + self.diff_label_y, 0.32, UIK.C.muted, "l")
+    local it = self:item()
+    local len = song_len(it)
+    if not len and it.len == nil and it.song then
+        local ok, src = pcall(open_song, it)
+        it.len = false
+        if ok and src then
+            local okd, d = pcall(src.getDuration, src)
+            if okd and d and d > 0 then it.len = d end
+            pcall(src.release, src)
+        end
+        len = it.len or nil
+    end
+    local count = string.format("%d / %d", pick.song, #self.songs)
+    K.text(count, ox + p.x + p.w - 0.45, oy + self.song_label_y, 0.32, UIK.C.muted, "r")
+    self.song_btn.colour = G.C.UI.BACKGROUND_INACTIVE
+    self.song_btn.label = song_name(it) .. (len and ("  " .. clock(len)) or "")
+    K.button(self.prev_btn, 1, ox, oy)
+    K.button(self.song_btn, 1, ox, oy)
+    K.button(self.next_btn, 1, ox, oy)
+    for i, b in ipairs(self.diff_btns) do
+        b.colour = i == pick.diff and G.C.RED or G.C.UI.BACKGROUND_INACTIVE
+        b.label = L(DIFFS[i].name)
+        K.button(b, 1, ox, oy)
+    end
+    local job = not it.chart and beat_jobs[it.id]
+    if self.waiting and job then
+        self.start_btn.label = string.format(L("Reading the beat %d%%"), floor((job.p or 0) * 100 + 0.5))
+        self.start_btn.disabled = true
+    elseif self.beat_failed then
+        self.start_btn.label = L("Can't read this song's beat")
+        self.start_btn.disabled = true
+    else
+        self.start_btn.label = L("Play song")
+        self.start_btn.disabled = nil
+    end
+    K.button(self.start_btn, 1, ox, oy)
+    if self.input ~= "touch" then
+        local fb = self.focus == 1 and self.song_btn or self.focus == 2 and self.diff_btns[pick.diff] or self.start_btn
+        K.outline(ox + fb.x - 0.07, oy + fb.y - 0.07, fb.w + 0.14, fb.h + 0.21, G.C.GOLD, 0.12, 0.06, 0.6 + 0.4 * sin(K.now() * 5))
+    end
+    local hint = self.input == "touch" and L("Tap the lanes as the cards reach the line")
+        or self.input == "pad" and L("D-pad or face buttons, one per lane")
+        or L("Arrow keys, one per lane")
+    K.text(hint, ox + self.W / 2, oy + (self.start_btn.y + self.start_btn.h + 0.07 + p.y + p.h) / 2, K.fit(hint, 0.34, p.w - 0.6), G.C.UI.TEXT_LIGHT, "c", 0.85)
+end
+
+local DEMO = {{lane = 1, u = 0.3, front = "S_A"}, {lane = 3, u = 0.55, front = "C_K"}, {lane = 2, u = 0.78, front = "H_7"}, {lane = 4, u = 0.12, front = "D_Q"}}
+
+function Game:draw(ox, oy)
+    local now = K.now()
+    self:draw_highway(ox, oy)
+    self:draw_targets(ox, oy, now)
+    if self.state == "song" then
+        for i = self.head, #self.notes do
+            local n = self.notes[i]
+            if n.t - self.t > self.travel then break end
+            if not n.done then self:draw_note(n, ox, oy) end
+        end
+        for i = max(1, self.head - 8), self.head - 1 do
+            local n = self.notes[i]
+            if n and n.missed then self:draw_note(n, ox, oy, 0.6) end
+        end
+        self:draw_bursts(ox, oy, now)
+        self:draw_hud(ox, oy)
+    else
+        for _, d in ipairs(DEMO) do
+            local x = self:lane_geo(d.lane, d.u)
+            K.card(d.front, ox + x, oy + self:y_at(d.u), self.ns * (0.5 + 0.5 * d.u), {r = pi / 2})
+        end
+        if not self.demo then self:draw_setup(ox, oy) end
+    end
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "rhythm",
+    name = "Jimbo Jam",
+    desc = "Hit the cards as they reach the line, in time with the music",
+    how = "Pick a song and a difficulty. Hit each lane as its card reaches the line.",
+    score = "Points",
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Jimbo Jam"] = "Jimbo Jam", ["Hit the cards as they reach the line, in time with the music"] = "Frappez les cartes quand elles touchent la ligne, en rythme",
+            ["Pick a song and a difficulty. Hit each lane as its card reaches the line."] = "Choisissez un morceau et une difficulté. Frappez chaque couloir quand sa carte touche la ligne.",
+            ["Points"] = "Points", ["Perfect"] = "Parfait", ["Good"] = "Bien", ["Miss"] = "Raté", ["Combo"] = "Combo",
+            ["Perfect %d"] = "Parfait %d", ["Good %d"] = "Bien %d", ["Miss %d"] = "Ratés %d",
+            ["Full combo!"] = "Combo parfait !", ["Song complete!"] = "Morceau terminé !",
+            ["Accuracy %d%%   Max combo %d   Misses %d"] = "Précision %d %%   Combo max %d   Ratés %d",
+            ["Pick a song"] = "Choisissez un morceau", ["Song"] = "Morceau", ["Difficulty"] = "Difficulté", ["Play song"] = "Jouer le morceau",
+            ["Easy"] = "Facile", ["Normal"] = "Normal", ["Hard"] = "Difficile",
+            ["Main Theme"] = "Thème principal", ["Boss Theme"] = "Thème du Boss",
+            ["Tap the lanes as the cards reach the line"] = "Touchez les couloirs quand les cartes touchent la ligne",
+            ["D-pad or face buttons, one per lane"] = "Croix ou boutons de façade, un par couloir",
+            ["Arrow keys, one per lane"] = "Flèches du clavier, une par couloir",
+            ["Pick a song and a difficulty."] = "Choisissez un morceau et une difficulté.",
+            ["Hit each lane as its card reaches the line."] = "Frappez chaque couloir quand sa carte touche la ligne.",
+            ["Arrow keys, tap or the pad."] = "Flèches, toucher ou manette.",
+            ["Reading the beat %d%%"] = "Lecture du rythme %d %%", ["Can't read this song's beat"] = "Rythme de ce morceau illisible"},
+        es = {["Jimbo Jam"] = "Jimbo Jam", ["Hit the cards as they reach the line, in time with the music"] = "Golpea las cartas cuando llegan a la línea, al ritmo de la música",
+            ["Pick a song and a difficulty. Hit each lane as its card reaches the line."] = "Elige una canción y una dificultad. Golpea cada carril cuando su carta llegue a la línea.",
+            ["Points"] = "Puntos", ["Perfect"] = "Perfecto", ["Good"] = "Bien", ["Miss"] = "Fallo", ["Combo"] = "Combo",
+            ["Perfect %d"] = "Perfecto %d", ["Good %d"] = "Bien %d", ["Miss %d"] = "Fallos %d",
+            ["Full combo!"] = "¡Combo perfecto!", ["Song complete!"] = "¡Canción completada!",
+            ["Accuracy %d%%   Max combo %d   Misses %d"] = "Precisión %d%%   Combo máx. %d   Fallos %d",
+            ["Pick a song"] = "Elige una canción", ["Song"] = "Canción", ["Difficulty"] = "Dificultad", ["Play song"] = "Tocar la canción",
+            ["Easy"] = "Fácil", ["Normal"] = "Normal", ["Hard"] = "Difícil",
+            ["Main Theme"] = "Tema principal", ["Boss Theme"] = "Tema del jefe",
+            ["Tap the lanes as the cards reach the line"] = "Toca los carriles cuando las cartas lleguen a la línea",
+            ["D-pad or face buttons, one per lane"] = "Cruceta o botones frontales, uno por carril",
+            ["Arrow keys, one per lane"] = "Flechas del teclado, una por carril",
+            ["Pick a song and a difficulty."] = "Elige una canción y una dificultad.",
+            ["Hit each lane as its card reaches the line."] = "Golpea cada carril cuando su carta llegue a la línea.",
+            ["Arrow keys, tap or the pad."] = "Flechas, tocar o el mando.",
+            ["Reading the beat %d%%"] = "Leyendo el ritmo %d%%", ["Can't read this song's beat"] = "No se puede leer el ritmo"},
+    }
+end
+
+return Game
+end

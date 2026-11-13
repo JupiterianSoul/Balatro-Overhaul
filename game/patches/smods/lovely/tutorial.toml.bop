@@ -1,0 +1,55 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 9
+[manifest]
+version = "1.0.0"
+priority = 0
+dump_lua = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''
+r 12 2205 - -
+l 27
+'''
+position = "after"
+payload = '''
+if args.center then
+  pos.center = args.center
+end
+'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "functions/common_events.lua"
+pattern = '''G.OVERLAY_TUTORIAL.step_complete = true'''
+position = "before"
+payload = '''
+if args.func then
+    args.func()
+end
+'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = '''for k, v in ipairs(self.OVERLAY_TUTORIAL.highlights) do'''
+position = "after"
+payload = '''
+r 21 183 - -
+l 9
+    self.OVERLAY_TUTORIAL.highlights[k] = v() or v
+    if type(v) == "function" then -- prevent crashing if the object doesn't exist yet due to event jank
+        v = {translate_container = function() end, draw = function() end}
+    end
+end
+'''
+match_indent = true
+
+
+end

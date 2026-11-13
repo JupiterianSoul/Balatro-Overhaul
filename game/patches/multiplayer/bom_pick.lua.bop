@@ -1,0 +1,453 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 275
+local P = {}
+
+local function L(s)
+    if mod_loc then
+        local ok, r = pcall(mod_loc, s)
+        if ok and r then return r end
+    end
+    return s
+end
+
+local FR = {
+    ["MATCH PICKS"] = "CHOIX DE PARTIE",
+    ["Your picks"] = "Vos choix",
+    ["Your deck"] = "Votre jeu",
+    ["Your jokers"] = "Vos jokers",
+    ["Choose jokers"] = "Choisir des jokers",
+    ["None yet"] = "Aucun pour l'instant",
+    ["Ready"] = "Prêt",
+    ["Not ready"] = "Pas prêt",
+    ["Picking"] = "Choisit",
+    ["You"] = "Vous",
+    ["Your opponent"] = "Votre adversaire",
+    ["Pick, then press Ready"] = "Choisissez, puis appuyez sur Prêt",
+    ["Starting..."] = "Lancement...",
+    ["Common or Uncommon, up to %d. When time runs out, your picks so far are kept."] = "Communs ou Peu communs, jusqu'à %d. Quand le temps est écoulé, vos choix actuels sont gardés.",
+    ["When time runs out, your picks so far are kept."] = "Quand le temps est écoulé, vos choix actuels sont gardés.",
+}
+
+local ES = {
+    ["MATCH PICKS"] = "ELECCIONES DE PARTIDA",
+    ["Your picks"] = "Tus elecciones",
+    ["Your deck"] = "Tu baraja",
+    ["Your jokers"] = "Tus comodines",
+    ["Choose jokers"] = "Elegir comodines",
+    ["None yet"] = "Ninguno todavía",
+    ["Ready"] = "Listo",
+    ["Not ready"] = "No listo",
+    ["Picking"] = "Eligiendo",
+    ["You"] = "Tú",
+    ["Your opponent"] = "Tu rival",
+    ["Pick, then press Ready"] = "Elige y pulsa Listo",
+    ["Starting..."] = "Empezando...",
+    ["Common or Uncommon, up to %d. When time runs out, your picks so far are kept."] = "Comunes o Poco comunes, hasta %d. Cuando se acaba el tiempo, se guardan tus elecciones.",
+    ["When time runs out, your picks so far are kept."] = "Cuando se acaba el tiempo, se guardan tus elecciones.",
+}
+
+local S = {state = nil, result = nil, open = false, at = 0, starting = false, start_at = nil, in_jokers = false,
+    mine = {deck = nil, jokers = {}, ready = false}, view = {timer = "", status = "", pt = {}, pc = {}, bc = {}}}
+P.S = S
+
+local function st() return bom_match and bom_match.get_state and bom_match.get_state() or {} end
+local function settings() return (bom_match and bom_match.get_settings and bom_match.get_settings()) or {} end
+local function now() return love and love.timer and love.timer.getTime() or os.time() end
+
+local function in_lobby()
+    if not (G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU) then return false end
+    local ok, r = pcall(function() return bom_match.get_phase() == bom_match.PHASE.LOBBY end)
+    return ok and r == true
+end
+
+local function in_party()
+    local ok, r = pcall(function() return bom_party and bom_party.active and bom_party.active() end)
+    return ok and r or false
+end
+
+function P.deck_wanted(s)
+    s = s or settings()
+    return bom_match and bom_match.different_decks and bom_match.different_decks(s) and true or false
+end
+
+function P.jokers_wanted(s)
+    return bom_match and bom_match.joker_picks and bom_match.joker_picks(s or settings()) or 0
+end
+
+function P.needed()
+    if in_party() or st().ranked == true then return false end
+    local s = settings()
+    return P.deck_wanted(s) or P.jokers_wanted(s) > 0
+end
+
+local function deck_choices(pool)
+    local opts = bom_lobby_settings and bom_lobby_settings.deck_options and bom_lobby_settings.deck_options() or {}
+    local names, values = {}, {}
+    if type(pool) == "table" and #pool > 0 then
+        local label = {}
+        for _, o in ipairs(opts) do label[o.value] = o.raw and o.label or L(o.label) end
+        for _, v in ipairs(pool) do
+            names[#names + 1] = label[v] or (bom_draft and bom_draft.deck_label and bom_draft.deck_label(v)) or v
+            values[#values + 1] = v
+        end
+        return names, values
+    end
+    for _, o in ipairs(opts) do
+        names[#names + 1] = o.raw and o.label or L(o.label)
+        values[#values + 1] = o.value
+    end
+    return names, values
+end
+
+local function my_pid()
+    if S.state and S.state.you ~= nil then return tonumber(S.state.you) end
+    return st().is_host and 0 or 1
+end
+
+local function deck_center(name)
+    if not (G and G.P_CENTERS and type(name) == "string") then return nil end
+    for _, c in pairs(G.P_CENTERS) do
+        if c.set == "Back" and c.name == name then return c end
+    end
+    return nil
+end
+
+local function sprite_node(center, w, atlas_default)
+    if not (center and Sprite and G.ASSET_ATLAS) then return nil end
+    local atlas = G.ASSET_ATLAS[center.atlas or atlas_default] or G.ASSET_ATLAS[atlas_default]
+    if not atlas then return nil end
+    local ok, spr = pcall(Sprite, 0, 0, w, w * 95 / 71, atlas, center.pos or {x = 0, y = 0})
+    if ok and spr then return {n = G.UIT.O, config = {object = spr}} end
+    return nil
+end
+
+local function send(m)
+    if bom_core and bom_core.send then pcall(bom_core.send, m) end
+end
+
+function P.bot_jokers(s)
+    s = s or settings()
+    local out = {}
+    if P.jokers_wanted(s) <= 0 then return out end
+    for _, c in ipairs((G and G.P_CENTER_POOLS and G.P_CENTER_POOLS.Joker) or {}) do
+        if type(c.key) == "string" and not c.mp_joker and not c.mod and bom_match.joker_pick_ok(c.key, s) then out[#out + 1] = c.key end
+    end
+    return out
+end
+
+local function clean_jokers(list)
+    local s = settings()
+    local n = P.jokers_wanted(s)
+    local out = {}
+    for _, k in ipairs(type(list) == "table" and list or {}) do
+        if #out >= n then break end
+        if type(k) == "string" and bom_match.joker_pick_ok(k, s) then out[#out + 1] = k end
+    end
+    return out
+end
+
+local function inner_w()
+    local w = UIK.dlg_w and UIK.dlg_w(UIK.col_w(2)) or UIK.col_w(2)
+    return w - 2 * (UIK.PAD or 0.1) - 0.2
+end
+
+local function copy_colour(dst, src)
+    for i = 1, 4 do dst[i] = src[i] or 1 end
+    return dst
+end
+
+local function sync_players()
+    local d = S.state
+    if not d then return end
+    for _, pid in ipairs(d.pids or {}) do
+        local k = tostring(pid)
+        local ready = type(d.ready) == "table" and d.ready[k] == true
+        S.view.pt[k] = ready and L("Ready") or L("Picking")
+        S.view.pc[k] = copy_colour(S.view.pc[k] or {}, ready and G.C.GREEN or G.C.UI.TEXT_INACTIVE)
+        S.view.bc[k] = copy_colour(S.view.bc[k] or {}, ready and darken(G.C.GREEN, 0.35) or G.C.BLACK)
+    end
+end
+
+local function is_dev(pid)
+    local d = S.state
+    if not (d and type(d.devs) == "table" and rawget(_G, "bom_badges") and bom_badges.dev) then return false end
+    for _, q in ipairs(d.devs) do if tonumber(q) == pid then return true end end
+    return false
+end
+
+local function player_line(pid, bw)
+    local me = pid == my_pid()
+    local name = me and L("You") or st().opp_name
+    if not me and (type(name) ~= "string" or name == "" or name == "Opponent") then name = L("Your opponent") end
+    local k = tostring(pid)
+    local ts = UIK.touch() and 0.38 or 0.32
+    local line = {{n = G.UIT.T, config = {text = name, scale = ts, colour = G.C.UI.TEXT_LIGHT, shadow = true}}}
+    if is_dev(pid) then
+        line[#line + 1] = {n = G.UIT.C, config = {minw = 0.08}}
+        line[#line + 1] = bom_badges.dev({h = ts * 1.5})
+    end
+    return {n = G.UIT.C, config = {align = "cm", padding = 0.08, r = 0.1, minw = bw, maxw = bw, colour = S.view.bc[k]}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", maxw = bw - 0.2}, nodes = line},
+        {n = G.UIT.R, config = {align = "cm"}, nodes = {{n = G.UIT.T, config = {ref_table = S.view.pt, ref_value = k, scale = ts * 0.85, colour = S.view.pc[k]}}}},
+    }}
+end
+
+local function build()
+    local d = S.state or {}
+    local rows = {}
+    local w = inner_w()
+    local touch = UIK.touch()
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.55}, nodes = {
+        {n = G.UIT.T, config = {ref_table = S.view, ref_value = "status", scale = touch and 0.44 or 0.4, colour = G.C.GOLD, shadow = true}},
+        {n = G.UIT.C, config = {minw = 0.4}},
+        {n = G.UIT.T, config = {ref_table = S.view, ref_value = "timer", scale = touch and 0.44 or 0.4, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+    }}
+    if d.deck then
+        local names, values = deck_choices(d.pool)
+        local cur = 1
+        for i, v in ipairs(values) do if v == S.mine.deck then cur = i break end end
+        local art_w = touch and 1.25 or 1.05
+        local art = sprite_node(deck_center(values[cur]), art_w, "centers")
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minh = art_w * 95 / 71 + 0.1, padding = 0.05}, nodes = {
+            art or {n = G.UIT.T, config = {text = "?", scale = 0.9, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }}
+        rows[#rows + 1] = UIK.cycle{label = L("Your deck"), options = names, current = cur, no_pips = true, w = w, cw = math.min(3.4, w - 1.8), colour = G.C.RED,
+            callback = function(key)
+                local v = values[key]
+                if not v then return end
+                S.mine.deck = v
+                send({type = "pick_set", deck = v})
+                if UIK.refresh then pcall(UIK.refresh) end
+            end}
+    end
+    local n = math.min(tonumber(d.jokers) or 0, P.jokers_wanted())
+    if n > 0 then
+        rows[#rows + 1] = UIK.spacer(0.12)
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.45}, nodes = {
+            {n = G.UIT.T, config = {text = L("Your jokers") .. " " .. #S.mine.jokers .. "/" .. n, scale = touch and 0.42 or 0.38, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }}
+        local line = {}
+        local jw = touch and 0.95 or 0.8
+        for _, k in ipairs(S.mine.jokers) do
+            local node = sprite_node(G.P_CENTERS and G.P_CENTERS[k], jw, "Joker")
+            if node then line[#line + 1] = {n = G.UIT.C, config = {align = "cm", padding = 0.04}, nodes = {node}} end
+        end
+        if #line == 0 then
+            line[1] = {n = G.UIT.T, config = {text = L("None yet"), scale = touch and 0.34 or 0.3, colour = G.C.UI.TEXT_INACTIVE}}
+        end
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minh = jw * 95 / 71 + 0.1, padding = 0.04}, nodes = line}
+        rows[#rows + 1] = UIK.button_bar({UIK.button{label = L("Choose jokers"), button = "mp_pick_jokers", colour = G.C.ORANGE, id = "mp_pick_jokers"}}, {w = w})
+    end
+    rows[#rows + 1] = UIK.spacer(0.12)
+    sync_players()
+    local players = {}
+    local np = math.max(1, #(d.pids or {}))
+    local bw = math.min(2.8, (w - 0.2 * (np - 1)) / np - 0.16)
+    for i, pid in ipairs(d.pids or {}) do
+        players[#players + 1] = player_line(tonumber(pid), bw)
+        if i < #(d.pids or {}) then players[#players + 1] = {n = G.UIT.C, config = {minw = 0.2}} end
+    end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = players}
+    local ns = touch and 0.32 or 0.28
+    local note = n > 0 and string.format(L("Common or Uncommon, up to %d. When time runs out, your picks so far are kept."), n)
+        or L("When time runs out, your picks so far are kept.")
+    for _, ln in ipairs(UIK.wrap(note, ns, w - 0.2, 3)) do
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minh = ns + 0.08}, nodes = {
+            {n = G.UIT.T, config = {text = ln, scale = ns, colour = G.C.UI.TEXT_INACTIVE}},
+        }}
+    end
+    return {n = G.UIT.C, config = {align = "cm"}, nodes = rows}
+end
+
+local function pick_overlay()
+    return G and G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "mp_pick" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") ~= nil
+end
+
+local function footer()
+    local ready = S.mine.ready
+    return {UIK.button{label = ready and L("Not ready") or L("Ready"), button = "mp_pick_ready", colour = ready and G.C.RED or G.C.GREEN, id = "mp_pick_ready"}}
+end
+
+local function show(force)
+    if not (G and G.FUNCS and UIK and UIK.window) or S.in_jokers then return end
+    if S.open and pick_overlay() and not force and UIK.refresh then
+        local ok = pcall(UIK.refresh)
+        if ok then return end
+    end
+    S.open = true
+r 13 1381 %20%20%20%20 -
+l 170
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "mp_pick", title = L("MATCH PICKS"), compact = true, no_back = true,
+        tabs = {{key = "pick", label = L("Your picks"), build = build}},
+        footer = footer,
+    }, config = {no_esc = true}}
+end
+
+local function close()
+    if S.open and pick_overlay() and G.FUNCS.exit_overlay_menu then pcall(G.FUNCS.exit_overlay_menu) end
+    S.open = false
+end
+
+local function apply(r)
+    local you = my_pid()
+    local opp = you == 0 and 1 or 0
+    local decks = type(r.decks) == "table" and r.decks or {}
+    local jokers = type(r.jokers) == "table" and r.jokers or {}
+    local mine_deck = S.state and S.state.deck and decks[tostring(you)] or nil
+    local opp_deck = S.state and S.state.deck and decks[tostring(opp)] or nil
+    local rolled = type(r.rolled) == "table" and r.rolled[tostring(you)] == true
+    if type(mine_deck) ~= "string" or mine_deck == "" then mine_deck = nil end
+    if type(opp_deck) ~= "string" or opp_deck == "" or opp_deck == (bom_match and bom_match.RANDOM_DECK) then opp_deck = nil end
+    local picks = clean_jokers(jokers[tostring(you)])
+    if bom_match and bom_match.set_launch_picks then bom_match.set_launch_picks(mine_deck, picks, opp_deck, rolled) end
+    if mp_log then mp_log.info("BOM_PICK", "picks applied: deck=%s rolled=%s jokers=%s opp_deck=%s rematch=%s", tostring(mine_deck), tostring(rolled), table.concat(picks, ","), tostring(opp_deck), tostring(r.rematch == true)) end
+end
+
+local function stale(d)
+    if not in_lobby() and not d.rematch then return true end
+    return S.result ~= nil and d.pick_id ~= nil and S.result.pick_id == d.pick_id
+end
+
+local function on_state(d)
+    if type(d) ~= "table" or stale(d) then return true end
+    local first = not S.state or S.state.pick_id ~= d.pick_id
+    S.state = d
+    S.at = now()
+    if first then
+        S.result = nil
+        S.mine.deck = d.my_deck
+        S.mine.jokers = clean_jokers(d.my_jokers)
+        S.mine.ready = type(d.ready) == "table" and d.ready[tostring(d.you)] == true
+        if mp_log then mp_log.info("BOM_PICK", "pick screen open: deck=%s jokers=%s", tostring(d.deck), tostring(d.jokers)) end
+    end
+    if not first and type(d.ready) == "table" then d.ready[tostring(d.you)] = S.mine.ready end
+    S.view.status = L("Pick, then press Ready")
+    sync_players()
+    if first or not (S.open and pick_overlay()) then show(true) end
+    return true
+end
+
+local function on_done(d)
+    if type(d) ~= "table" or stale(d) then return true end
+    S.result = d
+    S.view.status, S.view.timer = L("Starting..."), ""
+    apply(d)
+    if S.in_jokers and G.FUNCS.exit_overlay_menu then pcall(G.FUNCS.exit_overlay_menu) end
+    S.in_jokers = false
+    close()
+    if st().is_host and S.starting and P.orig_start then
+        S.starting = false
+        S.start_at = now() + 0.6
+    end
+    return true
+end
+
+local function on_error(d)
+    if type(d) ~= "table" then return true end
+    if d.reason == "off" and S.starting and P.orig_start then
+        S.starting = false
+        S.result = {skipped = true}
+        S.start_at = now()
+    elseif d.reason == "not_ready" then
+        S.starting = false
+    elseif S.state and not S.result then
+        S.mine.ready = false
+        if type(S.state.ready) == "table" then S.state.ready[tostring(my_pid())] = false end
+        sync_players()
+        show(true)
+    end
+    if mp_log then mp_log.info("BOM_PICK", "pick error: %s", tostring(d.reason)) end
+    return true
+end
+
+local function reset()
+    S.state, S.result, S.starting, S.start_at, S.in_jokers = nil, nil, false, nil, false
+    S.mine = {deck = nil, jokers = {}, ready = false}
+    if S.open then close() end
+    if bom_match and bom_match.set_launch_picks then bom_match.set_launch_picks(nil, nil, nil) end
+end
+P.reset = reset
+
+function P.update()
+    local t = now()
+    if S.start_at and t >= S.start_at then
+        S.start_at = nil
+        if in_lobby() and P.orig_start then pcall(P.orig_start) end
+    end
+    local d = S.state
+    if not d or S.result then return end
+    local left = math.max(0, math.ceil((tonumber(d.seconds) or 0) - (t - S.at)))
+    S.view.timer = tostring(left) .. "s"
+end
+
+local function install()
+    if P.installed or not bom_room or not bom_room.start_match then return end
+    P.installed = true
+    P.orig_start = bom_room.start_match
+    bom_room.start_match = function(...)
+        if P.needed() and not S.result then
+            S.starting = true
+            local _, values = deck_choices()
+            send({type = "pick_start", pool = values, bot_jokers = P.bot_jokers()})
+            return
+        end
+        return P.orig_start(...)
+    end
+    G.FUNCS.mp_pick_ready = function()
+        S.mine.jokers = clean_jokers(S.mine.jokers)
+        S.mine.ready = not S.mine.ready
+        if S.state and type(S.state.ready) == "table" then S.state.ready[tostring(my_pid())] = S.mine.ready end
+        sync_players()
+        send({type = "pick_set", ready = S.mine.ready, jokers = S.mine.jokers})
+        show(true)
+    end
+    G.FUNCS.mp_pick_jokers = function()
+        if not (RunRules and RunRules.open_picker) then return end
+        local s = settings()
+        local n = P.jokers_wanted(s)
+        if n <= 0 then return end
+        local rules = RunRules.normalize(s.rules or {})
+        local list = {}
+        for _, k in ipairs(S.mine.jokers) do list[#list + 1] = k end
+        P._picker = {starting_jokers = list, joker_slots = rules.joker_slots, pick_limit = n,
+            pick_filter = function(c) return bom_match.joker_pick_ok(c.key, s) end}
+        S.in_jokers = true
+        S.open = false
+        RunRules.open_picker("starting_jokers", P._picker, "mp_pick_back_from_jokers", false)
+    end
+    G.FUNCS.mp_pick_back_from_jokers = function()
+        if G.CUSTOM_RUN then G.CUSTOM_RUN.target = nil; G.CUSTOM_RUN.readonly = false end
+        S.in_jokers = false
+        local list = P._picker and P._picker.starting_jokers or S.mine.jokers
+        P._picker = nil
+        S.mine.jokers = clean_jokers(list)
+        if S.result then
+            if G.FUNCS.exit_overlay_menu then pcall(G.FUNCS.exit_overlay_menu) end
+            return
+        end
+        send({type = "pick_set", jokers = S.mine.jokers})
+        show(true)
+    end
+    local ev = bom_events
+    if ev and ev.register then
+        ev.register("pick_state", on_state)
+        ev.register("pick_done", on_done)
+        ev.register("pick_error", on_error)
+        ev.register("pick_cancelled", function() reset() return true end)
+        ev.register("room_ready", function() reset() end)
+        ev.register("lobby_returned", function() reset() end)
+        ev.register("room_closed", function() reset() end)
+    end
+end
+
+function P.init()
+    if mod_loc_register then pcall(mod_loc_register, {fr = FR, es = ES}) end
+    pcall(install)
+end
+
+return P
+end

@@ -1,0 +1,590 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 407
+local Mods = require("functions/forge/forge_mods")
+
+local O = {}
+
+O.MAX_BYTES = 512 * 1024
+O.TIMEOUT = 12
+O.state = O.state or {status = "idle", page = 1, tab = "all", data = nil, msg = nil, busy = {}}
+
+local function touch() return UIK.touch() end
+local function core() return rawget(_G, "bom_core") end
+
+local function fit_scale(label, w, scale)
+  local lw = UIK.text_w(label, scale)
+  if lw > w - 0.25 then return scale * (w - 0.25) / lw end
+  return scale
+end
+
+function O.connected()
+  local c = core()
+  return c and c.is_connected and c.is_connected() or false
+end
+
+function O.with_connection(go, fail)
+  local m = rawget(_G, "mpm_menu") or (rawget(_G, "MP") and MP.menu)
+  if m and m.with_connection then return m.with_connection(go, fail) end
+  if O.connected() then return go() end
+  local c = core()
+  if c and c.connect then return c.connect(go, {silent = true, on_fail = fail}) end
+  if fail then fail() end
+end
+
+function O.send(msg)
+  local c = core()
+  if not (c and c.send) then return false end
+  msg.pkey = c.player_key and c.player_key() or nil
+  return c.send(msg)
+end
+
+local function is_open() return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "forge_online" end
+
+local function refresh()
+  if is_open() then pcall(UIK.refresh) end
+end
+
+local function forged_open()
+  return G.OVERLAY_MENU and G.MODS_MENU and G.MODS_MENU.tab == "forge" and G.OVERLAY_MENU:get_UIE_by_ID("forge_mods_forge_mods_import") ~= nil
+end
+
+local function say(text, colour) O.state.msg = {text = text, colour = colour} end
+
+local function after(delay, fn)
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = delay, timer = "REAL", blockable = false, blocking = false, no_delete = true, func = function() fn() return true end}))
+end
+
+O.WHY = {
+  not_json = "The server could not read it: the file is damaged.",
+  bad_format = "The server could not read it: this is not a Forge mod file.",
+  bad_version = "The server does not know this file version yet. Update the game.",
+  bad_id = "The server refused it: the mod id is not valid.",
+  bad_jokers = "The server refused it: its joker list is damaged.",
+  bad_creations = "The server refused it: its creation list is damaged.",
+  bad_joker = "The server refused it: one of its jokers is damaged.",
+  bad_kind = "The server refused it: one of its creations has an unknown kind.",
+  bad_files = "The server refused it: its pictures are damaged.",
+  bad_art = "The server refused it: one of its pictures is not a PNG.",
+  bad_art_name = "The server refused it: one of its pictures has a bad name.",
+  art_too_big = "The server refused it: one of its pictures is too big.",
+  too_many_files = "The server refused it: it has too many pictures.",
+  empty = "There is nothing in it to publish.",
+  too_many = "It has too many cards to publish (60 at most).",
+}
+
+function O.err_text(reason, why)
+  if type(why) == "string" and O.WHY[why] then return mod_loc(O.WHY[why]) end
+  if reason == "empty" or reason == "too_many" then return mod_loc(O.WHY[reason]) end
+  if reason == "too_soon" then return mod_loc("Wait a few seconds before publishing again.") end
+  if reason == "taken" then return mod_loc("Someone else already published a mod with this id.") end
+  if reason == "too_many_mods" then return mod_loc("You already have 20 mods online.") end
+  if reason == "too_big" then return mod_loc("It is too big to publish (512 KB at most).") end
+  if reason == "bad_art" then return mod_loc(O.WHY.bad_art) end
+  if reason == "not_forge" then return mod_loc("The server did not accept this file.") end
+  if reason == "busy" then return mod_loc("The server is busy with this mod. Try again.") end
+  if reason == "no_key" or reason == "bot" then return mod_loc("Your profile is not ready to publish yet. Open Multiplayer once, then try again.") end
+  if reason == "gone" then return mod_loc("This mod is not online any more.") end
+  if reason == "not_yours" or reason == "own" then return mod_loc("You cannot do that with this mod.") end
+  return mod_loc("Could not reach the server.")
+end
+
+function O.browse(page)
+  local S = O.state
+  S.status, S.page = "loading", page or S.page or 1
+  local token = {}
+  S.token = token
+  O.with_connection(function()
+    if not O.send({type = "forge_browse", page = S.page, mine = S.tab == "mine"}) then S.status = "offline"; refresh() end
+  end, function()
+    S.status = "offline"
+    refresh()
+  end)
+  after(O.TIMEOUT, function()
+    if S.token == token and S.status == "loading" then S.status = "offline"; refresh() end
+  end)
+end
+
+function O.on_list(d)
+  local S = O.state
+  if type(d) ~= "table" then return end
+  S.data = {mods = type(d.mods) == "table" and d.mods or {}, page = tonumber(d.page) or 1, pages = tonumber(d.pages) or 1, total = tonumber(d.total) or 0}
+  S.page = S.data.page
+  S.status = d.error and "offline" or "ready"
+  refresh()
+end
+
+function O.get(id)
+  O.state.busy[id] = true
+  O.with_connection(function() O.send({type = "forge_get", id = id}) end, function()
+    O.state.busy[id] = nil
+    say(O.err_text("unavailable"), G.C.RED)
+    refresh()
+  end)
+  after(O.TIMEOUT * 2, function()
+    if O.state.busy[id] then O.state.busy[id] = nil; say(O.err_text("unavailable"), G.C.RED); refresh() end
+  end)
+  refresh()
+end
+
+function O.on_mod(d)
+  if type(d) ~= "table" then return end
+  if O.claim and O.claim(d) then return end
+  local id = type(d.id) == "string" and d.id or ""
+  O.state.busy[id] = nil
+  if not d.ok or type(d.mod) ~= "string" then
+    say(O.err_text(d.reason), G.C.RED)
+  else
+    local mod, err = Mods.install(d.mod)
+    if mod then
+      say(string.format(mod_loc("Installed %s. It is in Forged."), mod.name), G.C.GREEN)
+      if play_sound then play_sound("card1", 1.1, 0.6) end
+      if is_open() then O.browse(O.state.page) end
+    else
+      local MU = rawget(_G, "ForgeModsUI")
+      say(MU and MU.err_text(err) or tostring(err), G.C.RED)
+    end
+  end
+  refresh()
+end
+
+function O.publish(mod_id)
+  local mod = Mods.get(mod_id)
+  local MU = rawget(_G, "ForgeModsUI")
+  local function tell(text, colour)
+    if MU then MU.state.msg = {text = text, colour = colour} end
+    if forged_open() and MU and MU.reopen_mods then MU.reopen_mods() end
+  end
+  if not mod then return end
+  local raw = mod.file and love.filesystem.getInfo(mod.file) and love.filesystem.read(mod.file)
+  if type(raw) ~= "string" then return tell(mod_loc("Could not read the file."), G.C.RED) end
+  if #raw > O.MAX_BYTES then return tell(O.err_text("too_big"), G.C.RED) end
+  O.state.publishing = mod_id
+  O.state.publish_raw, O.state.publish_retried = raw, false
+  O.with_connection(function()
+    if not O.send({type = "forge_publish", mod = raw}) then
+      O.state.publishing = nil
+      tell(O.err_text("unavailable"), G.C.RED)
+    end
+  end, function()
+    O.state.publishing = nil
+    tell(O.err_text("unavailable"), G.C.RED)
+  end)
+  after(O.TIMEOUT * 2, function()
+    if O.state.publishing == mod_id then O.state.publishing = nil; tell(O.err_text("unavailable"), G.C.RED) end
+  end)
+  tell(string.format(mod_loc("Publishing %s..."), mod.name), G.C.UI.TEXT_LIGHT)
+end
+
+function O.on_published(d)
+  if type(d) ~= "table" then return end
+  local id = O.state.publishing
+  if id and not d.ok and d.reason == "not_forge" and d.why == nil and not O.state.publish_retried then
+    local old = Mods.for_old_server(O.state.publish_raw)
+    if old then
+      O.state.publish_retried = true
+      if O.send({type = "forge_publish", mod = old}) then return end
+    end
+  end
+  O.state.publishing, O.state.publish_raw = nil, nil
+  local mod = id and Mods.get(id)
+  local MU = rawget(_G, "ForgeModsUI")
+  local text, colour
+  if d.ok then
+    text, colour = string.format(mod_loc("%s is online. Anyone can get it in Browse online."), mod and mod.name or tostring(d.id)), G.C.GREEN
+    if play_sound then play_sound("card1", 1.1, 0.6) end
+  else
+    text, colour = O.err_text(d.reason, d.why), G.C.RED
+  end
+  if MU then MU.state.msg = {text = text, colour = colour} end
+  if forged_open() and MU and MU.reopen_mods then MU.reopen_mods() end
+  if is_open() then
+    say(text, colour)
+    O.browse(O.state.page)
+  end
+end
+
+function O.report(id, reason)
+  O.with_connection(function() O.send({type = "forge_report", id = id, reason = reason}) end, function()
+    say(O.err_text("unavailable"), G.C.RED)
+    refresh()
+  end)
+end
+
+function O.on_reported(d)
+  if type(d) ~= "table" then return end
+  if d.ok then say(mod_loc("Thanks. The mod is hidden once several players report it."), G.C.GREEN) else say(O.err_text(d.reason), G.C.RED) end
+  refresh()
+end
+
+function O.unpublish(id)
+  O.with_connection(function() O.send({type = "forge_unpublish", id = id}) end, function()
+    say(O.err_text("unavailable"), G.C.RED)
+    refresh()
+  end)
+end
+
+function O.on_unpublished(d)
+  if type(d) ~= "table" then return end
+  if d.ok then say(mod_loc("It is not online any more. Your copy stays in Forged."), G.C.UI.TEXT_LIGHT) else say(O.err_text(d.reason), G.C.RED) end
+  O.browse(O.state.page)
+end
+
+function O.register_events()
+  if O.events_done then return end
+  local E = rawget(_G, "bom_events")
+  if not (E and E.register) then return end
+  O.events_done = true
+  E.register("forge_list", O.on_list)
+  E.register("forge_mod", O.on_mod)
+  E.register("forge_published", O.on_published)
+  E.register("forge_reported", O.on_reported)
+  E.register("forge_unpublished", O.on_unpublished)
+end
+
+local function summary_text(m)
+  local Cat = require("functions/forge/forge_catalog")
+  local parts = {}
+  for _, k in ipairs(Cat.KINDS) do
+    local n = type(m.summary) == "table" and tonumber(m.summary[k.id]) or nil
+    if n and n > 0 then parts[#parts + 1] = n .. " " .. mod_loc(n == 1 and k.label or k.plural) end
+  end
+  return table.concat(parts, ", ")
+end
+
+local function btn_h() return touch() and 0.85 or 0.65 end
+local BTN_W = 1.9
+local BTN_SCALE = 0.45
+local function port() return UIK.portrait() end
+
+local function row_button(label, func, ref, colour, disabled)
+  return UIK.button{label = label, button = func, ref_table = ref, colour = colour, w = BTN_W, h = btn_h(), scale = fit_scale(label, BTN_W, BTN_SCALE), col = true, disabled = disabled}
+end
+
+local function gap(w) return {n = G.UIT.C, config = {align = "cm", minw = w or 0.15}, nodes = {}} end
+
+local function row(m, rw)
+  local local_mod = Mods.get(m.id)
+  local ver = tonumber(m.version) or 1
+  local main
+  if O.state.busy[m.id] then
+    main = row_button(mod_loc("Getting..."), nil, nil, G.C.GREEN, true)
+  elseif local_mod and local_mod.mine then
+    main = row_button(mod_loc("Yours"), nil, nil, G.C.GREEN, true)
+  elseif local_mod and local_mod.version >= ver then
+    main = row_button(mod_loc("Installed"), nil, nil, G.C.GREEN, true)
+  elseif local_mod then
+    main = row_button(mod_loc("Update"), "forge_online_get", {id = m.id}, G.C.ORANGE)
+  else
+    main = row_button(mod_loc("Get"), "forge_online_get", {id = m.id}, G.C.GREEN)
+  end
+  local second = m.mine and row_button(mod_loc("Unpublish"), "forge_online_unpublish", {id = m.id}, G.C.RED)
+    or row_button(mod_loc("Report"), "forge_online_report", {id = m.id, name = m.name}, G.C.RED)
+  local t = touch()
+  local p = port()
+  local ls = t and 0.38 or 0.34
+  local iw = p and rw - 0.3 or rw - 2 * BTN_W - 0.7
+  local downloads = tonumber(m.downloads) or 0
+  local head = {
+    {n = G.UIT.T, config = {text = tostring(m.name), scale = t and 0.55 or 0.5, colour = G.C.WHITE, shadow = true}},
+    {n = G.UIT.T, config = {text = "  v" .. ver, scale = ls, colour = G.C.GOLD, shadow = true}},
+    m.mine and {n = G.UIT.T, config = {text = "  " .. mod_loc("YOURS"), scale = ls, colour = G.C.GREEN, shadow = true}} or nil,
+  }
+  local info = {{n = G.UIT.R, config = {align = "cl", padding = 0.02, maxw = iw}, nodes = head}}
+  local function put(text, colour)
+    info[#info + 1] = {n = G.UIT.R, config = {align = "cl", padding = 0.02}, nodes = {
+      {n = G.UIT.T, config = {text = text, scale = ls, colour = colour or G.C.UI.TEXT_LIGHT, maxw = iw}},
+    }}
+  end
+  local function add(text, colour, lines)
+    text = tostring(text or "")
+    if text == "" then return end
+    if UIK.text_w(text, ls) <= iw - 0.1 then return put(text, colour) end
+    if lines == 1 then
+      while #text > 1 and UIK.text_w(text .. "...", ls) > iw - 0.1 do text = text:gsub("[%z\1-\127\194-\244][\128-\191]*$", "") end
+      return put((text:gsub("%s+$", "")) .. "...", colour)
+    end
+    local cur, n = "", 0
+    for word in text:gmatch("%S+") do
+      local try = cur == "" and word or (cur .. " " .. word)
+      if cur ~= "" and UIK.text_w(try, ls) > iw - 0.1 then
+        n = n + 1
+        if n >= (lines or 2) then cur = cur .. "..." break end
+        put(cur, colour)
+        cur = word
+      else
+        cur = try
+      end
+    end
+    if cur ~= "" then put(cur, colour) end
+  end
+  local by = m.author ~= "" and (mod_loc("by") .. " " .. tostring(m.author)) or ""
+  local dl = string.format(downloads == 1 and mod_loc("%d download") or mod_loc("%d downloads"), downloads)
+  local sum = summary_text(m)
+  if p then
+    add(by ~= "" and (by .. "   " .. dl) or dl)
+    add(sum)
+  else
+    local hw = UIK.text_w(tostring(m.name), t and 0.55 or 0.5) + UIK.text_w("  v" .. ver .. (m.mine and ("  " .. mod_loc("YOURS")) or "") .. "   " .. dl, ls)
+    if hw <= iw - 0.1 then
+      head[#head + 1] = {n = G.UIT.T, config = {text = "   " .. dl, scale = ls, colour = UIK.C.muted, shadow = true}}
+      add((by ~= "" and (by .. "   ") or "") .. sum, nil, 1)
+    else
+      add((by ~= "" and (by .. "   ") or "") .. dl, nil, 1)
+      add(sum, nil, 1)
+    end
+  end
+  local about = type(m.about) == "table" and m.about[1]
+  if type(about) == "string" and about ~= "" and (p or #info < 3) then add(about, UIK.C.muted, p and 2 or 1) end
+  local text_col = {n = G.UIT.C, config = {align = "cl", minw = iw, maxw = iw}, nodes = info}
+  if p then
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+      {n = G.UIT.C, config = {align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.12, minw = rw}, nodes = {
+        {n = G.UIT.R, config = {align = "cl"}, nodes = {text_col}},
+        {n = G.UIT.R, config = {align = "cr", padding = 0.03}, nodes = {main, gap(0.15), second}},
+      }},
+    }}
+  end
+  return {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = rw, minh = t and 1.2 or 1.05}, nodes = {
+      text_col,
+      gap(),
+      main,
+      gap(),
+      second,
+    }},
+  }}
+end
+
+function O.body()
+  local S = O.state
+  local cur = UIK._win and UIK._win._cur or "all"
+  if cur ~= S.tab then
+    S.tab = cur
+    S.data = nil
+    O.browse(1)
+  end
+  local w = UIK.W
+  local rw = port() and (w - 0.3) or math.min(w - 0.3, touch() and 14.2 or 13.6)
+  local nodes = {}
+  local m = S.msg
+  nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.42, padding = 0}, nodes = {
+    m and {n = G.UIT.T, config = {text = m.text, scale = touch() and 0.4 or 0.36, colour = m.colour or G.C.UI.TEXT_LIGHT, shadow = true, maxw = w - 0.6}} or nil,
+  }}
+  local list_h = port() and 4 * ((touch() and 2.3 or 2.1) + 0.1) or 4 * ((touch() and 1.2 or 1.05) + 0.3)
+  local rows = {}
+  local center_text
+  if S.status == "loading" and not S.data then
+    center_text = mod_loc("Loading...")
+  elseif S.status == "offline" and not S.data then
+    center_text = mod_loc("Could not reach the server.")
+  elseif S.data and #S.data.mods == 0 then
+    center_text = S.tab == "mine" and mod_loc("You have not published anything yet. Press Publish on one of yours in Forged.") or mod_loc("Nobody has published a mod yet.")
+  end
+  if center_text then
+    rows[1] = {n = G.UIT.R, config = {align = "cm", minh = list_h}, nodes = {UIK.text(center_text, {scale = 0.42, colour = G.C.UI.TEXT_LIGHT})}}
+  else
+    for _, mod in ipairs(S.data.mods) do rows[#rows + 1] = row(mod, rw) end
+  end
+  nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "tm", minw = w, minh = list_h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = rows}}}
+  local pages = S.data and S.data.pages or 1
+  if pages > 1 then
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.04}, nodes = {
+      UIK.pager{prev = "forge_online_page", next = "forge_online_page", prev_ref = {d = -1}, next_ref = {d = 1},
+        text = string.format(mod_loc("Page %d of %d"), S.page or 1, pages), w = w},
+    }}
+  end
+  return {n = G.UIT.R, config = {align = "tm", minw = w, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = nodes}}}
+end
+
+function O.open(tab)
+  O.register_events()
+  local S = O.state
+  S.msg = nil
+  S.tab = tab or S.tab or "all"
+  S.data = nil
+  O.browse(1)
+  O.show()
+end
+
+function O.show()
+r 13 1381 %20%20 -
+l 175
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_online",
+    title = mod_loc("FORGED ONLINE"),
+    tabs = {
+      {key = "all", label = mod_loc("All mods"), build = O.body},
+      {key = "mine", label = mod_loc("Published by me"), build = O.body},
+    },
+    tab = O.state.tab,
+    back_func = "forge_online_back", back_inline = true,
+    footer = {UIK.button{label = mod_loc("REFRESH"), button = "forge_online_refresh", colour = UIK.C.accent, id = "forge_online_refresh"}},
+  }}
+end
+
+G.FUNCS.forge_online_open = function(e) O.open("all") end
+
+G.FUNCS.forge_online_back = function(e)
+  O.state.msg = nil
+  local MU = rawget(_G, "ForgeModsUI")
+  if MU and MU.reopen_mods then MU.reopen_mods() else G.FUNCS.exit_overlay_menu() end
+end
+
+G.FUNCS.forge_online_refresh = function(e)
+  O.state.msg = nil
+  O.browse(O.state.page)
+  refresh()
+end
+
+G.FUNCS.forge_online_page = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  local pages = O.state.data and O.state.data.pages or 1
+  O.state.msg = nil
+  O.browse(((O.state.page or 1) - 1 + d) % pages + 1)
+  refresh()
+end
+
+G.FUNCS.forge_online_get = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if id then O.state.msg = nil; O.get(id) end
+end
+
+G.FUNCS.forge_online_unpublish = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if id then O.unpublish(id) end
+end
+
+G.FUNCS.forge_mods_publish = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if id then O.publish(id) end
+end
+
+O.REASONS = {
+  {id = "broken", label = "It does not work"},
+  {id = "rude", label = "Rude or hateful"},
+  {id = "stolen", label = "Stolen work"},
+  {id = "other", label = "Something else"},
+}
+
+G.FUNCS.forge_online_report = function(e)
+  local ref = e and e.config and e.config.ref_table
+  if not (ref and ref.id) then return end
+  O.state.reporting = {id = ref.id, name = ref.name}
+  local bw = touch() and 4.4 or 4.2
+  local function b(r)
+    local label = mod_loc(r.label)
+    return UIK.button{label = label, button = "forge_online_report_go", ref_table = {reason = r.id}, colour = UIK.C.danger, w = bw, scale = fit_scale(label, bw, touch() and 0.46 or 0.42), col = true, id = "forge_report_" .. r.id}
+  end
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_report", compact = true, w = 9.6,
+    title = mod_loc("REPORT THIS MOD?"),
+    tabs = {{key = "a", label = "", build = function()
+      return UIK.stack({
+        {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {UIK.text(tostring(ref.name or ""), {scale = 0.48})}},
+        UIK.note({mod_loc("What is wrong with it?")}, {w = 9.2}),
+        {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {b(O.REASONS[1]), gap(0.2), b(O.REASONS[2])}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {b(O.REASONS[3]), gap(0.2), b(O.REASONS[4])}},
+      }, {w = 9.2})
+    end}},
+    back_func = "forge_online_report_back", back_inline = false,
+  }}
+end
+
+G.FUNCS.forge_online_report_go = function(e)
+  local r = O.state.reporting
+  local reason = e and e.config and e.config.ref_table and e.config.ref_table.reason
+  O.state.reporting = nil
+  if r and reason then O.report(r.id, reason) end
+  O.show()
+end
+
+G.FUNCS.forge_online_report_back = function(e)
+  O.state.reporting = nil
+  O.show()
+end
+
+local function register_strings()
+  if not mod_loc_register then return end
+  mod_loc_register{
+    fr = {
+      ["FORGED ONLINE"] = "FORGÉS EN LIGNE", ["All mods"] = "Tous les mods", ["Published by me"] = "Publiés par moi", ["REFRESH"] = "ACTUALISER",
+      ["BROWSE ONLINE"] = "EN LIGNE", ["Publish"] = "Publier", ["Get"] = "Obtenir", ["Getting..."] = "Envoi...", ["Installed"] = "Installé", ["Update"] = "Mettre à jour",
+      ["Yours"] = "À vous", ["Report"] = "Signaler", ["Unpublish"] = "Retirer", ["%d download"] = "%d téléchargement", ["%d downloads"] = "%d téléchargements",
+      ["Loading..."] = "Chargement...", ["Could not reach the server."] = "Impossible de joindre le serveur.",
+      ["You have not published anything yet. Press Publish on one of yours in Forged."] = "Vous n'avez rien publié. Appuyez sur Publier sur un des vôtres dans Forgés.",
+      ["Nobody has published a mod yet."] = "Personne n'a encore publié de mod.",
+      ["Wait a few seconds before publishing again."] = "Attendez quelques secondes avant de publier à nouveau.",
+      ["Someone else already published a mod with this id."] = "Quelqu'un a déjà publié un mod avec cet identifiant.",
+      ["You already have 20 mods online."] = "Vous avez déjà 20 mods en ligne.", ["It is too big to publish (512 KB at most)."] = "Il est trop gros pour être publié (512 Ko au plus).",
+      ["The server did not accept this file."] = "Le serveur n'a pas accepté ce fichier.", ["This mod is not online any more."] = "Ce mod n'est plus en ligne.",
+      ["You cannot do that with this mod."] = "Vous ne pouvez pas faire ça avec ce mod.", ["Installed %s. It is in Forged."] = "%s installé. Il est dans Forgés.",
+      ["Publishing %s..."] = "Publication de %s...", ["%s is online. Anyone can get it in Browse online."] = "%s est en ligne. Tout le monde peut l'obtenir dans En ligne.",
+      ["Thanks. The mod is hidden once several players report it."] = "Merci. Le mod est masqué quand plusieurs joueurs le signalent.",
+      ["It is not online any more. Your copy stays in Forged."] = "Il n'est plus en ligne. Votre copie reste dans Forgés.",
+      ["The server could not read it: the file is damaged."] = "Le serveur n'a pas pu le lire : le fichier est abîmé.",
+      ["The server could not read it: this is not a Forge mod file."] = "Le serveur n'a pas pu le lire : ce n'est pas un fichier de mod de La Forge.",
+      ["The server does not know this file version yet. Update the game."] = "Le serveur ne connaît pas encore cette version de fichier. Mettez le jeu à jour.",
+      ["The server refused it: the mod id is not valid."] = "Le serveur l'a refusé : l'identifiant du mod n'est pas valide.",
+      ["The server refused it: its joker list is damaged."] = "Le serveur l'a refusé : sa liste de jokers est abîmée.",
+      ["The server refused it: its creation list is damaged."] = "Le serveur l'a refusé : sa liste de créations est abîmée.",
+      ["The server refused it: one of its jokers is damaged."] = "Le serveur l'a refusé : un de ses jokers est abîmé.",
+      ["The server refused it: one of its creations has an unknown kind."] = "Le serveur l'a refusé : une de ses créations est d'un type inconnu.",
+      ["The server refused it: its pictures are damaged."] = "Le serveur l'a refusé : ses images sont abîmées.",
+      ["The server refused it: one of its pictures is not a PNG."] = "Le serveur l'a refusé : une de ses images n'est pas un PNG.",
+      ["The server refused it: one of its pictures has a bad name."] = "Le serveur l'a refusé : une de ses images a un nom invalide.",
+      ["The server refused it: one of its pictures is too big."] = "Le serveur l'a refusé : une de ses images est trop grande.",
+      ["The server refused it: it has too many pictures."] = "Le serveur l'a refusé : il a trop d'images.",
+      ["There is nothing in it to publish."] = "Il n'y a rien à publier dedans.",
+      ["It has too many cards to publish (60 at most)."] = "Il a trop de cartes pour être publié (60 au plus).",
+      ["The server is busy with this mod. Try again."] = "Le serveur est occupé avec ce mod. Réessayez.",
+      ["Your profile is not ready to publish yet. Open Multiplayer once, then try again."] = "Votre profil n'est pas encore prêt pour publier. Ouvrez le Multijoueur une fois, puis réessayez.",
+      ["REPORT THIS MOD?"] = "SIGNALER CE MOD ?", ["What is wrong with it?"] = "Quel est le problème ?", ["It does not work"] = "Il ne marche pas",
+      ["Rude or hateful"] = "Insultant ou haineux", ["Stolen work"] = "Travail volé", ["Something else"] = "Autre chose",
+    },
+    es = {
+      ["FORGED ONLINE"] = "FORJADOS EN LÍNEA", ["All mods"] = "Todos los mods", ["Published by me"] = "Publicados por mí", ["REFRESH"] = "ACTUALIZAR",
+      ["BROWSE ONLINE"] = "EN LÍNEA", ["Publish"] = "Publicar", ["Get"] = "Obtener", ["Getting..."] = "Bajando...", ["Installed"] = "Instalado", ["Update"] = "Actualizar",
+      ["Yours"] = "Tuyo", ["Report"] = "Denunciar", ["Unpublish"] = "Retirar", ["%d download"] = "%d descarga", ["%d downloads"] = "%d descargas",
+      ["Loading..."] = "Cargando...", ["Could not reach the server."] = "No se pudo conectar con el servidor.",
+      ["You have not published anything yet. Press Publish on one of yours in Forged."] = "Aún no has publicado nada. Pulsa Publicar en uno de los tuyos en Forjados.",
+      ["Nobody has published a mod yet."] = "Nadie ha publicado un mod todavía.",
+      ["Wait a few seconds before publishing again."] = "Espera unos segundos antes de volver a publicar.",
+      ["Someone else already published a mod with this id."] = "Otra persona ya publicó un mod con este identificador.",
+      ["You already have 20 mods online."] = "Ya tienes 20 mods en línea.", ["It is too big to publish (512 KB at most)."] = "Es demasiado grande para publicarlo (512 KB como máximo).",
+      ["The server did not accept this file."] = "El servidor no aceptó este archivo.", ["This mod is not online any more."] = "Este mod ya no está en línea.",
+      ["You cannot do that with this mod."] = "No puedes hacer eso con este mod.", ["Installed %s. It is in Forged."] = "%s instalado. Está en Forjados.",
+      ["Publishing %s..."] = "Publicando %s...", ["%s is online. Anyone can get it in Browse online."] = "%s está en línea. Cualquiera puede obtenerlo en En línea.",
+      ["Thanks. The mod is hidden once several players report it."] = "Gracias. El mod se oculta cuando varios jugadores lo denuncian.",
+      ["It is not online any more. Your copy stays in Forged."] = "Ya no está en línea. Tu copia se queda en Forjados.",
+      ["The server could not read it: the file is damaged."] = "El servidor no pudo leerlo: el archivo está dañado.",
+      ["The server could not read it: this is not a Forge mod file."] = "El servidor no pudo leerlo: no es un archivo de mod de La Forja.",
+      ["The server does not know this file version yet. Update the game."] = "El servidor aún no conoce esta versión de archivo. Actualiza el juego.",
+      ["The server refused it: the mod id is not valid."] = "El servidor lo rechazó: el identificador del mod no es válido.",
+      ["The server refused it: its joker list is damaged."] = "El servidor lo rechazó: su lista de comodines está dañada.",
+      ["The server refused it: its creation list is damaged."] = "El servidor lo rechazó: su lista de creaciones está dañada.",
+      ["The server refused it: one of its jokers is damaged."] = "El servidor lo rechazó: uno de sus comodines está dañado.",
+      ["The server refused it: one of its creations has an unknown kind."] = "El servidor lo rechazó: una de sus creaciones es de un tipo desconocido.",
+      ["The server refused it: its pictures are damaged."] = "El servidor lo rechazó: sus imágenes están dañadas.",
+      ["The server refused it: one of its pictures is not a PNG."] = "El servidor lo rechazó: una de sus imágenes no es un PNG.",
+      ["The server refused it: one of its pictures has a bad name."] = "El servidor lo rechazó: una de sus imágenes tiene un nombre no válido.",
+      ["The server refused it: one of its pictures is too big."] = "El servidor lo rechazó: una de sus imágenes es demasiado grande.",
+      ["The server refused it: it has too many pictures."] = "El servidor lo rechazó: tiene demasiadas imágenes.",
+      ["There is nothing in it to publish."] = "No hay nada que publicar en él.",
+      ["It has too many cards to publish (60 at most)."] = "Tiene demasiadas cartas para publicarlo (60 como máximo).",
+      ["The server is busy with this mod. Try again."] = "El servidor está ocupado con este mod. Inténtalo de nuevo.",
+      ["Your profile is not ready to publish yet. Open Multiplayer once, then try again."] = "Tu perfil aún no está listo para publicar. Abre Multijugador una vez y vuelve a intentarlo.",
+      ["REPORT THIS MOD?"] = "¿DENUNCIAR ESTE MOD?", ["What is wrong with it?"] = "¿Qué le pasa?", ["It does not work"] = "No funciona",
+      ["Rude or hateful"] = "Ofensivo o de odio", ["Stolen work"] = "Trabajo robado", ["Something else"] = "Otra cosa",
+    },
+  }
+end
+
+register_strings()
+O.register_events()
+ForgeOnline = O
+
+return O
+end

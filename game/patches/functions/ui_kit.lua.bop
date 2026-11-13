@@ -1,0 +1,1162 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 395
+UIK = UIK or {}
+UIK.LAND_W, UIK.LAND_H = 15, 6.6
+UIK.PORT_W, UIK.PORT_H = 8.2, 13.4
+UIK.W = UIK.LAND_W
+UIK.H = UIK.LAND_H
+UIK.GAP = 0.2
+UIK.PAD = 0.08
+UIK._last_tab = UIK._last_tab or {}
+UIK._pages = UIK._pages or {}
+
+function UIK.touch()
+  return (G and G.F_MOBILE) or _G._IS_DESKTOP == false
+end
+
+function UIK.thumb()
+  if UIK.touch() then return true end
+  local T = rawget(_G, 'TouchInput')
+  return T ~= nil and T.on() or false
+end
+
+local function touch() return UIK.thumb() end
+
+function UIK.portrait()
+  return rawget(_G, 'PORTRAIT') ~= nil and PORTRAIT.on() or false
+end
+
+function UIK.sync(args)
+  local p = UIK.portrait()
+  UIK.W = p and UIK.PORT_W or UIK.LAND_W
+  UIK.H = p and UIK.PORT_H or UIK.LAND_H
+  local win = args or UIK._win
+  local rows = win and not win.compact and UIK.tab_rows and UIK.tab_rows(win) or 1
+  if p and rows > 1 then UIK.H = UIK.H - (rows - 1) * ((UIK.thumb() and 0.8 or 0.7) + 0.3)
+  elseif rows > 1 then UIK.H = UIK.H - (rows - 1) * ((UIK.thumb() and 0.8 or 0.7) + 0.2) end
+end
+
+UIK.C = setmetatable({}, {__index = function(t, k)
+  if not (G and G.C and G.C.UI) then return nil end
+  local C = G.C
+  local all = {
+    accent = C.BLUE,
+    browse = C.BLUE,
+    ok = C.GREEN,
+    add = C.GREEN,
+    warn = C.ORANGE,
+    danger = C.RED,
+    remove = C.RED,
+    money = C.MONEY,
+    purple = C.PURPLE,
+    gold = C.GOLD,
+    button = C.BLUE,
+    arrow = C.RED,
+    tab = C.RED,
+    title = C.GOLD,
+    section = {0, 0, 0, 0.15},
+    field = C.BLACK,
+    text = C.UI.TEXT_LIGHT,
+    muted = {0.75, 0.79, 0.83, 1},
+    off = C.BLACK,
+    inactive = C.UI.BACKGROUND_INACTIVE,
+    inactive_text = C.UI.TEXT_INACTIVE,
+  }
+  for kk, vv in pairs(all) do rawset(t, kk, vv) end
+  return rawget(t, k)
+end})
+
+function UIK.col_w(n)
+  n = n or 2
+  return (UIK.W - UIK.GAP * (n - 1)) / n
+end
+
+function UIK.row_w(n)
+  return UIK.col_w(n or 3) - 2 * UIK.PAD
+end
+
+local function label_scale() return touch() and 0.44 or 0.4 end
+local function info_scale() return touch() and 0.42 or 0.34 end
+local function label_h() return touch() and 0.54 or 0.46 end
+local function info_h() return touch() and 0.48 or 0.38 end
+local function margin() return touch() and 0.16 or 0.12 end
+local function btn_w() return touch() and 3.0 or 2.85 end
+local function btn_h() return touch() and 0.9 or 0.78 end
+local function btn_scale() return touch() and 0.5 or 0.47 end
+local TOGGLE_GAP = 0.2
+local function toggle_h() return touch() and 0.62 or 0.52 end
+local function toggle_box_w() return (touch() and 1.15 or 1) * 0.5 + 0.06 end
+
+
+local function compact(list)
+  local out = {}
+  if type(list) ~= 'table' then return out end
+  for i = 1, table.maxn(list) do
+    if list[i] then out[#out + 1] = list[i] end
+  end
+  return out
+end
+
+local function discard(node)
+  if type(node) ~= 'table' then return end
+  local c = node.config
+  if c and c.object and type(c.object) == 'table' and c.object.remove then
+    c.object:remove()
+    c.object = nil
+  end
+  if type(node.nodes) == 'table' then
+    for i = 1, table.maxn(node.nodes) do discard(node.nodes[i]) end
+  end
+end
+
+UIK.discard = discard
+
+local function line(nodes, w, h, extra)
+  local cfg = {align = 'cm', minw = w, minh = h, padding = 0}
+  if extra then for k, v in pairs(extra) do cfg[k] = v end end
+  return {n = G.UIT.R, config = cfg, nodes = nodes}
+end
+
+local function slot(node, w)
+  local h = node.uik_h
+  local wrapped = {n = G.UIT.R, config = {align = 'cm', minw = w, padding = 0}, nodes = {node}}
+  wrapped.uik_h = h
+  wrapped.uik_header = node.uik_header
+  return wrapped
+end
+
+local function txt(text, scale, colour, shadow)
+  return {n = G.UIT.T, config = {text = tostring(text or ''), scale = scale or label_scale(), colour = colour or G.C.UI.TEXT_LIGHT, shadow = shadow ~= false}}
+end
+
+local function text_w(str, scale)
+  str = tostring(str or '')
+  local f = G and G.LANG and G.LANG.font
+  if f and f.FONT and G.TILESIZE then
+    return f.FONT:getWidth(str) * (f.squish or 1) * (scale or label_scale()) * (f.FONTSCALE or 0.1) / G.TILESIZE
+  end
+  return #str * (scale or label_scale()) * 0.3
+end
+UIK.text_w = text_w
+
+local function tag(node, kind, o)
+  node.uik_kind = kind
+  node.uik_o = o
+  return node
+end
+
+local align_column, render_cols
+
+local function label_line(o, w)
+  if not o.label or o.label == '' then return nil end
+  return line({{n = G.UIT.C, config = {align = 'cm', maxw = w - 0.1}, nodes = {txt(o.label, label_scale(), o.disabled and G.C.UI.TEXT_INACTIVE or nil)}}}, w, label_h())
+end
+
+function UIK.wrap(str, scale, w, max_lines)
+  str = tostring(str or '')
+  if w <= 0 or text_w(str, scale) <= w then return {str} end
+  local lines, cur = {}, ''
+  for word in str:gmatch('%S+') do
+    local try = cur == '' and word or (cur .. ' ' .. word)
+    if cur ~= '' and text_w(try, scale) > w and not word:match('^[:;!?]+$') then
+      lines[#lines + 1] = cur
+      cur = word
+    else
+      cur = try
+    end
+  end
+  if cur ~= '' then lines[#lines + 1] = cur end
+  if max_lines and #lines > max_lines then
+    local keep = {}
+    for i = 1, max_lines - 1 do keep[i] = lines[i] end
+    keep[max_lines] = table.concat(lines, ' ', max_lines)
+    lines = keep
+  end
+  return lines
+end
+
+local function info_line(o, w)
+  if not o.info or o.info == '' then return nil end
+  local lines = UIK.wrap(o.info, info_scale(), w - 0.1, 3)
+  if #lines < 2 then
+    return line({{n = G.UIT.C, config = {align = 'cm', maxw = w - 0.1}, nodes = {txt(o.info, info_scale(), UIK.C.muted, false)}}}, w, info_h())
+  end
+  local nodes = {}
+  for i, l in ipairs(lines) do
+    nodes[i] = line({{n = G.UIT.C, config = {align = 'cm', maxw = w - 0.1}, nodes = {txt(l, info_scale(), UIK.C.muted, false)}}}, w, info_h())
+  end
+  return {n = G.UIT.R, config = {align = 'cm', minw = w, minh = #lines * info_h(), padding = 0}, nodes = nodes}
+end
+
+local function row(o, lines)
+  local w = o.w or UIK.row_w(3)
+  local list = compact(lines)
+  local h = margin()
+  for _, l in ipairs(list) do h = h + (l.config.minh or 0) end
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h, padding = 0, id = o.id}, nodes = list}
+  node.uik_h = h
+  return node
+end
+
+function UIK.text(str, o)
+  o = o or {}
+  return {n = G.UIT.T, config = {text = tostring(str or ''), scale = o.scale or label_scale(), colour = o.colour or UIK.C.text, shadow = o.shadow}}
+end
+
+function UIK.spacer(h, w)
+  local node = {n = G.UIT.R, config = {minh = h or 0.1, minw = w or 0.1}}
+  node.uik_h = h or 0.1
+  return node
+end
+
+function UIK.header(str, o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  local h = touch() and 0.66 or 0.58
+  local node = line({{n = G.UIT.C, config = {align = 'cm', maxw = w - 0.1}, nodes = {
+    txt(str, touch() and 0.5 or 0.45, o.colour or UIK.C.title, true),
+  }}}, w, h)
+  node.uik_h = h
+  node.uik_header = true
+  node.uik_title, node.uik_hopts = str, o
+  return node
+end
+
+function UIK.note(lines, o)
+  o = o or {}
+  if type(lines) ~= 'table' then lines = {lines} end
+  local w = o.w or UIK.row_w(3)
+  local scale = o.scale or info_scale()
+  local lh = scale * 1.05 + 0.04
+  local nodes = {}
+  local function add(l)
+    nodes[#nodes + 1] = line({{n = G.UIT.C, config = {align = 'cm', maxw = w - 0.1}, nodes = {txt(l, scale, o.colour or UIK.C.muted, false)}}}, w, lh)
+  end
+  for _, l in ipairs(lines) do
+    l = tostring(l)
+    if o.nowrap or text_w(l, scale) <= w - 0.15 then
+      add(l)
+    else
+      local cur = ''
+      for word in l:gmatch('%S+') do
+        local try = cur == '' and word or (cur .. ' ' .. word)
+        if cur ~= '' and text_w(try, scale) > w - 0.15 and not word:match('^[:;!?]+$') then
+          add(cur)
+          cur = word
+        else
+          cur = try
+        end
+      end
+      if cur ~= '' then add(cur) end
+    end
+  end
+  local h = #nodes * lh + 0.08
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h, padding = 0}, nodes = nodes}
+  node.uik_h = h
+  return node
+end
+
+function UIK.section(title, rows, o)
+  o = o or {}
+  local w = o.w or UIK.col_w(2)
+  local inner = w - 2 * UIK.PAD
+  local nodes = {}
+  if title then nodes[#nodes + 1] = UIK.header(title, {w = inner, colour = o.colour}) end
+  for _, r in ipairs(align_column(rows, inner)) do nodes[#nodes + 1] = slot(r, inner) end
+  local h = UIK.PAD
+  for _, nd in ipairs(nodes) do h = h + (nd.uik_h or 0.6) + UIK.PAD end
+  local node = {n = o.col and G.UIT.C or G.UIT.R, config = {align = 'tm', minw = w, minh = o.h, r = 0.12, padding = UIK.PAD, colour = o.bg or UIK.C.section}, nodes = nodes}
+  node.uik_h = math.max(h, o.h or 0)
+  return node
+end
+
+function UIK.columns(cols, o)
+  o = o or {}
+  cols = compact(cols)
+  local w = o.w or UIK.col_w(#cols)
+  local pad = o.cards and UIK.PAD or 0
+  local h = o.h or (UIK.H - UIK.TOP)
+  local list = {}
+  for i, col in ipairs(cols) do list[i] = compact(col) end
+  local nodes = render_cols(list, w, h, {pad = pad, align = o.align, colour = o.cards and UIK.C.section or G.C.CLEAR})
+  return {n = G.UIT.R, config = {align = 'tm', minw = o.full and UIK.W or nil, padding = 0}, nodes = nodes}
+end
+
+function UIK.grid(items, per_row, o)
+  o = o or {}
+  items = compact(items)
+  per_row = per_row or 4
+  local w = o.w or (UIK.W - 2 * UIK.PAD)
+  local rows, cur = {}, {}
+  local function flush()
+    if #cur == 0 then return end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', minw = w, padding = o.padding or 0.08}, nodes = cur}
+    cur = {}
+  end
+  for _, it in ipairs(items) do
+    if it.n == G.UIT.R then it.n = G.UIT.C end
+    cur[#cur + 1] = it
+    if #cur >= per_row then flush() end
+  end
+  flush()
+  return {n = G.UIT.R, config = {align = 'cm', minw = w, padding = 0}, nodes = rows}
+end
+
+function UIK.button(o)
+  o = o or {}
+  local label = type(o.label) == 'table' and o.label or {tostring(o.label or '')}
+  return UIBox_button({
+    label = label,
+    button = o.disabled and 'nil' or (o.button or 'nil'),
+    ref_table = o.ref_table,
+    colour = o.disabled and UIK.C.inactive or (o.colour or UIK.C.button),
+    text_colour = o.disabled and UIK.C.inactive_text or o.text_colour,
+    minw = o.w or btn_w(),
+    minh = o.h or btn_h(),
+    scale = o.scale or btn_scale(),
+    id = o.id,
+    col = o.col,
+    focus_args = o.focus_args,
+    one_press = o.one_press,
+    func = o.func,
+    shadow = true,
+  })
+end
+
+function UIK.button_bar(buttons, o)
+  o = o or {}
+  local nodes = {}
+  for _, b in ipairs(compact(buttons)) do
+    if b.n == nil then b = UIK.button(b) end
+    if b.n == G.UIT.R then b.n = G.UIT.C end
+    nodes[#nodes + 1] = b
+  end
+  return {n = G.UIT.R, config = {align = 'cm', minw = o.w, padding = o.padding or 0.12}, nodes = nodes}
+end
+
+function UIK.slot_row(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(2)
+  local h = touch() and 0.82 or 0.66
+  local bw = touch() and 1.9 or 1.7
+  local lw = math.max(1, math.min(w - 2 * bw - 0.5, 2.6))
+  local function cell(nodes, cw)
+    return {n = G.UIT.C, config = {align = 'cm', minw = cw, minh = h, padding = 0}, nodes = nodes}
+  end
+  local function btn(b, colour)
+    if not b then return cell({}, bw) end
+    return cell({UIK.button{label = b.label, button = b.button, ref_table = b.ref_table, disabled = b.disabled, id = b.id, colour = b.colour or colour, w = bw, h = h, col = true}}, bw)
+  end
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h + 0.1, padding = 0.05, id = o.id}, nodes = {
+    {n = G.UIT.C, config = {align = 'cr', minw = lw, minh = h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'cm', maxw = lw - 0.1}, nodes = {txt(o.label, touch() and 0.4 or 0.36, o.muted and UIK.C.muted or nil)}}}},
+    {n = G.UIT.C, config = {minw = TOGGLE_GAP, minh = h, padding = 0}, nodes = {}},
+    btn(o.load, UIK.C.browse),
+    btn(o.save, UIK.C.add),
+  }}
+  node.uik_h = h + 0.2
+  return node
+end
+
+local function pager_id(o, side)
+  if o[side .. '_id'] then return o[side .. '_id'] end
+  local r = o.prev_ref or o.next_ref or {}
+  return 'uik_pg_' .. tostring(o.prev or '') .. '_' .. tostring(r.key or r.id or '') .. '_' .. side
+end
+
+function UIK.pager(o)
+  o = o or {}
+  local h = o.h or (touch() and 0.82 or 0.66)
+  local aw = o.arrow_w or (touch() and 1.3 or 1.15)
+  local tw = o.text_w or 2.8
+  local sw = o.side_w or 0
+  local function cell(nodes, w)
+    return {n = G.UIT.C, config = {align = 'cm', minw = w, minh = h, padding = 0}, nodes = nodes}
+  end
+  local function value(ref_table, ref_value, text, colour)
+    if ref_table then
+      return {n = G.UIT.T, config = {ref_table = ref_table, ref_value = ref_value, scale = touch() and 0.42 or 0.38, colour = colour or UIK.C.text, shadow = true}}
+    end
+    return txt(text, touch() and 0.42 or 0.38, colour)
+  end
+  local nodes = {}
+  if sw > 0 then
+    nodes[#nodes + 1] = cell({o.side_ref_table and value(o.side_ref_table, o.side_ref_value, nil, UIK.C.gold) or nil}, sw)
+  end
+  nodes[#nodes + 1] = cell({UIK.button{label = '<', button = o.prev, ref_table = o.prev_ref, w = aw, h = h, colour = UIK.C.arrow, disabled = o.prev_disabled, col = true, id = pager_id(o, 'prev'), func = 'uik_pager_focus'}}, aw)
+  nodes[#nodes + 1] = cell({value(o.ref_table, o.ref_value, o.text)}, tw)
+  nodes[#nodes + 1] = cell({UIK.button{label = '>', button = o.next, ref_table = o.next_ref, w = aw, h = h, colour = UIK.C.arrow, disabled = o.next_disabled, col = true, id = pager_id(o, 'next'), func = 'uik_pager_focus'}}, aw)
+  if sw > 0 then nodes[#nodes + 1] = cell({}, sw) end
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = o.w, minh = h + 0.12, padding = 0.06}, nodes = nodes}
+  node.uik_h = h + 0.12
+  return node
+end
+
+local function checkbox(o, disabled)
+  local s = touch() and 1.15 or 1
+  local args = {ref_table = o.ref_table or {}, ref_value = o.ref_value or 'value', active_colour = disabled and UIK.C.inactive or (o.colour or G.C.RED), inactive_colour = G.C.BLACK}
+  local check = Sprite(0, 0, 0.5 * s, 0.5 * s, G.ASSET_ATLAS["icons"], {x = 1, y = 0})
+r 15 1916 %20%20 -
+r 15 1917 %20%20 -
+l 669
+  return {n = G.UIT.C, config = {align = 'cm', r = 0.1, colour = G.C.BLACK}, nodes = {
+    {n = G.UIT.C, config = {align = 'cm', r = 0.1, padding = 0.03, minw = 0.4 * s, minh = 0.4 * s, outline_colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, outline = 1.2 * s, line_emboss = 0.5 * s,
+      ref_table = args, colour = args.inactive_colour, func = 'toggle',
+      button = (not disabled) and 'toggle_button' or nil, button_dist = 0.2, hover = not disabled, toggle_callback = o.callback, focus_args = (not disabled) and {funnel_to = true} or nil}, nodes = {
+      {n = G.UIT.O, config = {object = check}},
+    }},
+  }}
+end
+UIK.checkbox = checkbox
+
+function UIK.toggle(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  local ch = toggle_h()
+  local bw = toggle_box_w()
+  local lw = o.uik_lw or math.min(text_w(o.label, label_scale()), w - bw - TOGGLE_GAP - 0.1)
+  local box = checkbox(o, o.disabled)
+  local control = line({
+    {n = G.UIT.C, config = {align = 'cr', minw = lw, maxw = lw, minh = ch, padding = 0}, nodes = {txt(o.label, label_scale(), o.disabled and G.C.UI.TEXT_INACTIVE or nil)}},
+    {n = G.UIT.C, config = {align = 'cm', minw = TOGGLE_GAP, minh = ch, padding = 0}, nodes = {}},
+    {n = G.UIT.C, config = {align = 'cl', minw = bw, minh = ch, padding = 0}, nodes = {box}},
+  }, w, ch + 0.1, {focus_args = {funnel_from = true}})
+  return tag(row(o, {control, info_line(o, w)}), 'toggle', o)
+end
+
+local function cyc_scale() return touch() and 0.85 or 0.75 end
+
+local function red_cycle(args, disabled, colour, mw, w, even)
+  local s = cyc_scale()
+  local pips = args.pips ~= nil
+  local th = 0.5 * s + 0.1
+  local ph = touch() and 0.21 or 0.16 * s
+  local h = (pips or even) and (0.05 * 3 + th + ph) or (0.8 * s)
+  local ts = 0.5 * s
+  local aw = (touch() and 1.2 or 0.6) * s
+  local col = disabled and UIK.C.inactive or (colour or G.C.RED)
+  local inner = mw * s - 0.1
+  local function arrow(dir, glyph)
+    return {n = G.UIT.C, config = {align = 'cm', r = 0.1, minw = aw, minh = h, hover = not disabled, shadow = not disabled, colour = col,
+      button = (not disabled) and args.button or nil, ref_table = args, ref_value = dir, focus_args = {type = 'none'}}, nodes = {
+      {n = G.UIT.T, config = {text = glyph, scale = ts, colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.UI.TEXT_LIGHT}},
+    }}
+  end
+  local value_text = DynaText({string = {{ref_table = args, ref_value = args.text_key}}, colours = {disabled and G.C.UI.TEXT_INACTIVE or G.C.UI.TEXT_LIGHT}, pop_in = 0, pop_in_rate = 8, reset_pop_in = true, shadow = true, float = true, silent = true, bump = true, scale = ts, maxw = inner - 0.1, non_recalc = true})
+  local value_draw = value_text.draw
+  value_text.draw = function(self, ...)
+    local p = self.parent
+    if not p or p.REMOVED or not p.UIBox or p.UIBox.REMOVED then return end
+    return value_draw(self, ...)
+  end
+  local mid_rows = {
+    {n = G.UIT.R, config = {align = 'cm', minw = inner, minh = th, padding = 0}, nodes = {
+      {n = G.UIT.O, config = {object = value_text}},
+    }},
+  }
+  if pips then
+    args.pips.config.minw = inner
+    args.pips.config.minh = ph
+    mid_rows[2] = args.pips
+  end
+  local mid = {n = G.UIT.C, config = {id = 'cycle_main', align = 'cm', minw = mw * s, minh = h, r = 0.1, padding = 0.05, colour = col, emboss = 0.1}, nodes = mid_rows}
+  local pad = 0.07
+  local node = line({
+    {n = G.UIT.C, config = {align = 'cm', padding = pad, r = 0.1, focus_args = {type = 'cycle'}}, nodes = {arrow('l', '<'), mid, arrow('r', '>')}},
+  }, w, h + 2 * pad)
+  return node
+end
+
+function UIK.cycle(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  local options = {}
+  for i, v in ipairs(o.options or {}) do options[i] = tostring(v) end
+  local cur = math.max(1, math.min(o.current or 1, math.max(#options, 1)))
+  local disabled = o.disabled or #options < 2
+  local args = {options = options, current_option = cur, current_option_val = options[cur] or '', opt_callback = 'uik_cycle', uik_cb = o.callback, button = 'option_cycle', text_key = 'current_option_val'}
+  if not disabled and #options <= 12 and not o.no_pips then
+    local p = {}
+    for i = 1, #options do
+      local ps = touch() and 0.14 or 0.1 * cyc_scale()
+      p[i] = {n = G.UIT.B, config = {w = ps, h = ps, r = 0.05, id = 'pip_' .. i, colour = i == cur and G.C.WHITE or G.C.BLACK}}
+    end
+    args.pips = {n = G.UIT.R, config = {align = 'cm', padding = 0.03 * cyc_scale()}, nodes = p}
+  end
+  return tag(row(o, {label_line(o, w), red_cycle(args, disabled, o.colour, o.cw or 3.2, w, o.even), info_line(o, w)}), 'cycle', o)
+end
+
+function UIK.stepper(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  local v = tonumber(o.ref_table and o.ref_table[o.ref_value]) or o.min or 0
+  local st = {o = o, button = 'uik_step', text_key = 'display'}
+  st.display = o.format and o.format(v) or tostring(v)
+  st.l = 'l'
+  st.r = 'r'
+  return tag(row(o, {label_line(o, w), red_cycle(st, o.disabled, o.colour, o.cw or 2.6, w), info_line(o, w)}), 'stepper', o)
+end
+
+function UIK.slider(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  if o.disabled then
+    local v = tonumber(o.ref_table and o.ref_table[o.ref_value]) or 0
+    return UIK.value({label = o.label, info = o.info, w = o.w, id = o.id, value = string.format("%." .. tostring(o.decimals or 0) .. "f", v), disabled = true})
+  end
+  local dec = o.decimals or 0
+  local bh = touch() and 0.55 or 0.45
+  local vw = 0.9
+  local sw = o.sw or math.min(2.9, w - 2 * (vw + 0.3))
+  local args = {ref_table = o.ref_table, ref_value = o.ref_value, min = o.min or 0, max = o.max or 1, decimal_places = dec, w = sw, h = bh,
+    colour = o.colour or G.C.RED, callback = 'uik_slider', uik_cb = o.callback, uik_dec = dec}
+  local cur = tonumber(args.ref_table[args.ref_value]) or args.min
+  args.text = string.format("%." .. tostring(dec) .. "f", cur)
+  local startval = sw * (cur - args.min) / math.max(args.max - args.min, 1e-9)
+  local slider = {n = G.UIT.C, config = {align = 'cm', minw = sw, min_h = bh, padding = 0.1, r = 0.1, colour = G.C.CLEAR, focus_args = {type = 'slider'}}, nodes = {
+    {n = G.UIT.C, config = {align = 'cl', minw = sw, minh = bh, r = 0.1, min_h = bh, collideable = true, hover = true, colour = G.C.BLACK, emboss = 0.05, func = 'slider', refresh_movement = true}, nodes = {
+      {n = G.UIT.B, config = {w = startval, h = bh, r = 0.1, colour = args.colour, ref_table = args, refresh_movement = true}},
+    }},
+    {n = G.UIT.C, config = {align = 'cm', minh = bh, r = 0.1, minw = vw, colour = args.colour, shadow = true}, nodes = {
+      {n = G.UIT.T, config = {ref_table = args, ref_value = 'text', scale = touch() and 0.38 or 0.32, colour = G.C.UI.TEXT_LIGHT, decimal_places = dec}},
+    }},
+  }}
+  local bar = line({
+    {n = G.UIT.C, config = {align = 'cm', minw = vw + 0.1, minh = bh + 0.2}, nodes = {}},
+    slider,
+  }, w, bh + 0.2)
+  return tag(row(o, {label_line(o, w), bar, info_line(o, w)}), 'slider', o)
+end
+
+function UIK.action(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  local split = o.button_label ~= nil and o.label ~= nil and o.button_label ~= o.label
+  local text = split and o.button_label or (o.label or o.button_label)
+  local b = UIK.button({label = text, button = o.button, ref_table = o.ref_table, colour = o.colour, w = math.min(w - 0.2, o.bw or math.max(btn_w(), text_w(text, btn_scale()) + 0.5)), h = btn_h(), disabled = o.disabled, id = o.button_id, col = true})
+  if split then
+    return tag(row(o, {label_line(o, w), line({b}, w, btn_h() + 0.1), info_line(o, w)}), 'action', o)
+  end
+  return tag(row(o, {line({b}, w, btn_h() + 0.1), info_line(o, w)}), 'action', o)
+end
+
+function UIK.value(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  local vw = math.min(o.vw or 2.85, w - 0.2)
+  local vh = touch() and 0.7 or 0.6
+  local control = line({{n = G.UIT.C, config = {align = 'cm', minw = vw, minh = vh, r = 0.1, colour = G.C.BLACK, emboss = 0.05}, nodes = {
+    {n = G.UIT.C, config = {align = 'cm', maxw = vw - 0.2}, nodes = {txt(o.value == nil and '' or o.value, touch() and 0.42 or 0.38, o.disabled and G.C.UI.TEXT_INACTIVE or o.colour)}},
+  }}}, w, vh + 0.1)
+  return tag(row(o, {label_line(o, w), control, info_line(o, w)}), 'value', o)
+end
+
+function UIK.input(o)
+  o = o or {}
+  local w = o.w or UIK.row_w(3)
+  local iw = math.min(o.iw or 3.4, w - 0.2)
+  local ih = touch() and 0.7 or 0.6
+  if o.ref_table and o.ref_table[o.ref_value] == nil then o.ref_table[o.ref_value] = '' end
+  local control = create_text_input({ref_table = o.ref_table, ref_value = o.ref_value, max_length = o.max_length or 16, w = iw, h = ih, text_scale = 0.4, prompt_text = o.prompt, all_caps = o.all_caps, extended_corpus = o.extended_corpus, colour = o.colour, callback = o.callback})
+  return tag(row(o, {label_line(o, w), line({control}, w, ih + 0.2), info_line(o, w)}), 'input', o)
+end
+
+local function item_h(it) return (it.uik_h or 1) + UIK.PAD end
+
+UIK.TOP = 0.12
+
+local NATURAL = {
+  cycle = function(o) return o.cw or 3.2 end,
+  stepper = function(o) return o.cw or 2.6 end,
+  slider = function(o) return o.sw end,
+  value = function(o) return o.vw or 2.85 end,
+  action = function(o) return o.bw or math.max(btn_w(), text_w(o.label or o.button_label, btn_scale()) + 0.5) end,
+}
+local WIDTH_KEY = {cycle = 'cw', stepper = 'cw', slider = 'sw', value = 'vw', action = 'bw'}
+
+align_column = function(items, w)
+  items = compact(items)
+  local lw, widths = 0, {}
+  for _, it in ipairs(items) do
+    local k, o = it.uik_kind, it.uik_o
+    if k == 'toggle' then
+      lw = math.max(lw, text_w(o.label, label_scale()))
+    elseif k and NATURAL[k] then
+      local nw = NATURAL[k](o)
+      if nw then widths[k] = math.max(widths[k] or 0, nw) end
+    end
+  end
+  lw = math.min(lw, w - toggle_box_w() - TOGGLE_GAP - 0.1)
+  local out = {}
+  for i, it in ipairs(items) do
+    local k, o = it.uik_kind, it.uik_o
+    if k == 'toggle' or (k and WIDTH_KEY[k]) then
+      local o2 = {}
+      for kk, vv in pairs(o) do o2[kk] = vv end
+      o2.w = w
+      if k == 'toggle' then o2.uik_lw = lw
+      elseif widths[k] then o2[WIDTH_KEY[k]] = widths[k] end
+      discard(it)
+      out[i] = UIK[k](o2)
+    else
+      out[i] = it
+    end
+  end
+  return out
+end
+UIK.align_column = align_column
+
+local function header_slot(cols)
+  local hh
+  for _, c in ipairs(cols) do
+    if c[1] and c[1].uik_header then hh = math.max(hh or 0, c[1].uik_h or 0) end
+  end
+  if not hh then return cols end
+  for i, c in ipairs(cols) do
+    if c[1] and not c[1].uik_header then
+      local list = {UIK.spacer(hh)}
+      for _, it in ipairs(c) do list[#list + 1] = it end
+      cols[i] = list
+    end
+  end
+  return cols
+end
+
+local function units_of(items)
+  local units, cur = {}, nil
+  for _, it in ipairs(items) do
+    if it.uik_header then
+      cur = {it}
+      units[#units + 1] = cur
+    elseif cur then
+      cur[#cur + 1] = it
+    else
+      units[#units + 1] = {it}
+    end
+  end
+  return units
+end
+
+local function unit_h(u)
+  local h = 0
+  for _, it in ipairs(u) do h = h + item_h(it) end
+  return h
+end
+
+local function split_big(units, cap, again)
+  local out = {}
+  for _, u in ipairs(units) do
+    if unit_h(u) + UIK.PAD <= cap + 0.001 then
+      out[#out + 1] = u
+    else
+      local reserve = u[1].uik_header and item_h(u[1]) or 0
+      local piece, used = {}, UIK.PAD
+      for _, it in ipairs(u) do
+        if #piece > 0 and not (#piece == 1 and piece[1].uik_header) and used + item_h(it) > cap + 0.001 then
+          out[#out + 1] = piece
+          piece, used = {}, UIK.PAD + reserve
+          if again and u[1].uik_header then
+            piece[1] = UIK.header(u[1].uik_title, u[1].uik_hopts)
+          end
+        end
+        piece[#piece + 1] = it
+        used = used + item_h(it)
+      end
+      if #piece > 0 then out[#out + 1] = piece end
+    end
+  end
+  return out
+end
+
+local function partition(units, c)
+  local n = #units
+  c = math.max(1, math.min(c, n))
+  local pre = {[0] = 0}
+  for i = 1, n do pre[i] = pre[i - 1] + unit_h(units[i]) end
+  local best, cut = {{}}, {{}}
+  for i = 1, n do best[1][i] = pre[i]; cut[1][i] = 0 end
+  for k = 2, c do
+    best[k], cut[k] = {}, {}
+    for i = k, n do
+      local b, bj = math.huge, k - 1
+      for j = k - 1, i - 1 do
+        local v = math.max(best[k - 1][j], pre[i] - pre[j])
+        if v <= b + 1e-9 then b, bj = v, j end
+      end
+      best[k][i], cut[k][i] = b, bj
+    end
+  end
+  local cols, i = {}, n
+  for k = c, 1, -1 do
+    local j = cut[k][i]
+    local col = {}
+    for u = j + 1, i do for _, it in ipairs(units[u]) do col[#col + 1] = it end end
+    table.insert(cols, 1, col)
+    i = j
+  end
+  return cols
+end
+
+local function col_height(col)
+  local h = UIK.PAD
+  for _, it in ipairs(col) do h = h + item_h(it) end
+  return h
+end
+
+local function fits(cols, cap)
+  local hh = 0
+  for _, c in ipairs(cols) do
+    if c[1] and c[1].uik_header then hh = math.max(hh, item_h(c[1])) end
+  end
+  for _, c in ipairs(cols) do
+    local extra = (c[1] and not c[1].uik_header) and hh or 0
+    if col_height(c) + extra > cap + 0.001 then return false end
+  end
+  return true
+end
+
+local function plan_sections(items, maxc, cap)
+  local units = split_big(units_of(items), cap, true)
+  if #units == 0 then return {{}}, 1 end
+  if maxc == 1 and UIK.portrait() then
+    local pages, cur = {}, nil
+    for _, u in ipairs(units) do
+      local try = {}
+      for _, x in ipairs(cur or {}) do try[#try + 1] = x end
+      for _, x in ipairs(u) do try[#try + 1] = x end
+      if cur and not fits({try}, cap) then
+        pages[#pages + 1] = {cur}
+        cur = {}
+        for _, x in ipairs(u) do cur[#cur + 1] = x end
+      else
+        cur = try
+      end
+    end
+    if cur then pages[#pages + 1] = {cur} end
+    return pages, 1
+  end
+  local pages = {}
+  for i, u in ipairs(units) do
+    local p = math.floor((i - 1) / maxc) + 1
+    pages[p] = pages[p] or {}
+    pages[p][#pages[p] + 1] = u
+  end
+  return pages, math.min(maxc, #units)
+end
+
+local function plan(items, maxc, cap)
+  local units = split_big(units_of(items), cap)
+  if #units == 0 then return {{}}, 1 end
+  local headed = false
+  for _, it in ipairs(items) do if it.uik_header then headed = true break end end
+  local start = headed and math.min(maxc, #units) or 1
+  for c = start, maxc do
+    local cols = partition(units, c)
+    if fits(cols, cap) then return {cols}, #cols end
+  end
+  local pages, cur = {}, {}
+  for _, u in ipairs(units) do
+    local try = {}
+    for _, x in ipairs(cur) do try[#try + 1] = x end
+    try[#try + 1] = u
+    if #cur > 0 and not fits(partition(try, maxc), cap) then
+      pages[#pages + 1] = partition(cur, maxc)
+      cur = {u}
+    else
+      cur = try
+    end
+  end
+  if #cur > 0 then pages[#pages + 1] = partition(cur, maxc) end
+  return pages, maxc
+end
+
+render_cols = function(cols, w, h, o)
+  o = o or {}
+  local pad = o.pad or UIK.PAD
+  for i, c in ipairs(cols) do cols[i] = align_column(c, w - 2 * pad) end
+  header_slot(cols)
+  local nodes = {}
+  for i, col in ipairs(cols) do
+    if i > 1 then nodes[#nodes + 1] = {n = G.UIT.B, config = {w = UIK.GAP, h = 0.1}} end
+    local list = {}
+    for _, it in ipairs(col) do list[#list + 1] = slot(it, w - 2 * pad) end
+    nodes[#nodes + 1] = {n = G.UIT.C, config = {align = o.align or 'tm', minw = w, minh = h, r = 0.12, padding = pad, colour = o.colour or G.C.CLEAR}, nodes = list}
+  end
+  return nodes
+end
+
+function UIK.flow(o)
+  o = o or {}
+  local id = o.id or 'flow'
+  local maxc = math.max(1, o.cols or 3)
+  if UIK.portrait() then maxc = 1 end
+  local items = compact(o.items)
+  local pager_h = (touch() and 0.82 or 0.66) + 0.12
+  local full = UIK.H - UIK.TOP
+  local planner = o.sections and plan_sections or plan
+  local pages, cols = planner(items, maxc, full)
+  local paged = #pages > 1
+  if paged then pages, cols = planner(items, maxc, full - pager_h) end
+  local n = math.max(#pages, 1)
+  local idx = math.max(1, math.min(UIK._pages[id] or 1, n))
+  UIK._pages[id] = idx
+  for p, pg in ipairs(pages) do
+    if p ~= idx then
+      for _, c in ipairs(pg) do for _, it in ipairs(c) do discard(it) end end
+    end
+  end
+  local page = pages[idx] or {}
+  local card_h = paged and (full - pager_h) or full
+  if o.fit and not paged then card_h = nil end
+  local w = UIK.col_w(maxc)
+  local shown = {}
+  for c = 1, math.max(1, math.min(cols, #page)) do shown[c] = page[c] or {} end
+  local rows = {{n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = render_cols(shown, w, card_h)}}
+  if paged then
+    rows[2] = UIK.pager{prev = 'uik_page', next = 'uik_page', prev_ref = {id = id, d = -1, n = n}, next_ref = {id = id, d = 1, n = n},
+      text = string.format(mod_loc("Page %d of %d"), idx, n), w = UIK.W}
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = rows}
+end
+
+function UIK.overview(o)
+  o = o or {}
+  local t = touch()
+  local full = UIK.W - 2 * UIK.PAD
+  local presets = compact(o.presets)
+  local port = UIK.portrait()
+  local per = math.max(1, math.min(#presets, o.per_row or (port and 3 or 6)))
+  local gp = t and 0.1 or 0.08
+  local bw = math.min(btn_w(), (full - (per + 1) * gp) / per - 0.02)
+  local bh = btn_h()
+  local buttons = {}
+  for i, b in ipairs(presets) do
+    local c = {}
+    for k, v in pairs(b) do c[k] = v end
+    c.w, c.h, c.col = bw, bh, true
+    buttons[i] = UIK.button(c)
+  end
+  local rows_n = math.max(1, math.ceil(#presets / per))
+  local hh = t and 0.66 or 0.58
+  local top_h = hh + rows_n * (bh + 2 * gp) + 4 * UIK.PAD
+  local top = {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'tm', minw = UIK.W, padding = UIK.PAD}, nodes = {
+      UIK.header(o.presets_title or '', {w = full}),
+      UIK.grid(buttons, per, {w = full, padding = gp}),
+    }},
+  }}
+  local cw = port and full or UIK.col_w(2) - 2 * UIK.PAD
+  local inner = cw - 2 * UIK.PAD
+  local card_h = UIK.H - UIK.TOP - top_h - 0.1
+  local left_h
+  if port then
+    left_h = hh + #compact(o.slots) * ((t and 0.82 or 0.66) + 0.12) + (o.slots_note and 0.6 or 0) + 4 * UIK.PAD
+    card_h = card_h - left_h - 0.1
+  end
+  local left = {UIK.header(o.slots_title or '', {w = inner})}
+  for _, so in ipairs(compact(o.slots)) do
+    local c = {}
+    for k, v in pairs(so) do c[k] = v end
+    c.w = inner
+    left[#left + 1] = UIK.slot_row(c)
+  end
+  if o.slots_note then left[#left + 1] = UIK.note(o.slots_note, {w = inner}) end
+  local scale = t and 0.42 or 0.3
+  local lh = scale * 1.05 + 0.04
+  local max_lines = math.max(1, math.floor((card_h - hh - 3 * UIK.PAD - 0.08) / lh) - 1)
+  local lines = compact(o.lines)
+  local shown = {}
+  if #lines == 0 then
+    shown[1] = o.empty_text or ''
+  else
+    local n = 0
+    for i = 1, #lines do
+      local w = UIK.wrap(lines[i], scale, inner - 0.1, 3)
+      if #shown + #w > max_lines then break end
+      for _, l in ipairs(w) do shown[#shown + 1] = l end
+      n = i
+    end
+    if n < #lines then shown[#shown + 1] = string.format(o.more_text or "+%d", #lines - n) end
+  end
+  local right = {UIK.header(o.changes_title or '', {w = inner}), UIK.note(shown, {w = inner, scale = scale})}
+  if port then
+    return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+      top,
+      {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {UIK.columns({left}, {cards = true, w = cw, h = left_h})}},
+      {n = G.UIT.R, config = {minh = 0.1}},
+      {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {UIK.columns({right}, {cards = true, w = cw, h = card_h})}},
+    }}
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+    top,
+    {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+      UIK.columns({left, right}, {cards = true, w = cw, h = card_h}),
+    }},
+  }}
+end
+
+local function find_tab(args, key)
+  for _, t in ipairs(args.tabs or {}) do
+    if t.key == key then return t end
+  end
+end
+
+UIK.DLG_PORT_W = 6.4
+
+function UIK.dlg_w(w)
+  if UIK.portrait() then return math.min(w, UIK.DLG_PORT_W) end
+  return w
+end
+
+local function win_w(args)
+  if not args.compact then return UIK.W end
+  local w = args.w or UIK.col_w(2)
+  if not args.keep_w then w = UIK.dlg_w(w) end
+  return w
+end
+
+function UIK.stack(rows, o)
+  o = o or {}
+  local w = o.w or UIK.row_w(2)
+  local nodes = {}
+  for _, r in ipairs(align_column(compact(rows), w)) do nodes[#nodes + 1] = slot(r, w) end
+  return {n = G.UIT.R, config = {align = 'tm', minw = w, padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'tm', minw = w, padding = 0}, nodes = nodes}}}
+end
+
+local function body_def(args)
+  local tab = find_tab(args, args._cur)
+  local build = tab and tab.build or args.build
+  local content
+  if build then
+    local ok, res = xpcall(build, debug.traceback)
+    if ok then
+      content = res
+    else
+      print("[UIK] tab " .. tostring(tab and tab.key or args.id) .. " failed: " .. tostring(res))
+      content = {n = G.UIT.R, config = {align = 'cm', padding = 0.3}, nodes = {UIK.text(mod_loc("This tab could not be shown."), {colour = G.C.RED})}}
+    end
+  end
+  return {n = G.UIT.ROOT, config = {align = 'tm', colour = G.C.CLEAR, minw = win_w(args), minh = not args.compact and UIK.H or nil, padding = 0}, nodes = {
+    {n = G.UIT.R, config = {minw = 0.1, minh = UIK.TOP, padding = 0}, nodes = {}},
+    content or {n = G.UIT.R, config = {}},
+  }}
+end
+
+UIK.TAB_MIN = 0.36
+
+local function tab_fit(tabs, per, port)
+  local pad = per > 6 and 0.1 or 0.15
+  local sw = port and 0.3 or per > 6 and 0.45 or 0.7
+  local sc = touch() and 0.46 or 0.42
+  local room = ((touch() and not port) and UIK.W * 1.35 or UIK.W) - 2 * sw - pad * (per + 1)
+  room = room / per
+  local need = 2.5
+  for _, t in ipairs(tabs) do need = math.max(need, text_w(t.label, sc) + 0.35) end
+  local tw = math.min(need, room)
+  for _, t in ipairs(tabs) do
+    local lw = text_w(t.label, sc)
+    if lw > tw - 0.25 then sc = sc * (tw - 0.25) / lw end
+  end
+  return tw, sc, pad, sw
+end
+
+function UIK.tab_rows(args)
+  local tabs = args and args.tabs or {}
+  local n = #tabs
+  if n <= 3 then return 1 end
+  if UIK.portrait() then return math.ceil(n / 3) end
+  if not touch() then return 1 end
+  local _, sc = tab_fit(tabs, n, false)
+  return sc < UIK.TAB_MIN and 2 or 1
+end
+
+local function tab_bar(args)
+  local tabs = args.tabs
+  local n = #tabs
+  local port = UIK.portrait()
+  local rows = UIK.tab_rows(args)
+  local per = math.ceil(n / rows)
+  local tw, sc, pad, sw = tab_fit(tabs, per, port)
+  local th = touch() and 0.8 or 0.7
+  local buttons = {}
+  for i, t in ipairs(tabs) do
+    buttons[#buttons + 1] = UIBox_button({id = 'uik_tab_' .. t.key, ref_table = {key = t.key}, button = 'uik_tab', label = {t.label}, minh = th, minw = tw, col = true, choice = true,
+      chosen = (t.key == args._cur), scale = sc, colour = args.tab_colour or UIK.C.tab, focus_args = {type = 'none'}})
+  end
+  if rows > 1 then
+    local strip = {}
+    for r = 1, rows do
+      if r > 1 then strip[#strip + 1] = {n = G.UIT.R, config = {minw = 0.1, minh = math.max(0, 0.5 - 2 * pad)}, nodes = {}} end
+      local row = {}
+      for i = (r - 1) * per + 1, math.min(n, r * per) do
+        if #row > 0 then row[#row + 1] = {n = G.UIT.C, config = {minw = pad, minh = th}, nodes = {}} end
+        row[#row + 1] = buttons[i]
+      end
+      strip[#strip + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = row}
+    end
+    buttons = strip
+  end
+  return {n = G.UIT.R, config = {align = 'cm', colour = G.C.CLEAR, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {minw = sw, minh = th, align = 'cm', colour = G.C.CLEAR, func = 'set_button_pip', focus_args = {button = 'leftshoulder', type = 'none', orientation = 'cm', scale = 0.7, offset = {x = -0.1, y = 0}}}, nodes = {}},
+    {n = G.UIT.C, config = {id = 'tab_shoulders', ref_table = args, align = 'cm', padding = pad, group = 1, collideable = true, focus_args = {type = 'tab', nav = 'wide', snap_to = args.snap_to_nav}}, nodes = buttons},
+    {n = G.UIT.C, config = {minw = sw, minh = th, align = 'cm', colour = G.C.CLEAR, func = 'set_button_pip', focus_args = {button = 'rightshoulder', type = 'none', orientation = 'cm', scale = 0.7, offset = {x = 0.1, y = 0}}}, nodes = {}},
+  }}
+end
+
+function UIK.window(args)
+  args = args or {}
+  args.id = args.id or 'uik'
+  args.tabs = compact(args.tabs)
+  UIK._win = args
+  UIK.sync(args)
+  local cur = args.tab or UIK._last_tab[args.id]
+  if not find_tab(args, cur) then cur = args.tabs[1] and args.tabs[1].key end
+  args._cur = cur
+  UIK._last_tab[args.id] = cur
+  UIK._win = args
+  local contents = {}
+  if args.title then
+    contents[#contents + 1] = {n = G.UIT.R, config = {align = 'cm', minw = win_w(args), padding = #args.tabs > 1 and 0 or 0.05}, nodes = {
+      {n = G.UIT.C, config = {align = 'cm', maxw = win_w(args) - 0.4}, nodes = {
+        {n = G.UIT.T, config = {text = tostring(args.title), scale = touch() and 0.5 or 0.45, colour = args.title_colour or UIK.C.title}},
+      }},
+    }}
+    if #args.tabs > 1 then contents[#contents + 1] = {n = G.UIT.R, config = {minw = 0.1, minh = 0.12, padding = 0}, nodes = {}} end
+  end
+  if #args.tabs > 1 then contents[#contents + 1] = tab_bar(args) end
+  contents[#contents + 1] = {n = G.UIT.R, config = {align = 'cm', minw = win_w(args), minh = not args.compact and UIK.H or nil, padding = 0}, nodes = {
+    {n = G.UIT.O, config = {id = 'uik_body', object = UIBox{definition = body_def(args), config = {offset = {x = 0, y = 0}}}}},
+  }}
+  local footer = args.footer
+  if type(footer) == 'function' then footer = footer() end
+  local inline = (args.back_inline == 'land' and not UIK.portrait() or args.back_inline == true) and UIK.touch() and not args.no_back and footer and #compact(footer) > 0
+  if inline then
+    local bar = compact(footer)
+    bar[#bar + 1] = {n = G.UIT.C, config = {id = 'overlay_menu_back_button', align = 'cm', minw = btn_w() * 1.5, minh = btn_h(), padding = 0.1, r = 0.1, hover = true, colour = G.C.ORANGE, button = args.back_func or 'exit_overlay_menu', shadow = true, focus_args = {nav = 'wide', button = 'b', snap_to = args.snap_back}}, nodes = {
+      {n = G.UIT.R, config = {align = 'cm', padding = 0, no_fill = true}, nodes = {
+        {n = G.UIT.T, config = {text = args.back_label or localize('b_back'), scale = 0.5, colour = G.C.UI.TEXT_LIGHT, shadow = true, func = not args.no_pip and 'set_button_pip' or nil, focus_args = not args.no_pip and {button = 'b'} or nil}},
+      }},
+    }}
+    contents[#contents + 1] = UIK.button_bar(bar, {w = win_w(args)})
+  elseif footer and #compact(footer) > 0 then contents[#contents + 1] = UIK.button_bar(footer, {w = win_w(args)}) end
+  local def = create_UIBox_generic_options({back_func = args.back_func or 'exit_overlay_menu', back_label = args.back_label, contents = contents, minw = args.compact and win_w(args) or nil, no_pip = args.no_pip, no_back = args.no_back or inline, snap_back = args.snap_back})
+  if args.zoom ~= false and def.config then def.config.uik_zoom = true end
+  if def.config then def.config.uik_win, def.config.uik_id, def.config.uik_cw = true, args.id, args.compact and not args.keep_w and win_w(args) or nil end
+  return def
+end
+
+function UIK.refresh()
+  local args = UIK._win
+  UIK.sync(args)
+  if not (args and G.OVERLAY_MENU) then return end
+  local body = G.OVERLAY_MENU:get_UIE_by_ID('uik_body')
+  if not body then return end
+  if body.config.object then body.config.object:remove() end
+  local first = #(G.MOVEABLES or {}) + 1
+  body.config.object = UIBox{definition = body_def(args), config = {offset = {x = 0, y = 0}, parent = body, type = 'cm'}}
+  body.UIBox:recalculate()
+  if not (G.MOVEABLES and G.FRAMES) then return end
+  local dt = math.max(1/240, math.min(1/20, G.real_dt or 1/60))
+  for i = first, #G.MOVEABLES do
+    local m = G.MOVEABLES[i]
+    if m and m.FRAME and m.FRAME.MOVE < G.FRAMES.MOVE then m:move(dt) end
+  end
+end
+
+function UIK.open_tab(key)
+  local args = UIK._win
+  if not (args and find_tab(args, key)) then return end
+  args._cur = key
+  UIK._last_tab[args.id] = key
+r 23 214 %20%20 -
+l 87
+    for _, t in ipairs(args.tabs) do
+      local b = G.OVERLAY_MENU:get_UIE_by_ID('uik_tab_' .. t.key)
+      if b then b.config.chosen = (t.key == key) end
+    end
+  end
+  UIK.refresh()
+end
+
+G.FUNCS.uik_tab = function(e)
+  local args = UIK._win
+  local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not (args and key) or key == args._cur then return end
+  args._cur = key
+  UIK._last_tab[args.id] = key
+  UIK.refresh()
+end
+
+G.FUNCS.uik_page = function(e)
+  local r = e and e.config and e.config.ref_table
+  if not r then return end
+  local cur = UIK._pages[r.id] or 1
+  UIK._pages[r.id] = (cur - 1 + r.d) % math.max(r.n, 1) + 1
+  UIK.refresh()
+end
+
+G.FUNCS.uik_pager_focus = function(e)
+  local c = G.CONTROLLER
+  local id = e and e.config and e.config.id
+  if not (c and id) then return end
+  local k = UIK._pager_keep
+  if c.focused.target == e then
+    UIK._pager_keep = {node = e, id = id, t = G.TIMERS.REAL}
+    return
+  end
+  if not k then return end
+  if k.node == e then UIK._pager_keep = nil return end
+  if k.id ~= id or not k.node.REMOVED then return end
+  UIK._pager_keep = nil
+  if not c.HID.controller or G.TIMERS.REAL - k.t > 0.5 then return end
+  local node = e
+  if not e.config.button and e.UIBox then
+    local other = e.UIBox:get_UIE_by_ID(id:sub(-5) == '_prev' and (id:sub(1, -6) .. '_next') or (id:sub(1, -6) .. '_prev'))
+    if other and other.config.button then node = other else return end
+  end
+  c:snap_to{node = node}
+end
+
+G.FUNCS.uik_cycle = function(a)
+  local cfg = a and a.cycle_config
+  if cfg and cfg.uik_cb then cfg.uik_cb(a.to_key, a.to_val) end
+end
+
+G.FUNCS.uik_step = function(e)
+  local st = e and e.config and e.config.ref_table
+  if not (st and st.o) then return end
+  local o = st.o
+  local min, max, step = o.min or 0, o.max or math.huge, o.step or 1
+  local d = e.config.ref_value == 'l' and -step or step
+  local cur = tonumber(o.ref_table[o.ref_value]) or min
+  local v = cur + d
+  if v > max then v = (o.wrap ~= false and max - min <= 50 * step) and min or max end
+  if v < min then v = (o.wrap ~= false and max - min <= 50 * step) and max or min end
+  v = min + math.floor((v - min) / step + 0.5) * step
+  if step < 1 then v = tonumber(string.format("%.4f", v)) end
+  if v == cur then return end
+  o.ref_table[o.ref_value] = v
+  st.display = o.format and o.format(v) or tostring(v)
+  if o.callback then o.callback(v) end
+end
+
+G.FUNCS.uik_slider = function(rt)
+  local m = 10 ^ (rt.uik_dec or 0)
+  local v = math.floor((tonumber(rt.ref_table[rt.ref_value]) or 0) * m + 0.5) / m
+  rt.ref_table[rt.ref_value] = v
+  if rt.uik_cb then rt.uik_cb(v) end
+end
+
+mod_loc_register({
+  fr = {
+    ["Page %d of %d"] = "Page %d sur %d",
+    ["This tab could not be shown."] = "Cet onglet n'a pas pu s'afficher.",
+  },
+  es = {
+    ["Page %d of %d"] = "Página %d de %d",
+    ["This tab could not be shown."] = "No se pudo mostrar esta pestaña.",
+  },
+})
+end

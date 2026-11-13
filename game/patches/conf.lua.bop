@@ -1,0 +1,20 @@
+BOP 1
+eol lf
+final 1
+base 8
+c 2
+l 6
+
+pcall(require, "functions.win_dpi")
+pcall(require, "functions.pure_math")
+
+local modloader_ok, modloader = pcall(require, "modloader.boot")
+if modloader_ok and type(modloader) == "table" then pcall(modloader.hook) end
+c 6
+l 1
+	t.window.fullscreen = true
+c 2
+s 1
+l 1
+end
+end

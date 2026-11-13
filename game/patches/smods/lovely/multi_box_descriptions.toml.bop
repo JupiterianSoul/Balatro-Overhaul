@@ -1,0 +1,304 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 12
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -10
+
+# Handle multi boxes in localize
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 11 1754 - -
+l 30
+'''
+payload = '''
+args.AUT = args.AUT or {}
+args.AUT.box_colours = {}
+if (args.type == 'descriptions' or args.type == 'other') and type(loc_target.text) == 'table' and type(loc_target.text[1]) == 'table' then
+    args.AUT.multi_box = args.AUT.multi_box or {} 
+    for i, box in ipairs(loc_target.text_parsed) do
+        for j, line in ipairs(box) do
+            local final_line = SMODS.localize_box(line, args)
+            if i == 1 or next(args.AUT.info) then
+                args.nodes[#args.nodes+1] = final_line -- Sends main box to AUT.main
+                if not next(args.AUT.info) then args.nodes.main_box_flag = true end
+            elseif not next(args.AUT.info) then 
+                args.AUT.multi_box[i-1] = args.AUT.multi_box[i-1] or {}
+                args.AUT.multi_box[i-1][#args.AUT.multi_box[i-1]+1] = final_line
+            end
+            if not next(args.AUT.info) then args.AUT.box_colours[i] = args.vars.box_colours and args.vars.box_colours[i] or G.C.UI.BACKGROUND_WHITE end
+        end
+    end
+    return
+end
+'''
+
+# Handle multi boxes in localize raw descriptions
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+r 11 1709 - -
+l 6
+'''
+payload = '''
+if type(loc_target.text) == 'table' and type(loc_target.text[1]) == 'table' then
+    for i, box in ipairs(loc_target.text_parsed) do
+        if #multi_line ~= 0 then multi_line[#multi_line+1] = '' end
+            for _, lines in ipairs(box) do
+r 11 1710 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 11 1711 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 11 1712 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 11 1713 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                    assembled_string = assembled_string..(type(subpart) == 'string' and subpart or format_ui_value(args.vars[tonumber(subpart[1])]) or 'ERROR')
+                end
+r 11 1716 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+            end
+r 11 1718 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 13
+        end
+    end
+    return multi_line
+end
+'''
+
+# Patch importing localizations
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 11 1560 - -
+r 11 1561 %20%20%20%20 -
+l 3
+end
+'''
+payload = '''
+r 11 1560 - -
+l 6
+    if type(line) == 'table' then
+        center.text_parsed[#center.text_parsed+1] = {}
+        for _, new_line in ipairs(line) do
+             center.text_parsed[#center.text_parsed][#center.text_parsed[#center.text_parsed]+1] = loc_parse_string(new_line)
+        end
+    else
+r 11 1561 %20%20%20%20%20%20%20%20 -
+l 34
+    end
+end
+'''
+
+# Create extra boxes
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'before'
+pattern = '''
+if AUT.info then
+'''
+payload = '''
+AUT.main.background_colour = AUT.main.background_colour or AUT.box_colours and AUT.box_colours[1] or nil
+local multi_boxes = {}
+if AUT.multi_box then
+    for i, box in ipairs(AUT.multi_box) do
+        box.background_colour = box.background_colour or AUT.box_colours and AUT.box_colours[i+1] or nil
+        if AUT.box_starts and AUT.box_starts[i] then table.insert(box, 1, AUT.box_starts[i]) end
+        if AUT.box_ends and AUT.box_ends[i] then table.insert(box, AUT.box_ends[i]) end
+        multi_boxes[#multi_boxes+1] = desc_from_rows(box)
+    end
+end
+'''
+
+# Change return so it can be modified
+# Includes some info_boxes patch that got munched
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 15 1121 - -
+r 15 1122 %20%20%20%20 -
+l 26
+'''
+payload = '''
+local cols
+if #info_boxes <= 3 then
+    cols = 1
+elseif #info_boxes <= 10 then
+    cols = 2
+elseif #info_boxes <= 24 then
+    cols = 3
+else
+    cols = 4
+end
+local nodes_per_col = math.ceil(#info_boxes/cols)
+local info_cols = {}
+for i = 0, cols-1 do
+    local col = {}
+    for j = 1, nodes_per_col do
+        local info_box = info_boxes[i*nodes_per_col+j]
+        if info_box then
+            table.insert(col, info_box)
+        else break end
+    end
+    table.insert(info_cols, {n=G.UIT.C, config = {align="cm"}, nodes = col})
+end
+info_boxes = {{n=G.UIT.R, config = {align="cm", padding = 0.05, card_pos = card.T.x }, nodes = info_cols}}
+local ret_val = {n=G.UIT.ROOT, config = {align = 'cm', colour = G.C.CLEAR}, nodes={
+r 15 1122 %20%20%20%20 -
+l 9
+'''
+
+# Add multi boxes to return table
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 15 1127 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 37
+            }}
+        }}
+    }},
+}}
+'''
+payload = '''
+if multi_boxes[1] then
+    for i=1, #ret_val.nodes[1].nodes[1].nodes[1].nodes do -- find the main box
+        if ret_val.nodes[1].nodes[1].nodes[1].nodes[i] and ret_val.nodes[1].nodes[1].nodes[1].nodes[i].config and ret_val.nodes[1].nodes[1].nodes[1].nodes[i].config.main_box_flag then
+            for j=#multi_boxes, 1, -1 do -- add the extra boxes
+                table.insert(ret_val.nodes[1].nodes[1].nodes[1].nodes, i+1, multi_boxes[j])
+            end
+            break
+        end
+    end
+    
+end
+
+return ret_val
+'''
+
+# Add main_box_flag to the main box
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+return {n=G.UIT.R, config={align = "cm", colour = empty and G.C.CLEAR or G.C.UI.BACKGROUND_WHITE, r = 0.1, padding = 0.04, minw = 2, minh = 0.8, emboss = not empty and 0.05 or nil, filler = true}, nodes={'''
+payload = '''
+return {n=G.UIT.R, config={align = "cm", colour = empty and G.C.CLEAR or G.C.UI.BACKGROUND_WHITE, r = 0.1, padding = 0.04, minw = 2, minh = 0.8, emboss = not empty and 0.05 or nil, filler = true, main_box_flag = desc_nodes.main_box_flag and true or nil}, nodes={'''
+
+# Allow decks to have multi_boxes
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+pattern = '''
+r 15 3356 - -
+r 15 3357 %20%20%20%20 -
+l 5
+'''
+position = 'at'
+match_indent = true
+payload = '''
+{n=G.UIT.R, config={align = "cm", r = 0.1, padding = 0.1, minw = 2.5, minh = 1.3, emboss = 0.05}, nodes={
+r 15 3357 %20%20%20%20 -
+l 6
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'back.lua'
+pattern = '''
+r 1 34 - -
+l 11
+'''
+position = 'after'
+match_indent = true
+payload = '''
+local AUT = {}
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'back.lua'
+pattern = '''
+r 1 73 - -
+l 12
+'''
+position = 'at'
+match_indent = true
+payload = '''
+localize{type = 'descriptions', key = key_override or back_config.key, set = 'Back', nodes = loc_nodes, AUT = AUT, vars = loc_args}
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'back.lua'
+pattern = '''
+return
+r 1 77 %20%20%20%20 -
+l 47
+'''
+position = 'before'
+match_indent = true
+payload = '''
+local config = {}
+config = {minh = (min_dims*3)/(1+#(AUT.multi_box or {})), emboss = 0.1*min_dims/0.8, r = 0.1, align = "cm", padding = 0.1, minw = min_dims*5.4}
+local conf = config
+for i, v in pairs(config) do
+    conf[i] = v
+end
+conf.colour = (AUT.main or loc_nodes).background_colour or AUT.box_colours and AUT.box_colours[1] or G.C.WHITE
+local nodes = {
+    {n=G.UIT.R, config=conf, nodes={
+        challenge.id and UIBox_button({button = 'deck_view_challenge', label = {localize(challenge.id, 'challenge_names')},  minw = 2.2, minh = 1, scale = 0.6, id = challenge}) or desc_from_rows(loc_nodes, true, min_dims*5)
+    }}
+}
+for i, v in pairs(AUT.multi_box or {}) do
+    local conf = config
+    for i, v in pairs(config) do
+        conf[i] = v
+    end
+    conf.colour = v.background_colour or AUT.box_colours and AUT.box_colours[i] or G.C.WHITE
+    nodes[#nodes+1] = {n=G.UIT.R, config={minh = min_dims/10, minw = min_dims*5}, nodes={
+    }}
+    nodes[#nodes+1] = {n=G.UIT.R, config=conf, nodes={
+        desc_from_rows(v, true, min_dims*5)
+    }}
+end
+if true then
+    return
+    {n=G.UIT.ROOT, config={align = "cm", minw = min_dims*5, minh = min_dims*2.5, padding = 0, id = self.name, colour = G.C.CLEAR}, nodes={
+        unpack(nodes)
+    }}
+end
+'''
+
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+pattern = '''
+args.AUT = args.AUT or {}
+'''
+position = 'after'
+match_indent = true
+payload = '''
+args.AUT.info = args.AUT.info or {}
+'''
+end

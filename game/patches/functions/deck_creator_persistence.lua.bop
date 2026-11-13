@@ -1,0 +1,315 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 131
+local function dc_dir()
+    local L = rawget(_G, "MODLOADER")
+    return (L and L.modded) and "modded_deck_creator" or "deck_creator"
+end
+
+
+DeckCreatorPersistence = {}
+
+local function serializeDeck(val, depth)
+    depth = depth or 0
+    local indent = string.rep("  ", depth)
+    local t = type(val)
+
+    if t == "table" then
+        local result = "{\n"
+        for k, v in pairs(val) do
+            local keyStr
+            if type(k) == "number" then
+                keyStr = "[" .. k .. "]"
+            else
+                keyStr = '["' .. tostring(k) .. '"]'
+            end
+            result = result .. indent .. "  " .. keyStr .. " = " .. serializeDeck(v, depth + 1) .. ",\n"
+        end
+        result = result .. indent .. "}"
+        return result
+    elseif t == "string" then
+        return '"' .. val:gsub('"', '\\"'):gsub('\n', '\\n') .. '"'
+    elseif t == "boolean" then
+        return tostring(val)
+    elseif t == "number" then
+        return tostring(val)
+    else
+        return '"' .. tostring(val) .. '"'
+    end
+end
+
+function DeckCreatorPersistence.saveAllDecks()
+    local ok, err = pcall(function()
+        love.filesystem.createDirectory(dc_dir())
+
+        local allDecks = {}
+        for _, d in ipairs(DeckCreatorUtils.customDeckList or {}) do
+            allDecks[#allDecks + 1] = {name = d.name, slug = d.slug, config = d.config, spritePos = d.spritePos}
+        end
+        local content = serializeDeck(allDecks)
+        local success = love.filesystem.write(dc_dir() .. "/CustomDecks.txt", content)
+        if success then
+            DeckCreatorUtils.log("Saved " .. #allDecks .. " custom decks")
+        else
+            DeckCreatorUtils.log("Failed to save custom decks")
+        end
+    end)
+    if not ok then
+        DeckCreatorUtils.log("Error saving decks: " .. tostring(err))
+    end
+end
+
+function DeckCreatorPersistence.loadAllDeckLists()
+    DeckCreatorUtils.customDeckList = {}
+    local ok, err = pcall(function()
+        if not love.filesystem.getInfo(dc_dir()) then
+            love.filesystem.createDirectory(dc_dir())
+            DeckCreatorUtils.log("Created deck_creator directory")
+            return
+        end
+
+        local items = love.filesystem.getDirectoryItems(dc_dir())
+        for _, fileName in ipairs(items) do
+            if fileName:match("%.txt$") and fileName ~= "Red_Seal_Messages.txt" then
+                local filePath = dc_dir() .. "/" .. fileName
+                local fileContent = love.filesystem.read(filePath)
+
+                if fileContent and fileContent ~= "" then
+                    local loadFunc = loadstring("return " .. fileContent)
+                    if loadFunc then
+                        setfenv(loadFunc, {})
+                        local load_ok, deckListData = pcall(loadFunc)
+                        if load_ok and type(deckListData) == "table" then
+                            for _, deckData in ipairs(deckListData) do
+                                pcall(function()
+                                    if type(deckData) ~= "table" or type(deckData.name) ~= "string" then return end
+                                    local config = DeckCreatorData.migrate(deckData.config)
+                                    local customDeck = DeckCreatorData.CustomDeck.createCustomDeck(
+                                        deckData.name, deckData.slug, config, deckData.spritePos,
+                                        {name = deckData.name, text = {}})
+                                    DeckCreatorUtils.addDeckToList(customDeck)
+                                end)
+                            end
+                        end
+                    else
+                        DeckCreatorUtils.log("Failed to parse deck file: " .. fileName)
+                    end
+                end
+            end
+        end
+
+        DeckCreatorUtils.log("Loaded " .. #DeckCreatorUtils.customDeckList .. " custom decks")
+        DeckCreatorPersistence.refreshDeckList()
+    end)
+    if not ok then
+        DeckCreatorUtils.log("Error loading decks: " .. tostring(err))
+    end
+end
+
+function DeckCreatorPersistence.refreshDeckList()
+    if not G then return end
+    if not G.P_CENTERS then return end
+    if not G.P_CENTER_POOLS then return end
+    if not G.P_CENTER_POOLS.Back then return end
+
+    local ok, err = pcall(function()
+        for slug, _ in pairs(DeckCreatorUtils.deletedSlugs) do
+            if G.P_CENTERS[slug] then
+                G.P_CENTERS[slug] = nil
+            end
+        end
+        for slug, _ in pairs(DeckCreatorUtils.disabledSlugs) do
+            if G.P_CENTERS[slug] then
+                G.P_CENTERS[slug] = nil
+            end
+        end
+
+        local newPool = {}
+        for _, back in ipairs(G.P_CENTER_POOLS.Back) do
+            if not (back.config and back.config.customDeck) then
+                newPool[#newPool + 1] = back
+            end
+        end
+
+        local toRemove = {}
+r 3 229 %20%20%20%20%20%20%20%20 -
+l 176
+            if v.config and v.config.customDeck and not DeckCreatorUtils.deletedSlugs[k] then
+                toRemove[#toRemove + 1] = k
+            end
+        end
+        for _, k in ipairs(toRemove) do
+            G.P_CENTERS[k] = nil
+        end
+
+        local minId = 17
+
+        for _, customDeck in ipairs(DeckCreatorUtils.customDeckList) do
+            if customDeck and customDeck.slug then
+                local slug = customDeck.slug
+                if not DeckCreatorUtils.deletedSlugs[slug] and not DeckCreatorUtils.disabledSlugs[slug] then
+                    local back_center = G.P_CENTERS[customDeck.config and customDeck.config.deck_back or "b_red"]
+                    if not back_center or (back_center.config and back_center.config.customDeck) then back_center = G.P_CENTERS.b_red end
+                    local calc_pos = back_center and back_center.pos or customDeck.spritePos or {x = 0, y = 0}
+                    local entry = {
+                        name = customDeck.name,
+                        stake = 1,
+                        demo = false,
+                        unlocked = true,
+                        discovered = true,
+                        order = minId,
+                        pos = {x = (calc_pos and calc_pos.x) or 0, y = (calc_pos and calc_pos.y) or 0},
+                        set = "Back",
+                        config = customDeck.config or {},
+                        key = slug,
+                        omit = false
+                    }
+                    G.P_CENTERS[slug] = entry
+                    newPool[#newPool + 1] = entry
+                    minId = minId + 1
+
+                    if G.localization and G.localization.descriptions and G.localization.descriptions.Back then
+                        local descTable = DeckCreatorPersistence.describe(customDeck.config or {})
+                        G.localization.descriptions.Back[slug] = {
+                            name = customDeck.name,
+                            text = descTable
+                        }
+                        if G.localization.descriptions.Back[slug] then
+                            local loc = G.localization.descriptions.Back[slug]
+                            loc.text_parsed = {}
+                            for _, line in ipairs(loc.text) do
+                                loc.text_parsed[#loc.text_parsed + 1] = loc_parse_string(line)
+                            end
+                            loc.name_parsed = {}
+                            for _, line in ipairs(type(loc.name) == "table" and loc.name or {loc.name}) do
+                                loc.name_parsed[#loc.name_parsed + 1] = loc_parse_string(line)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        G.P_CENTER_POOLS.Back = newPool
+    end)
+    if not ok then
+        DeckCreatorUtils.log("Error refreshing deck list: " .. tostring(err))
+    end
+end
+
+function DeckCreatorPersistence.loadRedSealMessages()
+    DeckCreatorUtils.redSealMessages = {}
+
+    local ok, _ = pcall(function()
+        local content = love.filesystem.read("deck_creator/Red_Seal_Messages.txt")
+        if content and content ~= "" then
+            for line in content:gmatch("[^\r\n]+") do
+                if line ~= "" then
+                    DeckCreatorUtils.redSealMessages[#DeckCreatorUtils.redSealMessages + 1] = line
+                end
+            end
+        end
+    end)
+
+    if #DeckCreatorUtils.redSealMessages == 0 then
+        DeckCreatorUtils.redSealMessages = {
+            "Again!", "Once more!", "Encore!", "Replay!",
+            "Repeat!", "Re-do!", "Another!", "More!",
+            "Double!", "Bonus!", "Extra!", "Plus!",
+            "Again again!", "One more time!", "Keep going!",
+        }
+    end
+end
+
+function DeckCreatorPersistence.describe(config)
+    local parts = {}
+    for _, o in ipairs(DeckCreatorData.changed_options(config)) do
+        parts[#parts + 1] = "{C:attention}" .. mod_loc(o.label) .. "{} " .. DeckCreatorData.format(o, config[o.key])
+    end
+    local items = 0
+    for _, l in ipairs(DeckCreatorData.LISTS) do
+        if not l.ban and type(config[l.key]) == "table" then items = items + #config[l.key] end
+    end
+    if items > 0 then parts[#parts + 1] = "{C:green}" .. mod_loc("Starting items") .. "{} " .. items end
+    if #parts == 0 then return {mod_loc("Standard rules")} end
+    local lines = {}
+    local i = 1
+    while i <= #parts and #lines < 4 do
+        if #lines == 3 and #parts - i > 1 then
+            lines[#lines + 1] = parts[i] .. ", +" .. (#parts - i) .. " " .. mod_loc("more")
+            break
+        end
+        lines[#lines + 1] = parts[i] .. (parts[i + 1] and (", " .. parts[i + 1]) or "")
+        i = i + 2
+    end
+    return lines
+end
+
+local SHARE_PREFIX = "BODECK2:"
+
+local function share_safe(s)
+    return (tostring(s):gsub("[^%w%s_%-%.%(%)!'&]", ""))
+end
+
+function DeckCreatorPersistence.exportCode(deck)
+    if not deck or not deck.config then return nil end
+    local c = deck.config
+    local out = {n = share_safe(deck.name or ""), b = c.deck_back, o = {}, l = {}}
+    for _, o in ipairs(DeckCreatorData.changed_options(c)) do out.o[o.key] = c[o.key] end
+    for _, l in ipairs(DeckCreatorData.LISTS) do
+        if type(c[l.key]) == "table" and #c[l.key] > 0 then
+            local ids = {}
+            for _, it in ipairs(c[l.key]) do
+                local id = type(it) == "table" and (it.id or it.key) or it
+                if type(id) == "string" then ids[#ids + 1] = id end
+            end
+            out.l[l.key] = ids
+        end
+    end
+    local raw = serializeDeck(out):gsub("\n%s*", "")
+    local ok, enc = pcall(love.data.encode, "string", "base64", raw)
+    if not ok then return nil end
+    return SHARE_PREFIX .. enc
+end
+
+function DeckCreatorPersistence.importCode(code)
+    if type(code) ~= "string" then return nil, "empty" end
+    code = code:gsub("%s", "")
+    if code:sub(1, #SHARE_PREFIX) ~= SHARE_PREFIX then return nil, "prefix" end
+    local ok, raw = pcall(love.data.decode, "string", "base64", code:sub(#SHARE_PREFIX + 1))
+    if not ok or type(raw) ~= "string" or #raw > 20000 then return nil, "decode" end
+    local f = loadstring("return " .. raw)
+    if not f then return nil, "parse" end
+    setfenv(f, {})
+    local ok2, data = pcall(f)
+    if not ok2 or type(data) ~= "table" then return nil, "parse" end
+    local deck = DeckCreatorData.CustomDeck:blankDeck()
+    local c = deck.config
+    if type(data.o) == "table" then
+        for k, v in pairs(data.o) do
+            local o = DeckCreatorData.BY_KEY[k]
+            if o then c[k] = DeckCreatorData.clamp(o, v) end
+        end
+    end
+    if type(data.l) == "table" then
+        for _, l in ipairs(DeckCreatorData.LISTS) do
+            local ids = data.l[l.key]
+            if type(ids) == "table" then
+                for _, id in ipairs(ids) do
+                    if type(id) == "string" and (G.P_CENTERS[id] or (G.P_TAGS and G.P_TAGS[id]) or (G.P_BLINDS and G.P_BLINDS[id])) then
+                        c[l.key][#c[l.key] + 1] = {id = id}
+                    end
+                end
+            end
+        end
+    end
+    if type(data.b) == "string" and G.P_CENTERS[data.b] then c.deck_back = data.b end
+    local name = share_safe(type(data.n) == "string" and data.n or "")
+    if name == "" then name = mod_loc("Shared deck") end
+    deck.name = name:sub(1, 24)
+    deck.loc_txt = {name = deck.name, text = {}}
+    return deck
+end
+end

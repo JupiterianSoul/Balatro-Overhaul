@@ -1,0 +1,1565 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 339
+local R = {}
+
+local SESSION_FILE = "mp_session.json"
+local SNAP_B64_MAX = 699048
+local RECONNECT_DELAYS = { 1, 2, 3, 5 }
+local REJOIN_REPLY_TIMEOUT = 15
+local ATTEMPT_TIMEOUT = 25
+local OFFLINE_GRACE = 2
+local OUTBOX_MAX = 64
+local OUTBOX_TYPES = {
+    blind_entered = true, blind_finished = true, play_hand = true, game_over = true,
+    set_location = true, ready_blind = true, unready_blind = true, match_finished = true,
+    player_name = true,
+}
+
+R.session = nil
+R.seq = 0
+R.last_upload = -100
+R.pending_table = nil
+R.last_table = nil
+R.outbox = {}
+R.rc = { active = false, attempts = 0, next_at = 0, in_flight = false, sent_at = nil, started_at = nil }
+R.opp_away = nil
+R.ui = { away_time = "", prompt_time = "" }
+R.exit_pending = nil
+R.menu_popup = nil
+R.menu_check_at = nil
+R.prompt = nil
+
+local function now()
+    return love.timer.getTime()
+end
+
+local function json()
+    return bom_core and bom_core.json
+end
+
+local function dbg(msg)
+    pcall(function()
+        require("functions/fast_fs").append("mp_match_debug.txt", "\n[REJOIN] " .. tostring(msg))
+    end)
+    if mp_log then mp_log.info("BOM_REJOIN", "%s", tostring(msg)) end
+end
+
+local function blind_letter(key)
+    if key == "Boss" then return "L" end
+    if key == "Big" then return "B" end
+    return "S"
+end
+R.blind_letter = blind_letter
+
+local function fmt_time(sec)
+    sec = math.max(0, math.floor(sec or 0))
+    return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
+end
+
+local function in_live_match()
+    return bom_match and bom_match.is_in_match and bom_match.is_in_match()
+        and not bom_match.is_match_over()
+end
+
+function R.load_session()
+    local ok, s = pcall(love.filesystem.read, SESSION_FILE)
+    if not ok or type(s) ~= "string" or s == "" then return end
+    local d = json() and json().decode(s)
+    if type(d) == "table" and type(d.code) == "string" and type(d.token) == "string" then
+        R.session = d
+    end
+end
+
+local function loader()
+    return rawget(_G, "MODLOADER")
+end
+
+local function session_modded()
+    local L = loader()
+    return L and L.modded == true or false
+end
+
+local function session_mods()
+    local L = loader()
+    if not (L and L.modded == true and type(L.enabled) == "table") then return nil end
+    local out = {}
+    for i, name in ipairs(L.enabled) do out[i] = name end
+    return out
+end
+
+local function write_session()
+    if R.session then pcall(require("functions/fast_fs").write, SESSION_FILE, json().encode(R.session)) end
+end
+
+function R.store_session(code, token, pid, in_match, id)
+    if type(code) ~= "string" or type(token) ~= "string" then return end
+    local same = R.session and R.session.code == code and R.session.token == token
+    local keep = same and R.session.in_match
+    local modded = session_modded()
+    local mods = session_mods()
+    if same and R.session.in_match and type(R.session.modded) == "boolean" then modded, mods = R.session.modded, R.session.mods end
+    if type(id) ~= "string" then id = same and R.session.id or nil end
+    R.session = {
+        code = code,
+        token = token,
+        id = id,
+        playerId = pid,
+        in_match = in_match or keep or false,
+        modded = modded,
+        mods = mods,
+    }
+    write_session()
+end
+
+local function needs_session_switch()
+    local s = R.session
+    local L = loader()
+    return s and type(s.modded) == "boolean" and L and L.switch and s.modded ~= session_modded() or false
+end
+
+local function switch_for_rejoin()
+    local want = R.session.modded
+    dbg("rejoin needs a " .. (want and "MODDED" or "NORMAL") .. " session, switching first")
+    R.session.auto_rejoin = true
+    write_session()
+    pcall(bom_core.disconnect)
+    if want and type(R.session.mods) == "table" and loader().set_enabled then
+        for _, name in ipairs(R.session.mods) do pcall(loader().set_enabled, name, true) end
+    end
+    if not want and G.FUNCS.mods_normal_game then return G.FUNCS.mods_normal_game({ config = {} }) end
+    return loader().switch(want)
+end
+
+local function send_rejoin()
+    bom_core.connect(function()
+        if R.session then
+            bom_core.send({ type = "rejoin_match", code = R.session.code, token = R.session.token })
+        end
+    end, { silent = true, on_fail = function()
+        R.end_rejoin_wait()
+        R.menu_popup = { reason = "connection_lost", title = mod_loc("Connection lost") }
+        R.menu_popup_at = now() + 0.2
+    end })
+end
+
+function R.rejoin_now()
+    if not R.session then
+        dbg("Rejoin without a stored session")
+        R.show_menu_popup_now({ reason = "not_found", title = mod_loc("Could not rejoin") })
+        return
+    end
+    if needs_session_switch() then return switch_for_rejoin() end
+    R.begin_rejoin_wait()
+    send_rejoin()
+end
+
+function R.held_match_for(id)
+    local s = R.session
+    if not (s and s.in_match and type(id) == "string" and s.id == id) then return nil end
+    if bom_match and bom_match.get_phase() ~= bom_match.PHASE.NONE then return nil end
+    return s
+end
+
+function R.begin_rejoin_wait()
+    R.rejoin_wait = { until_t = now() + REJOIN_REPLY_TIMEOUT }
+    pcall(function()
+        if not (bom_ui and bom_ui.show_connecting_screen) then return end
+        bom_ui.show_connecting_screen()
+        local cancel = G.FUNCS.mp_cancel_connecting
+        G.FUNCS.mp_cancel_connecting = function(...)
+            if R.rejoin_wait then dbg("rejoin cancelled by the player") end
+            R.rejoin_wait = nil
+            if cancel then return cancel(...) end
+        end
+    end)
+end
+
+function R.end_rejoin_wait()
+    if not R.rejoin_wait then return end
+    R.rejoin_wait = nil
+    pcall(function() if bom_ui and bom_ui.hide_connecting_screen then bom_ui.hide_connecting_screen() end end)
+end
+
+function R.clear_session()
+    if R.session then dbg("session cleared " .. tostring(R.session.code)) end
+    R.session = nil
+    pcall(love.filesystem.remove, SESSION_FILE)
+end
+
+function R.has_match_session()
+    return R.session ~= nil and R.session.in_match == true
+end
+
+local REASON_TEXT = {
+    eliminated = "You ran out of lives.",
+    pvp_loss = "You ran out of lives.",
+    blind_loss = "You ran out of lives.",
+    opponent_eliminated = "Your opponent ran out of lives.",
+    final_nemesis_won = "You won the last Rival blind.",
+    final_nemesis_lost = "Your opponent won the last Rival blind.",
+    final_draw_more_lives = "The last Rival blind was a draw. You had more lives.",
+    final_draw_fewer_lives = "The last Rival blind was a draw. Your opponent had more lives.",
+    sudden_death_won = "You won the sudden death Rival round.",
+    sudden_death_lost = "Your opponent won the sudden death Rival round.",
+    run_completed = "You completed the run first.",
+    opponent_completed = "Your opponent completed the run first.",
+    ascension_farthest = "Decided by who got the farthest.",
+    ascension_score_tiebreak = "Decided by the score tiebreak.",
+    ascension_draw = "You both got equally far.",
+    forfeited = "You left the match.",
+    left = "You left the match.",
+    opponent_forfeited = "Your opponent left the match.",
+    quit = "You quit the match.",
+    opponent_quit = "Your opponent quit the match.",
+    disconnected = "You were disconnected.",
+    opponent_disconnected = "Your opponent disconnected.",
+    opponent_left = "Your opponent left.",
+    opponent_timed_out = "Your opponent did not come back in time.",
+    rejoin_expired = "You did not come back in time.",
+    opponent_abandoned = "Your opponent gave up the match.",
+    left_opponent_stopped_waiting = "You left the match. Your opponent stopped waiting.",
+    dropped_opponent_stopped_waiting = "You lost the connection. Your opponent stopped waiting.",
+    stopped_waiting_opponent_left = "Your opponent left the match. You stopped waiting.",
+    stopped_waiting_opponent_dropped = "Your opponent lost the connection. You stopped waiting.",
+    abandoned = "You gave up the match.",
+    room_expired = "The room closed after 30 minutes without activity.",
+    room_gone = "This room is gone.",
+    ttl_expired = "The room closed after 30 minutes without activity.",
+    not_found = "This match no longer exists.",
+    bad_token = "This match no longer exists.",
+    connection_lost = "The connection to the server was lost.",
+    no_reply = "The server did not answer. Open Multiplayer to try again.",
+    already_in_room = "Leave the room you are in first, then try again.",
+    session_replaced = "This match was resumed in another game window.",
+    last_standing = "You were the last one standing.",
+    team_won = "Your team won.",
+    team_eliminated = "Your team ran out of lives.",
+    raid_cleared = "The raid boss was beaten.",
+    raid_failed = "The raid ran out of lives.",
+    host_left = "The host closed the party.",
+}
+
+local CLOSING_REASONS = {
+    opponent_forfeited = true, forfeited = true, opponent_disconnected = true, disconnected = true,
+    opponent_left = true, opponent_timed_out = true, rejoin_expired = true, opponent_abandoned = true,
+    abandoned = true, room_expired = true, opponent_quit = true, quit = true, connection_lost = true,
+    left_opponent_stopped_waiting = true, dropped_opponent_stopped_waiting = true,
+    stopped_waiting_opponent_left = true, stopped_waiting_opponent_dropped = true,
+}
+
+function R.reason_text(reason, context)
+    if context == "lobby" and (reason == "opponent_left" or reason == "opponent_disconnected") then
+        return mod_loc("Your opponent left the lobby.")
+    end
+    return mod_loc(REASON_TEXT[reason or ""] or "The match has ended.")
+end
+
+function R.is_closing_reason(reason)
+    return CLOSING_REASONS[reason or ""] == true
+end
+
+local function result_title(result)
+    if result == "win" then return mod_loc("Victory"), G.C.GOLD end
+    if result == "lose" then return mod_loc("Defeat"), G.C.RED end
+    if result == "draw" then return mod_loc("Draw"), G.C.UI.TEXT_LIGHT end
+    return mod_loc("Match over"), G.C.UI.TEXT_LIGHT
+end
+
+local function text_node(line, scale, colour)
+    if type(line) == "table" then
+        return { n = G.UIT.T, config = { ref_table = line.ref_table, ref_value = line.ref_value, scale = scale, colour = colour, shadow = true } }
+    end
+    return { n = G.UIT.T, config = { text = tostring(line), scale = scale, colour = colour, shadow = true } }
+end
+
+local function popup_rows(spec, on_button)
+    local rows = {}
+    rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.06 }, nodes = {
+        text_node(spec.title, 0.55, spec.title_colour or G.C.GOLD),
+    } }
+    for _, line in ipairs(spec.lines or {}) do
+        rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+            text_node(line, 0.4, G.C.UI.TEXT_LIGHT),
+        } }
+    end
+    if spec.buttons and #spec.buttons > 0 then
+        local cols = {}
+        for i, b in ipairs(spec.buttons) do
+            local fname = "mp_rejoin_" .. spec.id .. "_" .. i
+            G.FUNCS[fname] = function()
+                on_button()
+                local ok, err = pcall(b.fn)
+                if not ok then dbg("button " .. fname .. " failed: " .. tostring(err)) end
+            end
+            cols[#cols + 1] = { n = G.UIT.C, config = { align = "cm", padding = 0.08 }, nodes = {
+                UIBox_button({ label = { b.label }, button = fname, minw = 2.6, minh = 0.75, colour = b.colour or G.C.BLUE, scale = 0.45 }),
+            } }
+        end
+        rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.12 }, nodes = cols }
+    end
+    return rows
+end
+
+R.boxes = {}
+
+function R.hide_box(id)
+    local b = R.boxes[id]
+    if b then
+        pcall(function() b.box:remove() end)
+        R.boxes[id] = nil
+    end
+end
+
+function R.hide_all_boxes()
+    for id in pairs(R.boxes) do R.hide_box(id) end
+end
+
+function R.show_box(spec)
+    if not G or not G.ROOM_ATTACH then return end
+    R.hide_box(spec.id)
+    local ok, err = pcall(function()
+        local box = UIBox({
+            definition = {
+                n = G.UIT.ROOT,
+                config = { align = "cm", colour = G.C.CLEAR, padding = 0.1 },
+                nodes = {
+                    { n = G.UIT.C, config = { align = "cm", colour = G.C.BLACK, r = 0.15, padding = 0.3, emboss = 0.08, minw = 6 },
+                        nodes = popup_rows(spec, function() R.hide_box(spec.id) end) },
+                },
+            },
+            config = { align = "cm", offset = { x = 0, y = spec.y or 0 }, major = G.ROOM_ATTACH },
+        })
+        box.attention_text = true
+        box.over_overlay = true
+        R.boxes[spec.id] = { box = box, until_t = spec.timeout and (now() + spec.timeout) or nil }
+    end)
+    if not ok then dbg("show_box " .. tostring(spec.id) .. " failed: " .. tostring(err)) end
+end
+
+function R.show_overlay(spec)
+    if not G or not G.FUNCS or not G.FUNCS.overlay_menu then return end
+    local ok, err = pcall(function()
+r 13 1825 %20%20%20%20%20%20%20%20 -
+l 39
+        local rows = popup_rows(spec, function()
+            pcall(function() if G.OVERLAY_MENU then G.FUNCS.exit_overlay_menu() end end)
+        end)
+        bom_ui.overlay({ definition = create_UIBox_generic_options({ no_back = true, no_esc = true, contents = rows }) })
+        R.overlay_id = spec.id
+    end)
+    if not ok then dbg("show_overlay " .. tostring(spec.id) .. " failed: " .. tostring(err)) end
+end
+
+function R.is_overlay_shown(id)
+    return G and G.OVERLAY_MENU ~= nil and R.overlay_id == id
+end
+
+local KEY_STATES = nil
+local function is_key_state(st)
+    if not KEY_STATES and G and G.STATES then
+        KEY_STATES = {
+            [G.STATES.BLIND_SELECT] = true, [G.STATES.SHOP] = true,
+            [G.STATES.ROUND_EVAL] = true, [G.STATES.HAND_PLAYED] = true,
+        }
+    end
+    return KEY_STATES and KEY_STATES[st] or false
+end
+
+function R.on_save()
+    if not (G and G.GAME and G.GAME.multiplayer) then return end
+    if not R.has_match_session() or not in_live_match() then return end
+    local t = G.culled_table
+    if type(t) ~= "table" or t == R.last_table or t == R.pending_table then return end
+    R.pending_table = t
+    R.pending_key = is_key_state(G.STATE)
+    R.pending_ante = G.GAME.round_resets and G.GAME.round_resets.ante
+    R.pending_blind = G.GAME.blind_on_deck
+end
+
+local PACK_IN = "bo_rejoin_pack_in"
+local PACK_OUT = "bo_rejoin_pack_out"
+local PACK_SRC = [[
+if jit.arch == "arm64" or jit.arch == "arm" then jit.off() end
+r 26 1 - -
+l 1
+require "love.data"
+r 14 6 - -
+l 742
+require("love.filesystem")
+local ok_req = pcall(require, "engine/string_packer")
+local cin = love.thread.getChannel("bo_rejoin_pack_in")
+local cout = love.thread.getChannel("bo_rejoin_pack_out")
+while true do
+    local job = cin:demand(2)
+    if job == nil or job == "quit" then return end
+    local ok, data = false, "string_packer missing"
+    if ok_req then
+        ok, data = pcall(function()
+            local packed = STR_PACK(job.t)
+            local comp = love.data.compress("string", "deflate", packed, 1)
+            return love.data.encode("string", "base64", comp)
+        end)
+    end
+    cout:push({ id = job.id, ok = ok, data = data })
+end
+]]
+R.pack = { thread = nil, broken = false, job = nil, next_id = 0 }
+
+local function pack_sync(t)
+    return pcall(function()
+        local packed = STR_PACK(t)
+        local comp = love.data.compress("string", "deflate", packed, 1)
+        return love.data.encode("string", "base64", comp)
+    end)
+end
+
+local function send_snapshot(data, ante, blind)
+    if #data > SNAP_B64_MAX then
+        dbg("snapshot too large: " .. #data)
+        return false
+    end
+    R.seq = R.seq + 1
+    R.last_upload = now()
+    ante = tonumber(ante)
+    if ante then ante = math.max(0, math.min(999, math.floor(ante))) end
+    return bom_core.send({
+        type = "save_snapshot",
+        data = data,
+        seq = R.seq,
+        ante = ante,
+        blind = type(blind) == "string" and blind:sub(1, 32) or nil,
+    }, { raw = true })
+end
+
+local function pack_start(t)
+    local P = R.pack
+    if P.broken or not (love.thread and love.thread.newThread) then return false end
+    local ok = pcall(function()
+        if not P.thread then P.thread = love.thread.newThread(PACK_SRC) end
+        if not P.thread:isRunning() then
+            love.thread.getChannel(PACK_OUT):clear()
+            P.thread:start()
+        end
+        P.next_id = P.next_id + 1
+        love.thread.getChannel(PACK_IN):push({ id = P.next_id, t = t })
+    end)
+    if not ok then
+        P.broken = true
+        return false
+    end
+    P.job = { id = P.next_id, t = t, ante = R.pending_ante, blind = R.pending_blind, started = now() }
+    return true
+end
+
+function R.poll_pack()
+    local P = R.pack
+    if not P.job then return end
+    local res = love.thread.getChannel(PACK_OUT):pop()
+    while res and res.id ~= P.job.id do res = love.thread.getChannel(PACK_OUT):pop() end
+    if not res then
+        local err = P.thread and P.thread:getError()
+        if err or now() - P.job.started > 10 then
+            dbg("snapshot pack thread failed: " .. tostring(err or "timeout"))
+            P.broken = true
+            local job = P.job
+            P.job = nil
+            if not R.pending_table then R.pending_table = job.t end
+        end
+        return
+    end
+    local job = P.job
+    P.job = nil
+    if job.cancelled then return end
+    if not res.ok then
+        dbg("snapshot pack thread error: " .. tostring(res.data))
+        P.broken = true
+        if not R.pending_table then R.pending_table = job.t end
+        return
+    end
+    if not bom_core or not bom_core.is_connected() or R.rc.active then
+        if not R.pending_table then R.pending_table = job.t end
+        return
+    end
+    if not R.has_match_session() or not in_live_match() then return end
+    if type(res.data) ~= "string" then return end
+    send_snapshot(res.data, job.ante, job.blind)
+end
+
+function R.upload_pending(force)
+    if force and R.pack.job then
+        if not R.pending_table then R.pending_table = R.pack.job.t end
+        R.pack.job.cancelled = true
+    end
+    if not R.pending_table then return false end
+    if not bom_core or not bom_core.is_connected() or R.rc.active then return false end
+    if not R.has_match_session() or not in_live_match() then
+        R.pending_table = nil
+        return false
+    end
+    if not force then
+        if R.pack.job then return false end
+        local gap = R.pending_key and 0.5 or 3
+        if now() - R.last_upload < gap then return false end
+    end
+    local t = R.pending_table
+    R.pending_table = nil
+    R.last_table = t
+    if not force and pack_start(t) then return false end
+    local ok, data = pack_sync(t)
+    if not ok then
+        dbg("snapshot encode failed: " .. tostring(data))
+        return false
+    end
+    return send_snapshot(data, R.pending_ante, R.pending_blind)
+end
+
+local function decode_snapshot(snap)
+    if type(snap) ~= "table" or type(snap.data) ~= "string" or snap.data == "" then return nil end
+    local ok, tbl = pcall(function()
+        local raw = love.data.decode("string", "base64", snap.data)
+        local str = raw
+        if raw:sub(1, 6) ~= "return" then
+            str = love.data.decompress("string", "deflate", raw .. "\0\0\0\0\0\0\0\0")
+        end
+        return STR_UNPACK_PEER(str)
+    end)
+    if ok and type(tbl) == "table" and type(tbl.GAME) == "table" and tbl.BLIND and tbl.BACK then
+        return tbl
+    end
+    dbg("snapshot decode failed: " .. tostring(tbl))
+    return nil
+end
+
+function R.queue_offline(data)
+    if not R.rc.active or type(data) ~= "table" or not OUTBOX_TYPES[data.type] then return end
+    if data.type == "set_location" then
+        for i = #R.outbox, 1, -1 do
+            if R.outbox[i].type == "set_location" then table.remove(R.outbox, i) end
+        end
+    end
+    if #R.outbox >= OUTBOX_MAX then table.remove(R.outbox, 1) end
+    R.outbox[#R.outbox + 1] = data
+end
+
+local function outbox_has(ty)
+    for _, m in ipairs(R.outbox) do
+        if m.type == ty then return true end
+    end
+    return false
+end
+
+function R.show_away_popup()
+    local away = R.opp_away
+    if not away then return end
+    local line = away.reason == "left_to_menu"
+        and mod_loc("Your opponent went back to the menu and may come back.")
+        or mod_loc("Your opponent disconnected and may come back.")
+    R.show_box({
+        id = "away",
+        title = mod_loc("Opponent disconnected"),
+        title_colour = G.C.RED,
+        lines = { line, { ref_table = R.ui, ref_value = "away_time" } },
+        buttons = {
+            { label = mod_loc("Wait"), colour = G.C.GREEN, fn = function()
+                if R.opp_away then R.opp_away.dismissed = true end
+            end },
+            { label = mod_loc("Leave"), colour = G.C.RED, fn = function()
+                dbg("waiter chose Leave")
+                if R.opp_away then R.opp_away.leaving = true end
+                bom_core.send({ type = "leave_match" })
+            end },
+        },
+    })
+end
+
+function R.set_opp_away(seconds_left, reason, show)
+    if R.move_grace and now() < R.move_grace.until_t then
+        R.move_grace.held = { seconds_left = seconds_left, reason = reason, show = show }
+        return
+    end
+    local fresh = R.opp_away == nil
+    R.opp_away = R.opp_away or {}
+    R.opp_away.deadline = now() + (tonumber(seconds_left) or 900)
+    R.opp_away.reason = reason or R.opp_away.reason
+    R.ui.away_time = mod_loc("Time left") .. ": " .. fmt_time(tonumber(seconds_left) or 900)
+    pcall(function()
+        if G.GAME and G.GAME.mp_opponent_panel then
+            if fresh then R.opp_away.prev_location = G.GAME.mp_opponent_panel.location end
+            G.GAME.mp_opponent_panel.location = mod_loc("Opponent disconnected")
+        end
+    end)
+    if show and (fresh or not R.boxes.away) and not R.opp_away.dismissed then
+        R.show_away_popup()
+    end
+end
+
+function R.clear_opp_away(notify)
+    local was = R.opp_away
+    R.opp_away = nil
+    R.hide_box("away")
+    if was and notify then
+        pcall(function()
+            if G.GAME and G.GAME.mp_opponent_panel and was.prev_location then
+                G.GAME.mp_opponent_panel.location = was.prev_location
+            end
+        end)
+        R.show_box({
+            id = "back",
+            title = mod_loc("Opponent reconnected"),
+            title_colour = G.C.GREEN,
+            lines = { mod_loc("The match continues.") },
+            timeout = 3,
+        })
+    end
+end
+
+local MOVE_WINDOW = 15
+local MOVE_QUIET = 4
+
+function R.move_pending()
+    local m = R.move
+    if m and now() - m.at < MOVE_WINDOW then return true end
+    R.move = nil
+    return false
+end
+
+local function toast_scale(text)
+    local scale = 0.5
+    pcall(function()
+        local f = G.LANG.font
+        local w = f.FONT:getWidth(text) * f.squish * scale * f.FONTSCALE / G.TILESIZE
+        local avail = G.ROOM.T.w - 1.4
+        if w > avail then scale = math.max(0.25, scale * avail / w) end
+    end)
+    return scale
+end
+
+local function toast_line(text, y)
+    if not (G and G.ROOM_ATTACH and bom_ui and bom_ui.top_text) then return end
+    bom_ui.top_text({text = text, scale = toast_scale(text), hold = 3.5, major = G.ROOM_ATTACH, align = "cm", offset = {x = 0, y = y},
+        backdrop_colour = G.C.BLACK, silent = true})
+end
+
+local function show_toast(text)
+    if not text then return end
+    G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.8, timer = "REAL", blocking = false, blockable = false, func = function()
+        pcall(function()
+            local a, b = text:match("^(.-[%.!?])%s+(.+)$")
+            if a and toast_scale(text) < 0.45 then
+                toast_line(a, -3.55)
+                toast_line(b, -2.85)
+            elseif bom_ui and bom_ui.l4_toast then
+                bom_ui.l4_toast(text, nil, toast_scale(text))
+            end
+        end)
+        return true
+    end}))
+end
+
+function R.on_server_info(d)
+    if type(d) ~= "table" or d.boot == nil then return end
+    local boot = tostring(d.boot)
+    local last = R.last_boot
+    R.last_boot = boot
+    if last and last ~= boot and not R.move_pending() then
+        show_toast(mod_loc("The server just restarted."))
+    end
+end
+
+function R.on_server_moving(d)
+    local code = type(d) == "table" and d.code or nil
+    if code == nil then return end
+    local seat = bom_room and bom_room.seat
+    if not in_live_match() and seat and seat.code == code and type(seat.token) == "string" then
+        R.move = { at = now(), code = code, lobby = true, token = seat.token }
+        dbg("server moving, lobby will move")
+        return
+    end
+    if not (R.session and R.has_match_session() and in_live_match()) then return end
+    R.move = { at = now(), code = code }
+    dbg("server moving, match will move")
+end
+
+function R.begin_reconnect()
+    if R.rc.active then return end
+    dbg("connection lost mid-match, auto-reconnect starts")
+    local quiet = R.move_pending()
+    R.rc.active = true
+    R.rc.attempts = 0
+    R.rc.in_flight = false
+    R.rc.sent_at = nil
+    R.rc.next_at = now() + (quiet and 0 or RECONNECT_DELAYS[1])
+    R.rc.quiet_until = quiet and (now() + MOVE_QUIET) or nil
+    R.outbox = {}
+    if quiet then return end
+    R.show_box({
+        id = "reconnect",
+        title = mod_loc("Connection lost"),
+        title_colour = G.C.RED,
+        lines = { mod_loc("Reconnecting to the server...") },
+        y = -1.5,
+    })
+end
+
+function R.stop_reconnect()
+    R.rc.active = false
+    R.rc.quiet_until = nil
+    R.rc.in_flight = false
+    R.rc.sent_at = nil
+    R.hide_box("reconnect")
+end
+
+local function schedule_retry()
+    R.rc.in_flight = false
+    R.rc.sent_at = nil
+    local d = RECONNECT_DELAYS[math.min(R.rc.attempts + 1, #RECONNECT_DELAYS)]
+    R.rc.next_at = now() + d
+end
+
+local function try_reconnect()
+    if not R.session then R.stop_reconnect() return end
+    R.rc.attempts = R.rc.attempts + 1
+    R.rc.in_flight = true
+    R.rc.started_at = now()
+    dbg("reconnect attempt " .. R.rc.attempts)
+    bom_core.connect(function()
+        if not R.rc.active or not R.session then return end
+        R.rc.sent_at = now()
+        bom_core.send({ type = "rejoin_match", code = R.session.code, token = R.session.token })
+    end, { silent = true, on_fail = function()
+        if R.rc.active then schedule_retry() end
+    end })
+end
+
+local function lobby_move_failed()
+    R.move = nil
+    R.exit_to_menu({ reason = "connection_lost", title = mod_loc("Connection lost"), context = "lobby", new_room = R.new_room_offer() })
+end
+
+function R.lobby_move_reconnect()
+    local m = R.move
+    if not (m and m.lobby and R.move_pending()) then return false end
+    if m.sent then return true end
+    m.sent = true
+    dbg("lobby moving to the new server")
+    bom_core.connect(function()
+        if R.move ~= m then return end
+        bom_core.send({ type = "rejoin_match", code = m.code, token = m.token })
+    end, { silent = true, on_fail = function()
+        if R.move == m then lobby_move_failed() end
+    end })
+    return true
+end
+
+function R.on_lobby_rejoined(d)
+    if type(d) ~= "table" then return end
+    local m = R.move
+    R.move = nil
+    if d.boot ~= nil then R.last_boot = tostring(d.boot) end
+    if bom_room and bom_room.seat and d.token then bom_room.seat.token = d.token end
+    if d.moved == true or (m and m.lobby) then
+        show_toast(mod_loc("The server restarted. Your match moved to the new server."))
+    end
+end
+
+function R.on_connection_lost()
+    if R.exit_pending or R.exiting then return end
+    if R.lobby_move_reconnect() then return end
+    if R.rc.active then
+        schedule_retry()
+        return
+    end
+    if R.checking then
+        R.checking = false
+        if bom_match.get_phase() == bom_match.PHASE.NONE then return end
+    end
+    local phase = bom_match and bom_match.get_phase and bom_match.get_phase()
+    if in_live_match() then
+        if R.has_match_session() then
+            R.begin_reconnect()
+        else
+            bom_match.end_match("lose", "connection_lost")
+        end
+    elseif phase == bom_match.PHASE.LOBBY or phase == bom_match.PHASE.STARTING then
+        R.exit_to_menu({ reason = "connection_lost", title = mod_loc("Connection lost"), context = "lobby", new_room = R.new_room_offer() })
+    elseif phase == bom_match.PHASE.MATCH_END then
+        R.exit_to_menu({ reason = "connection_lost", title = mod_loc("Connection lost"), context = "post" })
+    end
+end
+
+function R.new_room_offer()
+    if bom_party and bom_party.S and bom_party.S.code then return nil end
+    if G.GAME and (G.GAME.bom_quick_match or G.GAME.mp_searching) then return nil end
+    local st = bom_match.get_state()
+    if not (st and st.is_host) then return nil end
+    return st.visibility == "public" and "public" or "private"
+end
+
+function R.on_room_missing()
+    if R.exit_pending or R.exiting or R.restoring then return end
+    if R.move and R.move.lobby and R.move_pending() then return end
+    if bom_match.get_phase() ~= bom_match.PHASE.LOBBY then return end
+    if bom_party and bom_party.S and bom_party.S.code then return end
+    if G.GAME and (G.GAME.bom_quick_match or G.GAME.mp_searching) then return end
+    dbg("lobby room is gone on the server")
+    R.clear_session()
+    R.exit_to_menu({ reason = "room_gone", title = mod_loc("Room closed"), context = "lobby", new_room = R.new_room_offer() })
+end
+
+function R.exit_to_menu(info)
+    if R.exit_pending then return end
+    R.exit_pending = info or {}
+    dbg("exit to menu queued: " .. tostring(R.exit_pending.reason))
+end
+
+function R.do_exit()
+    local info = R.exit_pending
+    R.exit_pending = nil
+    R.exiting = true
+    R.stop_reconnect()
+    R.outbox = {}
+    R.opp_away = nil
+    R.hide_all_boxes()
+    R.pending_table = nil
+    pcall(function() if bom_ui and bom_ui.hide_pvp_waiting then bom_ui.hide_pvp_waiting() end end)
+    pcall(function() if bom_ui and bom_ui.destroy_match_hud then bom_ui.destroy_match_hud() end end)
+    if not info.keep_match then
+        pcall(function() if bom_core then bom_core.disconnect() end end)
+        pcall(function() if bom_match then bom_match.restore_fairness() end end)
+        pcall(function() if bom_match then bom_match.reset() end end)
+    end
+    if not info.silent then R.menu_popup = info end
+    R.after_menu = info.after
+    local in_run = G.STAGE == G.STAGES.RUN
+    pcall(function() if G.GAME then G.GAME.multiplayer = nil end end)
+    pcall(function() if G.OVERLAY_MENU then G.FUNCS.exit_overlay_menu() end end)
+    if in_run then
+        G.FUNCS.go_to_menu()
+    else
+        R.exiting = false
+        pcall(function() if bom_ui and bom_ui.hide_lobby then bom_ui.hide_lobby() end end)
+        R.menu_popup_at = now() + 0.3
+    end
+end
+
+function R.show_menu_popup()
+    local info = R.menu_popup
+    R.menu_popup = nil
+    if not info then return end
+    local title, colour = info.title, G.C.RED
+    if not title then title, colour = result_title(info.result) end
+    local lines = {}
+    if info.opp_name and info.opp_name ~= "" then lines[#lines + 1] = mod_loc("vs ") .. info.opp_name end
+    lines[#lines + 1] = R.reason_text(info.reason, info.context)
+    if info.context == "post" then lines[#lines + 1] = mod_loc("The room is closed.") end
+    local buttons = { { label = mod_loc("OK"), colour = G.C.BLUE, fn = function() end } }
+    if info.new_room then
+        lines[#lines + 1] = mod_loc("Make a new room?")
+        local vis = info.new_room
+        buttons = {
+            { label = mod_loc("New room"), colour = G.C.GREEN, fn = function()
+                pcall(function() if G.FUNCS.open_multiplayer_menu then G.FUNCS.open_multiplayer_menu() end end)
+                pcall(function() bom_room.create(vis) end)
+            end },
+            { label = mod_loc("Not now"), colour = G.C.UI.BACKGROUND_INACTIVE, fn = function() end },
+        }
+    end
+    R.show_overlay({
+        id = "info",
+        title = title,
+        title_colour = info.title_colour or colour,
+        lines = lines,
+        buttons = buttons,
+    })
+end
+
+function R.check_rejoin()
+    if not R.has_match_session() then return end
+    if bom_match.get_phase() ~= bom_match.PHASE.NONE then return end
+    if R.rc.active or R.exit_pending then return end
+    R.checking = true
+    dbg("check_rejoin " .. R.session.code)
+    bom_core.connect(function()
+        if not R.session then return end
+        bom_core.send({ type = "check_rejoin", code = R.session.code, token = R.session.token })
+    end, { silent = true, on_fail = function()
+        R.checking = false
+        dbg("check_rejoin: server unreachable")
+        R.menu_check_at = now() + 5
+    end })
+end
+
+local function show_prompt(d)
+    R.prompt = { deadline = now() + (tonumber(d.secondsLeft) or 900), status = d }
+    R.prompt_status = d
+    R.ui.prompt_time = mod_loc("Time left") .. ": " .. fmt_time(tonumber(d.secondsLeft) or 900)
+    local lines = {}
+    local kinds = { teams = "Teams", br = "Battle Royale", raid = "Co-op Raid", race = "Race" }
+    if d.party and kinds[d.kind] then lines[#lines + 1] = mod_loc(kinds[d.kind]) end
+    if d.opponentName and d.opponentName ~= "" and d.kind ~= "raid" then lines[#lines + 1] = mod_loc("vs ") .. tostring(d.opponentName) end
+    if d.party then
+        lines[#lines + 1] = mod_loc("Your seat is held while the others keep playing.")
+    else
+        lines[#lines + 1] = d.opponentWaiting and mod_loc("Your opponent is waiting for you.") or mod_loc("Your opponent is not connected.")
+    end
+    lines[#lines + 1] = { ref_table = R.ui, ref_value = "prompt_time" }
+    R.show_overlay({
+        id = "prompt",
+        title = mod_loc("Match in progress"),
+        lines = lines,
+        buttons = {
+            { label = mod_loc("Rejoin"), colour = G.C.GREEN, fn = function()
+                R.prompt = nil
+                dbg("prompt: Rejoin")
+                R.rejoin_now()
+            end },
+            { label = mod_loc("Leave match"), colour = G.C.RED, fn = function()
+                R.prompt = nil
+                if not R.session then return end
+                dbg("prompt: Leave match")
+                R.giving_up = true
+                bom_core.send({ type = "leave_match", code = R.session.code, token = R.session.token })
+            end },
+            { label = mod_loc("Later"), colour = G.C.UI.BACKGROUND_INACTIVE, fn = function()
+                R.prompt = nil
+                R.checking = false
+                pcall(bom_core.disconnect)
+            end },
+        },
+    })
+end
+
+function R.on_rejoin_status(d)
+    R.checking = false
+    R.end_rejoin_wait()
+    if type(d) ~= "table" then return end
+    if R.session and d.code and d.code ~= R.session.code then return end
+    if d.rejoinable then
+        if bom_match.get_phase() ~= bom_match.PHASE.NONE then return end
+        if G.STAGE ~= G.STAGES.MAIN_MENU then
+            R.menu_check_at = now() + 1
+            return
+        end
+        if R.session and R.session.auto_rejoin and not needs_session_switch() then
+            R.session.auto_rejoin = nil
+            write_session()
+            dbg("auto rejoin after the session switch")
+            return send_rejoin()
+        end
+        show_prompt(d)
+        return
+    end
+    R.clear_session()
+    pcall(bom_core.disconnect)
+    if d.reason == "no_match" then return end
+    R.add_ended_game(d)
+    if R.giving_up then
+        R.giving_up = false
+        R.show_menu_popup_now({ result = d.result, reason = d.reason or "abandoned" })
+        return
+    end
+    R.show_menu_popup_now({ result = d.result, reason = d.reason })
+end
+
+function R.add_ended_game(d)
+    if not (d and d.result and bom_ranked and bom_ranked.session_add) then return end
+    local st = R.prompt_status or {}
+    R.prompt_status = nil
+    pcall(bom_ranked.session_add, { result = d.result, reason = d.reason, opp = st.opponentName, mode = st.mode, ante = st.ante })
+end
+
+function R.show_menu_popup_now(info)
+    R.menu_popup = info
+    R.menu_popup_at = now() + 0.1
+end
+
+function R.on_rejoin_failed(d)
+    dbg("rejoin_failed reason=" .. tostring(d and d.reason))
+    if R.move and R.move.lobby and R.move.sent then lobby_move_failed() return end
+    R.checking = false
+    local waited = R.rejoin_wait ~= nil
+    R.end_rejoin_wait()
+    if d and d.reason == "already_in_room" then
+        R.stop_reconnect()
+        if waited then R.show_menu_popup_now({ reason = "already_in_room", title = mod_loc("Could not rejoin") }) end
+        return
+    end
+    R.clear_session()
+    if R.rc.active or in_live_match() then
+        R.stop_reconnect()
+        local info = { result = d and d.result, reason = d and d.reason or "not_found" }
+        if bom_match and bom_match.get_state then info.opp_name = bom_match.get_state().opp_name end
+        R.exit_to_menu(info)
+        return
+    end
+    R.add_ended_game(d)
+    pcall(bom_core.disconnect)
+    R.show_menu_popup_now({ result = d and d.result, reason = d and d.reason or "not_found" })
+end
+
+local function current_location()
+    local loc = nil
+    pcall(function()
+        if G.STATE == G.STATES.SHOP then
+            loc = "loc_shop"
+        elseif G.STATE == G.STATES.BLIND_SELECT then
+            loc = G.GAME.mp_blind_ready and "loc_ready" or "loc_selecting"
+        elseif G.GAME.facing_blind then
+            local key = G.GAME.round_resets.blind_choices[G.GAME.blind_on_deck] or "unknown"
+            loc = "loc_playing-" .. key
+        end
+    end)
+    return loc
+end
+
+local function resend_location()
+    local loc = current_location()
+    if not loc then return end
+    pcall(function() bom_match.get_state()._last_sent_location = nil end)
+    bom_match.send_location(loc)
+end
+
+local function apply_opp_location(d)
+    if d.opp and type(d.opp.location) == "string" and d.opp.location ~= "" then
+        pcall(function()
+            if bom_events and bom_events.dispatch then
+                bom_events.dispatch({ type = "set_location", location = d.opp.location })
+            end
+        end)
+    end
+end
+
+local function missed_result(d, seen)
+    local list = type(d.pvpResults) == "table" and d.pvpResults or {}
+    if #list <= (seen or 0) then return nil end
+    local r = list[#list]
+    if type(r) ~= "table" then return nil end
+    local pid = d.playerId
+    local my = pid == 0 and r.p0Score or r.p1Score
+    local op = pid == 0 and r.p1Score or r.p0Score
+    local result = "draw"
+    if r.winner ~= nil then result = (r.winner == pid) and "win" or "lose" end
+    return {
+        type = "pvp_resolved", result = result, myScore = my or 0, oppScore = op or 0,
+        myLives = d.me and d.me.lives, oppLives = d.opp and d.opp.lives,
+        matchEnded = false, ante = r.ante, blind = r.blind,
+    }
+end
+
+local function sync_ready(d, live)
+    pcall(function()
+        local pvp = d.pvp or {}
+        G.GAME.mp_opponent_blind_ready = pvp.oppReady == true
+        if live and G.GAME.mp_blind_ready and not pvp.myReady and G.STATE == G.STATES.BLIND_SELECT then
+            if not outbox_has("ready_blind") then
+                local deck = G.GAME.blind_on_deck
+                bom_core.send({ type = "ready_blind", ante = G.GAME.round_resets and G.GAME.round_resets.ante,
+                    blind = deck == "Small" and "S" or deck == "Big" and "B" or "L" })
+            end
+        elseif not live then
+            G.GAME.mp_blind_ready = false
+            G.GAME.mp_blind_ready_text = mod_loc("Ready")
+        end
+    end)
+end
+
+local function sync_opp_presence(d)
+    if d.opp and d.opp.connected == false then
+        R.set_opp_away(d.opp.secondsLeft, nil, true)
+    elseif R.opp_away then
+        R.clear_opp_away(false)
+    end
+end
+
+local function resync_live(d)
+    dbg("rejoin_ok live resync")
+    R.stop_reconnect()
+    bom_match.apply_live_rejoin(d)
+    local missed = missed_result(d, bom_match.get_state().pvp_results_seen)
+    if missed then
+        dbg("applying PvP result missed while away")
+        bom_match.on_pvp_resolved(missed)
+    end
+    sync_ready(d, true)
+    apply_opp_location(d)
+    local box = R.outbox
+    R.outbox = {}
+    for _, m in ipairs(box) do bom_core.send(m) end
+    resend_location()
+    sync_opp_presence(d)
+    if G.culled_table and G.culled_table ~= R.last_table then
+        R.pending_table = G.culled_table
+        R.pending_key = true
+    end
+    R.upload_pending(true)
+end
+R.resync_live = resync_live
+
+local function fix_pvp_state(d)
+    local rr = G.GAME.round_resets
+    if not rr then return end
+    local key = G.GAME.blind_on_deck or "Small"
+    local in_round = G.GAME.facing_blind and (G.STATE == G.STATES.SELECTING_HAND
+        or G.STATE == G.STATES.HAND_PLAYED or G.STATE == G.STATES.DRAW_TO_HAND)
+    if not in_round then
+        if G.STATE == G.STATES.ROUND_EVAL and G.GAME.mp_blind_loss_pending then
+            bom_match.restore_pending_loss(d.me and d.me.lives)
+        end
+        return
+    end
+    bom_match.set_current_blind(rr.ante, blind_letter(key))
+    local pvp_slot = rr.pvp_blind_choices and rr.pvp_blind_choices[key]
+    if pvp_slot == nil then pvp_slot = bom_match.is_blind_pvp(rr.ante, blind_letter(key)) end
+    if not pvp_slot then return end
+    G.GAME.blind.pvp = true
+    G.GAME.mp_in_boss_blind = true
+    bom_match.transition(bom_match.PHASE.PVP_BLIND)
+    local pvp = d.pvp or {}
+    pcall(function()
+        if G.GAME.mp_opponent_panel and pvp.oppScore ~= nil then
+            G.GAME.mp_opponent_panel.score = pvp.oppScore
+        end
+    end)
+    local missed = missed_result(d, G.GAME.mp_pvp_results_seen or 0)
+    if missed and not pvp.started and (missed.ante == nil or missed.ante == rr.ante) then
+        dbg("restore: PvP blind resolved while away, closing it")
+        if missed.result == "lose" then bom_match.set_display_lives((tonumber(missed.myLives) or 0) + 1) end
+        bom_match.on_pvp_resolved(missed)
+        bom_match.restore_counts(d)
+        G.GAME.blind.pvp = true
+r 12 1718 %20%20%20%20%20%20%20%20 -
+l 10
+            pcall(function() G.hand:unhighlight_all() end)
+        end
+        return
+    end
+    if pvp.myFinished then
+        dbg("restore: already finished this PvP blind, waiting for opponent")
+        bom_match.mark_pvp_submitted()
+        G.GAME.current_round.hands_left = 0
+        G.GAME.current_round.discards_left = 0
+        bom_pvp_hud._pvp_finished_token = bom_pvp_hud.blind_token()
+r 12 1718 %20%20%20%20%20%20%20%20 -
+l 2
+            pcall(function() G.hand:unhighlight_all() end)
+            pcall(function() G.FUNCS.draw_from_hand_to_discard() end)
+r 16 468 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 2 402 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 32
+        end
+    end
+end
+
+function R.finish_restore(d, from_save)
+    if not G or not G.GAME then return end
+    dbg("finish_restore from_save=" .. tostring(from_save) .. " state=" .. tostring(G.STATE))
+    bom_match.apply_restored_game(d)
+    sync_ready(d, false)
+    apply_opp_location(d)
+    if from_save then pcall(fix_pvp_state, d) end
+    pcall(function() if bom_pvp_hud and bom_pvp_hud.patch_run_hud_for_mp then bom_pvp_hud.patch_run_hud_for_mp() end end)
+    sync_opp_presence(d)
+    if from_save and G.STATE ~= G.STATES.SHOP and G.STATE ~= G.STATES.BLIND_SELECT then
+        resend_location()
+    end
+    R.restoring = false
+end
+
+local function restore_run(d)
+    dbg("rejoin_ok full restore, snapshot=" .. tostring(d.snapshot and d.snapshot.bytes))
+    R.stop_reconnect()
+    R.hide_all_boxes()
+    R.restoring = true
+    local save = decode_snapshot(d.snapshot)
+    pcall(function() if G.OVERLAY_MENU then G.FUNCS.exit_overlay_menu() end end)
+    pcall(function() if bom_ui and bom_ui.hide_lobby then bom_ui.hide_lobby() end end)
+    bom_match.restore_from_rejoin(d)
+    R.pending_table = nil
+    if save then
+        bom_match.set_starting_mp_run()
+        G.FUNCS.start_run(nil, { savetext = save, mp_start = true })
+r 1 112 %20%20%20%20%20%20%20%20 -
+l 11
+            trigger = "immediate",
+            no_delete = true,
+            func = function()
+                local ok, err = pcall(R.finish_restore, d, true)
+                if not ok then dbg("finish_restore failed: " .. tostring(err)) end
+                return true
+            end,
+        }))
+    else
+        dbg("no usable snapshot, starting the run from the match seed")
+        bom_room.do_mp_start_run(d.seed, "rejoin")
+r 1 112 %20%20%20%20%20%20%20%20 -
+l 366
+            trigger = "immediate",
+            no_delete = true,
+            func = function()
+                local ok, err = pcall(R.finish_restore, d, false)
+                if not ok then dbg("finish_restore failed: " .. tostring(err)) end
+                return true
+            end,
+        }))
+    end
+end
+
+R.restore_run = restore_run
+
+function R.on_rejoin_ok(d)
+    if type(d) ~= "table" then return end
+    R.checking = false
+    R.end_rejoin_wait()
+    R.prompt = nil
+    R.store_session(d.code, d.token, d.playerId, true, d.id)
+    local moved = d.moved == true
+    if d.boot ~= nil then
+        local boot = tostring(d.boot)
+        if R.move_pending() and R.last_boot and R.last_boot ~= boot then moved = true end
+        R.last_boot = boot
+    end
+    if moved then
+        R.move = nil
+        R.move_grace = { until_t = now() + 8 }
+        show_toast(mod_loc("The server restarted. Your match moved to the new server."))
+    end
+    R.seq = math.max(R.seq, tonumber(d.snapshot and d.snapshot.seq) or 0)
+    local st = bom_match.get_state()
+    local live = G.STAGE == G.STAGES.RUN and G.GAME and G.GAME.multiplayer
+        and in_live_match() and st.room_code == d.code
+    if live then
+        resync_live(d)
+    else
+        restore_run(d)
+    end
+    pcall(function() bom_match.set_final_state(d.finalAnte, d.suddenDeath) end)
+end
+
+function R.on_match_session(d)
+    if type(d) ~= "table" then return end
+    local id = d.id
+    if type(id) ~= "string" and bom_room and bom_room.seat and bom_room.seat.code == d.code then id = bom_room.seat.id end
+    R.store_session(d.code, d.token, d.playerId, true, id)
+    R.seq = 0
+    R.last_table = nil
+    R.holdSeconds = tonumber(d.holdSeconds) or R.holdSeconds
+    local t = G and G.culled_table
+    local tg, g = type(t) == "table" and t.GAME, G and G.GAME
+    if type(tg) == "table" and g and g.multiplayer and tg.round == g.round
+        and tg.round_resets and g.round_resets and tg.round_resets.ante == g.round_resets.ante
+        and tg.pseudorandom and g.pseudorandom and tg.pseudorandom.seed == g.pseudorandom.seed then
+        pcall(R.on_save)
+    end
+end
+
+function R.on_room_seat(d)
+    if type(d) ~= "table" or type(d.token) ~= "string" then return end
+    R.store_session(d.code, d.token, d.playerId, false)
+end
+
+function R.on_opponent_disconnected(d)
+    if not in_live_match() then return end
+    dbg("opponent away reason=" .. tostring(d.reason) .. " secondsLeft=" .. tostring(d.secondsLeft))
+    R.set_opp_away(d.secondsLeft, d.reason, true)
+end
+
+function R.on_opponent_reconnected(d)
+    dbg("opponent reconnected")
+    if R.move_grace then R.move_grace.held = nil end
+    R.clear_opp_away(true)
+end
+
+function R.on_state_update(d)
+    if type(d) ~= "table" or not in_live_match() then return end
+    if d.oppConnected == false and d.oppSecondsLeft ~= nil then
+        if not R.opp_away then
+            R.set_opp_away(d.oppSecondsLeft, nil, true)
+        else
+            R.opp_away.deadline = now() + (tonumber(d.oppSecondsLeft) or 0)
+        end
+    elseif d.oppConnected == true and R.opp_away then
+        R.clear_opp_away(true)
+    end
+end
+
+function R.on_match_ended(d)
+    if type(d) ~= "table" then return end
+    dbg("match_ended result=" .. tostring(d.result) .. " reason=" .. tostring(d.reason))
+    R.clear_session()
+    R.stop_reconnect()
+    R.hide_box("away")
+    R.opp_away = nil
+    if bom_match.is_match_over() then return end
+    if not bom_match.is_active() then
+        R.add_ended_game(d)
+        return
+    end
+    bom_match.end_match(d.result or "draw", d.reason, { from_server = true })
+end
+
+function R.on_room_closed(d)
+    dbg("room_closed reason=" .. tostring(d and d.reason) .. " post=" .. tostring(d and d.post_match))
+    R.clear_session()
+    R.stop_reconnect()
+    if R.exit_pending or R.exiting or R.restoring then return end
+    local phase = bom_match.get_phase()
+    local P = bom_match.PHASE
+    local opp_name = bom_match.get_state().opp_name
+    if phase == P.LOBBY or phase == P.STARTING then
+        R.exit_to_menu({ reason = d and d.reason, title = mod_loc("Room closed"), context = "lobby", new_room = R.new_room_offer() })
+    elseif phase == P.MATCH_END or bom_match.is_match_over() then
+        if G.STAGE ~= G.STAGES.RUN or G.screenwipe then
+            pcall(bom_match.restore_fairness)
+            pcall(bom_match.reset)
+            return
+        end
+        if not (d and d.party) and bom_ui and bom_ui.results_room_closed then
+            pcall(bom_ui.results_room_closed, d and d.reason)
+            return
+        end
+        R.exit_to_menu({ reason = d and d.reason, title = mod_loc("Room closed"), context = "post", opp_name = opp_name })
+    elseif bom_match.is_in_match() then
+        R.exit_to_menu({ reason = d and d.reason, title = mod_loc("Room closed"), opp_name = opp_name })
+    end
+end
+
+function R.on_session_replaced()
+    dbg("session_replaced")
+    R.session = nil
+    R.stop_reconnect()
+    if bom_match.is_active() then
+        R.exit_to_menu({ reason = "session_replaced", title = mod_loc("Connection lost") })
+    end
+end
+
+function R.on_match_end_local(result, reason)
+    R.clear_session()
+    R.stop_reconnect()
+    R.hide_box("away")
+    R.opp_away = nil
+    if R.is_closing_reason(reason) then
+        local info = { result = result, reason = reason }
+        pcall(function() info.opp_name = bom_match.get_state().opp_name end)
+        R.exit_to_menu(info)
+        return true
+    end
+    return false
+end
+
+function R.on_quit_to_menu()
+    if not in_live_match() or not R.has_match_session() then
+        if bom_match and bom_match.is_match_over and bom_match.is_match_over() then R.clear_session() end
+        return false
+    end
+    dbg("player went to the menu mid-match, match is held")
+    R.upload_pending(true)
+    if not R.rc.active then bom_core.send({ type = "return_to_menu" }) end
+    R.stop_reconnect()
+    R.outbox = {}
+    R.opp_away = nil
+    R.hide_all_boxes()
+    pcall(function() if bom_ui and bom_ui.hide_pvp_waiting then bom_ui.hide_pvp_waiting() end end)
+    pcall(function() if bom_ui then bom_ui.destroy_match_hud() end end)
+    if G.GAME then G.GAME.multiplayer = nil end
+    pcall(bom_core.disconnect)
+    pcall(bom_match.restore_fairness)
+    pcall(bom_match.reset)
+    return true
+end
+
+function R.on_shutdown()
+    pcall(function()
+        if R.pending_table then R.upload_pending(true) end
+    end)
+end
+
+local function pvp_watchdog(t)
+    local hud = bom_pvp_hud
+    if not hud or not in_live_match() or R.rc.active or not bom_core.is_connected() then
+        R.pvp_resend_at, R.end_pvp_at = nil, nil
+        return
+    end
+    if bom_match.is_end_pvp() then
+        R.end_pvp_at = R.end_pvp_at or t + 3
+        if t >= R.end_pvp_at and G.GAME and (G.GAME.STOP_USE or 0) > 0 then
+            dbg("PvP result was waiting on STOP_USE, cleared")
+            G.GAME.STOP_USE = 0
+        end
+    else
+        R.end_pvp_at = nil
+    end
+    local finished = hud._pvp_finished_token and hud._pvp_finished_token == hud.blind_token()
+        and not bom_match.is_end_pvp() and bom_nemesis and bom_nemesis.in_unresolved_pvp_blind()
+    if not finished then
+        R.pvp_resend_at = nil
+        return
+    end
+    R.pvp_resend_at = R.pvp_resend_at or t + 4
+    if t < R.pvp_resend_at then return end
+    R.pvp_resend_at = t + 4
+    local st = bom_match.get_state()
+    bom_core.send({ type = "blind_finished", ante = st.current_ante, blind = st.current_blind, score = G.GAME.chips or 0 })
+end
+
+function R.update(dt)
+    local t = now()
+    pcall(pvp_watchdog, t)
+    if R.exit_pending then
+        local ok, err = pcall(R.do_exit)
+        if not ok then dbg("do_exit failed: " .. tostring(err)) R.exiting = false end
+    end
+
+    if R.move_grace and t >= R.move_grace.until_t then
+        local held = R.move_grace.held
+        R.move_grace = nil
+        if held and in_live_match() then R.set_opp_away(held.seconds_left, held.reason, held.show) end
+    end
+
+    if R.rc.active then
+        if R.rc.quiet_until and t >= R.rc.quiet_until then
+            R.rc.quiet_until = nil
+            R.show_box({
+                id = "reconnect",
+                title = mod_loc("Connection lost"),
+                title_colour = G.C.RED,
+                lines = { mod_loc("Reconnecting to the server...") },
+                y = -1.5,
+            })
+        end
+        if not R.rc.in_flight and t >= R.rc.next_at then
+            try_reconnect()
+        elseif R.rc.in_flight and R.rc.sent_at and t - R.rc.sent_at > REJOIN_REPLY_TIMEOUT then
+            dbg("no reply to rejoin_match, retrying")
+            pcall(bom_core.disconnect)
+            schedule_retry()
+        elseif R.rc.in_flight and not R.rc.sent_at and t - (R.rc.started_at or t) > ATTEMPT_TIMEOUT then
+            dbg("reconnect attempt " .. R.rc.attempts .. " never connected, retrying")
+            pcall(bom_core.disconnect)
+            schedule_retry()
+        end
+    elseif not (R.exit_pending or R.exiting or R.restoring) and R.has_match_session() and in_live_match()
+        and G.STAGE == G.STAGES.RUN and not bom_core.is_connected() then
+        R.offline_since = R.offline_since or t
+        if t - R.offline_since > OFFLINE_GRACE then
+            R.offline_since = nil
+            dbg("in a live match without a connection, reconnecting")
+            pcall(bom_core.disconnect)
+            R.begin_reconnect()
+        end
+    else
+        R.offline_since = nil
+    end
+
+    if R.opp_away then
+        local left = math.max(0, R.opp_away.deadline - t)
+        R.ui.away_time = mod_loc("Time left") .. ": " .. fmt_time(left)
+        pcall(function()
+            if R.opp_away.dismissed and G.GAME and G.GAME.mp_blind_ready and not R.opp_away.ready_shown then
+                R.opp_away.ready_shown = true
+                R.opp_away.dismissed = false
+                R.show_away_popup()
+            elseif G.GAME and not G.GAME.mp_blind_ready then
+                R.opp_away.ready_shown = false
+            end
+        end)
+    end
+
+    if R.prompt then
+        R.ui.prompt_time = mod_loc("Time left") .. ": " .. fmt_time(R.prompt.deadline - t)
+        if not R.is_overlay_shown("prompt") then R.prompt = nil end
+    end
+
+    for id, b in pairs(R.boxes) do
+        if b.until_t and t >= b.until_t then R.hide_box(id) end
+    end
+
+    if R.pack.job then R.poll_pack() end
+    if R.pending_table then R.upload_pending(false) end
+
+    if R.menu_check_at and t >= R.menu_check_at then
+        R.menu_check_at = nil
+        if G.STAGE == G.STAGES.MAIN_MENU and (not G.OVERLAY_MENU or (R.menu_check_tries or 0) >= 4) then
+            R.menu_check_tries = 0
+            R.check_rejoin()
+        elseif G.STAGE == G.STAGES.MAIN_MENU then
+            R.menu_check_tries = (R.menu_check_tries or 0) + 1
+            R.menu_check_at = t + 1
+        elseif R.has_match_session() and bom_match.get_phase() == bom_match.PHASE.NONE then
+            R.menu_check_at = t + 1
+        end
+    end
+
+    if R.rejoin_wait then
+        if t >= R.rejoin_wait.until_t then
+            dbg("no reply to rejoin_match from the menu")
+            R.end_rejoin_wait()
+            pcall(bom_core.disconnect)
+            R.show_menu_popup_now({ reason = "no_reply", title = mod_loc("Could not rejoin") })
+        end
+    end
+
+    if R.menu_popup_at and t >= R.menu_popup_at then
+        R.menu_popup_at = nil
+        local rk = bom_ranked
+        if rk and rk.results_pending and rk.results_pending() and rk.maybe_show_results then pcall(rk.maybe_show_results) end
+        if rk and rk.S and rk.S.showing then
+            R.menu_popup = nil
+        else
+            R.show_menu_popup()
+        end
+    end
+end
+
+function R.init()
+    if mod_loc_register then
+        mod_loc_register({ fr = { ["The other players are still playing."] = "Les autres joueurs jouent encore.",
+                ["Your seat is held while the others keep playing."] = "Votre place est gardée pendant que les autres continuent.",
+                ["Could not rejoin"] = "Impossible de revenir",
+                ["The server did not answer. Open Multiplayer to try again."] = "Le serveur n'a pas répondu. Ouvrez Multijoueur pour réessayer.",
+                ["Leave the room you are in first, then try again."] = "Quittez d'abord le salon où vous êtes, puis réessayez." },
+            es = { ["The other players are still playing."] = "Los otros jugadores siguen jugando.",
+                ["Your seat is held while the others keep playing."] = "Tu plaza se guarda mientras los demás siguen jugando.",
+                ["Could not rejoin"] = "No se pudo volver",
+                ["The server did not answer. Open Multiplayer to try again."] = "El servidor no respondió. Abre Multijugador para intentarlo de nuevo.",
+                ["Leave the room you are in first, then try again."] = "Sal primero de la sala en la que estás y vuelve a intentarlo." } })
+    end
+    R.load_session()
+    if R.session and not R.session.in_match then R.clear_session() end
+
+    if save_run and not R._save_hooked then
+        R._save_hooked = true
+        local save_run_ref = save_run
+        save_run = function(...)
+            local r = save_run_ref(...)
+            pcall(R.on_save)
+            return r
+        end
+    end
+
+    if Game and Game.main_menu and not R._menu_hooked then
+        R._menu_hooked = true
+        local main_menu_ref = Game.main_menu
+        Game.main_menu = function(self, ...)
+            local r = main_menu_ref(self, ...)
+            R.exiting = false
+            R.restoring = false
+            if R.menu_popup then
+                R.menu_popup_at = now() + 0.8
+            elseif R.after_menu then
+                local fn = R.after_menu
+                R.after_menu = nil
+                G.E_MANAGER:add_event(Event({ trigger = "after", delay = 0.6, blocking = false, blockable = false,
+                    func = function() pcall(fn) return true end }))
+            end
+            if R.has_match_session() then R.menu_check_at = now() + 1.5 end
+            return r
+        end
+    end
+    dbg("rejoin module ready, stored session=" .. tostring(R.session and R.session.code))
+end
+
+return R
+end

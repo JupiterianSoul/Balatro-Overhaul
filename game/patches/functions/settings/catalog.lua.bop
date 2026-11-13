@@ -1,0 +1,515 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 392
+local S = SettingsUI
+local L = function(s) return mod_loc(s) end
+
+local function save() if G and G.save_settings then pcall(function() G:save_settings() end) end end
+S.save = save
+
+local function find(list, value, default)
+  for i, v in ipairs(list) do if v == value then return i end end
+  return default or 1
+end
+
+local function mp_locked(key)
+  return (FairLock and FairLock.mp_setting_locked and FairLock.mp_setting_locked(key)) or false
+end
+
+local function speed_rule(what)
+  return bom_match and bom_match.speed_rule and bom_match.speed_rule(what) or false
+end
+
+local function touch() return UIK.touch() end
+
+function S.defaults()
+  local St, GR = G.SETTINGS, G.SETTINGS.GRAPHICS
+  GR.fps_cap = GR.fps_cap or (G.F_MOBILE and 3 or 6)
+  GR.show_fps = GR.show_fps or false
+  GR.fps_opacity = GR.fps_opacity or 80
+  if St.mod_menu_disabled == nil then St.mod_menu_disabled = false end
+  if St.hide_cheats_button == nil then St.hide_cheats_button = false end
+  if GR.show_online_status == nil then GR.show_online_status = true end
+  if GR.show_mode_indicator == nil then GR.show_mode_indicator = true end
+  if St.score_preview_enabled == nil then St.score_preview_enabled = false end
+  if GR.performance_mode == nil then GR.performance_mode = false end
+  St.joker_display = false
+  if St.drag_select == nil then St.drag_select = true end
+  if St.touch_pc_select == nil then St.touch_pc_select = false end
+  if St.fast_score_resolve == nil then St.fast_score_resolve = 1.0 end
+  if St.jimbo_comments_enabled == nil then St.jimbo_comments_enabled = false end
+  if St.jimbo_comments_rate == nil then St.jimbo_comments_rate = 2 end
+  if St.skip_score_animation == nil then St.skip_score_animation = false end
+  if St.orientation == nil then St.orientation = 1 end
+  if St.haptic_feedback == nil then St.haptic_feedback = true end
+  if St.haptic_intensity == nil then St.haptic_intensity = 50 end
+  if St.mute_unfocused == nil then St.mute_unfocused = false end
+  if St.default_hand_sort == nil then St.default_hand_sort = 1 end
+  if St.keyboard_play == nil then St.keyboard_play = true end
+  if St.safe_sell == nil then St.safe_sell = false end
+  if St.spectate_follow == nil then St.spectate_follow = true end
+  if GR.portrait_fill == nil then GR.portrait_fill = false end
+  GR.filter_type = GR.filter_type or 1
+  GR.filter_intensity = GR.filter_intensity or 50
+  GR.rainbow_speed = GR.rainbow_speed or 50
+  St.QUEUED_CHANGE = St.QUEUED_CHANGE or {}
+  if QOL and QOL.fill_defaults then QOL.fill_defaults() end
+end
+
+S.QOL_PLACE = {
+  Hand = {'gameplay', "Hand"}, Run = {'gameplay', "Run"}, Multiplayer = {'gameplay', "Run"},
+  Scoring = {'helpers', "Scoring"}, Shop = {'shop', "Shop"}, Tavern = {'shop', "Shop"},
+  Shortcuts = {'controls', "Shortcuts"}, Window = {'display', "Screen"},
+}
+
+function S.qol_pool()
+  local pool, order = {}, {}
+  local M = QOL and QOL.modules and QOL.modules.qol_tab
+  for _, r in ipairs(M and M.rows or {}) do
+    local ok, node = pcall(r.build)
+    if ok and type(node) == 'table' and node.uik_o then
+      local id = node.uik_o.id or ('set_qol_' .. (#order + 1))
+      if not pool[id] then
+        pool[id] = {node = node, section = r.section}
+        order[#order + 1] = id
+      end
+    elseif not ok then
+      print("[Settings] row " .. tostring(r.section) .. ": " .. tostring(node))
+    end
+  end
+  return {map = pool, order = order}
+end
+
+local function take(pool, id)
+  local e = pool and pool.map[id]
+  if not e or e.used then return nil end
+  e.used = true
+  return e.node
+end
+
+local function rows_of(list)
+  local out = {}
+  for _, n in ipairs(list or {}) do
+    if type(n) == 'table' and n.uik_o and not n.uik_header then out[#out + 1] = n end
+  end
+  return out
+end
+
+function S.speedrun_rows()
+  local SR = rawget(_G, "Speedrun")
+  if not (SR and SR.settings_rows) then return {} end
+  local tmp = {}
+  local ok = pcall(SR.settings_rows, tmp)
+  return ok and rows_of(tmp) or {}
+end
+
+local function gameplay(pool)
+  local St = G.SETTINGS
+  local mp_speed, mp_score, mp_skip = speed_rule("speed"), speed_rule("score"), speed_rule("skip")
+  local speeds = mp_speed and {0.5, 1, 2, 4} or {0.5, 1, 2, 4, 6, 8, 10, 12, 16, 20}
+  local scores = {1.0, 0.75, 0.5, 0.25, 0}
+  local mp_info = L("Locked in multiplayer")
+  local run = {
+    UIK.toggle{id = 'set_stake_sticker', label = L("Display Stake Sticker"), info = L("Show the stake sticker during runs"), ref_table = St, ref_value = 'run_stake_stickers', callback = save},
+    take(pool, 'set_qol_card_rounds'),
+  }
+  for _, r in ipairs(S.speedrun_rows()) do run[#run + 1] = r end
+  run[#run + 1] = take(pool, 'set_qol_focus_pause')
+  run[#run + 1] = take(pool, 'set_qol_quick_restart')
+  run[#run + 1] = take(pool, 'set_qol_confirm_leave')
+  run[#run + 1] = take(pool, 'set_spectate_follow')
+  return {
+    {title = "Speed", items = {
+      UIK.cycle{id = 'set_gamespeed', label = localize('b_set_gamespeed'), info = mp_speed and L("Up to 4x in multiplayer") or L("How fast the whole game plays"), options = speeds, current = find(speeds, St.GAMESPEED, 2),
+        speeds = speeds, callback = function(i, v) G.FUNCS.change_gamespeed{to_key = i, to_val = tonumber(v) or speeds[i]} save() end},
+      UIK.cycle{id = 'set_score_speed', label = L("Score Speed"), info = mp_score and mp_info or L("Speed of the scoring count"), options = {'100%', '75%', '50%', '25%', L("Instant")}, current = find(scores, St.fast_score_resolve, 1),
+        disabled = mp_score, callback = function(i) G.FUNCS.change_score_speed{to_key = i} end},
+      UIK.toggle{id = 'set_skip_score', label = L("Skip Score Animation"), info = mp_skip and mp_info or L("Jump straight to the final score"), ref_table = St, ref_value = 'skip_score_animation', disabled = mp_skip, callback = save},
+    }},
+    {title = "Hand", items = {
+      take(pool, 'set_drag'),
+      take(pool, 'set_drag_button'),
+      take(pool, 'set_hand_sort'),
+      take(pool, 'set_qol_double_tap'),
+      UIK.cycle{id = 'set_play_pos', label = localize('b_set_play_discard_pos'), info = L("Side of the Play and Discard buttons"), options = localize('ml_play_discard_pos_opt'), current = St.play_button_pos or 1,
+        callback = function(i) G.FUNCS.change_play_discard_position{to_key = i} save() end},
+      touch() and UIK.toggle{id = 'set_touch_pc_select', label = L("PC-style selection"), info = L("Tap a joker or consumable to select it"), ref_table = St, ref_value = 'touch_pc_select',
+        callback = function(v) if not v then for _, a in ipairs({G.jokers, G.consumeables}) do if a and a.unhighlight_all then a:unhighlight_all() end end end save() end} or nil,
+    }},
+    {title = "Run", items = run},
+  }
+end
+
+local function shop(pool)
+  return {
+    {title = "Shop", items = {
+      take(pool, 'set_safe_sell'),
+      take(pool, 'set_qol_interest_guard'),
+      take(pool, 'set_qol_sell_total'),
+      take(pool, 'set_qol_fast_packs'),
+      take(pool, 'set_qol_tavern_fast'),
+    }},
+  }
+end
+
+local function helpers(pool)
+  local St = G.SETTINGS
+  local lock_opt = mp_locked('hand_optimizer')
+  local host = L("Locked by the host")
+  local rates = {L("Rarely"), L("Sometimes"), L("Often")}
+  return {
+    {title = "Scoring", items = {
+      take(pool, 'set_score_preview'),
+    }},
+    {title = "Hand Optimizer", items = {
+      UIK.toggle{id = 'set_optimizer', label = L("Hand Optimizer"), info = lock_opt and host or L("Suggests the best hand to play"), ref_table = St, ref_value = 'hand_optimizer', disabled = lock_opt,
+        callback = function() save() if OPTIMIZER and OPTIMIZER.refresh then OPTIMIZER.refresh() end end},
+    }},
+    {title = "Jimbo", items = {
+      UIK.toggle{id = 'set_jimbo_comments', label = L("Jimbo Comments"), info = L("Jimbo reacts to what happens"), ref_table = St, ref_value = 'jimbo_comments_enabled',
+        callback = function() save() if not St.jimbo_comments_enabled and JIMBO_COMMENTS then JIMBO_COMMENTS.hide() end end},
+      UIK.cycle{id = 'set_jimbo_rate', label = L("How often Jimbo talks"), info = L("From quiet to chatty"), options = rates, current = St.jimbo_comments_rate or 2,
+        callback = function(i) St.jimbo_comments_rate = i save() end},
+    }},
+  }
+end
+
+local function controls(pool)
+  local C = rawget(_G, "Controls")
+  local input = {}
+  if C and C.settings_rows then
+    local ok, list = pcall(C.settings_rows)
+    if ok then input = rows_of(list) end
+  end
+  return {
+    {title = "Input", items = input},
+    {title = "Shortcuts", items = {take(pool, 'set_qol_speed_key'), take(pool, 'set_qol_mute_keys')}},
+  }
+end
+
+local function window_dirty()
+  local q, W = G.SETTINGS.QUEUED_CHANGE or {}, G.SETTINGS.WINDOW
+  return (q.screenmode and q.screenmode ~= W.screenmode) or q.screenres or q.vsync or (q.selected_display and q.selected_display ~= W.selected_display) or false
+end
+
+local function display(pool)
+  local GR = G.SETTINGS.GRAPHICS
+  local screen = {}
+  if G.F_VIDEO_SETTINGS then
+    local W, q = G.SETTINGS.WINDOW, G.SETTINGS.QUEUED_CHANGE
+    local disp = q.selected_display or W.selected_display
+    local mode = q.screenmode or W.screenmode
+    local res_option = GET_DISPLAYINFO(mode, disp)
+    local res = W.DISPLAYS[disp].screen_resolutions
+    if q.screenres then
+      for i, v in ipairs(res.values) do if v.w == q.screenres.w and v.h == q.screenres.h then res_option = i break end end
+    end
+    local vsync_on = (q.vsync or W.vsync) ~= 0
+    screen = {
+      UIK.cycle{id = 'set_screenmode', label = localize('b_set_windowmode'), info = L("Windowed, fullscreen or borderless"), options = localize('ml_windowmode_opt'), current = ({Windowed = 1, Fullscreen = 2, Borderless = 3})[mode] or 1,
+        callback = function(i) q.screenmode = ({"Windowed", "Fullscreen", "Borderless"})[i] q.screenres = nil UIK.refresh() end},
+      UIK.cycle{id = 'set_resolution', label = L("Resolution"), info = L("Size of the game window"), options = res.strings, current = res_option or 1,
+        callback = function(i) G.FUNCS.change_screen_resolution{to_key = i} UIK.refresh() end},
+      UIK.cycle{id = 'set_monitor', label = localize('b_set_monitor'), info = L("Screen the game opens on"), options = W.display_names, current = disp,
+        callback = function(i) q.selected_display = i UIK.refresh() end},
+      UIK.cycle{id = 'set_vsync', label = L("VSync"), info = L("Stops screen tearing"), options = localize('ml_vsync_opt'), current = vsync_on and 1 or 2,
+        callback = function(i) q.vsync = ((i == 1 and 1 or 0) ~= W.vsync) and (i == 1 and 1 or 0) or nil UIK.refresh() end},
+      UIK.action{id = 'set_apply_window', label = L("Apply Window Changes"), info = window_dirty() and L("You have changes to apply") or L("Nothing to apply"),
+        button_label = localize('b_set_apply'), button = 'settings_apply_window', colour = UIK.C.ok, disabled = not window_dirty()},
+    }
+  end
+  if PORTRAIT and PORTRAIT.allowed() then
+    table.insert(screen, 1, UIK.cycle{id = 'set_orientation', label = L("set_orient"), info = L(PORTRAIT.orient_old() and "set_orient_old" or "set_orient_info"),
+      options = {L("set_orient_auto"), L("set_orient_portrait"), L("set_orient_landscape")}, current = G.SETTINGS.orientation or 1,
+      callback = function(i)
+        local was = PORTRAIT.orient_old()
+        G.SETTINGS.orientation = i save() PORTRAIT.apply_orientation()
+        if was ~= PORTRAIT.orient_old() then UIK.refresh() end
+      end})
+  end
+  screen[#screen + 1] = UIK.cycle{id = 'set_fps_cap', label = L("FPS Cap"), info = L("Lower saves battery"), options = {"30", "40", "60", "90", "120", "144", "165", L("UNCAPPED")}, current = GR.fps_cap,
+    callback = function(i) G.FUNCS.change_fps_cap{to_key = i} end}
+  screen[#screen + 1] = take(pool, 'set_qol_window')
+  G.UI_SIZE_EDIT = G.UI_SIZE_EDIT or {value = math.floor((G.UI_SIZE or 1) * (G.UI_SIZE_EXTRA or 1) * 100 + 0.5)}
+  local fill_i = math.floor(window_fill() * 100 + 0.5)
+  local ui = {
+    UIK.slider{id = 'set_ui_size', label = L("UI Size"), info = L("Scale of the whole interface"), ref_table = G.UI_SIZE_EDIT, ref_value = 'value', min = UI_SIZE_MIN * 100, max = math.floor(ui_size_max() * UI_SIZE_OVER * 100 + 0.5),
+      callback = function() G.UI_SIZE_PENDING = true end},
+    UIK.cycle{id = 'set_window_size', label = L("Window Size"), info = L("How much of the screen menus fill"), options = {L("Classic"), "75%", "80%", "85%", "90%", "95%"},
+      current = ({[0] = 1, [75] = 2, [80] = 3, [85] = 4, [90] = 5, [95] = 6})[fill_i] or 4,
+      callback = function(i) GR.window_size = i save() end},
+    UIK.toggle{id = 'set_online', label = L("Online Status"), info = L("Server status in the corner"), ref_table = GR, ref_value = 'show_online_status', callback = save},
+    UIK.toggle{id = 'set_mode', label = L("Mode Indicator"), info = L("Normal or modded label in the corner"), ref_table = GR, ref_value = 'show_mode_indicator', callback = save},
+    UIK.toggle{id = 'set_show_fps', label = L("Show FPS Counter"), info = L("Drag it to move it"), ref_table = GR, ref_value = 'show_fps', callback = function() save() UIK.refresh() end},
+    UIK.slider{id = 'set_fps_opacity', label = L("FPS Opacity"), info = L("How see-through the counter is"), ref_table = GR, ref_value = 'fps_opacity', min = 0, max = 100, disabled = not GR.show_fps, callback = save},
+    UIK.action{id = 'set_fps_reset', label = L("Reset FPS Position"), info = L("Back to the default corner"), button_label = L("Reset"), button = 'reset_fps_position', colour = UIK.C.danger, disabled = not GR.show_fps},
+  }
+  if PORTRAIT and PORTRAIT.on() then
+    table.insert(ui, 1, UIK.toggle{id = 'set_portrait_fill', label = L("Fill the Screen"), info = L("Game windows reach the screen sides"), ref_table = GR, ref_value = 'portrait_fill',
+      callback = function() save() if PORTRAIT.set_fill then PORTRAIT.set_fill() end end})
+  end
+  return {
+    {title = "Screen", items = screen},
+    {title = "Interface", items = ui},
+  }
+end
+
+local function graphics()
+  local GR = G.SETTINGS.GRAPHICS
+  local look = {
+    UIK.cycle{id = 'set_shadows', label = localize("b_set_shadows"), info = L("Drop shadows under cards"), options = localize('ml_shadow_opt'), current = GR.shadows == 'On' and 1 or 2,
+      callback = function(i) G.FUNCS.change_shadows{to_key = i} end},
+    UIK.cycle{id = 'set_smoothing', label = localize("b_set_pixel_smoothing"), info = L("Soft or sharp pixels"), options = localize('ml_smoothing_opt'), current = GR.texture_scaling or 2,
+      callback = function(i) G.FUNCS.change_pixel_smoothing{to_key = i} end},
+  }
+  if suit_palette_setting_row then
+    look[#look + 1] = suit_palette_setting_row(save)
+    if suit_palette_custom_rows then suit_palette_custom_rows(look, save) end
+  end
+  local filter = {
+    UIK.cycle{id = 'set_filter', label = L("Filter Type"), info = L("Tints the whole screen"), options = {L("None"), L("Sepia"), L("B&W"), L("Rainbow RGB")}, current = GR.filter_type,
+      callback = function(i) G.FUNCS.change_filter_type{to_key = i} save() UIK.refresh() end},
+    UIK.slider{id = 'set_filter_int', label = L("Filter Intensity"), info = L("Strength of the filter"), ref_table = GR, ref_value = 'filter_intensity', min = 0, max = 100, disabled = GR.filter_type == 1, callback = save},
+  }
+  if GR.filter_type == 4 then
+    filter[#filter + 1] = UIK.slider{id = 'set_rainbow', label = L("Rainbow Speed"), info = L("How fast the colours cycle"), ref_table = GR, ref_value = 'rainbow_speed', min = 10, max = 200, callback = save}
+  end
+  return {
+    {title = "Look", items = look},
+    {title = "Effects", items = {
+      UIK.slider{id = 'set_crt', label = localize('b_set_CRT'), info = L("Old TV screen effect"), ref_table = GR, ref_value = 'crt', min = 0, max = 100, callback = save},
+      UIK.slider{id = 'set_shake', label = localize('b_set_screenshake'), info = L("Shake on big scores"), ref_table = G.SETTINGS, ref_value = 'screenshake', min = 0, max = 100, callback = save},
+      UIK.toggle{id = 'set_motion', label = localize('b_reduced_motion'), info = L("Fewer moving backgrounds"), ref_table = G.SETTINGS, ref_value = 'reduced_motion', callback = save},
+    }},
+    {title = "Colour Filter", items = filter},
+  }
+end
+
+local function performance()
+  local GR, St = G.SETTINGS.GRAPHICS, G.SETTINGS
+  local P = PERF_OPTS
+  P.fill_defaults()
+  local function pick(id, label, info, options, key, default, fn)
+    return UIK.cycle{id = id, label = L(label), info = L(info), options = options, current = GR[key] or default,
+      callback = function(i) fn(i) save() UIK.refresh() end}
+  end
+  local function flag(id, label, info, ref, key, fn)
+    return UIK.toggle{id = id, label = L(label), info = L(info), ref_table = ref, ref_value = key,
+      callback = function(v) if fn then fn(v) end save() end}
+  end
+  P.shadow_ref = P.shadow_ref or {}
+  P.shadow_ref.on = GR.shadows ~= 'Off'
+  return {
+    {title = "Quick Setup", items = {
+      UIK.toggle{id = 'set_perf', label = L("Performance Mode"), info = L("All light settings at once"), ref_table = GR, ref_value = 'performance_mode',
+        callback = function() G.FUNCS.toggle_performance_mode() UIK.refresh() end},
+      UIK.toggle{id = 'set_perf_fps', label = L("Show FPS Counter"), info = L("See how smooth the game runs"), ref_table = GR, ref_value = 'show_fps', callback = function() save() UIK.refresh() end},
+      UIK.action{id = 'set_perf_reset', label = L("Reset Performance"), info = L("Every option back to normal"), button_label = L("Reset"), button = 'perf_reset_all', colour = UIK.C.danger},
+    }},
+    {title = "Picture", items = {
+      pick('set_perf_resolution', "Picture Sharpness", "Lower is much faster", {L("perf_full"), "75%", L("perf_half")}, 'perf_resolution', 1, P.set_resolution),
+      pick('set_perf_bg', "Background", "The swirl behind the table", {L("perf_moving"), L("perf_slow"), L("perf_still"), L("perf_plain")}, 'perf_background', 1, P.set_background),
+      UIK.cycle{id = 'set_perf_shader', label = L("Card Shine"), info = L("Shine and tilt on cards"), options = {L("perf_full"), L("perf_simple"), L("perf_off")},
+        current = 4 - (GR.perf_shader_quality or 3), callback = function(i) P.set_shine(4 - i) save() end},
+      pick('set_perf_particles', "Particles", "Sparks and confetti", {L("perf_all"), L("perf_fewer"), L("perf_none")}, 'perf_particle_amount', 1, P.set_particles),
+      flag('set_perf_shadows', "Card Shadows", "Shadows under cards", P.shadow_ref, 'on', P.set_shadows),
+      pick('set_perf_filter', "Texture Look", "Smooth or crisp textures", {L("perf_smooth"), L("perf_crisp")}, 'perf_texture_filter', 1, P.set_texture_filter),
+    }},
+    {title = "Smoothness", items = {
+      UIK.cycle{id = 'set_perf_fps_cap', label = L("Frame Rate Limit"), info = L("Lower saves battery and heat"), options = {"30", "40", "60", "90", "120", "144", "165", L("UNCAPPED")}, current = GR.fps_cap,
+        callback = function(i) G.FUNCS.change_fps_cap{to_key = i} end},
+      flag('set_perf_away', "Slow in Background", "15 FPS while in another app", GR, 'perf_away_slow'),
+      flag('set_perf_culling', "Skip Hidden Cards", "Draws only what you see", GR, 'perf_offscreen_culling'),
+      flag('set_perf_gc', "Fewer Stutters", "Cleans memory in small steps", GR, 'perf_gc_tuning', function(v) apply_gc_tuning(v) end),
+      flag('set_perf_heavy', "Skip Long Score Counts", "Shortens very long counts", St, 'perf_heavy_scoring'),
+      flag('set_perf_canvas', "Half-Rate Table", "Faster but choppier", GR, 'perf_canvas_caching'),
+    }},
+  }
+end
+
+local function audio()
+  local St = G.SETTINGS
+  local out = {
+    {title = "Sound", items = {
+      UIK.slider{id = 'set_vol_master', label = localize('b_set_master_vol'), info = L("Everything at once"), ref_table = St.SOUND, ref_value = 'volume', min = 0, max = 100, callback = save},
+      UIK.slider{id = 'set_vol_music', label = localize('b_set_music_vol'), info = L("Music and Jukebox songs"), ref_table = St.SOUND, ref_value = 'music_volume', min = 0, max = 100, callback = save},
+      UIK.slider{id = 'set_vol_game', label = localize('b_set_game_vol'), info = L("Cards, chips and buttons"), ref_table = St.SOUND, ref_value = 'game_sounds_volume', min = 0, max = 100, callback = save},
+      UIK.toggle{id = 'set_mute_unfocused', label = L("Mute When Unfocused"), info = L("Silence while you use another app"), ref_table = St, ref_value = 'mute_unfocused',
+        callback = function() save() G.FUNCS.apply_focus_mute(not love.window or love.window.hasFocus()) end},
+    }},
+  }
+  if touch() then
+    out[2] = {title = "Vibration", items = {
+      UIK.toggle{id = 'set_haptic', label = L("Haptic Feedback"), info = L("Phone vibrates on plays"), ref_table = St, ref_value = 'haptic_feedback', callback = function(v) G.FUNCS.refresh_haptic_settings(v) UIK.refresh() end},
+      UIK.slider{id = 'set_haptic_int', label = L("Haptic Intensity"), info = L("Strength of the buzz"), ref_table = St, ref_value = 'haptic_intensity', min = 0, max = 100, disabled = not St.haptic_feedback,
+        callback = function() G.FUNCS.haptic_intensity_preview() save() end},
+    }}
+  end
+  return out
+end
+
+function S.flow_items(fn)
+  if type(fn) ~= 'function' then return {} end
+  local captured
+  local flow = UIK.flow
+  UIK.flow = function(o)
+    captured = type(o) == 'table' and o.items or nil
+    return {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {}}
+  end
+  local ok, err = pcall(fn)
+  UIK.flow = flow
+  if not ok then print("[Settings] flow: " .. tostring(err)) end
+  return captured or {}
+end
+
+function S.sections_of(items, first)
+  local out, cur = {}, nil
+  for i = 1, table.maxn(items) do
+    local it = items[i]
+    if type(it) == 'table' then
+      if it.uik_header then
+        cur = {title = tostring(it.uik_title or ''), raw_title = true, items = {}}
+        out[#out + 1] = cur
+        S.discard(it)
+      elseif it.uik_o then
+        if not cur then
+          cur = {title = first or '', items = {}}
+          out[#out + 1] = cur
+        end
+        cur.items[#cur.items + 1] = it
+      end
+    end
+  end
+  return out
+end
+
+local function jukebox()
+  if not (G.UIDEF and G.UIDEF.jukebox_tab) then return {} end
+  return S.sections_of(S.flow_items(G.UIDEF.jukebox_tab), "Jukebox")
+end
+
+local function account()
+  local St = G.SETTINGS
+  local profile = {
+    UIK.action{id = 'set_profile', label = L("Profile"), info = L("Switch or manage save profiles"), button_label = L("Open"), button = 'profile_select', colour = UIK.C.accent},
+  }
+r 15 6197 %20%20 -
+l 115
+    profile[#profile + 1] = UIK.action{id = 'set_language', label = L("Language"), info = L("Change the game language"), button_label = L("Open"), button = 'language_selection', colour = UIK.C.accent}
+  end
+  if SaveTransfer and SaveTransfer.settings_rows then
+    for _, r in ipairs(SaveTransfer.settings_rows()) do profile[#profile + 1] = r end
+  end
+  local other = {
+    UIK.toggle{id = 'set_modmenu', label = L("Disable Cheats"), info = L("Hides the Cheats toggle and button"), ref_table = St, ref_value = 'mod_menu_disabled', callback = save},
+    UIK.toggle{id = 'set_cheatbtn', label = L("Hide Cheats Button"), info = L("Cheats stay in the pause menu"), ref_table = St, ref_value = 'hide_cheats_button', callback = function() save() if remove_floating_mod_button then remove_floating_mod_button() end if G.STAGE == G.STAGES.RUN and create_floating_mod_button then create_floating_mod_button() end end},
+    UIK.toggle{id = 'set_crash', label = L("Send crash reports"), info = L("Sends the error and game info to the Overhaul team"), ref_table = St, ref_value = 'crashreports', callback = function() if CrashReports and CrashReports.chose then CrashReports.chose() end save() end},
+  }
+  if BOM_DEBUG_BUILD and not (DebugManager and DebugManager.is_enabled and DebugManager.is_enabled()) then
+    other[#other + 1] = UIK.action{id = 'set_debug_unlock', label = L("Unlock Debug"), info = L("Developer access, needs a PIN"), button_label = L("Unlock"), button = 'open_debug_pin', colour = UIK.C.warn}
+  end
+  local about = {
+    UIK.action{id = 'set_about', label = L("About the Overhaul"), info = L("Disclaimer, licences and privacy"), button_label = L("Open"), button = 'open_about', colour = UIK.C.accent},
+    UIK.action{id = 'set_changelog', label = L("Changelog"), info = L("What changed in each version"), button_label = L("Open"), button = 'open_changelog', colour = UIK.C.accent},
+  }
+  if ReleaseInfo and ReleaseInfo.settings_rows then
+    for _, r in ipairs(ReleaseInfo.settings_rows()) do about[#about + 1] = r end
+  end
+  return {
+    {title = "Profile", items = profile},
+    {title = "Other", items = other},
+    {title = "About", items = about},
+  }
+end
+
+S.GUIDES = {
+  {"Overview", 'open_guide_overview'}, {"Cheats", 'open_guide_modmenu'},
+  {"Custom Runs", 'open_guide_customruns'}, {"Progression", 'open_guide_progression'}, {"Quests", 'open_guide_quests'},
+  {"Customization", 'open_guide_profile'}, {"Market", 'open_guide_shop'}, {"Stakes", 'open_guide_stakes'},
+  {"Optimizer", 'open_guide_handoptimizer'}, {"Deck Creator", 'open_guide_deck_creator'},
+  {"Comments", 'open_guide_jimbo_comments'}, {"Modded Game", 'open_guide_modded_game'},
+  {"Mods & Workshop", 'open_guide_mods_workshop'}, {"The Casino", 'open_guide_tavern'}, {"Performance", 'open_guide_performance'},
+  {"Keyboard play", 'open_guide_keyboard'}, {"Trackpad", 'open_guide_trackpad'}, {"Touch controls", 'open_guide_touch'}, {"QoL", 'open_guide_qol'},
+  {"Random Run", 'open_guide_random_run'}, {"Speedrun", 'open_guide_speedrun'}, {"Daily Seed", 'open_guide_daily_seed'},
+  {"Run History", 'open_guide_run_history'}, {"Boss Practice", 'open_guide_boss_practice'}, {"Minigames", 'open_guide_minigames'},
+  {"The Forge", 'open_guide_joker_forge'}, {"Suit Colours", 'open_guide_suit_colours'}, {"Controller", 'open_guide_controller'},
+  {"Portrait mode", 'open_guide_portrait'},
+}
+
+S.GUIDES_MP = {
+  {"Game Modes", 'open_guide_multiplayer'}, {"Ranked", 'open_guide_mp_ranked'}, {"Match Rules", 'open_guide_mp_rules'},
+  {"Emotes & Chat", 'open_guide_mp_emotes'}, {"Replays", 'open_guide_mp_replays'}, {"Mods in MP", 'open_guide_mp_mods'},
+  {"Fair Play", 'open_guide_mp_fair'}, {"Switcheroo", 'open_guide_mp_switcheroo'}, {"Friends", 'open_guide_mp_friends'},
+  {"Showcase", 'open_guide_mp_showcase'},
+}
+
+local function guide()
+  local done = G.SETTINGS.tutorial_complete and not G.OVERLAY_TUTORIAL
+  local ov_done = G.FUNCS.overhaul_tutorial_done and G.FUNCS.overhaul_tutorial_done() or false
+  local menu = G.STAGE == G.STAGES.MAIN_MENU
+  local function buttons(list, colour)
+    local out = {}
+    for _, g in ipairs(list) do
+      if G.FUNCS[g[2]] then out[#out + 1] = {label = g[1], button = g[2], colour = colour, id = 'set_guide_' .. g[2]} end
+    end
+    return out
+  end
+  return {
+    {title = "Tutorials", items = {
+      UIK.action{id = 'set_replay_tutorial', label = L("Balatro tutorial"), info = L("Your first run with Jimbo's tips"), button_label = L("set_btn_play"), button = 'start_tutorial', colour = UIK.C.accent,
+        disabled = G.GAME and G.GAME.multiplayer and G.STAGE == G.STAGES.RUN},
+      UIK.action{id = 'set_skip_tutorial', label = L("Skip Balatro tutorial"), info = done and L("The Balatro tutorial is done") or L("Mark Jimbo's first run as done"),
+        button_label = done and L("set_btn_done") or L("set_btn_skip"), button = 'skip_vanilla_tutorial', colour = UIK.C.warn, disabled = done},
+      UIK.action{id = 'set_replay_overhaul_tutorial', label = L("Overhaul tutorial"), info = menu and L("Hologram shows every Overhaul feature") or L("Open it from the main menu"),
+        button_label = L("set_btn_play"), button = 'replay_overhaul_tutorial', colour = UIK.C.accent, disabled = not menu},
+      UIK.action{id = 'set_skip_overhaul_tutorial', label = L("Skip Overhaul tutorial"), info = ov_done and L("The Overhaul tutorial is done") or L("No tour and no Hologram tips"),
+        button_label = ov_done and L("set_btn_done") or L("set_btn_skip"), button = 'skip_overhaul_tutorial', colour = UIK.C.warn, disabled = ov_done},
+    }},
+    {title = "Multiplayer", grid = buttons(S.GUIDES_MP, UIK.C.warn)},
+    {title = "Overhaul", grid = buttons(S.GUIDES, UIK.C.accent)},
+  }
+end
+
+local function debug()
+  return {
+    {title = "Debug Active", colour = UIK.C.ok, items = {
+      UIK.action{id = 'set_debug_content', label = L("Content Unlock"), info = L("Unlock cards, decks and more"), button_label = L("Open"), button = 'open_debug_menu_overlay', colour = UIK.C.ok},
+      UIK.action{id = 'set_debug_coin', label = L("+10000 Balacoin"), info = L("Adds coins to this profile"), button_label = L("Add"), button = 'debug_add_balacoin', colour = UIK.C.money},
+      UIK.action{id = 'set_debug_xp', label = L("+50000 XP"), info = L("Adds XP to this profile"), button_label = L("Add"), button = 'debug_add_xp', colour = UIK.C.add},
+      UIK.action{id = 'set_debug_lock', label = L("Lock Debug"), info = L("Turns debug mode off"), button_label = L("Lock"), button = 'debug_reset', colour = UIK.C.danger},
+    }},
+  }
+end
+
+local function debug_on()
+  return BOM_DEBUG_BUILD and DebugManager and DebugManager.is_enabled and DebugManager.is_enabled() and true or false
+end
+
+S.CATS = {
+  {key = 'gameplay', label = "Gameplay", build = gameplay},
+  {key = 'shop', label = "Shop", build = shop},
+  {key = 'helpers', label = "Helpers", build = helpers},
+  {key = 'controls', label = "Controls", build = controls, page = function()
+    local C = rawget(_G, "Controls")
+    return C and C.settings_page and C.settings_page() or nil
+  end, show = function()
+    local C = rawget(_G, "Controls")
+    return not touch() or (C and C.settings_page and true) or false
+  end},
+  {key = 'display', label = "Display", build = display},
+  {key = 'graphics', label = "Graphics", build = graphics},
+  {key = 'performance', label = "Performance", build = performance},
+  {key = 'audio', label = "Audio", build = audio},
+  {key = 'jukebox', label = "Jukebox", build = jukebox},
+  {key = 'account', label = "Account", build = account},
+  {key = 'guide', label = "Guide", build = guide},
+  {key = 'debug', label = "Debug", build = debug, show = debug_on},
+}
+
+S.LEGACY = {
+  Game = 'gameplay', QoL = 'gameplay', Helpers = 'helpers', Display = 'display', Video = 'display', Interface = 'display',
+  Graphics = 'graphics', Audio = 'audio', Jukebox = 'jukebox', Account = 'account', Other = 'account', Guide = 'guide', Debug = 'debug',
+}
+end

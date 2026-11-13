@@ -1,0 +1,667 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 385
+PlayRandom = PlayRandom or {}
+local PR = PlayRandom
+
+PR.state = PR.state or {stake = 1, rules = {}, roll_id = 0, deck_name = '', stake_name = ''}
+PR.QUEUE = 'play_random'
+
+local function L(s) return mod_loc(s) end
+local function touch() return UIK.touch() end
+local function pick(list) return list[math.random(#list)] end
+
+PR.POOL = {
+  {'hands', {5, 6, 7}, 'boon'}, {'hands', {2, 3}, 'twist'},
+  {'discards', {4, 5, 6}, 'boon'}, {'discards', {0, 1, 2}, 'twist'},
+  {'hand_size', {9, 10, 11}, 'boon'}, {'hand_size', {6, 7}, 'twist'},
+  {'joker_slots', {6, 7, 8}, 'boon'}, {'joker_slots', {3, 4}, 'twist'},
+  {'consumable_slots', {3, 4, 5}, 'boon'}, {'consumable_slots', {0, 1}, 'twist'},
+  {'win_ante', {6, 7}, 'boon'}, {'win_ante', {10, 12}, 'twist'},
+  {'endless', {true}, 'neutral'},
+  {'start_ante', {2, 3}, 'twist'},
+  {'dollars', {10, 15, 25, 50}, 'boon'}, {'dollars', {0}, 'twist'},
+  {'interest_amount', {2, 3}, 'boon'}, {'interest_amount', {0}, 'twist'},
+  {'interest_cap', {50, 100}, 'boon'}, {'interest_cap', {10, 15}, 'twist'},
+  {'money_per_hand', {2, 3}, 'boon'}, {'money_per_hand', {0}, 'twist'},
+  {'money_per_discard', {1, 2}, 'boon'},
+  {'discard_cost', {1, 2}, 'twist'},
+  {'blind_reward', {'no_small', 'boss_only'}, 'twist'},
+  {'reroll_cost', {1, 2, 3}, 'boon'}, {'reroll_cost', {7, 8, 10}, 'twist'},
+  {'reroll_step', {0}, 'boon'}, {'reroll_step', {2, 3}, 'twist'},
+  {'price_pct', {50, 75}, 'boon'}, {'price_pct', {125, 150}, 'twist'},
+  {'inflation', {true}, 'twist'},
+  {'blind_pct', {50, 75}, 'boon'}, {'blind_pct', {125, 150, 200}, 'twist'},
+  {'blind_growth', {2, 3}, 'twist'},
+  {'showdown_bosses', {true}, 'twist'},
+  {'boss_extra', {true}, 'twist'},
+  {'no_bosses', {true}, 'boon'},
+  {'joker_disable', {true}, 'twist'},
+  {'shop_slots', {3, 4}, 'boon'}, {'shop_slots', {1}, 'twist'},
+  {'pack_slots', {3, 4}, 'boon'}, {'pack_slots', {1}, 'twist'},
+  {'voucher_slots', {2, 3}, 'boon'}, {'voucher_slots', {0}, 'twist'},
+  {'rarity_common', {90, 100}, 'twist'},
+  {'rarity_uncommon', {40, 50}, 'boon'},
+  {'rarity_rare', {15, 25}, 'boon'}, {'rarity_rare', {0}, 'twist'},
+  {'shop_jokers', {false}, 'twist'},
+  {'shop_tarots', {false}, 'twist'},
+  {'shop_planets', {false}, 'twist'},
+  {'shop_spectrals', {'shop'}, 'boon'}, {'shop_spectrals', {'never'}, 'twist'},
+  {'shop_playing_cards', {true}, 'neutral'},
+  {'shop_vouchers', {false}, 'twist'},
+  {'edition_rate', {2, 4, 10}, 'boon'},
+  {'eternal_stickers', {true}, 'twist'}, {'perishable_stickers', {true}, 'twist'}, {'rental_stickers', {true}, 'twist'},
+  {'no_faces', {true}, 'neutral'}, {'erratic', {true}, 'neutral'},
+  {'remove_suit', {'Spades', 'Hearts', 'Clubs', 'Diamonds'}, 'neutral'},
+  {'deck_size', {40, 64, 80}, 'neutral'},
+  {'enhancement', {'random', 'm_bonus', 'm_mult', 'm_wild', 'm_glass', 'm_steel', 'm_gold', 'm_lucky'}, 'boon'}, {'enhancement', {'m_stone'}, 'twist'},
+  {'edition', {'random', 'foil', 'holo', 'polychrome'}, 'boon'},
+  {'seal', {'random', 'Red', 'Blue', 'Gold', 'Purple'}, 'boon'},
+  {'random_jokers', {1, 2, 3}, 'boon'}, {'random_tarots', {1, 2}, 'boon'}, {'random_spectrals', {1, 2}, 'boon'}, {'random_tags', {1, 2, 3}, 'boon'},
+  {'hand_level', {2, 3, 5}, 'boon'},
+  {'tag_every_ante', {true}, 'boon'},
+  {'number_randomizer', {true}, 'neutral'},
+  {'flipped_cards', {8, 4}, 'twist'},
+  {'all_eternal', {true}, 'twist'},
+  {'debuff_played', {true}, 'twist'},
+  {'hand_per_dollar', {10, 20}, 'twist'},
+  {'random_prices', {true}, 'neutral'},
+  {'ban_jokers', {5, 10, 20}, 'neutral', 'ban'},
+  {'ban_tarots', {2, 4}, 'neutral', 'ban'},
+  {'ban_planets', {2, 4}, 'neutral', 'ban'},
+  {'ban_spectrals', {2, 4}, 'neutral', 'ban'},
+  {'ban_vouchers', {2, 4}, 'neutral', 'ban'},
+  {'ban_boosters', {4, 8}, 'neutral', 'ban'},
+  {'ban_tags', {3, 6}, 'neutral', 'ban'},
+  {'ban_blinds', {2, 4}, 'boon', 'ban'},
+}
+
+PR.COMPANION = {
+  number_randomizer = {'random_chaos', {20, 80, 100}},
+}
+
+PR.CLASH = {
+  no_bosses = {'boss_extra', 'showdown_bosses'},
+  endless = {'win_ante'},
+  all_eternal = {'eternal_stickers'},
+  shop_jokers = {'eternal_stickers', 'perishable_stickers', 'rental_stickers', 'rarity_common', 'rarity_uncommon', 'rarity_rare', 'edition_rate'},
+  hand_per_dollar = {'hand_size'},
+  consumable_slots = {'random_tarots', 'random_spectrals'},
+  discards = {'discard_cost', 'money_per_discard'},
+  shop_vouchers = {'voucher_slots'},
+  interest_amount = {'interest_cap'},
+  rarity_common = {'rarity_uncommon', 'rarity_rare'},
+  rarity_uncommon = {'rarity_rare'},
+  price_pct = {'random_prices'},
+}
+
+PR.ROLL = {boon = {1, 3}, twist = {1, 2}, neutral = {0, 1}}
+PR.MAX_RULES = 6
+
+function PR.ban_candidates(pool)
+  local out = {}
+  if pool == 'Blind' then
+    for k, v in pairs(G.P_BLINDS or {}) do
+      if type(v) == 'table' and v.boss and not v.boss.showdown then out[#out + 1] = k end
+    end
+  else
+    for _, v in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS[pool]) or {}) do
+      if type(v) == 'table' and v.key then out[#out + 1] = v.key end
+    end
+  end
+  table.sort(out)
+  return out
+end
+
+function PR.ban_list(pool, n)
+  local cands = PR.ban_candidates(pool)
+  local out = {}
+  n = math.min(n, #cands - 1)
+  for _ = 1, n do
+    local i = math.random(#cands)
+    out[#out + 1] = table.remove(cands, i)
+  end
+  return out
+end
+
+function PR.roll_value(e)
+  local v = pick(e[2])
+  if e[4] == 'ban' then
+    local d = RunRules.by_key[e[1]]
+    local list = PR.ban_list(d and d.pool or '', v)
+    if #list == 0 then return nil end
+    return list
+  end
+  return v
+end
+
+function PR.clashes(a, b)
+  for _, k in ipairs(PR.CLASH[a] or {}) do if k == b then return true end end
+  for _, k in ipairs(PR.CLASH[b] or {}) do if k == a then return true end end
+  return false
+end
+
+PR.TONE = {
+  boon = function() return G.C.GREEN end,
+  twist = function() return G.C.RED end,
+  neutral = function() return G.C.BLUE end,
+}
+
+local function profile()
+  return (G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]) or {}
+end
+
+function PR.decks()
+  local out = {}
+  for _, v in ipairs((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Back) or {}) do
+    if v.unlocked and not v.omit and v.key and G.P_CENTERS[v.key] then out[#out + 1] = v end
+  end
+  if #out == 0 and G.P_CENTERS.b_red then out[1] = G.P_CENTERS.b_red end
+  return out
+end
+
+function PR.max_stake(key)
+  local n = #((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake) or {})
+  if n < 1 then return 1 end
+  local p = profile()
+  local m = (get_deck_win_stake(key) or 0) + 1
+  if p.all_unlocked or p.debug_unlocked then m = n end
+  return math.max(1, math.min(m, n))
+end
+
+function PR.stake_loc(c, nodes)
+  local res
+  if type(c.loc_vars) == 'function' then
+    local ok, r = pcall(c.loc_vars, c, {})
+    res = ok and type(r) == 'table' and r or nil
+  end
+  res = res or {}
+  return {type = 'descriptions', key = res.key or c.key, set = res.set or c.set, nodes = nodes, vars = res.vars}
+end
+
+function PR.pick_run()
+  local decks = PR.decks()
+  local s = PR.state
+  local deck, stake
+  for _ = 1, 8 do
+    deck = pick(decks)
+    stake = math.random(PR.max_stake(deck.key))
+    if not (deck.key == s.deck and stake == s.stake) then break end
+  end
+  return deck.key, stake
+end
+
+function PR.roll_rules()
+  if not (RunRules and RunRules.by_key) then return {} end
+  local groups = {boon = {}, twist = {}, neutral = {}}
+  for _, e in ipairs(PR.POOL) do
+    if RunRules.by_key[e[1]] then table.insert(groups[e[3]], e) end
+  end
+  local want = {}
+  for tone, r in pairs(PR.ROLL) do want[tone] = math.random(r[1], r[2]) end
+  local used, out = {}, {}
+  local function free(k)
+    if used[k] then return false end
+    for u in pairs(used) do if PR.clashes(k, u) then return false end end
+    return true
+  end
+  for _, tone in ipairs({'boon', 'twist', 'neutral'}) do
+    local list, n = groups[tone], 0
+    for _ = 1, 60 do
+      if n >= want[tone] or #list == 0 or #out >= PR.MAX_RULES then break end
+      local e = pick(list)
+      local v
+      if free(e[1]) then v = PR.roll_value(e) end
+      if v ~= nil then
+        used[e[1]] = true
+        n = n + 1
+        out[#out + 1] = {key = e[1], value = v, tone = tone}
+        local c = PR.COMPANION[e[1]]
+        if c and not used[c[1]] and RunRules.by_key[c[1]] and #out < PR.MAX_RULES then
+          used[c[1]] = true
+          out[#out + 1] = {key = c[1], value = pick(c[2]), tone = tone}
+        end
+      end
+    end
+  end
+  local order = {}
+  for i, d in ipairs(RunRules.registry) do order[d.key] = i end
+  table.sort(out, function(a, b) return (order[a.key] or 0) < (order[b.key] or 0) end)
+  return out
+end
+
+function PR.values()
+  local s = PR.state
+  local v = {back = s.deck, stake = s.stake}
+  for _, r in ipairs(s.rules or {}) do v[r.key] = r.value end
+  return v
+end
+
+local function deck_name(key)
+  local c = G.P_CENTERS[key]
+  if not c then return '' end
+  local ok, n = pcall(localize, {type = 'name_text', set = 'Back', key = key})
+  if ok and type(n) == 'string' and n ~= '' and n ~= 'ERROR' then return n end
+  return c.name or key
+end
+
+local function stake_name(i)
+  local c = G.P_CENTER_POOLS.Stake[i]
+  if not c then return '' end
+  local ok, n = pcall(localize, {type = 'name_text', set = 'Stake', key = c.key})
+  if ok and type(n) == 'string' and n ~= '' and n ~= 'ERROR' then return n end
+  return c.name or c.key
+end
+
+local function back_atlas(c)
+  return (c and c.atlas and G.ASSET_ATLAS[c.atlas]) or G.ASSET_ATLAS["centers"]
+end
+
+local function set_card_deck(card, key)
+  local c = G.P_CENTERS[key]
+  local spr = card and card.children and card.children.back
+  if not (c and spr) then return end
+  spr.atlas = back_atlas(c)
+  spr:set_sprite_pos(c.pos)
+  card.sticker = get_deck_win_sticker and get_deck_win_sticker(c) or nil
+end
+
+local function set_chip(chip, i)
+  local c = G.P_CENTER_POOLS.Stake[i]
+  if chip and c then chip:set_sprite_pos(c.pos) end
+end
+
+local function mode()
+  return UIK._last_tab.play_random == 'custom' and 'custom' or 'plain'
+end
+
+local function sizes()
+  local custom = mode() == 'custom'
+  local t = touch()
+  local pw = UIK.portrait() and UIK.W or nil
+  local half = pw and custom and (pw - UIK.GAP) / 2 or pw
+  return {
+    deck_w = half or (custom and 4.7 or 5.6),
+    stake_w = half or (custom and 4.7 or 5.6),
+    rules_w = pw or 5.2,
+    h = 6.35,
+    rules_h = pw and custom and PR.MAX_RULES * ((t and 0.7 or 0.62) + 0.08) + 1.0 or 6.35,
+    vis_h = 2.95,
+    name_h = t and 0.62 or 0.56,
+    name_scale = t and 0.5 or 0.46,
+    desc_h = 1.8,
+  }
+end
+
+local function name_row(ref_value, w, z)
+  return {n = G.UIT.R, config = {align = 'cm', minw = w, maxw = w, minh = z.name_h, padding = 0}, nodes = {
+    {n = G.UIT.T, config = {ref_table = PR.state, ref_value = ref_value, scale = z.name_scale, colour = G.C.WHITE, shadow = true}},
+  }}
+end
+
+local function desc_def(nodes, w, z)
+  return {n = G.UIT.ROOT, config = {align = 'cm', colour = G.C.CLEAR, padding = 0}, nodes = {
+    {n = G.UIT.R, config = {align = 'cm', minw = w, maxw = w, minh = z.desc_h, r = 0.1, padding = 0.05, colour = G.C.WHITE}, nodes = nodes},
+  }}
+end
+
+local function deck_desc(w, z)
+  local s = PR.state
+  local nodes = {}
+  if not s.rolling and s.deck and G.P_CENTERS[s.deck] then
+    local back = Back(G.P_CENTERS[s.deck])
+    nodes[1] = {n = G.UIT.O, config = {object = UIBox{definition = ui_touch_text(back:generate_UI(nil, 0.85, 0.6), UIK.portrait() and 1 or 1.25), config = {offset = {x = 0, y = 0}}}}}
+  end
+  return desc_def(nodes, w, z)
+end
+
+local function stake_desc(w, z)
+  local s = PR.state
+  local nodes = {}
+  local c = G.P_CENTER_POOLS.Stake[s.stake or 1]
+  if not s.rolling and c then
+    local loc = {}
+    pcall(localize, PR.stake_loc(c, loc))
+    for _, v in ipairs(loc) do
+      nodes[#nodes + 1] = ui_touch_text({n = G.UIT.R, config = {align = 'cm', maxw = (w - 0.2) / ((UIK.touch() and not UIK.portrait()) and 1.25 or 1)}, nodes = v}, UIK.portrait() and 1 or 1.25)
+    end
+  end
+  return desc_def(nodes, w, z)
+end
+
+local function rules_def(w, z)
+  local s = PR.state
+  local rw = w
+  local rh = touch() and 0.7 or 0.62
+  local sc = touch() and (UIK.portrait() and 0.38 or 0.4) or 0.35
+  local rows = {}
+  local list = s.rules or {}
+  for i = 1, PR.MAX_RULES do
+    local r = list[i]
+    local label, value, col = '', '', UIK.C.muted
+    if r and not s.rolling then
+      local d = RunRules and RunRules.by_key[r.key]
+      label = d and L(d.label) or r.key
+      value = RunRules and RunRules.value_label(r.key, r.value) or tostring(r.value)
+      col = (PR.TONE[r.tone] or PR.TONE.neutral)()
+    elseif r then
+      label = '?'
+    end
+    local filled = label ~= ''
+    local f = G.LANG.font
+    local vw = math.min(rw * 0.45, math.max(0.5, f.FONT:getWidth(value) * f.squish * sc * f.FONTSCALE / G.TILESIZE + 0.16))
+    local lw = rw - 0.1 - vw
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0.04}, nodes = {
+      {n = G.UIT.R, config = {align = 'cm', minw = rw, minh = rh, r = 0.1, colour = filled and {0, 0, 0, 0.22} or G.C.CLEAR, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = 'cl', minw = lw, maxw = lw, padding = 0.08}, nodes = {
+          {n = G.UIT.T, config = {text = label, scale = sc, colour = r and not s.rolling and G.C.WHITE or UIK.C.muted, shadow = true}},
+        }},
+        {n = G.UIT.C, config = {align = 'cr', minw = vw, maxw = vw, padding = 0.08}, nodes = {
+          {n = G.UIT.T, config = {text = value, scale = sc, colour = col, shadow = true}},
+        }},
+      }},
+    }}
+  end
+  return {n = G.UIT.ROOT, config = {align = 'tm', colour = G.C.CLEAR, padding = 0.04}, nodes = rows}
+end
+
+local function slot_obj(id, def)
+  return {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+    {n = G.UIT.O, config = {id = id, object = UIBox{definition = def, config = {offset = {x = 0, y = 0}}}}},
+  }}
+end
+
+local function panel(title, w, z, nodes, h)
+  local inner = w - 2 * UIK.PAD
+  local list = {UIK.header(title, {w = inner})}
+  for _, n in ipairs(nodes) do list[#list + 1] = n end
+  return {n = G.UIT.C, config = {align = 'tm', minw = w, maxw = w, minh = h or z.h, r = 0.12, padding = UIK.PAD, colour = UIK.C.section}, nodes = list}
+end
+
+local function deck_panel(z)
+  local s = PR.state
+  local w = z.deck_w
+  local inner = w - 2 * UIK.PAD
+  local cw, ch = G.CARD_W, G.CARD_H
+  local area = CardArea(G.ROOM.T.x, G.ROOM.T.y, cw, ch, {card_limit = 1, type = 'title', highlight_limit = 0})
+  local c = G.P_CENTERS[s.shown_deck or s.deck] or G.P_CENTERS.b_red
+  local card = Card(area.T.x, area.T.y, cw, ch, nil, G.P_CENTERS.c_base, {bypass_back = c.pos})
+r 6 220 %20%20 -
+r 6 219 %20%20 -
+l 35
+  area:emplace(card)
+  card.facing, card.sprite_facing = 'back', 'back'
+  set_card_deck(card, c.key)
+  PR.card = card
+  return panel(localize('k_deck'), w, z, {
+    {n = G.UIT.R, config = {align = 'cm', minw = inner, minh = z.vis_h, padding = 0}, nodes = {{n = G.UIT.O, config = {object = area}}}},
+    name_row('deck_name', inner, z),
+    slot_obj('play_random_deck_desc', deck_desc(inner - 0.2, z)),
+  })
+end
+
+local function stake_panel(z)
+  local s = PR.state
+  local w = z.stake_w
+  local inner = w - 2 * UIK.PAD
+  local shown = s.shown_stake or s.stake or 1
+  local chip = get_stake_sprite(s.rolling and 1 or shown, touch() and 1.9 or 2)
+  if s.rolling then set_chip(chip, shown) end
+  PR.chip = chip
+  return panel(localize('k_stake'), w, z, {
+    {n = G.UIT.R, config = {align = 'cm', minw = inner, minh = z.vis_h, padding = 0}, nodes = {{n = G.UIT.O, config = {object = chip}}}},
+    name_row('stake_name', inner, z),
+    slot_obj('play_random_stake_desc', stake_desc(inner - 0.2, z)),
+  })
+end
+
+local function rules_panel(z)
+  local inner = z.rules_w - 2 * UIK.PAD
+  return panel(L("Rules"), z.rules_w, z, {
+    slot_obj('play_random_rules', rules_def(inner - 0.2, z)),
+  }, z.rules_h)
+end
+
+local function swap(id, def)
+  local e = G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID(id)
+r 13 1300 %20%20 -
+l 170
+  if e.config.object then e.config.object:remove() end
+  e.config.object = UIBox{definition = def, config = {offset = {x = 0, y = 0}, parent = e, type = 'cm'}}
+  e.UIBox:recalculate()
+end
+
+function PR.reveal()
+  local z = sizes()
+  local s = PR.state
+  if PR.chip and s.rolling then
+    PR.chip.draw = nil
+  elseif PR.chip then
+    local fresh = get_stake_sprite(s.stake or 1, 1)
+    PR.chip.draw = fresh.draw ~= Sprite.draw and fresh.draw or nil
+    fresh:remove()
+  end
+  swap('play_random_deck_desc', deck_desc(z.deck_w - 2 * UIK.PAD - 0.2, z))
+  swap('play_random_stake_desc', stake_desc(z.stake_w - 2 * UIK.PAD - 0.2, z))
+  swap('play_random_rules', rules_def(z.rules_w - 2 * UIK.PAD - 0.2, z))
+end
+
+function PR.build()
+  local z = sizes()
+  local cols = {deck_panel(z), {n = G.UIT.C, config = {minw = UIK.GAP}}, stake_panel(z)}
+  if mode() == 'custom' then
+    local s = PR.state
+    if not s.rolling and (not s.rules or #s.rules == 0) then s.rules = PR.roll_rules() end
+    if UIK.portrait() then
+      return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.R, config = {align = 'tm', padding = 0}, nodes = cols},
+        {n = G.UIT.R, config = {minh = UIK.GAP}},
+        {n = G.UIT.R, config = {align = 'tm', padding = 0}, nodes = {rules_panel(z)}},
+      }}
+    end
+    cols[#cols + 1] = {n = G.UIT.C, config = {minw = UIK.GAP}}
+    cols[#cols + 1] = rules_panel(z)
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = cols}
+end
+
+local function tick_sound(i)
+  play_sound('card1', 0.85 + i * 0.04, 0.45)
+end
+
+local function land_fx()
+  play_sound('tarot1', 1, 0.7)
+  play_sound('chips2', 1.1, 0.45)
+  if PR.card and PR.card.juice_up then PR.card:juice_up(0.45, 0.4) end
+  if PR.chip and PR.chip.juice_up then PR.chip:juice_up(0.45, 0.4) end
+end
+
+local function queue(ev)
+  G.E_MANAGER.queues[PR.QUEUE] = G.E_MANAGER.queues[PR.QUEUE] or {}
+  G.E_MANAGER:add_event(ev, PR.QUEUE)
+end
+
+function PR.roll()
+  local s = PR.state
+  s.roll_id = (s.roll_id or 0) + 1
+  local id = s.roll_id
+  if G.E_MANAGER.queues[PR.QUEUE] then G.E_MANAGER:clear_queue(PR.QUEUE) end
+  local final_deck, final_stake = PR.pick_run()
+  local final_rules = PR.roll_rules()
+  s.rolling = true
+  s.deck, s.stake, s.rules = final_deck, final_stake, final_rules
+  s.shown_deck, s.shown_stake = pick(PR.decks()).key, 1
+  s.deck_name, s.stake_name = '?', '?'
+  local decks = PR.decks()
+  local steps = 9
+  for i = 1, steps do
+    queue(Event({trigger = 'after', delay = 0.02 + 0.009 * i, timer = 'REAL', blocking = true, func = function()
+      if s.roll_id ~= id then return true end
+      if PR.card then PR.card.pinch.x = true end
+      if PR.chip then PR.chip.pinch.x = true end
+      return true
+    end}))
+    queue(Event({trigger = 'after', delay = 0.06, timer = 'REAL', blocking = true, func = function()
+      if s.roll_id ~= id then return true end
+      local last = i == steps
+      local dk = last and final_deck or pick(decks).key
+      local st = last and final_stake or math.random(PR.max_stake(dk))
+      s.shown_deck, s.shown_stake = dk, st
+      s.deck_name, s.stake_name = deck_name(dk), stake_name(st)
+      set_card_deck(PR.card, dk)
+      set_chip(PR.chip, st)
+      if PR.card then PR.card.pinch.x = false end
+      if PR.chip then PR.chip.pinch.x = false end
+      tick_sound(i)
+      return true
+    end}))
+  end
+  queue(Event({trigger = 'after', delay = 0.1, timer = 'REAL', blocking = true, func = function()
+    if s.roll_id ~= id then return true end
+    s.rolling = false
+    s.shown_deck, s.shown_stake = nil, nil
+    s.deck_name, s.stake_name = deck_name(s.deck), stake_name(s.stake)
+    if G.OVERLAY_MENU and UIK._win and UIK._win.id == 'play_random' then PR.reveal() end
+    land_fx()
+    return true
+  end}))
+end
+
+function PR.open(tab)
+  local s = PR.state
+  local turning = PORTRAIT and PORTRAIT._capture
+  if not turning then
+    s.rolling = true
+    s.deck_name, s.stake_name = '?', '?'
+  end
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = 'play_random',
+    title = L("RANDOM RUN"),
+    tab = tab,
+    tabs = {
+      {key = 'plain', label = L("Random run"), build = PR.build},
+      {key = 'custom', label = L("Custom random"), build = PR.build},
+    },
+    back_func = 'play_random_back',
+    footer = {
+      UIK.button{label = localize('k_reroll'), button = 'play_random_reroll', colour = UIK.C.purple, id = 'play_random_reroll'},
+      UIK.button{label = L("START"), button = 'play_random_start', colour = UIK.C.ok, id = 'play_random_start', func = 'play_random_can_start'},
+    },
+  }}
+  if not (turning and s.deck) then PR.roll() end
+end
+
+G.FUNCS.play_random_open = function()
+  PR.open()
+end
+
+G.FUNCS.play_random_reroll = function()
+  if not (G.OVERLAY_MENU and UIK._win and UIK._win.id == 'play_random') then return end
+  PR.state.rolling = true
+  PR.state.deck_name, PR.state.stake_name = '?', '?'
+  PR.reveal()
+  PR.roll()
+end
+
+G.FUNCS.play_random_can_start = function(e)
+  local s = PR.state
+  local ok = not s.rolling and s.deck and G.P_CENTERS[s.deck] and G.P_CENTERS[s.deck].unlocked
+  e.config.colour = ok and UIK.C.ok or UIK.C.inactive
+  e.config.button = ok and 'play_random_start' or nil
+end
+
+function PR.select_new_run_tab()
+  local target = localize('b_new_run')
+  local function walk(n)
+    if type(n) ~= 'table' then return end
+    if n.config and n.config.button == 'change_tab' and n.config.ref_table and n.config.ref_table.label == target then
+      if not n.config.chosen then G.FUNCS.change_tab(n) end
+      return true
+    end
+    for _, c in ipairs(n.children or {}) do if walk(c) then return true end end
+  end
+  if G.OVERLAY_MENU then walk(G.OVERLAY_MENU.UIRoot) end
+end
+
+G.FUNCS.play_random_back = function()
+  PR.state.roll_id = (PR.state.roll_id or 0) + 1
+  PR.state.rolling = false
+  G.FUNCS.overlay_menu{definition = G.UIDEF.run_setup()}
+  PR.select_new_run_tab()
+end
+
+G.FUNCS.play_random_start = function()
+  local s = PR.state
+  if s.rolling or not s.deck then return end
+  local center = G.P_CENTERS[s.deck]
+  if not (center and center.unlocked) then return end
+  local custom = mode() == 'custom'
+r 13 1375 %20%20 -
+l 1
+  if G.SAVED_GAME ~= nil and G.SAVED_GAME.GAME and not G.SAVED_GAME.GAME.won and not (G.GAME and G.GAME.seeded) then
+r 23 900 %20%20%20%20 -
+l 61
+    G:save_settings()
+  end
+  if custom and RunRules then
+    RunRules.start(PR.values(), {rules_source = 'custom', stake = s.stake, back = center, bo_origin_tag = 'random'})
+  else
+    if RunRules then RunRules.disarm() end
+    if G.GAME.viewed_back then G.GAME.viewed_back:change_to(center) else G.GAME.viewed_back = Back(center) end
+    G.FUNCS.start_run(nil, {stake = s.stake, bo_origin_tag = 'random'})
+  end
+end
+
+local function find_mods_button(n, parent)
+  if type(n) ~= 'table' then return end
+  if n.config and n.config.button == 'open_mod_menu_fullscreen' then return n, parent end
+  for _, c in ipairs(n.nodes or {}) do
+    local a, b = find_mods_button(c, n)
+    if a then return a, b end
+  end
+end
+
+function PR.add_button(t)
+  local mods, col = find_mods_button(t)
+  if not (mods and col) then return end
+  local w = touch() and 2.3 or 2.1
+  local h = touch() and 0.5 or 0.42
+  local sc = touch() and 0.44 or 0.4
+  mods.config.minw, mods.config.minh, mods.config.padding = w, h, 0.08
+  for _, c in ipairs(mods.nodes or {}) do
+    if c.n == G.UIT.T then c.config.scale = sc end
+  end
+  local random = {n = G.UIT.C, config = {align = 'cm', minw = w, minh = h, padding = 0.08, r = 0.1, hover = true, colour = G.C.PURPLE, button = 'play_random_open', shadow = true, id = 'play_random_button'}, nodes = {
+    {n = G.UIT.T, config = {text = L("RANDOM"), scale = sc, colour = G.C.UI.TEXT_LIGHT}},
+  }}
+  col.nodes = {
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = {random}},
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = {mods}},
+  }
+end
+
+local _pr_setup_option = G.UIDEF.run_setup_option
+G.UIDEF.run_setup_option = function(kind, ...)
+  local t = _pr_setup_option(kind, ...)
+  if kind == 'New Run' and not (G.GAME and G.GAME.multiplayer) then
+    local ok, err = pcall(PR.add_button, t)
+    if not ok then print("[PlayRandom] button: " .. tostring(err)) end
+  end
+  return t
+end
+
+mod_loc_register{
+  fr = {
+    ["RANDOM RUN"] = "PARTIE AU HASARD",
+    ["Random run"] = "Partie au hasard", ["Custom random"] = "Hasard perso",
+  },
+  es = {
+    ["RANDOM RUN"] = "PARTIDA AL AZAR",
+    ["Random run"] = "Partida al azar", ["Custom random"] = "Azar personalizado",
+  },
+}
+
+return PR
+end

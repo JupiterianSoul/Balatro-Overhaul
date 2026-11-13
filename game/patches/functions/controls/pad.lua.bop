@@ -1,0 +1,638 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 132
+local C = Controls
+local P = {}
+local L = function(s) return mod_loc(s) end
+
+P.SAVED = "pad_binds"
+P.BUTTONS = {"a", "b", "x", "y", "leftshoulder", "rightshoulder", "triggerleft", "triggerright", "start", "back", "leftstick", "rightstick"}
+P.REMAP = {}
+for _, b in ipairs(P.BUTTONS) do P.REMAP[b] = true end
+
+P.ACTIONS = {
+    {id = "press", out = "a", def = "a", label = "Press or pick"},
+    {id = "back", out = "b", def = "b", label = "Back"},
+    {id = "tab_prev", out = "leftshoulder", def = "leftshoulder", label = "Previous tab, sell"},
+    {id = "tab_next", out = "rightshoulder", def = "rightshoulder", label = "Next tab, use or buy"},
+    {id = "options", out = "start", def = "start", label = "Options"},
+    {id = "run_info", out = "back", def = "back", label = "Run Info"},
+    {id = "play", out = "x", def = "x", label = "Play hand, reroll"},
+    {id = "discard", out = "y", def = "y", label = "Discard, skip, next round"},
+    {id = "peek_deck", out = "triggerleft", def = "triggerleft", label = "Peek at the deck"},
+    {id = "view_deck", out = "triggerright", def = "triggerright", label = "View the deck"},
+    {id = "speed_up", def = "rightstick", label = "Speed up"},
+    {id = "speed_down", def = "leftstick", label = "Slow down"},
+    {id = "sort_rank", label = "Sort by rank"},
+    {id = "sort_suit", label = "Sort by suit"},
+    {id = "mute", label = "Mute all"},
+    {id = "music", label = "Mute music"},
+}
+P.by_id = {}
+for _, a in ipairs(P.ACTIONS) do P.by_id[a.id] = a end
+
+P.SPRITE = {a = 0, b = 1, x = 2, y = 3, leftshoulder = 4, rightshoulder = 5, triggerleft = 6, triggerright = 7, start = 8, back = 9,
+    leftstick = 16, rightstick = 17, dpup = 10, dpright = 11, dpdown = 12, dpleft = 13}
+P.NAMES = {
+    xbox = {a = "A", b = "B", x = "X", y = "Y", leftshoulder = "LB", rightshoulder = "RB", triggerleft = "LT", triggerright = "RT", start = "Menu", back = "View", leftstick = "L3", rightstick = "R3"},
+    Playstation = {a = "Cross", b = "Circle", x = "Square", y = "Triangle", leftshoulder = "L1", rightshoulder = "R1", triggerleft = "L2", triggerright = "R2", start = "Options", back = "Share", leftstick = "L3", rightstick = "R3"},
+    Nintendo = {a = "B", b = "A", x = "Y", y = "X", leftshoulder = "L", rightshoulder = "R", triggerleft = "ZL", triggerright = "ZR", start = "+", back = "-", leftstick = "L3", rightstick = "R3"},
+}
+P.MG_KEYS = {dpup = "up", dpdown = "down", dpleft = "left", dpright = "right", b = "escape", x = "return", y = "d", leftshoulder = "left", rightshoulder = "right"}
+P.REPLAY = {x = "pb_pause", y = "pb_step_hand", leftshoulder = "pb_prev_action", rightshoulder = "pb_next_action", triggerleft = "pb_speed", triggerright = "pb_ff"}
+P.held = {}
+P.ui = {}
+
+local function kp()
+    return Extras and Extras.modules and Extras.modules.keyboard_play
+end
+
+local function hotkeys()
+    return QOL and QOL.modules and QOL.modules.hotkeys
+end
+
+local function save()
+    if G and G.save_settings then pcall(function() G:save_settings() end) end
+end
+
+function P.is_button(b)
+    return type(b) == "string" and P.REMAP[b] == true
+end
+
+function P.binds()
+    local saved = G.SETTINGS and G.SETTINGS[P.SAVED]
+    local out = {}
+    for _, a in ipairs(P.ACTIONS) do
+        local v = type(saved) == "table" and saved[a.id] or nil
+        if v == false then out[a.id] = nil
+        elseif P.is_button(v) then out[a.id] = v
+        else out[a.id] = a.def end
+    end
+    return out
+end
+
+function P.refresh()
+    P.bound = P.binds()
+    P.by_button = {}
+    P.by_out = {}
+    for _, a in ipairs(P.ACTIONS) do
+        local b = P.bound[a.id]
+        if b and not P.by_button[b] then P.by_button[b] = a end
+    end
+    for _, a in ipairs(P.ACTIONS) do
+        if a.out and P.by_button[P.bound[a.id] or ""] == a then P.by_out[a.out] = P.bound[a.id] end
+    end
+end
+
+function P.set_bind(id, button)
+    local a = P.by_id[id]
+    if not (a and P.is_button(button)) then return nil end
+    P.refresh()
+    local saved = type(G.SETTINGS[P.SAVED]) == "table" and G.SETTINGS[P.SAVED] or {}
+    G.SETTINGS[P.SAVED] = saved
+    local old = P.bound[id]
+    local other = P.by_button[button]
+    if other == a then return nil end
+    if other then saved[other.id] = old or false end
+    saved[id] = button
+    P.refresh()
+    save()
+    return other
+end
+
+function P.reset_binds()
+    G.SETTINGS[P.SAVED] = nil
+    P.capture = nil
+    P.refresh()
+    save()
+end
+
+P.GLYPHS = "pad_glyphs"
+P.GLYPH_STYLES = {"auto", "Xbox", "Playstation", "Nintendo"}
+P.GLYPH_LABELS = {auto = "Automatic", Xbox = "Xbox", Playstation = "PlayStation", Nintendo = "Switch"}
+
+function P.glyph_style()
+    local v = G.SETTINGS and G.SETTINGS[P.GLYPHS]
+    for i = 2, #P.GLYPH_STYLES do
+        if P.GLYPH_STYLES[i] == v then return v end
+    end
+    return "auto"
+end
+
+function P.glyph_label()
+    local style = P.glyph_style()
+    return L("Icons") .. ": " .. (style == "auto" and L("Automatic") or P.GLYPH_LABELS[style])
+end
+
+function P.apply_glyphs()
+    local c = G.CONTROLLER
+    if not (c and c.GAMEPAD and c.GAMEPAD.object) then return end
+    c.GAMEPAD_CONSOLE = c:get_console_from_gamepad(c.GAMEPAD.name or "")
+    local atlas = G.ASSET_ATLAS and G.ASSET_ATLAS["gamepad_ui"]
+    local y = c.GAMEPAD_CONSOLE == "Nintendo" and 2 or c.GAMEPAD_CONSOLE == "Playstation" and (G.F_PS4_PLAYSTATION_GLYPHS and 3 or 1) or 0
+    for _, v in pairs(G.I and G.I.SPRITE or {}) do
+        if atlas and v.atlas == atlas then
+            v.sprite_pos.y = y
+r 23 107 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 342
+        end
+    end
+end
+
+function P.cycle_glyphs()
+    local cur, at = P.glyph_style(), 1
+    for i, v in ipairs(P.GLYPH_STYLES) do
+        if v == cur then at = i end
+    end
+    local pick = P.GLYPH_STYLES[at % #P.GLYPH_STYLES + 1]
+    G.SETTINGS[P.GLYPHS] = pick ~= "auto" and pick or nil
+    save()
+    P.apply_glyphs()
+end
+
+function P.console()
+    local style = P.glyph_style()
+    if style ~= "auto" then return style == "Xbox" and "xbox" or style end
+    local c = G.CONTROLLER and G.CONTROLLER.GAMEPAD_CONSOLE
+    if c == "Playstation" or c == "Nintendo" then return c end
+    return "xbox"
+end
+
+function P.name(button)
+    if not button then return L("Unbound") end
+    local n = P.NAMES[P.console()][button] or button
+    return L(n)
+end
+
+function P.action_button(id)
+    if not P.bound then P.refresh() end
+    return P.bound[id]
+end
+
+function P.action_name(id)
+    return P.name(P.action_button(id))
+end
+
+function P.glyph(button, scale)
+    local atlas = G.ASSET_ATLAS and G.ASSET_ATLAS["gamepad_ui"]
+    local x = button and P.SPRITE[button]
+    if not (atlas and x) then return nil end
+    local c = P.console()
+    local y = c == "Nintendo" and 2 or c == "Playstation" and (G.F_PS4_PLAYSTATION_GLYPHS and 3 or 1) or 0
+    local s = scale or 0.45
+    local sp = Sprite(0, 0, s, s, atlas, {x = x, y = y})
+    return {n = G.UIT.O, config = {object = sp}}
+end
+
+function P.connected()
+    if not (love.joystick and love.joystick.getJoysticks) then return false end
+    local ok, list = pcall(love.joystick.getJoysticks)
+    if not ok then return false end
+    for _, j in ipairs(list or {}) do
+        local ok2, gp = pcall(j.isGamepad, j)
+        if ok2 and gp then return true end
+    end
+    return false
+end
+
+local function real(ctrl)
+    local K = kp()
+    if K and K.from_kb then return false end
+    local o = ctrl.GAMEPAD and ctrl.GAMEPAD.object
+    return o ~= nil and o ~= ctrl.keyboard_controller
+end
+
+local function minigame()
+    local mg = rawget(_G, "Minigames")
+    local h = mg and mg.host
+    if h and h.win and not h.closing then return h end
+end
+
+local function replay_bar()
+    local pb = rawget(_G, "bom_playback")
+    if not (pb and pb.active and pb.active()) then return nil end
+    local bar = G.PB_BAR
+    if G.OVERLAY_MENU or not (bar and not bar.REMOVED) then return nil end
+    return bar
+end
+
+local function on_board(h)
+    local b = h.board
+    local c = G.CURSOR and G.CURSOR.T
+    local v = b and b.VT
+    if not (c and v and v.w and v.h) then return false end
+    local r = G.ROOM and G.ROOM.T or {x = 0, y = 0}
+    local x, y = c.x - r.x, c.y - r.y
+    return x >= v.x and y >= v.y and x <= v.x + v.w and y <= v.y + v.h
+end
+
+function P.minigame_press(h, logical)
+    local g = h.phase == "play" and h.game
+    if g and g.pad_btn then
+        local ok, used = pcall(g.pad_btn, g, logical)
+        if ok and used then return true end
+    end
+    if logical == "a" then
+        if h.phase == "play" and h.game and h.game.pad_hit then
+            h.game:pad_hit()
+        elseif h.phase == "play" and on_board(h) and h.board.click then
+            h.board:click()
+        else
+            h.key("space")
+        end
+        return true
+    end
+    local key = P.MG_KEYS[logical]
+    if not key then return false end
+    h.key(key)
+    return true
+end
+
+function P.replay_press(bar, logical)
+    local fn = P.REPLAY[logical]
+    local pb = rawget(_G, "bom_playback")
+    local st = logical == "b" and pb and pb.state and pb.state()
+    if not fn and st and st.done then fn = "pb_leave" end
+    if not fn then return false end
+    local K = kp()
+    local e = K and K.find_in and K.find_in({bar}, {[fn] = true})
+    if e then e:click() else pcall(play_sound, "cancel") end
+    return true
+end
+
+function P.quick(id, ctrl)
+    if ctrl.text_input_hook or (ctrl.locks and ctrl.locks.frame) then return end
+    if G.STATE == G.STATES.SPLASH then return end
+    if id == "sort_rank" or id == "sort_suit" then
+        local K = kp()
+        local fn = K and K.RUN and K.RUN[id]
+        if not (fn and fn()) then pcall(play_sound, "cancel") end
+        return
+    end
+    local H = hotkeys()
+    if not H then return end
+    if id == "speed_up" or id == "speed_down" then
+        if not QOL.on("qol_speed_key") then
+            pcall(play_sound, "cancel")
+            return
+        end
+        if C.refuse("speed_key") then return end
+        if not H.speed_allowed() then
+            pcall(play_sound, "cancel")
+            return
+        end
+        H.cycle_speed(id == "speed_down")
+        return
+    end
+    if not QOL.on("qol_mute_keys") then return end
+    if id == "mute" then H.toggle_volume("volume", "qol_volume_before_mute", "Sound on", "Sound off")
+    else H.toggle_volume("music_volume", "qol_music_before_mute", "Music on", "Music off") end
+end
+
+local function page_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "pad_binds" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") ~= nil
+end
+
+local function redraw(focus_id)
+    if not page_open() then return end
+    UIK.refresh()
+    local b = focus_id and G.OVERLAY_MENU:get_UIE_by_ID("pad_bind_" .. focus_id)
+    if b and G.CONTROLLER.HID.controller then G.CONTROLLER:snap_to{node = b} end
+end
+
+function P.capture_press(button)
+    local id = P.capture
+    if not page_open() then P.capture = nil return false end
+    if button:sub(1, 2) == "dp" then return true end
+    if not P.is_button(button) then return false end
+    P.capture = nil
+    local moved = P.set_bind(id, button)
+    P.ui.notice = moved and string.format(L("%s now on %s"), P.action_label(moved), P.name(P.bound[moved.id])) or nil
+    play_sound("button", 1, 0.4)
+    redraw(id)
+    return true
+end
+
+function P.on_press(ctrl, button)
+    if not P.bound then P.refresh() end
+    if P.capture and P.capture_press(button) then
+        P.held[button] = false
+        return nil
+    end
+    local a = P.REMAP[button] and P.by_button[button] or nil
+    local logical = button
+    if P.REMAP[button] then logical = a and a.out or nil end
+    local h = minigame()
+    if h and logical and P.minigame_press(h, logical) then
+        P.held[button] = false
+        return nil
+    end
+    local bar = logical and replay_bar()
+    if bar and P.replay_press(bar, logical) then
+        P.held[button] = false
+        return nil
+    end
+    if not P.REMAP[button] then return button end
+    if not a then
+        P.held[button] = false
+        return nil
+    end
+    if a.out then
+        P.held[button] = a.out
+        return a.out
+    end
+    P.held[button] = false
+    P.quick(a.id, ctrl)
+    return nil
+end
+
+function P.on_release(ctrl, button)
+    local h = P.held[button]
+    if h == nil then return button end
+    P.held[button] = nil
+    return h or nil
+end
+
+function P.action_label(a)
+    return L(a.label)
+end
+
+P.KEY_W = 2.3
+P.ROW_H = 0.56
+
+local function bind_row(a, w, lw)
+    local b = P.bound and P.bound[a.id]
+    local cap = P.capture == a.id
+    local text = cap and L("Press a button") or P.name(b)
+    local colour = cap and UIK.C.warn or (b and UIK.C.accent or UIK.C.inactive)
+    local h = P.ROW_H
+    local g = not cap and P.glyph(b, 0.5) or nil
+    local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = h + 0.1, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cr", minw = lw, maxw = lw, minh = h, padding = 0}, nodes = {
+            {n = G.UIT.T, config = {text = P.action_label(a), scale = 0.4, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = 0.75, minh = h, padding = 0}, nodes = {g}},
+        UIK.button{label = text, button = "pad_bind_pick", ref_table = a, colour = colour, w = P.KEY_W, h = h, scale = 0.4, col = true, id = "pad_bind_" .. a.id},
+    }}
+    node.uik_h = h + 0.1
+    return node
+end
+
+function P.binds_body()
+    P.refresh()
+    local ncol = UIK.portrait() and 1 or 2
+    local inner = UIK.col_w(ncol) - 2 * UIK.PAD
+    local lw = 0
+    for _, a in ipairs(P.ACTIONS) do lw = math.max(lw, UIK.text_w(P.action_label(a), 0.4)) end
+    lw = math.min(lw + 0.1, inner - P.KEY_W - 0.95)
+    local per = math.ceil(#P.ACTIONS / ncol)
+    local cols = {}
+    for c = 1, ncol do cols[c] = {} end
+    for i, a in ipairs(P.ACTIONS) do table.insert(cols[math.min(ncol, math.ceil(i / per))], bind_row(a, inner, lw)) end
+    local line = P.ui.notice or L("Pick an action, then press its new button. The two swap.")
+    local ns = 0.38
+    local lines, cur = {}, ""
+    for word in tostring(line):gmatch("%S+") do
+        local try = cur == "" and word or (cur .. " " .. word)
+        if cur ~= "" and UIK.text_w(try, ns) > UIK.W - 0.4 then
+            lines[#lines + 1] = cur
+            cur = word
+        else
+            cur = try
+        end
+    end
+    lines[#lines + 1] = cur
+    local note_h = 0.1 + #lines * (ns + 0.08)
+    local note = {}
+    for i, l in ipairs(lines) do
+        note[i] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+            {n = G.UIT.T, config = {text = l, scale = ns, colour = P.ui.notice and UIK.C.title or UIK.C.muted}},
+        }}
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+            UIK.columns(cols, {h = UIK.H - UIK.TOP - note_h, cards = true}),
+            {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = note_h, padding = 0}, nodes = {
+                {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = note},
+            }},
+        }},
+    }}
+end
+
+function P.binds_window()
+    return UIK.window{
+        id = "pad_binds",
+        title = L("CONTROLLER BUTTONS"),
+        tabs = {{key = "buttons", label = L("Buttons"), build = P.binds_body}},
+        footer = {
+            {label = P.glyph_label(), button = "pad_glyphs_cycle", id = "pad_glyphs", w = 4.6},
+            {label = L("Reset to defaults"), button = "pad_binds_reset", colour = UIK.C.danger, w = 4.6},
+        },
+        back_func = "pad_binds_back",
+    }
+end
+
+function P.help_sections()
+    local function n(id) return P.action_name(id) end
+    local function pair(a, b) return n(a) .. " / " .. n(b) end
+    local nav = {
+        {L("Move the focus"), L("D-pad")},
+        {L("Free pointer"), L("Right stick")},
+        {L("Press or pick"), n("press")},
+        {L("Back"), n("back")},
+        {L("Previous / next tab"), pair("tab_prev", "tab_next")},
+        {L("Options"), n("options")},
+        {L("Run Info"), n("run_info")},
+    }
+    local hand = {
+        {L("Play hand"), n("play")},
+        {L("Discard or skip"), n("discard")},
+        {L("Peek / view the deck"), pair("peek_deck", "view_deck")},
+        {L("Move a card (hold)"), n("press") .. " + " .. L("D-pad")},
+    }
+    local shop = {
+        {L("Sell"), n("tab_prev")},
+        {L("Use, buy, open"), n("tab_next")},
+        {L("Reroll / next round"), pair("play", "discard")},
+    }
+    local quick = {
+        {L("Speed up / slow down"), pair("speed_up", "speed_down")},
+    }
+    if P.action_button("sort_rank") or P.action_button("sort_suit") then quick[#quick + 1] = {L("Sort by rank / suit"), pair("sort_rank", "sort_suit")} end
+    if P.action_button("mute") then quick[#quick + 1] = {L("Mute all"), n("mute")} end
+    if P.action_button("music") then quick[#quick + 1] = {L("Mute music"), n("music")} end
+    local replay = {
+        {L("Pause or play"), n("play")},
+        {L("Next hand"), n("discard")},
+        {L("Previous / next action"), pair("tab_prev", "tab_next")},
+    }
+    local mg = {
+        {L("Start or tap"), n("press")},
+        {L("Close"), n("back")},
+    }
+    return nav, hand, shop, quick, replay, mg
+end
+
+function P.open_binds(from)
+    P.from = from
+    P.capture = nil
+    P.ui.notice = nil
+r 13 1381 %20%20%20%20 -
+l 107
+    G.FUNCS.overlay_menu{definition = P.binds_window()}
+end
+
+function P.init()
+    if P._hooked then return end
+    P._hooked = true
+    P.refresh()
+    if Controller and Controller.button_press and not P._wrapped then
+        P._wrapped = true
+        local press, release = Controller.button_press, Controller.button_release
+        Controller.button_press = function(self, button)
+            if not real(self) then return press(self, button) end
+            local ok, out = pcall(P.on_press, self, button)
+            if not ok then
+                print("[Controls] pad: " .. tostring(out))
+                return press(self, button)
+            end
+            if out then return press(self, out) end
+        end
+        Controller.button_release = function(self, button)
+            if not real(self) then return release(self, button) end
+            local ok, out = pcall(P.on_release, self, button)
+            if not ok then return release(self, button) end
+            if out then return release(self, out) end
+        end
+    end
+    if Controller and Controller.get_console_from_gamepad and not P._console then
+        P._console = true
+        local detect = Controller.get_console_from_gamepad
+        Controller.get_console_from_gamepad = function(self, name)
+            local style = P.glyph_style()
+            if style ~= "auto" then return style end
+            return detect(self, name)
+        end
+        if P.glyph_style() ~= "auto" then pcall(P.apply_glyphs) end
+    end
+    local pip = rawget(_G, "create_button_binding_pip")
+    if type(pip) == "function" and not P._pip then
+        P._pip = true
+        create_button_binding_pip = function(args)
+            local phys = args and P.by_out and P.by_out[args.button]
+            if phys and phys ~= args.button then
+                local copy = {}
+                for k, v in pairs(args) do copy[k] = v end
+                copy.button = phys
+                return pip(copy)
+            end
+            return pip(args)
+        end
+    end
+    local buy = G.FUNCS.buy_from_shop
+    if type(buy) == "function" and not P._buy then
+        P._buy = true
+        G.FUNCS.buy_from_shop = function(e, ...)
+            local card = e and e.config and e.config.ref_table
+            local r = buy(e, ...)
+            if card and G.CONTROLLER and G.CONTROLLER.HID.controller and G.E_MANAGER then
+                G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.3, blocking = false, blockable = false, func = function()
+                    local f = card.children and card.children.focused_ui
+                    if f and card.area and card.area ~= G.shop_jokers then
+                        f:remove()
+                        card.children.focused_ui = nil
+                        if card.states.focus.is and not card.REMOVED then card.children.focused_ui = G.UIDEF.card_focus_ui(card) end
+                    end
+                    return true
+                end}))
+            end
+            return r
+        end
+    end
+    G.FUNCS.open_pad_binds = function() P.open_binds("settings") end
+    G.FUNCS.pad_bind_pick = function(e)
+        local a = e and e.config and e.config.ref_table
+        if not (a and a.id) then return end
+        P.capture = P.capture ~= a.id and a.id or nil
+        P.ui.notice = nil
+        redraw(a.id)
+    end
+    G.FUNCS.pad_binds_reset = function()
+        P.reset_binds()
+        P.ui.notice = L("Every button is back to its default")
+        redraw()
+    end
+    G.FUNCS.pad_glyphs_cycle = function(e)
+        P.cycle_glyphs()
+        local function text_node(n)
+            if n.config and n.config.text and n.config.text_drawable then return n end
+            for _, c in pairs(n.children or {}) do
+                local t = type(c) == "table" and text_node(c)
+                if t then return t end
+            end
+        end
+        local t = e and text_node(e)
+        if t then
+            t.config.text = P.glyph_label()
+            t.config.text_drawable:set(t.config.text)
+            t.UIBox:recalculate()
+        end
+        redraw()
+    end
+    G.FUNCS.pad_binds_back = function(e)
+        P.capture = nil
+        P.ui.notice = nil
+        local from = P.from
+        P.from = nil
+        if C.back_to and C.back_to(from, e) then return end
+        if G.FUNCS.settings then return G.FUNCS.settings(e) end
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 45
+    end
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    G.ESC_BACK_FUNCS.pad_binds_back = true
+end
+
+local function register_new(t)
+    local out = {}
+    for lang, entries in pairs(t) do
+        out[lang] = {}
+        local have = MOD_TRANSLATIONS and MOD_TRANSLATIONS[lang] or {}
+        for k, v in pairs(entries) do if have[k] == nil then out[lang][k] = v end end
+    end
+    mod_loc_register(out)
+end
+
+register_new{
+    fr = {["Press or pick"] = "Appuyer ou choisir", ["Back"] = "Retour", ["Previous tab, sell"] = "Onglet préc., vendre", ["Next tab, use or buy"] = "Onglet suiv., utiliser",
+        ["Options"] = "Options", ["Run Info"] = "Infos partie", ["Play hand"] = "Jouer la main", ["Discard or skip"] = "Défausser ou passer", ["Play hand, reroll"] = "Jouer, relancer", ["Discard, skip, next round"] = "Défausser, passer, manche suiv.",
+        ["Peek at the deck"] = "Jeter un œil au jeu", ["View the deck"] = "Voir le jeu", ["Peek / view the deck"] = "Coup d'œil / voir le jeu", ["Reroll / next round"] = "Relancer / manche suiv.",
+        ["Sort by rank"] = "Trier par valeur", ["Sort by suit"] = "Trier par couleur", ["Speed up"] = "Accélérer", ["Slow down"] = "Ralentir",
+        ["Mute all"] = "Couper le son", ["Mute music"] = "Couper la musique", ["Unbound"] = "Aucune", ["Press a button"] = "Appuyez sur un bouton",
+        ["%s now on %s"] = "%s passe sur %s", ["Pick an action, then press its new button. The two swap."] = "Choisissez une action, puis appuyez sur son nouveau bouton. Les deux s'échangent.",
+        ["CONTROLLER BUTTONS"] = "BOUTONS DE LA MANETTE", ["Icons"] = "Icônes", ["Automatic"] = "Automatique", ["Buttons"] = "Boutons", ["Reset to defaults"] = "Touches par défaut", ["Every button is back to its default"] = "Tous les boutons sont revenus par défaut",
+        ["Move the focus"] = "Déplacer le curseur", ["D-pad"] = "Croix", ["Free pointer"] = "Pointeur libre", ["Right stick"] = "Stick droit", ["Previous / next tab"] = "Onglet préc. / suiv.",
+        ["Sort by rank / suit"] = "Trier valeur / couleur", ["Move a card (hold)"] = "Déplacer (maintenir)", ["Sell"] = "Vendre", ["Use, buy, open"] = "Utiliser, acheter, ouvrir",
+        ["Speed up / slow down"] = "Accélérer / ralentir", ["Pause or play"] = "Pause ou lecture", ["Next hand"] = "Main suivante", ["Previous / next ante"] = "Mise préc. / suiv.", ["Previous / next action"] = "Action préc. / suiv.",
+        ["Start or tap"] = "Lancer ou toucher", ["Close"] = "Fermer", ["Controller"] = "Manette",
+        ["Menu"] = "Menu", ["View"] = "Affichage", ["Cross"] = "Croix", ["Circle"] = "Rond", ["Square"] = "Carré", ["Triangle"] = "Triangle", ["Share"] = "Share"},
+    es = {["Press or pick"] = "Pulsar o elegir", ["Back"] = "Volver", ["Previous tab, sell"] = "Pestaña ant., vender", ["Next tab, use or buy"] = "Pestaña sig., usar",
+        ["Options"] = "Opciones", ["Run Info"] = "Info de partida", ["Play hand"] = "Jugar la mano", ["Discard or skip"] = "Descartar o saltar", ["Play hand, reroll"] = "Jugar, cambiar", ["Discard, skip, next round"] = "Descartar, saltar, ronda sig.",
+        ["Peek at the deck"] = "Echar un vistazo a la baraja", ["View the deck"] = "Ver la baraja", ["Peek / view the deck"] = "Vistazo / ver la baraja", ["Reroll / next round"] = "Cambiar / ronda sig.",
+        ["Sort by rank"] = "Ordenar por valor", ["Sort by suit"] = "Ordenar por palo", ["Speed up"] = "Acelerar", ["Slow down"] = "Frenar",
+        ["Mute all"] = "Silenciar todo", ["Mute music"] = "Silenciar música", ["Unbound"] = "Sin tecla", ["Press a button"] = "Pulsa un botón",
+        ["%s now on %s"] = "%s pasa a %s", ["Pick an action, then press its new button. The two swap."] = "Elige una acción y pulsa su nuevo botón. Los dos se intercambian.",
+        ["CONTROLLER BUTTONS"] = "BOTONES DEL MANDO", ["Icons"] = "Iconos", ["Automatic"] = "Automático", ["Buttons"] = "Botones", ["Reset to defaults"] = "Teclas por defecto", ["Every button is back to its default"] = "Todos los botones vuelven a su valor por defecto",
+        ["Move the focus"] = "Mover el cursor", ["D-pad"] = "Cruceta", ["Free pointer"] = "Puntero libre", ["Right stick"] = "Stick derecho", ["Previous / next tab"] = "Pestaña ant. / sig.",
+        ["Sort by rank / suit"] = "Ordenar valor / palo", ["Move a card (hold)"] = "Mover (mantener)", ["Sell"] = "Vender", ["Use, buy, open"] = "Usar, comprar, abrir",
+        ["Speed up / slow down"] = "Acelerar / frenar", ["Pause or play"] = "Pausa o seguir", ["Next hand"] = "Mano siguiente", ["Previous / next ante"] = "Apuesta ant. / sig.", ["Previous / next action"] = "Acción ant. / sig.",
+        ["Start or tap"] = "Empezar o tocar", ["Close"] = "Cerrar", ["Controller"] = "Mando",
+        ["Menu"] = "Menú", ["View"] = "Vista", ["Cross"] = "Equis", ["Circle"] = "Círculo", ["Square"] = "Cuadrado", ["Triangle"] = "Triángulo", ["Share"] = "Share"},
+}
+
+C.pad = P
+
+return P
+end

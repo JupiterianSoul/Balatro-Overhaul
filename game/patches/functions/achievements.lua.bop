@@ -1,0 +1,1666 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 295
+
+
+local MAX_ITERATIONS = 1000
+local SAVE_INTERVAL = 60
+local POPUP_DURATION = 4
+local MAX_TRACKED = 3
+local ITEMS_PER_PAGE = 6
+local CHECK_INTERVAL = 1.0
+
+
+local SAVE_TIMER = 0
+local CHECK_TIMER = 0
+local UNLOCK_QUEUE = {}
+
+local RARITY_COLORS = {
+    Common = {0.6, 0.6, 0.6, 1},
+    Rare = {0.3, 0.5, 0.9, 1},
+    Epic = {0.6, 0.3, 0.8, 1},
+    Legendary = {1, 0.8, 0.2, 1},
+    Secret = {0.2, 0.2, 0.2, 1}
+}
+
+local RARITY_ORDER = {
+    Common = 1,
+    Rare = 2,
+    Epic = 3,
+    Legendary = 4,
+    Secret = 5
+}
+
+local ACHIEVEMENT_CATEGORIES = {
+    "All",
+    "Progression",
+    "Scoring",
+    "Joker Expertise",
+    "Deck Mastery",
+    "Challenge Master",
+    "Collection",
+    "Daily Champion",
+    "Secret"
+}
+
+
+AchievementManager = AchievementManager or {}
+AchievementManager.achievements = {}
+AchievementManager.player_data = {}
+AchievementManager.filters = {
+    category = "All",
+    status = "All",
+    rarity = "All",
+    search = ""
+}
+AchievementManager.sort_by = "category"
+AchievementManager.current_page = 1
+AchievementManager.items_per_page = ITEMS_PER_PAGE
+AchievementManager.show_popup = false
+AchievementManager.popup_achievement = nil
+AchievementManager.popup_timer = 0
+AchievementManager.popup_duration = POPUP_DURATION
+AchievementManager.initialized = false
+
+
+local function safe_get_player_ach(achievement_id)
+    if not achievement_id then return nil end
+    if not AchievementManager.player_data then return nil end
+    if not AchievementManager.player_data.achievements then return nil end
+
+    local player_ach = AchievementManager.player_data.achievements[achievement_id]
+    if not player_ach then
+        player_ach = {
+            unlocked = false,
+            unlock_date = nil,
+            progress = 0,
+            notified = false
+        }
+        AchievementManager.player_data.achievements[achievement_id] = player_ach
+    end
+    return player_ach
+end
+
+local function safe_get_game_value(path, default)
+    if not G then return default end
+    if not G.GAME then return default end
+
+    local current = G.GAME
+    for part in string.gmatch(path, "[^.]+") do
+        if type(current) ~= "table" then return default end
+        current = current[part]
+        if current == nil then return default end
+    end
+    return current
+end
+
+
+function AchievementManager.init()
+    if AchievementManager.initialized then return true end
+    if not G then return false end
+
+    local success, err = pcall(function()
+        AchievementManager.player_data = {
+            version = "2.0",
+            last_updated = os.time() or 0,
+            achievements = {},
+            stats = {
+                total_achievements = 0,
+                unlocked_count = 0,
+                completion_percentage = 0,
+                last_unlock = nil,
+                first_achievement_date = nil,
+                total_play_time = 0,
+                total_hands_played = 0,
+                total_discards = 0,
+                total_jokers_obtained = 0,
+                total_jokers_sold = 0,
+                total_consumables_used = 0,
+                total_shops_visited = 0,
+                total_vouchers_used = 0,
+                total_blinds_beaten = 0,
+                total_runs_started = 0,
+                total_wins = 0,
+                highest_ante = 0,
+                highest_score = 0,
+                highest_money = 0,
+                fastest_win = nil
+            },
+            tracked_ids = {},
+            equipped_title = nil,
+            equipped_badges = {}
+        }
+
+        AchievementManager.load_data()
+        AchievementManager.load_definitions()
+        AchievementManager.update_stats()
+        AchievementManager.initialized = true
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] ERROR init: " .. tostring(err))
+        return false
+    end
+
+    print("[ACHIEVEMENTS] Initialized with " .. tostring(AchievementManager.count_achievements()) .. " achievements")
+    return true
+end
+
+function AchievementManager.reload_for_profile()
+    pcall(function()
+        AchievementManager.initialized = false
+        AchievementManager.player_data = nil
+        AchievementManager.init()
+    end)
+    print("[ACHIEVEMENTS] Reloaded for profile " .. tostring(G and G.SETTINGS and G.SETTINGS.profile or "?"))
+end
+
+function AchievementManager.delete_profile_data(profile_number)
+    if not profile_number then return end
+    local path = "achievement_data_" .. tostring(profile_number) .. ".jkr"
+    pcall(function()
+        love.filesystem.remove(path)
+    end)
+    print("[ACHIEVEMENTS] Deleted data for profile " .. tostring(profile_number))
+end
+
+
+function AchievementManager.load_definitions()
+    if AchievementManager.achievements then
+        for k in pairs(AchievementManager.achievements) do
+            AchievementManager.achievements[k] = nil
+        end
+    end
+    AchievementManager.achievements = {}
+
+    if not ACHIEVEMENT_DEFINITIONS then return end
+    if type(ACHIEVEMENT_DEFINITIONS) ~= "table" then return end
+
+    local count = #ACHIEVEMENT_DEFINITIONS
+    for i = 1, math.min(count, MAX_ITERATIONS) do
+        local achievement = ACHIEVEMENT_DEFINITIONS[i]
+        if achievement and type(achievement) == "table" and achievement.id then
+            AchievementManager.achievements[achievement.id] = achievement
+            if not AchievementManager.player_data.achievements[achievement.id] then
+                AchievementManager.player_data.achievements[achievement.id] = {
+                    unlocked = false,
+                    unlock_date = nil,
+                    progress = 0,
+                    notified = false
+                }
+            end
+        end
+    end
+
+    if AchievementManager.player_data and AchievementManager.player_data.stats then
+        AchievementManager.player_data.stats.total_achievements = AchievementManager.count_achievements()
+    end
+
+    pcall(function()
+        if G and type(G.ACHIEVEMENTS) == 'table' and ACHIEVEMENT_DEFINITIONS and type(ACHIEVEMENT_DEFINITIONS) == 'table' then
+            for i = 1, #ACHIEVEMENT_DEFINITIONS do
+                local a = ACHIEVEMENT_DEFINITIONS[i]
+                if a and a.id and not G.ACHIEVEMENTS[a.id] then
+                    local tier = 3
+                    if a.rarity == 'Legendary' then tier = 1 elseif a.rarity == 'Rare' then tier = 2 end
+                    G.ACHIEVEMENTS[a.id] = {order = a.order or (#G.ACHIEVEMENTS + 1), tier = tier, earned = false}
+                end
+            end
+        end
+    end)
+end
+
+
+function AchievementManager.get_save_path()
+    local profile = (G and G.SETTINGS and G.SETTINGS.profile) or 1
+    return "achievement_data_" .. tostring(profile) .. ".jkr"
+end
+
+function AchievementManager.save_data()
+    if not G then return false end
+    if not love then return false end
+    if not love.filesystem then return false end
+
+    local success, err = pcall(function()
+        if AchievementManager.player_data then
+            AchievementManager.player_data.last_updated = os.time() or 0
+        end
+        AchievementManager.update_stats()
+        local save_string = "return " .. AchievementManager.serialize(AchievementManager.player_data)
+        require("functions/fast_fs").write(AchievementManager.get_save_path(), save_string)
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] Save failed: " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+function AchievementManager.load_data()
+    if not G then return false end
+    if not love then return false end
+    if not love.filesystem then return false end
+
+    local success, err = pcall(function()
+        local save_path = AchievementManager.get_save_path()
+        local info = love.filesystem.getInfo(save_path)
+
+        if info then
+            local contents = love.filesystem.read(save_path)
+            if contents and type(contents) == "string" and #contents > 0 then
+                local func = loadstring(contents)
+                if func then
+                    setfenv(func, {})
+                    local ok_inner, data = pcall(func)
+                    if ok_inner and data and type(data) == "table" then
+                        for k, v in pairs(data) do
+                            if AchievementManager.player_data then
+                                AchievementManager.player_data[k] = v
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    if not success then
+        print("[ACHIEVEMENTS] Load failed: " .. tostring(err))
+        return false
+    end
+    return true
+end
+
+function AchievementManager.serialize(tbl, indent, depth)
+    indent = indent or ""
+    depth = depth or 0
+
+    if depth > 20 then return '""' end
+
+    if type(tbl) ~= "table" then
+        if type(tbl) == "string" then
+            return '"' .. tostring(tbl):gsub('"', '\\"'):gsub('\n', '\\n') .. '"'
+        elseif type(tbl) == "boolean" then
+            return tbl and "true" or "false"
+        elseif type(tbl) == "number" then
+            return tostring(tbl)
+        else
+            return "nil"
+        end
+    end
+
+    local parts = {}
+    local next_indent = indent .. "  "
+    local iterations = 0
+
+    parts[#parts+1] = "{\n"
+
+r 11 326 %20%20%20%20 -
+l 118
+        iterations = iterations + 1
+        if iterations > MAX_ITERATIONS then break end
+
+        local key_str
+        if type(k) == "string" then
+            key_str = '["' .. k .. '"]'
+        elseif type(k) == "number" then
+            key_str = "[" .. tostring(k) .. "]"
+        else
+            key_str = '["' .. tostring(k) .. '"]'
+        end
+
+        local val_str
+        if type(v) == "table" then
+            val_str = AchievementManager.serialize(v, next_indent, depth + 1)
+        elseif type(v) == "string" then
+            val_str = '"' .. tostring(v):gsub('"', '\\"'):gsub('\n', '\\n') .. '"'
+        elseif type(v) == "boolean" then
+            val_str = v and "true" or "false"
+        elseif type(v) == "function" then
+            val_str = "nil"
+        elseif type(v) == "number" then
+            val_str = tostring(v)
+        else
+            val_str = "nil"
+        end
+
+        parts[#parts+1] = next_indent
+        parts[#parts+1] = key_str
+        parts[#parts+1] = " = "
+        parts[#parts+1] = val_str
+        parts[#parts+1] = ",\n"
+    end
+
+    parts[#parts+1] = indent
+    parts[#parts+1] = "}"
+    return table.concat(parts)
+end
+
+
+function AchievementManager.check_all_achievements()
+    if not AchievementManager.initialized then return end
+    if not AchievementManager.achievements then return end
+
+    local iterations = 0
+    for id, _ in pairs(AchievementManager.achievements) do
+        iterations = iterations + 1
+        if iterations > MAX_ITERATIONS then break end
+        AchievementManager.check_achievement(id)
+    end
+end
+
+function AchievementManager.check_achievement(achievement_id)
+    if not achievement_id then return false end
+    if not AchievementManager.achievements then return false end
+
+    if not Progress.allowed() then return false end
+
+    local achievement = AchievementManager.achievements[achievement_id]
+    if not achievement then return false end
+
+    local player_ach = safe_get_player_ach(achievement_id)
+    if not player_ach then return false end
+    if player_ach.unlocked then return true end
+
+    if achievement.unlock_condition and type(achievement.unlock_condition) == "function" then
+        local success, result = pcall(achievement.unlock_condition)
+        if success and result then
+            AchievementManager.unlock_achievement(achievement_id)
+            return true
+        end
+    end
+
+    local progress_required = achievement.progress_required or 1
+    local current_progress = player_ach.progress or 0
+    if progress_required > 0 and current_progress >= progress_required then
+        AchievementManager.unlock_achievement(achievement_id)
+        return true
+    end
+
+    return false
+end
+
+function AchievementManager.unlock_achievement(achievement_id)
+    if not achievement_id then return false end
+    if not AchievementManager.achievements then return false end
+
+    if not Progress.allowed() then return false end
+
+    local achievement = AchievementManager.achievements[achievement_id]
+    if not achievement then return false end
+
+    local player_ach = safe_get_player_ach(achievement_id)
+    if not player_ach then return false end
+    if player_ach.unlocked then return false end
+
+    player_ach.unlocked = true
+    player_ach.unlock_date = os.time() or 0
+    player_ach.progress = achievement.progress_required or 1
+
+    if AchievementManager.player_data and AchievementManager.player_data.stats then
+        AchievementManager.player_data.stats.last_unlock = achievement_id
+        if not AchievementManager.player_data.stats.first_achievement_date then
+            AchievementManager.player_data.stats.first_achievement_date = os.time() or 0
+        end
+    end
+
+    if UNLOCK_QUEUE and type(UNLOCK_QUEUE) == "table" then
+        table.insert(UNLOCK_QUEUE, achievement_id)
+    end
+
+    pcall(function() AchievementManager.grant_reward(achievement) end)
+
+    AchievementManager.save_data()
+
+    pcall(function()
+        if G then
+            G.SETTINGS = G.SETTINGS or {}
+r 12 1682 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 242
+            G.SETTINGS.ACHIEVEMENTS_EARNED[achievement_id] = true
+            if not G.ACHIEVEMENTS and fetch_achievements then fetch_achievements() end
+            if G.ACHIEVEMENTS then
+                local tier = (achievement.rarity == 'Legendary') and 1 or (achievement.rarity == 'Rare') and 2 or 3
+                G.ACHIEVEMENTS[achievement_id] = G.ACHIEVEMENTS[achievement_id] or {order = achievement.order or 999, tier = tier, earned = true}
+                G.ACHIEVEMENTS[achievement_id].earned = true
+            end
+        end
+    end)
+
+    for _, fn in ipairs(Overhaul and Overhaul.achievements and Overhaul.achievements._unlock_listeners or {}) do
+        pcall(fn, achievement_id, achievement)
+    end
+    pcall(function() if Overhaul and Overhaul.stats then Overhaul.stats.on("achievement_unlocked", {key = achievement_id}) end end)
+
+    print("[ACHIEVEMENTS] Unlocked: " .. tostring(achievement.name or achievement_id))
+    return true
+end
+
+function AchievementManager.grant_reward(achievement)
+    if not achievement then return end
+    if not achievement.reward_type then return end
+    if not achievement.reward_data then return end
+
+    local reward = achievement.reward_data
+    if type(reward) ~= "table" then return end
+
+    pcall(function()
+        if achievement.reward_type == "cosmetic" then
+            G.ACHIEVEMENTS_COSMETICS = G.ACHIEVEMENTS_COSMETICS or {}
+            if reward.id then G.ACHIEVEMENTS_COSMETICS[reward.id] = true end
+        elseif achievement.reward_type == "title" then
+            G.ACHIEVEMENTS_TITLES = G.ACHIEVEMENTS_TITLES or {}
+            if reward.id then
+                G.ACHIEVEMENTS_TITLES[reward.id] = {
+                    name = reward.name or achievement.name or "Unknown",
+                    unlocked = true
+                }
+            end
+        elseif achievement.reward_type == "badge" then
+            G.ACHIEVEMENTS_BADGES = G.ACHIEVEMENTS_BADGES or {}
+            if reward.id then
+                G.ACHIEVEMENTS_BADGES[reward.id] = {
+                    name = reward.name or "Badge",
+                    icon = reward.icon,
+                    unlocked = true
+                }
+            end
+        elseif achievement.reward_type == "currency" then
+            if G.GAME and reward.amount and type(reward.amount) == "number" then
+                G.GAME.dollars = (G.GAME.dollars or 0) + reward.amount
+            end
+        end
+    end)
+end
+
+
+function AchievementManager.update_progress(achievement_id, value, increment)
+    if not achievement_id then return end
+    if not value or type(value) ~= "number" then return end
+    if not AchievementManager.initialized then return end
+    if not AchievementManager.achievements then return end
+    if not Progress.allowed() then return end
+
+    local achievement = AchievementManager.achievements[achievement_id]
+    if not achievement then return end
+
+    local player_ach = safe_get_player_ach(achievement_id)
+    if not player_ach then return end
+    if player_ach.unlocked then return end
+
+    local current = player_ach.progress or 0
+    if increment then
+        player_ach.progress = current + value
+    else
+        player_ach.progress = math.max(current, value)
+    end
+
+    local progress_required = achievement.progress_required or 1
+    if progress_required > 0 and player_ach.progress >= progress_required then
+        AchievementManager.unlock_achievement(achievement_id)
+    end
+end
+
+function AchievementManager.get_progress(achievement_id)
+    if not achievement_id then return 0, 1 end
+    if not AchievementManager.achievements then return 0, 1 end
+
+    local achievement = AchievementManager.achievements[achievement_id]
+    if not achievement then return 0, 1 end
+
+    local player_ach = safe_get_player_ach(achievement_id)
+    local current = (player_ach and player_ach.progress) or 0
+    local required = achievement.progress_required or 1
+
+    return current, math.max(1, required)
+end
+
+function AchievementManager.get_progress_percent(achievement_id)
+    local current, required = AchievementManager.get_progress(achievement_id)
+    if required <= 0 then return 0 end
+    return math.min(100, (current / required) * 100)
+end
+
+
+function AchievementManager.get_achievement(achievement_id)
+    if not achievement_id then return nil end
+    if not AchievementManager.achievements then return nil end
+    return AchievementManager.achievements[achievement_id]
+end
+
+function AchievementManager.is_unlocked(achievement_id)
+    if not achievement_id then return false end
+    local player_ach = safe_get_player_ach(achievement_id)
+    return player_ach and player_ach.unlocked or false
+end
+
+function AchievementManager.get_unlock_date(achievement_id)
+    if not achievement_id then return nil end
+    local player_ach = safe_get_player_ach(achievement_id)
+    if player_ach and player_ach.unlock_date then
+        local success, result = pcall(function()
+            return os.date("%b %d, %Y", player_ach.unlock_date)
+        end)
+        if success then return result end
+    end
+    return nil
+end
+
+function AchievementManager.count_achievements()
+    if not AchievementManager.achievements then return 0 end
+    local count = 0
+    for _ in pairs(AchievementManager.achievements) do
+        count = count + 1
+        if count > MAX_ITERATIONS then break end
+    end
+    return count
+end
+
+function AchievementManager.count_unlocked()
+    if not AchievementManager.achievements then return 0 end
+    local count = 0
+    for id, _ in pairs(AchievementManager.achievements) do
+        if AchievementManager.is_unlocked(id) then count = count + 1 end
+        if count > MAX_ITERATIONS then break end
+    end
+    return count
+end
+
+
+function AchievementManager.update_stats()
+    if not AchievementManager.player_data then return end
+    if not AchievementManager.player_data.stats then
+        AchievementManager.player_data.stats = {}
+    end
+
+    local stats = AchievementManager.player_data.stats
+    stats.total_achievements = AchievementManager.count_achievements()
+    stats.unlocked_count = AchievementManager.count_unlocked()
+
+    if stats.total_achievements > 0 then
+        stats.completion_percentage = (stats.unlocked_count / stats.total_achievements) * 100
+    else
+        stats.completion_percentage = 0
+    end
+end
+
+function AchievementManager.get_stats()
+    AchievementManager.update_stats()
+    if AchievementManager.player_data and AchievementManager.player_data.stats then
+        return AchievementManager.player_data.stats
+    end
+    return {total_achievements = 0, unlocked_count = 0, completion_percentage = 0}
+end
+
+function AchievementManager.get_category_stats()
+    local stats = {}
+    for i = 1, #ACHIEVEMENT_CATEGORIES do
+        stats[ACHIEVEMENT_CATEGORIES[i]] = {total = 0, unlocked = 0}
+    end
+
+    if not AchievementManager.achievements then return stats end
+
+    for id, ach in pairs(AchievementManager.achievements) do
+        local category = ach.category or "Progression"
+        if not stats[category] then stats[category] = {total = 0, unlocked = 0} end
+        stats[category].total = stats[category].total + 1
+        if AchievementManager.is_unlocked(id) then
+            stats[category].unlocked = stats[category].unlocked + 1
+        end
+    end
+    return stats
+end
+
+
+function AchievementManager.update_popup(dt)
+    if not dt or type(dt) ~= "number" then return end
+
+    if AchievementManager.show_popup then
+        AchievementManager.popup_timer = (AchievementManager.popup_timer or 0) - dt
+        if AchievementManager.popup_timer <= 0 then
+            AchievementManager.dismiss_popup()
+        end
+    end
+
+    if not AchievementManager.show_popup and UNLOCK_QUEUE and #UNLOCK_QUEUE > 0 then
+        local achievement_id = table.remove(UNLOCK_QUEUE, 1)
+        if achievement_id then
+            AchievementManager.show_unlock_popup(achievement_id)
+        end
+    end
+end
+
+function AchievementManager.show_unlock_popup(achievement_id)
+    if not achievement_id then return end
+    if not AchievementManager.achievements then return end
+
+    local achievement = AchievementManager.achievements[achievement_id]
+    if not achievement then return end
+
+    AchievementManager.popup_achievement = achievement
+    AchievementManager.show_popup = true
+    AchievementManager.popup_timer = POPUP_DURATION
+
+    pcall(function()
+        if not G then return end
+        if not notify_alert then return end
+
+        if G.localization and G.localization.misc then
+            G.localization.misc.achievement_names = G.localization.misc.achievement_names or {}
+            G.localization.misc.achievement_names[achievement_id] = AchievementManager.get_display_name(achievement)
+        end
+
+        if play_sound then
+            play_sound('highlight1', 1.2, 0.6)
+        end
+
+        notify_alert(achievement_id, 'achievement')
+    end)
+
+    pcall(function()
+        if G and G.E_MANAGER and Event then
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 719
+                trigger = 'after',
+                delay = POPUP_DURATION,
+                func = function()
+                    AchievementManager.dismiss_popup()
+                    return true
+                end
+            }))
+        end
+    end)
+end
+
+function AchievementManager.dismiss_popup()
+    AchievementManager.show_popup = false
+    AchievementManager.popup_achievement = nil
+    AchievementManager.popup_timer = 0
+end
+
+
+function AchievementManager.update(dt)
+    if not AchievementManager.initialized then
+        pcall(function() AchievementManager.init() end)
+        return
+    end
+
+    if not dt or type(dt) ~= "number" then return end
+
+    if Overhaul and Overhaul.stats and Overhaul.stats.tick then pcall(Overhaul.stats.tick, dt) end
+
+    pcall(function() AchievementManager.update_popup(dt) end)
+
+    CHECK_TIMER = (CHECK_TIMER or 0) + dt
+    if CHECK_TIMER >= CHECK_INTERVAL then
+        CHECK_TIMER = 0
+        pcall(function() AchievementManager.check_all_achievements() end)
+    end
+
+    SAVE_TIMER = (SAVE_TIMER or 0) + dt
+    if SAVE_TIMER >= SAVE_INTERVAL then
+        SAVE_TIMER = 0
+        pcall(function() AchievementManager.save_data() end)
+    end
+end
+
+
+function AchievementManager.on_hand_played(hand_data)
+    if not AchievementManager.initialized then return end
+
+    pcall(function()
+        local chips = 0
+        local hand_name = ""
+
+        if hand_data and type(hand_data) == "table" then
+            chips = hand_data.chips or 0
+            hand_name = hand_data.hand_name or ""
+        end
+        if G and G.GAME then
+            chips = math.max(chips, G.GAME.chips or 0)
+        end
+
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            local stats = AchievementManager.player_data.stats
+            stats.total_hands_played = (stats.total_hands_played or 0) + 1
+            stats.highest_score = math.max(stats.highest_score or 0, chips)
+        end
+
+
+        if hand_name == "Flush Five" then
+            AchievementManager.update_progress("play_flush_five", 1)
+            if G and G.play and G.play.cards and #G.play.cards >= 5 then
+                local all_royal = true
+                for _, c in ipairs(G.play.cards) do
+                    if not c.base or not c.base.id or c.base.id < 11 then
+                        all_royal = false; break
+                    end
+                end
+                if all_royal then
+                    AchievementManager.update_progress("secret_flush_five_royal", 1)
+                end
+            end
+        elseif hand_name == "Flush House" then
+            AchievementManager.update_progress("play_flush_house", 1)
+        elseif hand_name == "Five of a Kind" then
+            AchievementManager.update_progress("play_five_of_kind", 1)
+        elseif hand_name == "Straight Flush" then
+            AchievementManager.update_progress("play_straight_flush", 1)
+        elseif hand_name == "Royal Flush" then
+            AchievementManager.update_progress("play_royal_flush", 1)
+        elseif hand_name == "Full House" then
+            AchievementManager.update_progress("play_full_house", 1)
+        end
+
+        AchievementManager.update_progress("hands_played_100", 1, true)
+        AchievementManager.update_progress("hands_played_500", 1, true)
+        AchievementManager.update_progress("hands_played_1000", 1, true)
+        AchievementManager.update_progress("hands_played_5000", 1, true)
+        AchievementManager.update_progress("hands_played_10000", 1, true)
+
+        if hand_name == "Pair" then AchievementManager.update_progress("play_pair_100", 1, true) end
+        if hand_name == "Two Pair" then AchievementManager.update_progress("play_two_pair_50", 1, true) end
+        if hand_name == "Three of a Kind" then AchievementManager.update_progress("play_three_kind_50", 1, true) end
+        if hand_name == "Four of a Kind" then AchievementManager.update_progress("play_four_kind_25", 1, true) end
+        if hand_name == "Straight" then AchievementManager.update_progress("play_straight_25", 1, true) end
+        if hand_name == "Flush" then AchievementManager.update_progress("play_flush_25", 1, true) end
+        if hand_name == "Full House" then AchievementManager.update_progress("play_full_house_25", 1, true) end
+
+        if not AchievementManager._blind_hand_types then AchievementManager._blind_hand_types = {} end
+        table.insert(AchievementManager._blind_hand_types, hand_name)
+
+        if G and G.GAME and G.GAME.blind and G.GAME.blind.chips then
+            local blind_req = G.GAME.blind.chips or 0
+            if blind_req > 0 and chips >= blind_req then
+                local ratio = chips / blind_req
+                if ratio >= 10 then
+                    AchievementManager.update_progress("overkill", 1)
+                end
+                if ratio < 1.05 then
+                    AchievementManager.update_progress("close_call", 1)
+                end
+            end
+        end
+
+        if G and G.play and G.play.cards and #G.play.cards >= 4 then
+            local ace_count = 0
+            local face_count = 0
+            local suits_seen = {}
+            for _, c in ipairs(G.play.cards) do
+                if c.base and c.base.id then
+                    if c.base.id == 14 then ace_count = ace_count + 1 end
+                    if c.base.id >= 11 then face_count = face_count + 1 end
+                end
+                if c.base and c.base.suit then suits_seen[c.base.suit] = true end
+            end
+            if ace_count >= 4 then
+                AchievementManager.update_progress("secret_all_aces", 1)
+            end
+            if #G.play.cards >= 5 and face_count == #G.play.cards then
+                AchievementManager.update_progress("secret_all_face", 1)
+            end
+            local suit_count = 0
+            for _ in pairs(suits_seen) do suit_count = suit_count + 1 end
+            if suit_count >= 4 then
+                AchievementManager.update_progress("secret_all_suits_hand", 1)
+            end
+        end
+
+        if G and G.hand and G.hand.cards and #G.hand.cards == 13 then
+            AchievementManager.update_progress("secret_13_cards", 1)
+        end
+    end)
+end
+
+function AchievementManager.on_discard()
+    if not AchievementManager.initialized then return end
+    AchievementManager._run_discards = (AchievementManager._run_discards or 0) + 1
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_discards =
+                (AchievementManager.player_data.stats.total_discards or 0) + 1
+        end
+        AchievementManager.update_progress("discards_100", 1, true)
+        AchievementManager.update_progress("discards_500", 1, true)
+    end)
+end
+
+function AchievementManager.on_ante_complete(ante_number)
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        local ante = ante_number or 1
+        if G and G.GAME and G.GAME.round_resets then
+            ante = G.GAME.round_resets.ante or ante
+        end
+
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.highest_ante =
+                math.max(AchievementManager.player_data.stats.highest_ante or 0, ante)
+        end
+
+        AchievementManager.on_ante_progress(ante - 1, ante)
+
+        if G and G.GAME then
+            AchievementManager._ante_start_dollars = G.GAME.dollars or 0
+        end
+    end)
+end
+
+AchievementManager.ANTE_DONE_IDS = {"ante_1", "ante_4", "ante_8", "ante_12"}
+AchievementManager.ANTE_REACH_IDS = {"ante_5", "ante_10", "ante_15", "ante_20", "ante_25", "ante_30", "ante_39"}
+
+function AchievementManager.on_ante_progress(completed, reached)
+    for _, id in ipairs(AchievementManager.ANTE_DONE_IDS) do AchievementManager.update_progress(id, tonumber(completed) or 0) end
+    for _, id in ipairs(AchievementManager.ANTE_REACH_IDS) do AchievementManager.update_progress(id, tonumber(reached) or 0) end
+end
+
+function AchievementManager.on_blind_complete()
+    if not AchievementManager.initialized then return end
+    if not Progress.allowed() then return end
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_blinds_beaten =
+                (AchievementManager.player_data.stats.total_blinds_beaten or 0) + 1
+        end
+
+        AchievementManager.update_progress("blinds_beaten_100", 1, true)
+        AchievementManager.update_progress("blinds_beaten_500", 1, true)
+        AchievementManager.update_progress("blinds_beaten_1000", 1, true)
+
+        if G and G.GAME and G.GAME.blind and G.GAME.blind.config and G.GAME.blind.config.blind then
+            local blind_key = G.GAME.blind.config.blind
+            if blind_key and blind_key.boss then
+                AchievementManager.update_progress("boss_defeated_50", 1, true)
+                AchievementManager.update_progress("boss_defeated_100", 1, true)
+            end
+        end
+
+        if G and G.GAME and G.GAME.current_round then
+            local hands_this_blind = G.GAME.current_round.hands_played or 0
+
+            if not AchievementManager._perfect_ante_tracker then
+                AchievementManager._perfect_ante_tracker = {ante = 0, blinds_perfect = 0}
+            end
+
+            local current_ante = 0
+            if G.GAME.round_resets then
+                current_ante = G.GAME.round_resets.ante or 0
+            end
+
+            if current_ante ~= AchievementManager._perfect_ante_tracker.ante then
+                AchievementManager._perfect_ante_tracker = {ante = current_ante, blinds_perfect = 0}
+            end
+
+            if hands_this_blind == 1 then
+                AchievementManager._perfect_ante_tracker.blinds_perfect =
+                    AchievementManager._perfect_ante_tracker.blinds_perfect + 1
+            end
+
+            if AchievementManager._perfect_ante_tracker.blinds_perfect >= 3 then
+                AchievementManager.update_progress("perfect_ante", 1)
+                AchievementManager._perfect_ante_tracker.blinds_perfect = 0
+            end
+        end
+
+        if safe_get_game_value("blind.config.blind.boss", false) and safe_get_game_value("round_resets.ante", 0) == 7 and (G.GAME.dollars or 0) == 77 then
+            AchievementManager.update_progress("secret_lucky_7", 1)
+        end
+
+        if G and G.GAME and (G.GAME.dollars or 0) == 0 then
+            AchievementManager.update_progress("secret_zero_dollars", 1)
+        end
+
+        if AchievementManager._blind_hand_types and #AchievementManager._blind_hand_types > 0 then
+            local all_high = true
+            for _, hn in ipairs(AchievementManager._blind_hand_types) do
+                if hn ~= "High Card" then all_high = false; break end
+            end
+            if all_high then
+                AchievementManager.update_progress("high_card_blind", 1)
+            end
+        end
+        AchievementManager._blind_hand_types = {}
+
+        if G then
+            local total = 0
+            if G.deck and G.deck.cards then total = total + #G.deck.cards end
+            if G.hand and G.hand.cards then total = total + #G.hand.cards end
+            if G.play and G.play.cards then total = total + #G.play.cards end
+            if G.discard and G.discard.cards then total = total + #G.discard.cards end
+            if G.playing_cards and #G.playing_cards > 0 then total = #G.playing_cards end
+            if total <= 1 then
+                AchievementManager.update_progress("secret_one_card_deck", 1)
+            end
+        end
+    end)
+end
+
+function AchievementManager.on_run_start()
+    if not AchievementManager.initialized then return end
+    AchievementManager._run_discards = 0
+    AchievementManager._perfect_ante_tracker = nil
+    AchievementManager._blind_hand_types = {}
+    AchievementManager._run_planets_used = {}
+    AchievementManager._run_tarots_used = {}
+    AchievementManager._ante_start_dollars = nil
+    AchievementManager._win_streak = AchievementManager._win_streak or 0
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_runs_started =
+                (AchievementManager.player_data.stats.total_runs_started or 0) + 1
+        end
+        AchievementManager.update_progress("runs_started", 1, true)
+        AchievementManager.update_progress("runs_500", 1, true)
+    end)
+end
+
+function AchievementManager.on_run_end(won, final_score, run_time, deck_key)
+    if not AchievementManager.initialized then return end
+    if not Progress.allowed() then return end
+    pcall(function()
+        if won then
+            if AchievementManager.player_data and AchievementManager.player_data.stats then
+                local stats = AchievementManager.player_data.stats
+                stats.total_wins = (stats.total_wins or 0) + 1
+                if run_time and (not stats.fastest_win or run_time < stats.fastest_win) then
+                    stats.fastest_win = run_time
+                end
+            end
+
+            AchievementManager.update_progress("first_win", 1)
+            AchievementManager.update_progress("wins_10", 1, true)
+            AchievementManager.update_progress("wins_50", 1, true)
+            AchievementManager.update_progress("wins_100", 1, true)
+            if G and G.GAME then
+                AchievementManager.on_ante_progress(G.GAME.win_ante or 8, safe_get_game_value("round_resets.ante", 0))
+            end
+
+            if run_time and type(run_time) == "number" and run_time > 0 and not G.GAME.seeded then
+                if run_time < 900 then
+                    AchievementManager.update_progress("speed_runner", 1)
+                end
+                if run_time < 1200 then
+                    AchievementManager.update_progress("speed_20", 1)
+                end
+                if run_time < 600 then
+                    AchievementManager.update_progress("speed_demon", 1)
+                end
+            end
+
+            if deck_key and type(deck_key) == "string" then
+                AchievementManager.update_progress("deck_win_" .. deck_key, 1)
+            end
+
+            local stake = 1
+            if G and G.GAME then stake = G.GAME.stake or 1 end
+            if stake >= 1 then AchievementManager.update_progress("stake_white", 1) end
+            if stake >= 2 then AchievementManager.update_progress("stake_red", 1) end
+            if stake >= 3 then AchievementManager.update_progress("stake_green", 1) end
+            if stake >= 4 then AchievementManager.update_progress("stake_black", 1) end
+            if stake >= 5 then AchievementManager.update_progress("stake_blue", 1) end
+            if stake >= 6 then AchievementManager.update_progress("stake_purple", 1) end
+            if stake >= 7 then AchievementManager.update_progress("stake_orange", 1) end
+            if stake >= 8 then AchievementManager.update_progress("stake_gold", 1) end
+            if stake >= 9 then AchievementManager.update_progress("stake_chaos", 1); AchievementManager.update_progress("creative_first", 1) end
+            if stake >= 10 then AchievementManager.update_progress("stake_apocalypse", 1) end
+            if stake >= 11 then AchievementManager.update_progress("stake_oblivion", 1) end
+            if stake >= 12 then AchievementManager.update_progress("stake_transcendent", 1) end
+
+            if stake >= 9 then
+                if not AchievementManager.player_data.stats then AchievementManager.player_data.stats = {} end
+                if not AchievementManager.player_data.stats.creative_stakes_won then
+                    AchievementManager.player_data.stats.creative_stakes_won = {}
+                end
+                AchievementManager.player_data.stats.creative_stakes_won[tostring(stake)] = true
+                local count = 0
+                for _ in pairs(AchievementManager.player_data.stats.creative_stakes_won) do count = count + 1 end
+                AchievementManager.update_progress("creative_3_stakes", count)
+                AchievementManager.update_progress("creative_all_stakes", count)
+            end
+
+            if G.GAME.challenge and G.GAME.challenge ~= "" then
+                local cid = G.GAME.challenge
+                local st = AchievementManager.player_data.stats
+                st.challenges_won = type(st.challenges_won) == "table" and st.challenges_won or {}
+                st.challenges_won[tostring(cid)] = true
+                local won_n = 0
+                for _ in pairs(st.challenges_won) do won_n = won_n + 1 end
+                for _, id in ipairs({"challenge_first", "challenge_5", "challenge_10", "challenge_20", "challenge_30"}) do
+                    AchievementManager.update_progress(id, won_n)
+                end
+                if cid == "c_bankruptcy_1" then AchievementManager.update_progress("challenge_bankruptcy", 1) end
+                if cid == "c_gauntlet_1" then AchievementManager.update_progress("challenge_gauntlet", 1) end
+                if cid == "c_glass_cannon_1" then AchievementManager.update_progress("challenge_glass_cannon", 1) end
+                if cid == "c_duality_1" then AchievementManager.update_progress("challenge_duality", 1) end
+                if cid == "c_alchemist_1" then AchievementManager.update_progress("challenge_alchemist", 1) end
+            end
+
+            local hs = G.PROFILES and G.PROFILES[G.SETTINGS.profile] and G.PROFILES[G.SETTINGS.profile].high_scores
+            AchievementManager._win_streak = hs and hs.current_streak and tonumber(hs.current_streak.amt) or ((AchievementManager._win_streak or 0) + 1)
+            AchievementManager.update_progress("win_streak_5", AchievementManager._win_streak)
+
+            if G.GAME.dollars and G.GAME.dollars < 0 then
+                AchievementManager.update_progress("secret_negative_win", 1)
+            end
+
+            if AchievementManager._run_planets_used then
+                local planet_count = 0
+                for _ in pairs(AchievementManager._run_planets_used) do planet_count = planet_count + 1 end
+                if planet_count >= 12 then
+                    AchievementManager.update_progress("all_planet_types", 1)
+                end
+            end
+            if AchievementManager._run_tarots_used then
+                local tarot_count = 0
+                for _ in pairs(AchievementManager._run_tarots_used) do tarot_count = tarot_count + 1 end
+                if tarot_count >= 22 then
+                    AchievementManager.update_progress("all_tarot_types", 1)
+                end
+            end
+
+            if G and G.jokers and G.jokers.cards then
+                local count = #G.jokers.cards
+                if count == 0 then
+                    AchievementManager.update_progress("no_jokers_win", 1)
+                elseif count == 1 then
+                    AchievementManager.update_progress("minimalist", 1)
+                end
+                if count >= 5 then
+                    AchievementManager.update_progress("win_5_jokers", 1)
+                end
+
+                local all_common = true
+                for _, joker in ipairs(G.jokers.cards) do
+                    if joker.config and joker.config.center then
+                        local rarity = joker.config.center.rarity or 1
+                        if rarity > 1 then
+                            all_common = false
+                            break
+                        end
+                    end
+                end
+                if all_common and count > 0 then
+                    AchievementManager.update_progress("common_only_win", 1)
+                end
+            end
+
+            if G then
+                local total_cards = 0
+                if G.deck and G.deck.cards then total_cards = total_cards + #G.deck.cards end
+                if G.hand and G.hand.cards then total_cards = total_cards + #G.hand.cards end
+                if G.play and G.play.cards then total_cards = total_cards + #G.play.cards end
+                if G.discard and G.discard.cards then total_cards = total_cards + #G.discard.cards end
+                if G.playing_cards and #G.playing_cards > 0 then total_cards = #G.playing_cards end
+                if total_cards == 52 then
+                    AchievementManager.update_progress("secret_exactly_52", 1)
+                end
+            end
+
+            if G and G.GAME then
+                local skips = 0
+                if G.GAME.blind_states then
+                    for _, state in pairs(G.GAME.blind_states) do
+                        if state == "Skipped" then skips = skips + 1 end
+                    end
+                end
+                local total_skips = G.GAME.skips or 0
+                if total_skips == 0 then
+                    AchievementManager.update_progress("perfectionist", 1)
+                end
+            end
+
+            if (AchievementManager._run_discards or 0) == 0 then
+                AchievementManager.update_progress("no_discards_win", 1)
+            end
+        else
+            AchievementManager._win_streak = 0
+        end
+
+        AchievementManager.save_data()
+    end)
+end
+
+function AchievementManager.on_joker_added(joker)
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_jokers_obtained =
+                (AchievementManager.player_data.stats.total_jokers_obtained or 0) + 1
+        end
+
+        AchievementManager.update_progress("jokers_obtained_50", 1, true)
+        AchievementManager.update_progress("jokers_obtained_100", 1, true)
+        AchievementManager.update_progress("jokers_obtained_500", 1, true)
+
+        if G and G.jokers and G.jokers.cards then
+            local count = #G.jokers.cards
+            AchievementManager.update_progress("joker_5_at_once", count)
+            AchievementManager.update_progress("joker_10_at_once", count)
+            AchievementManager.update_progress("joker_20_at_once", count)
+
+            local legendary_count = 0
+            local editions_seen = {}
+            local rarities_seen = {}
+            for _, j in ipairs(G.jokers.cards) do
+                if j.config and j.config.center then
+                    local rarity = j.config.center.rarity or 1
+                    if rarity == 4 then legendary_count = legendary_count + 1 end
+                    rarities_seen[rarity] = true
+                end
+                if j.edition then
+                    if j.edition.negative then editions_seen["negative"] = true end
+                    if j.edition.polychrome then editions_seen["polychrome"] = true end
+                    if j.edition.holo then editions_seen["holo"] = true end
+                    if j.edition.foil then editions_seen["foil"] = true end
+                end
+            end
+            AchievementManager.update_progress("all_legendary", legendary_count)
+            AchievementManager.update_progress("full_legendary_5", legendary_count)
+
+            local edition_count = 0
+            for _ in pairs(editions_seen) do edition_count = edition_count + 1 end
+            AchievementManager.update_progress("edition_variety", edition_count)
+
+            if editions_seen["negative"] then AchievementManager.update_progress("negative_joker", 1) end
+            if editions_seen["polychrome"] then AchievementManager.update_progress("polychrome_joker", 1) end
+            if editions_seen["holo"] then AchievementManager.update_progress("holographic_joker", 1) end
+            if editions_seen["foil"] then AchievementManager.update_progress("foil_joker", 1) end
+
+            if rarities_seen[1] and rarities_seen[2] and rarities_seen[3] and rarities_seen[4] then
+                AchievementManager.update_progress("secret_rainbow", 1)
+            end
+        end
+
+        if joker and type(joker) == "table" and joker.config and joker.config.center then
+            if joker.config.center.rarity == 4 then
+                AchievementManager.update_progress("legendary_obtained", 1, true)
+            end
+        end
+    end)
+end
+
+function AchievementManager.on_joker_sold()
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_jokers_sold =
+                (AchievementManager.player_data.stats.total_jokers_sold or 0) + 1
+        end
+        AchievementManager.update_progress("sell_jokers_50", 1, true)
+        AchievementManager.update_progress("jokers_sold_200", 1, true)
+    end)
+end
+
+function AchievementManager.on_shop_visit()
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_shops_visited =
+                (AchievementManager.player_data.stats.total_shops_visited or 0) + 1
+        end
+        AchievementManager.update_progress("shops_visited", 1, true)
+    end)
+end
+
+function AchievementManager.on_money_change(amount)
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        if G and G.GAME then
+            local total = G.GAME.dollars or 0
+
+            if AchievementManager.player_data and AchievementManager.player_data.stats then
+                AchievementManager.player_data.stats.highest_money =
+                    math.max(AchievementManager.player_data.stats.highest_money or 0, total)
+            end
+
+            AchievementManager.update_progress("money_100", total)
+            AchievementManager.update_progress("money_500", total)
+            AchievementManager.update_progress("money_1000", total)
+            AchievementManager.update_progress("money_2000", total)
+            AchievementManager.update_progress("money_5000", total)
+
+            if total >= 999 then
+                AchievementManager.update_progress("secret_999_dollars", 1)
+            end
+
+            if total < 0 then
+                AchievementManager.update_progress("secret_debt", 1)
+            end
+
+            if AchievementManager._ante_start_dollars and AchievementManager._ante_start_dollars >= 100 and total <= 0 then
+                AchievementManager.update_progress("bankrupt_swing", 1)
+            end
+            if amount and type(amount) == "number" and amount < 0 then
+                AchievementManager.update_progress("big_spender", math.abs(amount), true)
+            end
+        end
+    end)
+end
+
+function AchievementManager.on_voucher_used(voucher_key)
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_vouchers_used =
+                (AchievementManager.player_data.stats.total_vouchers_used or 0) + 1
+        end
+        AchievementManager.update_progress("vouchers_used", 1, true)
+
+        if G and G.GAME and G.GAME.used_vouchers then
+            local voucher_count = 0
+            for _ in pairs(G.GAME.used_vouchers) do voucher_count = voucher_count + 1 end
+            if voucher_count >= 10 then
+                AchievementManager.update_progress("secret_10_vouchers", 1)
+            end
+        end
+    end)
+end
+
+function AchievementManager.on_consumable_used(consumable_type, consumable_key)
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            AchievementManager.player_data.stats.total_consumables_used =
+                (AchievementManager.player_data.stats.total_consumables_used or 0) + 1
+        end
+        AchievementManager.update_progress("consumables_used_100", 1, true)
+        AchievementManager.update_progress("consumables_500", 1, true)
+        AchievementManager.update_progress("consumables_1000", 1, true)
+
+        if consumable_type == "Tarot" then
+            AchievementManager.update_progress("tarots_50", 1, true)
+            AchievementManager.update_progress("tarots_200", 1, true)
+            if consumable_key and AchievementManager._run_tarots_used then
+                AchievementManager._run_tarots_used[consumable_key] = true
+            end
+        elseif consumable_type == "Planet" then
+            AchievementManager.update_progress("planets_50", 1, true)
+            AchievementManager.update_progress("planets_200", 1, true)
+            if consumable_key and AchievementManager._run_planets_used then
+                AchievementManager._run_planets_used[consumable_key] = true
+            end
+        elseif consumable_type == "Spectral" then
+            AchievementManager.update_progress("spectrals_25", 1, true)
+            AchievementManager.update_progress("spectrals_100", 1, true)
+        end
+    end)
+end
+
+function AchievementManager.on_daily_complete(score, streak)
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        AchievementManager.update_progress("daily_complete_1", 1)
+        AchievementManager.update_progress("daily_complete_7", 1, true)
+        AchievementManager.update_progress("daily_complete_30", 1, true)
+
+        if streak and type(streak) == "number" then
+            AchievementManager.update_progress("daily_streak_7", streak)
+            AchievementManager.update_progress("daily_streak_30", streak)
+        end
+
+        AchievementManager.save_data()
+    end)
+end
+
+function AchievementManager.on_blind_skipped()
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        AchievementManager.update_progress("first_skip", 1)
+        AchievementManager.update_progress("skip_50", 1, true)
+    end)
+end
+
+function AchievementManager.on_shop_reroll()
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        AchievementManager.update_progress("rerolls_50", 1, true)
+        AchievementManager.update_progress("rerolls_200", 1, true)
+    end)
+end
+
+function AchievementManager.on_card_sold()
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        AchievementManager.update_progress("sell_100", 1, true)
+        AchievementManager.update_progress("sell_500", 1, true)
+    end)
+end
+
+function AchievementManager.on_quest_claimed()
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        AchievementManager.update_progress("quests_10", 1, true)
+        AchievementManager.update_progress("quests_50", 1, true)
+        AchievementManager.update_progress("quests_100", 1, true)
+        AchievementManager.update_progress("quests_250", 1, true)
+    end)
+end
+
+function AchievementManager.on_card_enhanced()
+    if not AchievementManager.initialized then return end
+    pcall(function()
+        AchievementManager.update_progress("enhance_50", 1, true)
+        AchievementManager.update_progress("enhance_200", 1, true)
+    end)
+end
+
+function AchievementManager.on_edition_obtained()
+    if not AchievementManager.initialized then return end
+    if not (G and G.STAGES and G.STAGE == G.STAGES.RUN) then return end
+    pcall(function()
+        AchievementManager.update_progress("editions_10", 1, true)
+        AchievementManager.update_progress("editions_50", 1, true)
+    end)
+end
+
+function AchievementManager.check_periodic()
+    if not AchievementManager.initialized then return end
+    pcall(AchievementManager.sync_profile_progress)
+    pcall(function()
+        if not G then return end
+
+        if AchievementManager.player_data and AchievementManager.player_data.stats then
+            local od = Overhaul and Overhaul.stats and Overhaul.stats.data()
+            local play_time = math.max(AchievementManager.player_data.stats.total_play_time or 0, od and od.time or 0)
+            AchievementManager.update_progress("hours_played_10", play_time)
+            AchievementManager.update_progress("hours_played_50", play_time)
+            AchievementManager.update_progress("hours_played_100", play_time)
+        end
+
+        if G.consumeables and G.consumeables.cards and G.consumeables.config then
+            local max_slots = G.consumeables.config.card_limit or 2
+            if #G.consumeables.cards >= max_slots and max_slots >= 2 then
+                AchievementManager.update_progress("secret_full_consumables", 1)
+            end
+        end
+
+        if G.hand and G.hand.config and G.hand.config.card_limit then
+            if G.hand.config.card_limit >= 12 then
+                AchievementManager.update_progress("secret_max_hand_size", 1)
+            end
+        end
+
+r 3 4751 %20%20%20%20%20%20%20%20 -
+l 278
+            local enhancements = {}
+            local gold_count, steel_count, glass_count = 0, 0, 0
+            for _, c in ipairs(G.playing_cards) do
+                if c.ability and c.ability.name then
+                    local name = c.ability.name
+                    if name == "Bonus Card" or name == "Mult Card" or name == "Wild Card" or
+                       name == "Glass Card" or name == "Steel Card" or name == "Stone Card" or
+                       name == "Gold Card" or name == "Lucky Card" then
+                        enhancements[name] = true
+                    end
+                    if name == "Gold Card" then gold_count = gold_count + 1 end
+                    if name == "Steel Card" then steel_count = steel_count + 1 end
+                    if name == "Glass Card" then glass_count = glass_count + 1 end
+                end
+            end
+            local enh_count = 0
+            for _ in pairs(enhancements) do enh_count = enh_count + 1 end
+            if enh_count >= 7 then
+                AchievementManager.update_progress("all_enhancements", 1)
+            end
+            if gold_count >= 5 then AchievementManager.update_progress("gold_card_5", gold_count) end
+            if steel_count >= 5 then AchievementManager.update_progress("steel_card_5", steel_count) end
+            if glass_count >= 5 then AchievementManager.update_progress("glass_card_5", glass_count) end
+        end
+
+        if QuestManager and QuestManager.quest_data and QuestManager.quest_data.daily then
+            local all_done = true
+            local daily_count = 0
+            for _, q in ipairs(QuestManager.quest_data.daily) do
+                daily_count = daily_count + 1
+                if q.status ~= "claimed" and q.status ~= "completed" then
+                    all_done = false
+                end
+            end
+            if all_done and daily_count > 0 then
+                AchievementManager.update_progress("all_daily_quests", 1)
+            end
+        end
+
+        if QuestManager and QuestManager.quest_data then
+            local streak = QuestManager.quest_data.daily_streak or 0
+            if streak > 0 then
+                AchievementManager.update_progress("quest_streak_14", streak)
+            end
+        end
+    end)
+end
+
+
+function AchievementManager.get_rarity_color(rarity)
+    if not rarity then return RARITY_COLORS.Common end
+    return RARITY_COLORS[rarity] or RARITY_COLORS.Common
+end
+
+function AchievementManager.get_categories()
+    return ACHIEVEMENT_CATEGORIES
+end
+
+function AchievementManager.get_display_name(achievement)
+    if not achievement then return mod_loc("???") end
+    if achievement.is_secret and not AchievementManager.is_unlocked(achievement.id) then return mod_loc("???") end
+    return mod_loc(achievement.name or "Unknown")
+end
+
+function AchievementManager.get_display_description(achievement)
+    if not achievement then return "" end
+    if achievement.is_secret and not AchievementManager.is_unlocked(achievement.id) then
+        return mod_loc(achievement.secret_hint or "This achievement is a secret...")
+    end
+    return mod_loc(achievement.description or "")
+end
+
+function AchievementManager.get_display_reward(achievement)
+    if not achievement then return nil end
+    if achievement.is_secret and not AchievementManager.is_unlocked(achievement.id) then return mod_loc("???") end
+    if achievement.reward_data and achievement.reward_data.name then return mod_loc(achievement.reward_data.name) end
+    return nil
+end
+
+function AchievementManager.reset_all()
+    if not AchievementManager.player_data then return end
+    if not AchievementManager.player_data.achievements then return end
+
+    for id, _ in pairs(AchievementManager.player_data.achievements) do
+        AchievementManager.player_data.achievements[id] = {
+            unlocked = false, unlock_date = nil, progress = 0, notified = false
+        }
+    end
+
+    if AchievementManager.player_data.stats then
+        AchievementManager.player_data.stats.unlocked_count = 0
+        AchievementManager.player_data.stats.completion_percentage = 0
+        AchievementManager.player_data.stats.last_unlock = nil
+    end
+
+    AchievementManager.save_data()
+    print("[ACHIEVEMENTS] Reset complete")
+end
+
+AchievementManager.SCORE_IDS = {"score_10k", "score_100k", "score_1m", "score_10m", "score_100m", "score_1b"}
+
+function AchievementManager.sync_profile_progress()
+    if not AchievementManager.initialized then return end
+    local p = G and G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    if not p then return end
+    local prog = type(p.progression) == "table" and p.progression or {}
+    AchievementManager.update_progress("bom_daily_streak", tonumber(prog.bom_daily_streak) or 0)
+    local icons = type(prog.unlocked_icons) == "table" and #prog.unlocked_icons or 0
+    for _, n in ipairs({1, 5, 15, 30, 50, 100, 150}) do AchievementManager.update_progress("icon_collector_" .. n, icons) end
+    local S = Overhaul and Overhaul.stats
+    if S and S.mp_totals then
+        AchievementManager.update_progress("mp_nemesis", S.mp_totals().wins)
+        pcall(AchievementManager.sync_mp)
+    end
+    for event in pairs(AchievementManager.COUNTERS) do AchievementManager.sync_counter(event) end
+end
+
+AchievementManager.COUNTERS = {
+    casino_visit = {"casino_first", "casino_visits_50"},
+    forge_created = {"forge_first", "forge_10"},
+    tailor_change = {"tailor_first", "tailor_10"},
+    replay_watched = {"replay_first", "replay_10"},
+    boss_practice = {"training_first"},
+    arcade_play = {"arcade_first"},
+    seed_saved = {"library_first"},
+    history_opened = {"history_first"},
+    cheats_opened = {"secret_mod_user"},
+    guide_opened = {"secret_guide_reader"},
+    jukebox_opened = {"secret_jukebox"},
+}
+
+AchievementManager.MP_MODES = {"nemesis", "faceoff", "ranked", "ascension", "race", "br", "teams", "raid", "swap"}
+
+function AchievementManager.sync_counter(event)
+    local S = Overhaul and Overhaul.stats
+    local ids = AchievementManager.COUNTERS[event]
+    if not (S and S.get and ids) then return end
+    local n = tonumber(S.get(event)) or 0
+    if n <= 0 then return end
+    for _, id in ipairs(ids) do AchievementManager.update_progress(id, n) end
+end
+
+function AchievementManager.sync_places()
+    local st = AchievementManager.player_data and AchievementManager.player_data.stats
+    if not st then return end
+    st.casino_places = type(st.casino_places) == "table" and st.casino_places or {}
+    local n = 0
+    for _ in pairs(st.casino_places) do n = n + 1 end
+    AchievementManager.update_progress("casino_all_places", n)
+end
+
+function AchievementManager.sync_mp()
+    local S = Overhaul and Overhaul.stats
+    local d = S and S.data and S.data()
+    if not (d and d.mp) then return end
+    local t = S.mp_totals(d)
+    for _, id in ipairs({"mp_play_1", "mp_play_50", "mp_play_200"}) do AchievementManager.update_progress(id, tonumber(t.played) or 0) end
+    for _, id in ipairs({"mp_wins_50", "mp_wins_200"}) do AchievementManager.update_progress(id, tonumber(t.wins) or 0) end
+    for _, id in ipairs({"mp_streak_3", "mp_streak_10"}) do AchievementManager.update_progress(id, tonumber(d.mp.best) or 0) end
+    for _, id in ipairs({"mp_pvp_25", "mp_pvp_100"}) do AchievementManager.update_progress(id, tonumber(d.mp.pvp_w) or 0) end
+    local won_modes = 0
+    for _, key in ipairs(AchievementManager.MP_MODES) do
+        local m = d.mp.modes[key]
+        local w = type(m) == "table" and tonumber(m.wins) or 0
+        if w > 0 then
+            won_modes = won_modes + 1
+            AchievementManager.update_progress("mp_win_" .. key, 1)
+        end
+        if key == "ranked" then AchievementManager.update_progress("mp_ranked_10", w) end
+    end
+    AchievementManager.update_progress("mp_all_modes", won_modes)
+end
+
+function AchievementManager.on_daily_finished()
+    local st = AchievementManager.player_data and AchievementManager.player_data.stats
+    if not st then return end
+    local today = os.date("%Y-%m-%d", os.time())
+    if st.daily_last == today then return end
+    local yesterday = os.date("%Y-%m-%d", os.time() - 86400)
+    st.daily_streak = (st.daily_last == yesterday) and ((tonumber(st.daily_streak) or 0) + 1) or 1
+    st.daily_last = today
+    AchievementManager.on_daily_complete(nil, st.daily_streak)
+end
+
+function AchievementManager.check_all()
+    pcall(AchievementManager.sync_profile_progress)
+    AchievementManager.check_all_achievements()
+end
+
+function AchievementManager.bridge()
+    local S = Overhaul and Overhaul.stats
+    if not (S and S.listen) or AchievementManager._bridged then return end
+    AchievementManager._bridged = true
+    local function live()
+        local AM = rawget(_G, "AchievementManager")
+        return AM and AM.initialized
+    end
+    S.listen("hand_scored", function(d)
+        if not live() then return end
+        local score = tonumber(d.score) or 0
+        for _, id in ipairs(AchievementManager.SCORE_IDS) do AchievementManager.update_progress(id, score) end
+    end)
+    S.listen("*", function(d, event)
+        if not live() then return end
+        if AchievementManager.COUNTERS[event] then AchievementManager.sync_counter(event) end
+        if event == "casino_place" and type(d) == "table" and d.key then
+            local st = AchievementManager.player_data and AchievementManager.player_data.stats
+            if st then
+                st.casino_places = type(st.casino_places) == "table" and st.casino_places or {}
+                st.casino_places[tostring(d.key)] = true
+                AchievementManager.sync_places()
+            end
+        end
+    end)
+    S.listen("run_end", function(d)
+        if not live() then return end
+        if d.kind == "daily" then AchievementManager.on_daily_finished() end
+        if d.kind == "seeded" and d.won then AchievementManager.update_progress("seeded_win", 1) end
+    end)
+    S.listen("mp_match_end", function(d)
+        if d.duplicate or not live() then return end
+        if (tonumber(d.pvp_wins) or 0) > 0 then AchievementManager.update_progress("mp_first_blood", 1) end
+        pcall(AchievementManager.sync_mp)
+        if d.result == "win" and tostring(d.deck or ""):lower():find("random", 1, true) then
+            AchievementManager.update_progress("mp_random_deck", 1)
+        end
+        if d.result == "win" then
+            AchievementManager.update_progress("mp_nemesis", S.mp_totals().wins)
+            local lives = tonumber(d.lives)
+            if lives == 1 then AchievementManager.update_progress("mp_comeback_kid", 1) end
+            local st = bom_match and bom_match.get_state and bom_match.get_state()
+            local start = st and st.settings and tonumber(st.settings.starting_lives)
+            if lives and start and lives >= start then AchievementManager.update_progress("mp_untouchable", 1) end
+        end
+    end)
+end
+
+Overhaul = Overhaul or {}
+Overhaul.achievements = Overhaul.achievements or {}
+local OA = Overhaul.achievements
+
+function OA.unlocked(key)
+    return AchievementManager.is_unlocked(key) and true or false
+end
+
+function OA.progress(key)
+    return AchievementManager.get_progress(key)
+end
+
+function OA.unlock(key)
+    if not AchievementManager.initialized then pcall(AchievementManager.init) end
+    return AchievementManager.unlock_achievement(key)
+end
+
+function OA.add(key, n)
+    AchievementManager.update_progress(key, tonumber(n) or 1, true)
+end
+
+function OA.list()
+    local out = {}
+    for i, a in ipairs(ACHIEVEMENT_DEFINITIONS or {}) do
+        out[#out + 1] = {key = a.id, name = AchievementManager.get_display_name(a), category = a.category, rarity = a.rarity,
+            unlocked = AchievementManager.is_unlocked(a.id), goal = a.progress_required or 1}
+    end
+    return out
+end
+
+function OA.count()
+    return AchievementManager.count_unlocked(), AchievementManager.count_achievements()
+end
+
+OA._unlock_listeners = OA._unlock_listeners or {}
+function OA.on_unlock(fn)
+    if type(fn) == "function" then table.insert(OA._unlock_listeners, fn) end
+end
+
+print("[ACHIEVEMENTS] Core module loaded (production-ready)")
+return AchievementManager
+end

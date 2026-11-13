@@ -1,0 +1,274 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 257
+FairLock = FairLock or {}
+local FL = FairLock
+
+FL.REASONS = {speedrun = "Off in Speedrun", ranked = "Off in Ranked", mp = "Off in this lobby"}
+FL.TOAST_GAP = 0.6
+
+local function mp_settings()
+    local s = G and G.GAME and G.GAME.mp_settings
+    local bm = rawget(_G, "bom_match")
+    if type(s) ~= "table" and bm and bm.get_settings then s = bm.get_settings() end
+    return type(s) == "table" and s or {}
+end
+
+local function mp_fair_off(what)
+    local F = rawget(_G, "MPFair")
+    if F and F.allowed then
+        local ok, allowed = pcall(F.allowed, what)
+        if ok then return not allowed end
+    end
+    return true
+end
+
+local function host_off(key)
+    return function()
+        return mp_settings()[key] ~= true
+    end
+end
+
+local function preview_off()
+    local s = mp_settings()
+    local bm = rawget(_G, "bom_match")
+    if bm and bm.preview_allowed then
+        local ok, on = pcall(bm.preview_allowed, s)
+        if ok then return not (on and s.preview_disabled ~= true) end
+    end
+    return not (s.allow_score_preview == true and s.preview_disabled ~= true)
+end
+
+local function forge_off()
+    local R = rawget(_G, "ForgeRoom")
+    if R and R.active then
+        local ok, on = pcall(R.active)
+        if ok then return not on end
+    end
+    return mp_settings().allow_forge ~= true
+end
+
+local function random_seed_attempt()
+    local c = G.GAME and G.GAME.speedrun
+    return not (c and c.seed_type == "weekly")
+end
+
+FL.KEYS = {
+    game_speed = {label = "Game speed over the limit", setting = "GAMESPEED", speedrun = true, ranked = true, mp = function() return mp_fair_off("speed") end},
+    score_speed = {label = "Score speed", setting = "fast_score_resolve", speedrun = true, ranked = true, mp = function() return mp_fair_off("score") end},
+    skip_score = {label = "Skip score animation", setting = "skip_score_animation", speedrun = true, ranked = true, mp = function() return mp_fair_off("skip") end},
+    speed_key = {label = "Speed key", speedrun = true, ranked = true, mp = function() return mp_fair_off("speed") end},
+    quick_restart = {label = "Quick restart", speedrun = false, ranked = true, mp = true},
+    hand_optimizer = {label = "Hand Optimizer", setting = "hand_optimizer", speedrun = true, ranked = true, mp = host_off("allow_hand_optimizer")},
+    score_preview = {label = "Score Preview", setting = "score_preview_enabled", speedrun = true, ranked = true, mp = preview_off},
+    fast_packs = {label = "Fast packs", setting = "qol_fast_packs", speedrun = true, ranked = false, mp = false},
+    seed = {label = "Show the seed", speedrun = random_seed_attempt, ranked = true, mp = function() return mp_fair_off("seed") end},
+    debug_menu = {label = "Debug menu", speedrun = true, ranked = true, mp = false},
+    mod_menu = {label = "Cheats", speedrun = true, ranked = true, mp = true},
+    forge = {label = "Forge creations", speedrun = true, ranked = true, mp = forge_off},
+    mods = {label = "Mods", speedrun = true, ranked = true, mp = false},
+}
+
+FL.ALIASES = {
+    speed = "game_speed", GAMESPEED = "game_speed", gamespeed = "game_speed", allow_fast_speed = "game_speed",
+    score = "score_speed", fast_score_resolve = "score_speed", allow_score_speed = "score_speed",
+    skip = "skip_score", skip_score_animation = "skip_score", allow_skip_score = "skip_score",
+    qol_speed_key = "speed_key", speed_keys = "speed_key",
+    qol_quick_restart = "quick_restart", restart = "quick_restart",
+    allow_hand_optimizer = "hand_optimizer",
+    score_preview_enabled = "score_preview", allow_score_preview = "score_preview",
+    qol_fast_packs = "fast_packs",
+    show_seed = "seed", copy_seed = "seed", seed_display = "seed",
+    debug = "debug_menu", debug_mode = "debug_menu",
+    allow_forge = "forge", forge_creations = "forge",
+    mod_menu_cheats = "mod_menu",
+}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+local function playing_back()
+    local P = rawget(_G, "bom_playback")
+    local ok, on = pcall(function() return P and P.active and P.active() end)
+    return ok and on and true or false
+end
+
+local function in_run()
+    return G and G.STAGES and G.STAGE == G.STAGES.RUN and G.GAME ~= nil
+end
+
+local function ranked()
+    local R = rawget(_G, "bom_rulesets")
+    local ok, kind = pcall(function() return R and R.lock_kind and R.lock_kind() end)
+    return ok and kind == "ranked"
+end
+
+function FL.speedrun_live()
+    local c = G and G.GAME and G.GAME.speedrun
+    return type(c) == "table" and not c.done and not c.failed and not c.broken
+end
+
+function FL.context()
+    if not in_run() or playing_back() then return nil end
+    if G.GAME.multiplayer then return ranked() and "ranked" or "mp" end
+    if FL.speedrun_live() then return "speedrun" end
+    return nil
+end
+
+function FL.key(key)
+    if FL.KEYS[key] then return key end
+    return FL.ALIASES[key]
+end
+
+function FL.blocks(key)
+    local ctx = FL.context()
+    if not ctx then return nil end
+    local k = FL.key(key)
+    local d = k and FL.KEYS[k]
+    if not d then return nil end
+    local rule = d[ctx]
+    if type(rule) == "function" then
+        local ok, r = pcall(rule)
+        rule = not ok or r
+    end
+    if not rule then return nil end
+    return L(FL.REASONS[ctx])
+end
+
+function FL.toast(text)
+    local now = love and love.timer and love.timer.getTime() or 0
+    if FL._last_toast == text and now - (FL._last_toast_t or -10) < FL.TOAST_GAP then return end
+    FL._last_toast, FL._last_toast_t = text, now
+    pcall(play_sound, 'cancel', 0.8, 0.6)
+    local Q = rawget(_G, "QOL")
+    if Q and Q.toast then pcall(Q.toast, text, G.C.UI.TEXT_LIGHT) end
+end
+
+function FL.refuse(key)
+    local reason = FL.blocks(key)
+    if not reason then return false end
+    FL.toast(reason)
+    return true
+end
+
+function FL.safe_value(k)
+    local d = FL.KEYS[k]
+    local SR = rawget(_G, "Speedrun")
+    if not (d and d.setting and SR and SR.FORCED) then return nil end
+    return SR.FORCED[d.setting]
+end
+
+function FL.enforce()
+    if FL.context() ~= "speedrun" then return end
+    local S = G.SETTINGS
+    if not S then return end
+    local hit
+    for k, d in pairs(FL.KEYS) do
+        local want = d.setting and FL.safe_value(k)
+        if want ~= nil and S[d.setting] ~= want and FL.blocks(k) then
+            S[d.setting] = want
+            hit = true
+        end
+    end
+    if hit then
+        FL.toast(L(FL.REASONS.speedrun))
+        pcall(function() G:save_settings() end)
+    end
+end
+
+local function wrap_func(name, key)
+    local orig = G.FUNCS[name]
+    if type(orig) ~= "function" or FL._wrapped[name] == orig then return end
+    local w = function(...)
+        if FL.refuse(key) then return end
+        return orig(...)
+    end
+    G.FUNCS[name] = w
+    FL._wrapped[name] = w
+end
+
+local function wrap_seed_ui(get, set)
+    local orig = get()
+    if type(orig) ~= "function" or FL._wrapped_ui[orig] then return end
+    local w = function(...)
+        local t = orig(...)
+        local F = rawget(_G, "MPFair")
+        if FL.context() == "speedrun" and FL.blocks("seed") and F and F.hide_seed_in then
+            pcall(F.hide_seed_in, t, 0, L("Hidden until the goal"))
+        end
+        return t
+    end
+    FL._wrapped_ui[w] = true
+    set(w)
+end
+
+FL.FUNCS = {
+    open_mod_menu_fullscreen = "mod_menu", open_mod_menu_inrun = "mod_menu",
+    open_debug_menu = "debug_menu", open_debug_menu_overlay = "debug_menu", open_debug_pin = "debug_menu",
+    copy_seed = "seed", seed_lib_save_current = "seed",
+}
+
+function FL.install()
+    if not (G and G.FUNCS) then return end
+    FL._wrapped = FL._wrapped or {}
+    FL._wrapped_ui = FL._wrapped_ui or {}
+    for name, key in pairs(FL.FUNCS) do wrap_func(name, key) end
+    wrap_seed_ui(function() return rawget(_G, "create_UIBox_options") end, function(f) create_UIBox_options = f end)
+    if G.UIDEF then wrap_seed_ui(function() return G.UIDEF.run_seed end, function(f) G.UIDEF.run_seed = f end) end
+end
+
+function FL.hide_floating()
+    if G.MOD_FLOATING_BUTTON and FL.blocks("mod_menu") and remove_floating_mod_button then remove_floating_mod_button() end
+end
+
+function FL.update()
+    if not FL._installed and G and G.FUNCS and G.STAGES then
+        FL._installed = true
+        local ok, err = pcall(FL.install)
+        if not ok then print("[FairLock] install: " .. tostring(err)) end
+    end
+    FL.enforce()
+    if FL.context() == "speedrun" then FL.hide_floating() end
+end
+
+mod_loc_register{
+    fr = {
+        ["Off in Speedrun"] = "Désactivé en speedrun", ["Off in Ranked"] = "Désactivé en classé", ["Off in this lobby"] = "Désactivé dans ce salon",
+        ["Hidden until the goal"] = "Masquée jusqu'à l'objectif",
+        ["Game speed over the limit"] = "Vitesse de jeu au-delà de la limite",
+        ["Debug menu"] = "Menu debug", ["Forge creations"] = "Créations de la Forge",
+    },
+    es = {
+        ["Off in Speedrun"] = "Desactivado en speedrun", ["Off in Ranked"] = "Desactivado en clasificatoria", ["Off in this lobby"] = "Desactivado en esta sala",
+        ["Hidden until the goal"] = "Oculta hasta el objetivo",
+        ["Game speed over the limit"] = "Velocidad de juego por encima del límite",
+        ["Debug menu"] = "Menú debug", ["Forge creations"] = "Creaciones de la Forja",
+    },
+}
+
+function FL.mp_setting_locked(key)
+    if not G or not G.GAME or not G.GAME.multiplayer then return false end
+    local mp = G.GAME.mp_settings
+    if not mp then return false end
+    if key == 'hand_optimizer' then
+        return not mp.allow_hand_optimizer
+    elseif key == 'score_preview_enabled' or key == 'score_preview' then
+        return not (mp.allow_score_preview and not mp.preview_disabled)
+    end
+    return false
+end
+
+local _fl_game_update = Game.update
+r 9 2449 - -
+l 9
+    _fl_game_update(self, dt)
+    local ok, err = pcall(FL.update)
+    if not ok and not FL._warned then
+        FL._warned = true
+        print("[FairLock] update: " .. tostring(err))
+    end
+end
+
+return FL
+end

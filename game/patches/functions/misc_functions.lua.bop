@@ -1,0 +1,864 @@
+BOP 2
+eol lf
+final 1
+base 11
+c 49
+s 1
+r 11 50 %20%20%20%20 -
+c 13
+l 1
+  if PERF_MON and PERF_MON.enabled then PERF_MON.checkpoint(label, type, reset) end
+c 15
+s 1
+l 1
+  if reset then
+c 4
+s 1
+l 1
+
+c 17
+s 1
+r 11 102 %20%20 -
+c 3
+s 18
+l 3
+
+  local show_bar = not G.F_HIDE_LOADING_BAR and love.window and love.window.isOpen()
+  if show_bar then
+r 11 106 %20%20%20%20 -
+r 11 107 %20%20%20%20 -
+r 11 108 %20%20%20%20%20%20 -
+l 2
+      love.graphics.dis
+    }
+r 11 111 %20%20%20%20 -
+r 11 112 %20%20%20%20 -
+l 1
+    love.graphics.push()
+r 3 4413 %20%20%20%20 -
+r 11 115 %20%20%20%20 -
+r 11 116 %20%20%20%20 -
+r 11 117 %20%20%20%20 -
+r 11 118 %20%20%20%20 -
+r 17 119 %20%20%20%20 -
+r 11 120 %20%20%20%20 -
+r 11 121 %20%20%20%20 -
+l 1
+    love.graphics.pop()
+r 11 123 %20%20%20%20 -
+l 1
+  end
+c 6
+s 1
+r 11 130 %20%20 -
+c 41
+s 1
+r 11 172 %20%20%20%20 -
+c 4
+s 1
+r 11 177 %20%20%20%20 -
+c 1
+s 1
+l 1
+          index = i
+c 45
+s 1
+r 11 225 %20%20%20%20%20%20 -
+c 24
+s 1
+l 1
+  return _t and _t.key or nil
+c 3
+l 1
+  if not _t then return nil, nil end
+c 5
+l 2
+
+  if #keys == 0 then return nil, nil end
+c 8
+s 1
+l 1
+  return _t[key], key
+c 12
+s 1
+l 1
+  if true then
+c 7
+s 1
+l 1
+
+c 12
+s 1
+l 1
+  if predict_seed then
+c 4
+s 2
+l 1
+
+r 11 307 %20%20 -
+c 17
+s 1
+l 1
+    indent = indent + 2
+c 5
+s 1
+r 11 331 %20%20%20%20%20%20%20%20 -
+c 152
+s 1
+l 1
+    if not fh_2b then
+c 52
+s 1
+r 11 537 %20%20%20%20%20%20%20%20 -
+c 29
+s 1
+r 11 567 %20%20%20%20 -
+c 16
+s 1
+r 11 584 %20%20%20%20%20%20 -
+c 83
+l 31
+local PHONE_GC_CALM = {}
+local phone_gc_live, phone_gc_state = nil, nil
+
+function phone_gc()
+	if not PHONE_GC_CALM.ready and G and G.STATES then
+		PHONE_GC_CALM.ready = true
+		for _, k in ipairs({"SHOP", "BLIND_SELECT", "ROUND_EVAL", "MENU", "GAME_OVER", "SPLASH"}) do
+			if G.STATES[k] then PHONE_GC_CALM[G.STATES[k]] = true end
+		end
+	end
+	local mem = collectgarbage("count")
+	local live = phone_gc_live or mem
+	local soft = live * 1.5 + 16384
+	local budget = 3e-4
+	if mem > soft then budget = mem > soft * 1.5 and 2e-3 or 1e-3 end
+	local state = G and G.STATE
+	if state ~= phone_gc_state then
+		phone_gc_state = state
+		if PHONE_GC_CALM[state] and mem > live * 1.2 then budget = 4e-3 end
+	end
+	local start = love.timer.getTime()
+	local steps = 0
+	while love.timer.getTime() - start < budget and steps < 4000 do
+		steps = steps + 1
+		if collectgarbage("step", 1) then
+			mem = collectgarbage("count")
+			phone_gc_live = mem
+			if mem < live * 1.5 + 16384 then break end
+		end
+	end
+	if collectgarbage("count") > 307200 then
+r 11 660 %09%09 -
+l 2
+		phone_gc_live = collectgarbage("count")
+	end
+r 11 664 %09 -
+l 2
+end
+
+c 2
+s 1
+l 1
+  if obj then
+c 26
+l 2
+  if type(per) == "table" then per = (rawget(_G, "to_number") or tonumber)(per) end
+  if type(vol) == "table" then vol = (rawget(_G, "to_number") or tonumber)(vol) end
+c 27
+s 1
+r 11 724 %20%20 -
+c 6
+s 1
+r 11 731 %20%20%20%20%20%20%20%20 -
+c 37
+l 1
+  if G.JUKEBOX_ACTIVE or G.MG_MUSIC then desired_track = '' end
+c 38
+s 1
+l 1
+  if vert then
+c 3
+s 1
+r 11 811 %20%20%20%20%20%20 -
+c 5
+s 2
+r 11 817 %20%20%20%20%20%20 -
+r 11 818 %20%20%20%20%20%20 -
+c 11
+s 1
+r 11 830 %20%20 -
+c 5
+s 2
+l 2
+  if no_tab then
+    return
+c 14
+s 2
+l 2
+  if no_tab then
+    return
+c 14
+s 2
+l 2
+  if no_tab then
+    return
+c 41
+s 3
+l 1
+  if G.consumeables and G.consumeables.cards then
+r 11 911 %20%20%20%20 -
+r 11 907 %20%20%20%20%20%20 -
+r 11 908 %20%20%20%20%20%20%20%20 -
+l 1
+      end
+c 6
+l 9
+  if ante > 1 and ante < 8 and ante ~= math.floor(ante) then
+    local lo = math.floor(ante)
+    local a, b = get_blind_amount(lo), get_blind_amount(lo + 1)
+    return a + (b - a) * (ante - lo)
+  end
+  if (G.GAME.modifiers.scaling or 1) > 3 then
+    local S = rawget(_G, "SMODS")
+    if S and S.get_blind_amount then return S.get_blind_amount(ante) end
+  end
+c 1
+s 1
+r 11 921 %20%20 -
+c 9
+s 1
+r 11 931 %20%20 -
+c 2
+s 1
+c 7
+s 1
+r 11 942 %20%20 -
+c 2
+s 1
+c 73
+s 1
+l 1
+  if G.GAME.round_scores[score] and math.floor(amt) > (tonumber(G.GAME.round_scores[score].amt) or 0) then
+c 3
+s 1
+l 1
+  if not Progress.allowed() then return end
+r 11 1023 %20%20 -
+c 3
+s 1
+l 1
+  if G.PROFILES[G.SETTINGS.profile].high_scores[score] and math.floor(amt) > (tonumber(G.PROFILES[G.SETTINGS.profile].high_scores[score].amt) or 0) then
+c 7
+l 1
+  if not Progress.allowed() then return end
+c 24
+l 5
+local set_joker_win_raw = set_joker_win
+function set_joker_win(...)
+  if not Progress.allowed() then return end
+  return set_joker_win_raw(...)
+end
+c 2
+s 2
+e 11 1061 %20%20 - =45,-13,=4
+e 11 1061 %20%20 - -3,=59
+r 11 1062 %20%20 -
+c 2
+s 1
+l 1
+      if type(k) == 'number' and G.sticker_map[k] then _w = math.max(k, _w) end
+c 8
+l 1
+  if not Progress.allowed() then return end
+c 12
+l 1
+  if not Progress.allowed() then return end
+c 12
+l 1
+  if not Progress.allowed() then return end
+c 15
+s 1
+l 1
+  if G.PROFILES[G.SETTINGS.profile].all_unlocked or G.PROFILES[G.SETTINGS.profile].debug_unlocked then return end
+c 23
+s 1
+r 11 1137 %20%20 -
+c 2
+s 1
+r 11 1140 %20%20%20%20 -
+c 11
+s 1
+r 11 1152 %20%20%20%20%20 -
+c 11
+s 1
+r 11 1164 %20%20 -
+c 2
+s 1
+l 1
+      if type(k) == 'number' and G.sticker_map[k] then _w = math.max(k, _w) end
+c 6
+l 1
+  if not Progress.allowed() then return end
+c 24
+s 1
+r 11 1198 %20%20%20%20%20%20%20%20 -
+c 13
+s 1
+r 11 1212 %20%20%20%20%20%20 -
+c 46
+l 7
+check_profile = function(tab)
+  if not tab then return true, -1 end
+  if tab.deleted then return true, tab.ver or 0 end
+  if tab.progress then return false, tab.ver or 0 end
+  return true, -1
+end
+
+c 16
+s 1
+l 1
+      G.PROGRESS.deck_stakes.tally = G.PROGRESS.deck_stakes.tally + math.min(get_deck_win_stake(v.key), #G.P_CENTER_POOLS.Stake)
+c 1
+s 1
+r 11 1277 %20%20%20%20 -
+c 1
+s 1
+l 1
+      G.PROGRESS.joker_stickers.tally = G.PROGRESS.joker_stickers.tally + math.min(get_joker_win_sticker(v, true) or 0, #G.P_CENTER_POOLS.Stake)
+c 16
+l 4
+  if bom_nemesis and bom_nemesis.ensure_registered then pcall(bom_nemesis.ensure_registered) end
+  if bom_custom_objects and bom_custom_objects.ensure_registered then pcall(bom_custom_objects.ensure_registered) end
+  if bom_traps and bom_traps.initialized and bom_traps.init then pcall(bom_traps.init) end
+  if bom_party_run and bom_party_run.ensure_registered then pcall(bom_party_run.ensure_registered) end
+c 18
+s 1
+l 1
+
+c 1
+s 1
+l 1
+    if not v.omit then
+c 2
+s 1
+l 1
+        if v.discovered then
+c 5
+s 1
+l 1
+        if v.discovered then
+c 5
+s 1
+l 1
+        if v.discovered then
+c 5
+s 1
+l 1
+        if v.discovered then
+c 4
+s 1
+l 1
+          if v.discovered then
+c 4
+s 1
+l 1
+          if v.discovered then
+c 4
+s 1
+l 1
+          if v.discovered then
+c 6
+s 1
+l 1
+        if v.discovered then
+c 5
+s 1
+l 1
+        if v.discovered then
+c 5
+s 1
+l 1
+        if v.discovered then
+c 6
+l 1
+    if not v.no_collection and not v.rr_plain then
+c 2
+s 1
+l 1
+      if v.discovered then
+c 3
+l 1
+    end
+c 4
+s 1
+l 1
+    if v.discovered then
+c 21
+s 1
+l 1
+  if _depth > 0 then
+c 17
+s 1
+l 2
+  if (G.GAME.seeded and not G.GAME.daily) or G.GAME.challenge then return end
+  if not Progress.allowed() then return end
+c 2
+l 11
+
+  pcall(function()
+    if QuestManager then
+      if stat == "c_hands_played" then
+        QuestManager.process_event("hands_played", nil, mod or 1)
+      elseif stat == "c_cards_discarded" then
+        QuestManager.process_event("cards_discarded", nil, mod or 1)
+      end
+    end
+  end)
+
+c 5
+s 1
+r 11 131 %20%20 -
+c 1
+s 1
+r 11 1438 %20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 1
+      elseif type(v) ~= 'function' then ret_t[k] = v end
+c 10
+l 28
+function apply_gc_tuning(on)
+  collectgarbage("setpause", on and 150 or 200)
+  collectgarbage("setstepmul", 200)
+end
+
+local deferred_files = {}
+local deferred_files_mt = {
+  __index = function(t, k)
+    local data = deferred_files[k]
+    if data == nil then return nil end
+    deferred_files[k] = nil
+    local v = STR_UNPACK(STR_PACK(data))
+    rawset(t, k, v)
+    return v
+  end,
+  __newindex = function(t, k, v)
+    deferred_files[k] = nil
+    rawset(t, k, v)
+  end,
+}
+
+function defer_file_copy(key, data)
+  if not G.FILES then G.FILES = {} end
+  if getmetatable(G.FILES) ~= deferred_files_mt then setmetatable(G.FILES, deferred_files_mt) end
+  rawset(G.FILES, key, nil)
+  deferred_files[key] = data
+end
+
+c 2
+l 1
+
+c 2
+s 1
+r 11 1456 %20%20%20%20 -
+c 7
+s 1
+r 11 1464 %20%20%20%20 -
+c 15
+l 1
+
+c 8
+s 1
+l 4
+  local run_file = G.SETTINGS.profile..'/save.jkr'
+  love.mod_filesystem.remove(run_file)
+  love.mod_filesystem.remove(run_file..'.prev')
+  G.FILES[run_file] = nil
+c 29
+s 1
+e 11 1518 %20%20 - =49,-9,+%42%4C,=1,-1,+%43,=1
+c 64
+s 39
+c 68
+l 23
+  local function _resolve_var(vars, ref)
+    if type(vars) ~= 'table' then vars = {} end
+    local n = tonumber(ref)
+    if n then return vars[n] or 'ERROR' end
+    local suffix, si = ref:match("^<([^,>]+)>(%d+)$")
+    if suffix then
+      local v = vars[tonumber(si)]
+      return (not v or tonumber(v) == 1) and '' or suffix
+    end
+    local pl, sg, pi = ref:match("^<([^,>]+),([^>]+)>(%d+)$")
+    if pl then
+      local v = vars[tonumber(pi)]
+      return (not v or tonumber(v) == 1) and sg or pl
+    end
+    return ''
+  end
+  if args == nil then
+    if not G.LOCALIZE_NIL_LOGGED then
+      G.LOCALIZE_NIL_LOGGED = true
+      print("localize called with nil args\n" .. debug.traceback())
+    end
+    return 'ERROR'
+  end
+c 9
+s 1
+r 11 1699 %20%20 -
+c 1
+s 1
+r 11 1701 %20%20 -
+c 1
+s 1
+r 11 1703 %20%20 -
+c 1
+s 1
+r 11 1705 %20%20 -
+c 2
+s 1
+l 1
+    if loc_target then
+c 5
+s 1
+l 1
+            assembled_string = assembled_string..(type(subpart) == 'string' and subpart or _resolve_var(args.vars, subpart[1]))
+c 9
+s 1
+r 11 1724 %20%20 -
+c 1
+s 1
+r 11 1726 %20%20%20%20 -
+c 26
+s 1
+l 1
+  if loc_target then
+c 5
+s 1
+l 1
+          assembled_string = assembled_string..(type(subpart) == 'string' and subpart or _resolve_var(args.vars, subpart[1]))
+c 2
+s 1
+l 1
+        if G.F_MOBILE then desc_scale = desc_scale * ((args.type == 'tutorial' and 1.5) or 1.45) end
+c 67
+l 1
+  elseif _stake == 9 then
+r 11 1822 %20%20%20%20 -
+r 11 1823 %20%20%20%20%20%20 -
+r 11 1824 %20%20%20%20%20%20 -
+r 11 1825 %20%20%20%20%20%20 -
+l 1
+
+r 11 1827 %20%20%20%20%20%20 -
+l 3
+      Sprite.draw_shader(_sprite, 'foil', nil, _sprite.ARGS.send_to_shader)
+    end
+  elseif _stake == 10 then
+r 11 1822 %20%20%20%20 -
+r 11 1823 %20%20%20%20%20%20 -
+l 1
+      _sprite.ARGS.send_to_shader[1] = math.min(_sprite.VT.r*3, 1) + G.TIMERS.REAL/(14) + (_sprite.juice and _sprite.juice.r*20 or 0) + 1
+r 11 1825 %20%20%20%20%20%20 -
+l 1
+
+r 11 1827 %20%20%20%20%20%20 -
+l 3
+      Sprite.draw_shader(_sprite, 'holo', nil, _sprite.ARGS.send_to_shader)
+    end
+  elseif _stake == 11 then
+r 11 1822 %20%20%20%20 -
+r 11 1823 %20%20%20%20%20%20 -
+l 1
+      _sprite.ARGS.send_to_shader[1] = math.min(_sprite.VT.r*3, 1) + G.TIMERS.REAL/(10) + (_sprite.juice and _sprite.juice.r*20 or 0) + 1
+r 11 1825 %20%20%20%20%20%20 -
+l 1
+
+r 11 1827 %20%20%20%20%20%20 -
+l 4
+      Sprite.draw_shader(_sprite, 'negative', nil, _sprite.ARGS.send_to_shader)
+      Sprite.draw_shader(_sprite, 'negative', nil, _sprite.ARGS.send_to_shader)
+    end
+  elseif _stake == 12 then
+r 11 1822 %20%20%20%20 -
+r 11 1823 %20%20%20%20%20%20 -
+l 1
+      _sprite.ARGS.send_to_shader[1] = math.min(_sprite.VT.r*3, 1) + G.TIMERS.REAL/(8) + (_sprite.juice and _sprite.juice.r*20 or 0) + 1
+r 11 1825 %20%20%20%20%20%20 -
+l 1
+
+r 11 1827 %20%20%20%20%20%20 -
+r 11 1828 %20%20%20%20%20%20 -
+l 2
+      Sprite.draw_shader(_sprite, 'polychrome', nil, _sprite.ARGS.send_to_shader)
+    end
+c 8
+s 1
+r 11 1838 %20%20%20%20%20%20 -
+c 17
+s 1
+l 5
+    G.C.GOLD,
+    HEX('1a3a6b'),
+    HEX('8b0000'),
+    G.C.BLACK,
+    HEX('e8d5b7'),
+c 1
+s 1
+l 1
+  return G.C.STAKES[_stake] or G.C.WHITE
+c 32
+l 5
+DB_PRINT = function(key, val)
+  if not DB_TAB then DB_TAB = {} end
+  DB_TAB[key] = val
+end
+
+c 1
+l 1
+local SOUND_OPEN_FAILED = {}
+c 6
+s 1
+l 13
+  local c = SMODS_Sounds and SMODS_Sounds[args.sound_code]
+  local s
+  local function open_source()
+    if c then
+      return love.audio.newSource(love.sound.newDecoder(c.data), c.should_stream and 'stream' or 'static')
+    end
+    return love.audio.newSource("resources/sounds/"..args.sound_code..'.ogg', should_stream and "stream" or 'static')
+  end
+  local now = love.timer.getTime()
+  local source
+  if not (SOUND_OPEN_FAILED[args.sound_code] and SOUND_OPEN_FAILED[args.sound_code] > now) then
+    local ok, res = pcall(open_source)
+    if not ok then
+r 21 96 %20%20%20%20%20%20 -
+l 13
+      ok, res = pcall(open_source)
+    end
+    if ok then
+      source = res
+      SOUND_OPEN_FAILED[args.sound_code] = nil
+    else
+      SOUND_OPEN_FAILED[args.sound_code] = now + 5
+      print('[SOUND] could not open '..tostring(args.sound_code)..': '..tostring(res))
+    end
+  end
+  s = {sound = source}
+  if c then s.per = c.per; s.vol = c.vol end
+  if not s.sound then return s end
+c 2
+s 2
+l 2
+  s.original_pitch = ((args.type ~= "sound") and s.per) or args.per or 1
+  s.original_volume = ((args.type ~= "sound") and s.vol) or args.vol or 1
+c 4
+l 1
+  if not s.sound then return s end
+c 16
+s 1
+e 11 1863 %20%20 - =3,-1,+%73,=1,-1,+%73%6F%75%6E,=5,-1,+%6E,=1,-1,+%6C,=13,-2,=3
+r 10 82 %20%20 -
+c 10
+s 1
+r 10 93 %20%20%20%20%20%20 -
+c 27
+s 1
+e 11 1962 %20%20%20%20%20%20%20%20 - =2,+%20%76%5B%69%5D%2E%73%6F%75%6E%64%20%3D%3D%20%6E%69%6C%20%6F%72,=32
+c 16
+s 1
+r 10 138 %20%20%20%20%20%20 -
+c 15
+s 1
+r 10 154 %20%20%20%20%20%20 -
+c 1
+s 1
+l 1
+
+c 7
+s 1
+l 1
+
+c 17
+l 10
+
+profile_init_table = function()
+  return {
+      MEMORY = {
+          deck = 'Red Deck',
+          stake = 1,
+      },
+      stake = 1,
+
+      high_scores = {
+r 9 865 %20%20%20%20%20%20%20%20%20%20 -
+r 9 866 %20%20%20%20%20%20%20%20%20%20 -
+r 9 867 %20%20%20%20%20%20%20%20%20%20 -
+r 9 868 %20%20%20%20%20%20%20%20%20%20 -
+r 9 869 %20%20%20%20%20%20%20%20%20%20 -
+r 9 870 %20%20%20%20%20%20%20%20%20%20 -
+r 9 871 %20%20%20%20%20%20%20%20%20%20 -
+r 9 872 %20%20%20%20%20%20%20%20%20%20 -
+r 9 873 %20%20%20%20%20%20%20%20%20%20 -
+l 3
+      },
+
+      career_stats = {
+r 9 877 %20%20%20%20%20%20%20%20%20%20 -
+r 9 878 %20%20%20%20%20%20%20%20%20%20 -
+r 9 879 %20%20%20%20%20%20%20%20%20%20 -
+l 1
+          c_tarots_bought = 0,
+r 9 881 %20%20%20%20%20%20%20%20%20%20 -
+r 9 882 %20%20%20%20%20%20%20%20%20%20 -
+r 9 883 %20%20%20%20%20%20%20%20%20%20 -
+r 9 884 %20%20%20%20%20%20%20%20%20%20 -
+r 9 885 %20%20%20%20%20%20%20%20%20%20 -
+l 2
+          c_shop_rerolls = 0,
+          c_cards_played = 0,
+r 9 888 %20%20%20%20%20%20%20%20%20%20 -
+l 4
+          c_losses = 0,
+          c_wins = 0,
+          c_rounds = 0,
+          c_hands_played = 0,
+r 9 893 %20%20%20%20%20%20%20%20%20%20 -
+l 2
+          c_jokers_sold = 0,
+          c_cards_sold = 0,
+r 9 896 %20%20%20%20%20%20%20%20%20%20 -
+l 5
+      },
+      progress = {
+
+      },
+      joker_usage = {},
+r 9 902 %20%20%20%20%20%20 -
+l 4
+      voucher_usage = {},
+      hand_usage = {},
+      deck_usage = {},
+      deck_stakes = {},
+r 9 907 %20%20%20%20%20%20 -
+r 9 908 %20%20%20%20%20%20 -
+l 84
+          completed = {},
+          unlocked = {}
+      }
+  }
+end
+
+local function drag_zones()
+  local j, c, d, p = G.jokers.T, G.consumeables.T, G.deck.T, G.play.T
+  local function zone(x, y, w, h) return Moveable{T = {x = x, y = y, w = w, h = h}} end
+  return {
+    S_buy = zone(j.x, j.y - 0.1, c.x + c.w - j.x, j.h + 0.6),
+    S_buy_and_use = zone(d.x + 0.2, d.y - 5.1, d.w - 0.1, 4.5),
+    C_sell = zone(j.x, j.y - 0.2, j.w, j.h + 0.6),
+    J_sell = zone(c.x + 0.3, c.y - 0.2, c.w - 0.3, c.h + 0.6),
+    C_use = zone(d.x + 0.2, d.y - 5.1, d.w - 0.1, 4.5),
+    P_select = zone(p.x, p.y - 2, p.w + 2, p.h + 1),
+  }
+end
+
+local function drop_zone(cover, colour, text, card, can, on_release)
+  drag_target({cover = cover, colour = adjust_alpha(colour, 0.9), text = text, card = card, active_check = can, release_func = on_release})
+end
+
+local function priced(key, amount)
+  local lines = copy_table(localize(key))
+  lines[#lines + 1] = '$'..amount
+  return lines
+end
+
+local function use_dropped(other)
+  G.FUNCS.use_card({config = {ref_table = other}})
+end
+
+local function tutorial_wants(button)
+  if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.button_listen == button then G.FUNCS.tut_next() end
+end
+
+create_drag_target_from_card = function(_card)
+  if not _card or G.STAGE ~= G.STAGES.RUN then return end
+  G.DRAG_TARGETS = G.DRAG_TARGETS or drag_zones()
+  local Z, area = G.DRAG_TARGETS, _card.area
+  if not area then return end
+
+  if area == G.shop_jokers or area == G.shop_vouchers or area == G.shop_booster then
+    local key = (area == G.shop_vouchers and 'ml_redeem_target') or (area == G.shop_booster and 'ml_open_target') or 'ml_buy_target'
+    drop_zone(Z.S_buy, G.C.GREEN, priced(key, _card.cost), _card,
+      function(other) return G.FUNCS.card_can_buy(other) end,
+      function(other)
+        if not G.FUNCS.card_can_buy(other) then return end
+        if other.area == G.shop_jokers then
+          tutorial_wants('buy_from_shop')
+          G.FUNCS.buy_from_shop({config = {ref_table = other, id = 'buy'}})
+        elseif other.area == G.shop_vouchers or other.area == G.shop_booster then
+          use_dropped(other)
+        end
+      end)
+    if G.FUNCS.card_can_buy_and_use(_card) then
+      drop_zone(Z.S_buy_and_use, G.C.ORANGE, priced('ml_buy_and_use_target', _card.cost), _card,
+        function(other) return G.FUNCS.card_can_buy_and_use(other) end,
+        function(other)
+          if G.FUNCS.card_can_buy_and_use(other) then
+            G.FUNCS.buy_from_shop({config = {ref_table = other, id = 'buy_and_use'}})
+          end
+        end)
+    end
+  end
+
+  if area == G.pack_cards then
+    if _card.ability.consumeable and _card.ability.set ~= 'Planet' then
+      drop_zone(Z.C_use, G.C.RED, {localize('b_use')}, _card,
+        function(other) return other:can_use_consumeable() end,
+        function(other) if other:can_use_consumeable() then use_dropped(other) end end)
+    else
+      drop_zone(Z.P_select, G.C.GREEN, {localize('b_select')}, _card,
+        function(other) return can_select_pack_card(other) end,
+        function(other) if can_select_pack_card(other) then use_dropped(other) end end)
+    end
+  end
+
+  if area == G.jokers or area == G.consumeables then
+    local price = _card.facing == 'back' and '?' or _card.sell_cost
+    drop_zone(area == G.consumeables and Z.C_sell or Z.J_sell, G.C.GOLD, priced('ml_sell_target', price), _card,
+      function(other) return other:can_sell_card() end,
+      function(other) G.FUNCS.sell_card{config = {ref_table = other}} end)
+r 13 2270 %20%20%20%20 -
+l 29
+      drop_zone(Z.C_use, G.C.RED, {localize('b_use')}, _card,
+        function(other) return other:can_use_consumeable() end,
+        function(other)
+          if not other:can_use_consumeable() then return end
+          use_dropped(other)
+          tutorial_wants('use_card')
+        end)
+    end
+  end
+end
+
+function set_profile_flag(_flag)
+  rawset(G.SETTINGS, _flag, true)
+  for _, profile in pairs(G.PROFILES or {}) do
+    profile.flags = profile.flags or {}
+    profile.flags[_flag] = true
+  end
+end
+
+function get_profile_flag(_flag)
+  if rawget(G.SETTINGS, _flag) then
+    set_profile_flag(_flag)
+    return true
+  end
+  for _, profile in pairs(G.PROFILES or {}) do
+    profile.flags = profile.flags or {}
+    if profile.flags[_flag] then return true end
+  end
+end
+end

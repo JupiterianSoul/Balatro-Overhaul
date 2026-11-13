@@ -1,0 +1,182 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 85
+local FX = {}
+
+local TIERS = {
+  pack = {build = 1.15, ticks = 3, shake = 0.045, grow = 0.10, bursts = 1, speed = 13, rays = 10, jiggle = 0.6, vib = 2},
+  jumbo = {build = 1.45, ticks = 4, shake = 0.06, grow = 0.13, bursts = 2, speed = 15, rays = 12, jiggle = 0.9, vib = 3},
+  crate = {build = 1.75, ticks = 5, shake = 0.075, grow = 0.16, bursts = 3, speed = 17, rays = 14, jiggle = 1.3, vib = 3},
+}
+
+local COLOURS = {
+  palette = function() return {G.C.RED, G.C.BLUE, G.C.GREEN, G.C.GOLD} end,
+  jester = function() return {G.C.RED, G.C.GOLD, G.C.WHITE} end,
+  sleeve = function() return {G.C.BLUE, G.C.WHITE, G.C.SECONDARY_SET.Planet} end,
+  shine = function() return {G.C.PURPLE, G.C.WHITE, G.C.SECONDARY_SET.Spectral} end,
+  title = function() return {G.C.GREEN, G.C.GOLD, G.C.WHITE} end,
+  crate = function() return {G.C.ORANGE, G.C.GOLD, G.C.WHITE} end,
+  legend = function() return {G.C.GOLD, G.C.WHITE, G.C.ORANGE} end,
+}
+
+local function ev(delay, fn)
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = delay, blockable = false, blocking = false, timer = "REAL", func = function()
+    fn()
+    return true
+  end}))
+end
+
+local function snd(name, pitch, vol) pcall(play_sound, name, pitch, vol) end
+
+function FX.tier(pack)
+  if pack.last then return TIERS.crate end
+  if pack.jumbo then return TIERS.jumbo end
+  return TIERS.pack
+end
+
+function FX.colours(pack)
+  local f = COLOURS[pack.art] or COLOURS[(tostring(pack.art):gsub("_jumbo$", ""))] or COLOURS.crate
+  local ok, c = pcall(f)
+  return ok and c or {G.C.WHITE, G.C.GOLD}
+end
+
+local function calm() return G.SETTINGS and G.SETTINGS.reduced_motion end
+
+function FX.draw_light(card, fx)
+  local a = fx.light or 0
+  if a <= 0.01 or not card.VT then return end
+  local cols = fx.colours
+  local n = fx.tier.rays
+  local R = card.VT.h * (0.75 + 0.55 * (fx.reach or 0))
+  local spin = fx.spin or 0
+  love.graphics.push()
+  love.graphics.scale(G.TILESCALE * G.TILESIZE)
+  love.graphics.translate(card.VT.x + card.VT.w / 2, card.VT.y + card.VT.h / 2)
+  love.graphics.setBlendMode("add", "alphamultiply")
+  local half = math.pi / n * 0.3
+  for i = 1, n do
+    local c = cols[(i - 1) % #cols + 1]
+    local ang = spin + (i - 1) * 2 * math.pi / n
+    local r = R * (0.8 + 0.2 * math.sin(spin * 3 + i * 1.7))
+    love.graphics.setColor(c[1], c[2], c[3], math.min(1, 0.1 * a))
+    love.graphics.polygon("fill", 0, 0, math.cos(ang - half) * r, math.sin(ang - half) * r, math.cos(ang + half) * r, math.sin(ang + half) * r)
+    local h2, r2 = half * 0.4, r * 0.85
+    love.graphics.setColor(c[1] * 0.4 + 0.6, c[2] * 0.4 + 0.6, c[3] * 0.4 + 0.6, math.min(1, 0.12 * a))
+    love.graphics.polygon("fill", 0, 0, math.cos(ang - h2) * r2, math.sin(ang - h2) * r2, math.cos(ang + h2) * r2, math.sin(ang + h2) * r2)
+  end
+  local g = cols[1]
+  for k = 1, 6 do
+    love.graphics.setColor(g[1] * 0.5 + 0.5, g[2] * 0.5 + 0.5, g[3] * 0.5 + 0.5, math.min(1, 0.05 * a))
+    love.graphics.circle("fill", 0, 0, R * 0.62 * (1 - (k - 1) / 7))
+  end
+  love.graphics.setBlendMode("alpha")
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.pop()
+end
+
+function FX.play(o, card, current, on_done)
+  local tier = FX.tier(o.pack)
+  local cols = FX.colours(o.pack)
+  local fx = {tier = tier, colours = cols, light = 0, reach = 0, spin = 0, charge = 0}
+  o.fx = fx
+  local alive = function() return current() and card and not card.REMOVED end
+  local base_draw = card.draw
+  card.draw = function(self, layer)
+    if layer == nil or layer == "shadow" or layer == "both" then pcall(FX.draw_light, self, fx) end
+    return base_draw(self, layer)
+  end
+  card.dissolve_colours = cols
+r 13 2158 %20%20 -
+l 89
+  if area then card:hard_set_T(area.T.x + (area.T.w - card.T.w) / 2, area.T.y + (area.T.h - card.T.h) / 2 + 3.5, card.T.w, card.T.h) end
+  card.VT.scale = 0.6
+  snd("cardSlide1", 1, 0.6)
+  snd("whoosh1", 1.1, 0.35)
+  local enter = 0.4
+  local build = tier.build
+  local start = G.TIMERS.REAL + enter
+  local burst_at = start + build
+  local shake = tier.shake * (calm() and 0.3 or 1)
+  local gather
+  G.E_MANAGER:add_event(Event({blockable = false, blocking = false, timer = "REAL", func = function()
+    if not alive() then
+      if gather and not gather.REMOVED then gather:remove() end
+      return true
+    end
+    local now = G.TIMERS.REAL
+    fx.spin = now * 0.35
+    if now < start then return false end
+    if now < burst_at then
+      local p = (now - start) / build
+      fx.charge = p
+      fx.light = p * p * 1.6
+      fx.reach = p * 0.4
+      card.juice = card.juice or {scale = 0, r = 0, handled_elsewhere = true, start_time = now, end_time = burst_at}
+      card.juice.handled_elsewhere = true
+      card.juice.r = shake * (math.sin(5 * now) + math.cos(0.33 + 41.15 * now) + math.cos(67.12 * now)) * p
+      card.juice.scale = tier.grow * p
+      if gather then gather.timer = 0.08 - 0.065 * p end
+      return false
+    end
+    local q = (now - burst_at) / 0.4
+    card.juice = nil
+    fx.light = math.max(0, 2.4 * (1 - q))
+    fx.reach = 0.4 + 0.9 * math.min(1, q)
+    return q >= 1
+  end}))
+  ev(enter, function()
+    if not alive() then return end
+    gather = Particles(0, 0, 0, 0, {timer = 0.08, scale = 0.18, speed = 1.2, lifespan = 0.6, attach = card, colours = cols, fill = true})
+    o.fx_parts = {gather}
+    if build > 1.17 then ev(build - 1.17, function() if alive() then snd("explosion_buildup1", 1, 0.7) end end)
+    else snd("explosion_buildup1", 1, 0.7) end
+  end)
+  for i = 1, tier.ticks do
+    ev(enter + build * (i - 0.5) / tier.ticks, function()
+      if not alive() then return end
+      card:juice_up(0.12 + 0.05 * i, 0.08)
+      if o.pack.last then snd("crumple" .. ((i - 1) % 5 + 1), 0.9 + 0.08 * i, 0.4)
+      else snd("card1", 0.75 + 0.1 * i, 0.55) end
+    end)
+  end
+  ev(enter + build, function()
+    if not alive() then return end
+    o.burst_at = {x = card.T.x + card.T.w / 2, y = card.T.y + card.T.h / 2}
+    if gather and not gather.REMOVED then gather:fade(0.2) end
+    for b = 1, tier.bursts do
+      local p = Particles(0, 0, 0, 0, {pulse_max = 20, timer = 0.003, scale = 0.5 + 0.1 * b, speed = tier.speed - 3 * (b - 1), lifespan = 0.55 + 0.1 * b,
+        attach = card, colours = cols})
+      p:set_role({r_bond = "Weak"})
+      o.fx_parts[#o.fx_parts + 1] = p
+      ev(0.2, function() if p and not p.REMOVED then p:fade(0.18) end end)
+    end
+    snd("explosion_release1", 1, 0.6)
+    if o.pack.last then snd("polychrome1", o.pack.pity and 0.9 or 1.1, 0.55)
+    elseif o.pack.jumbo then snd("foil1", 1, 0.5); snd("tarot1", 1, 0.5)
+    else snd("tarot1", 1, 0.6) end
+    if not calm() and G.ROOM then G.ROOM.jiggle = (G.ROOM.jiggle or 0) + tier.jiggle end
+    G.VIBRATION = (G.VIBRATION or 0) + 1
+    local hb = rawget(_G, "haptic_buzz")
+    if hb then pcall(hb, tier.vib) end
+    card:juice_up(0.6, 0.3)
+    card.dissolve = 0
+    G.E_MANAGER:add_event(Event({trigger = "ease", blockable = false, blocking = false, timer = "REAL", ref_table = card, ref_value = "dissolve",
+      ease_to = 1, delay = 0.22, func = function(t) return t end}))
+  end)
+  ev(enter + build + 0.38, function()
+    if not current() then return end
+    if on_done then on_done() end
+  end)
+end
+
+function FX.clear(o)
+  for _, p in ipairs(o and o.fx_parts or {}) do
+    if p and not p.REMOVED then p:remove() end
+  end
+  if o then o.fx_parts = nil end
+end
+
+return FX
+end

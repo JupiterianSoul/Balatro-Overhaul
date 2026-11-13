@@ -1,0 +1,625 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 433
+BO_DAILY_BOARD = BO_DAILY_BOARD or {}
+local DB = BO_DAILY_BOARD
+local DY = BO_DAILY
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() or false end
+
+DB.state = DB.state or {page = 1}
+DB.TIMEOUT = 12
+
+local function norm(h)
+  h = h % 4294967296
+  if h < 0 then h = h + 4294967296 end
+  return h
+end
+
+local function fnv(str)
+  local h = 2166136261
+  for i = 1, #str do
+    h = norm(bit.bxor(h, string.byte(str, i)))
+    h = norm((h % 256) * 16777216 + h * 403)
+  end
+  return h
+end
+DB.fnv = fnv
+
+local function list_str(t)
+  local out = {}
+  for _, v in ipairs(type(t) == "table" and t or {}) do out[#out + 1] = tostring(v) end
+  return table.concat(out, ",")
+end
+
+function DB.sig_of(R)
+  if type(R) ~= "table" then return "none" end
+  local s = table.concat({tostring(R.date), tostring(R.seed), tostring(R.deck), tostring(R.stake),
+    list_str(R.twists), list_str(R.boons), list_str(R.jokers), list_str(R.vouchers)}, "|")
+  return string.format("d1%08x%08x", fnv(s), fnv(s .. "#"))
+end
+
+local cache = {}
+function DB.today_rules()
+  local day = DY.today()
+  if cache.day ~= day then cache = {day = day, R = DY.build(day)} end
+  return cache.R
+end
+
+local function pdata() return DY.profile_data and DY.profile_data() end
+
+function DB.entry(day)
+  local pd = pdata()
+  return pd and pd.history and pd.history[day or DY.today()] or nil
+end
+
+function DB.used(day)
+  local e = DB.entry(day)
+  return e ~= nil and (e.started == true or (tonumber(e.tries) or 0) > 0)
+end
+
+function DB.can_score(R)
+  if type(R) ~= "table" or R.date ~= DY.today() then return false end
+  if DB.sig_of(R) ~= DB.sig_of(DB.today_rules()) then return false end
+  return not DB.used(R.date)
+end
+
+local function save_progress() pcall(function() G:save_progress() end) end
+
+function DB.mark_started(day)
+  local pd = pdata()
+  if not pd then return end
+  local e = pd.history[day] or {tries = 0, best_ante = 0}
+  e.started = true
+  pd.history[day] = e
+  save_progress()
+end
+
+local function num(v)
+  if type(v) == "number" then return v end
+  if type(v) == "table" then
+    local ok, s = pcall(tostring, v)
+    return ok and tonumber(s) or 0
+  end
+  return tonumber(v) or 0
+end
+
+function DB.result_of(g, won)
+  local R = g.daily_rules
+  local best = num(g.round_scores and g.round_scores.hand and g.round_scores.hand.amt)
+  if best ~= best or best < 0 then best = 0 end
+  if best > 1e308 then best = 1e308 end
+  return {
+    day = R.date, sig = g.daily_sig or DB.sig_of(R), won = won and true or false,
+    ante = math.max(0, math.min(1000, math.floor(tonumber(g.round_resets and g.round_resets.ante) or 0))),
+    round = math.max(0, math.min(100000, math.floor(tonumber(g.round) or 0))),
+    best = best,
+  }
+end
+
+function DB.on_scored(won)
+  local g = G.GAME
+  if not (g and type(g.daily_rules) == "table") then return end
+  local res = DB.result_of(g, won)
+  local pd = pdata()
+  if not pd then return end
+  local e = pd.history[res.day] or {tries = 1, best_ante = res.ante}
+  e.result = res
+  pd.history[res.day] = e
+  pd.board_pending = res
+  save_progress()
+  if DB.connected() then DB.flush() end
+end
+
+function DB.on_practice()
+  local g = G.GAME
+  local pd = pdata()
+  if not (g and pd and type(g.daily_rules) == "table") then return end
+  local day = g.daily_rules.date or DY.today()
+  local e = pd.history[day] or {tries = 0, best_ante = 0, started = true}
+  e.practice = (tonumber(e.practice) or 0) + 1
+  pd.history[day] = e
+  save_progress()
+end
+
+function DB.connected()
+  return bom_core and bom_core.is_connected and bom_core.is_connected() or false
+end
+
+local function my_name()
+  local n = PlayerName and PlayerName.current and PlayerName.current()
+  if type(n) == "string" and n ~= "" then return n end
+  return nil
+end
+
+function DB.flush()
+  local pd = pdata()
+  local p = pd and pd.board_pending
+  if type(p) ~= "table" or not DB.connected() then return false end
+  return bom_core.send({type = "daily_submit", day = p.day, sig = p.sig, won = p.won and true or false, ante = p.ante, round = p.round, best = p.best,
+    name = my_name(), pkey = bom_core.player_key()})
+end
+
+function DB.request()
+  local S = DB.state
+  return bom_core.send({type = "daily_board", day = S.day, sig = S.sig, pkey = bom_core.player_key()})
+end
+
+local function board_open()
+  return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "bo_daily_board"
+end
+
+local function refresh()
+  if board_open() then pcall(UIK.refresh) end
+end
+
+function DB.on_submitted(d)
+  local pd = pdata()
+  local p = pd and pd.board_pending
+  if type(p) == "table" and d.day == p.day then
+    if d.ok or d.reason == "already" or d.reason == "closed" or d.reason == "no_key" or d.reason == "bot" then
+      pd.board_pending = nil
+      save_progress()
+    end
+  end
+  local S = DB.state
+  if d.rank and S.day == d.day then S.my_rank = tonumber(d.rank) end
+  if board_open() and S.day == d.day then DB.request() end
+  return true
+end
+
+function DB.on_board(d)
+  local S = DB.state
+  if d.day ~= S.day or d.sig ~= S.sig then return true end
+  if d.error then
+    S.status = "offline"
+  else
+    S.status = "ok"
+    S.data = d
+  end
+  refresh()
+  return true
+end
+
+function DB.load()
+  local S = DB.state
+  S.status, S.data, S.t0 = "loading", nil, love.timer.getTime()
+  local m = rawget(_G, "mpm_menu") or (MP and MP.menu)
+  local function go()
+    DB.flush()
+    DB.request()
+  end
+  local function fail()
+    S.status = "offline"
+    refresh()
+  end
+  if m and m.with_connection then
+    m.with_connection(go, fail)
+  elseif DB.connected() then
+    go()
+  else
+    fail()
+  end
+  local t0 = S.t0
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = DB.TIMEOUT, timer = "REAL", blocking = false, blockable = false, func = function()
+    if S.status == "loading" and S.t0 == t0 then
+      S.status = "offline"
+      refresh()
+    end
+    return true
+  end}))
+end
+
+local function score(v)
+  local ok, s = pcall(number_format, v or 0)
+  return ok and tostring(s) or tostring(v or 0)
+end
+
+local function kit() return rawget(_G, "bom_kit") end
+
+local function fit(str, w, scale)
+  local K = kit()
+  if K and K.fit then return K.fit(str, w, scale) end
+  return str, scale
+end
+
+local function text(str, scale, colour)
+  return {n = G.UIT.T, config = {text = tostring(str or ""), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}}
+end
+
+local function fit_text(str, w, scale, colour)
+  local s, sc = fit(str, w - 0.12, scale)
+  return text(s, sc, colour)
+end
+
+local function cell(nodes, w, h, o)
+  o = o or {}
+  return {n = G.UIT.C, config = {align = o.align or "cm", minw = w, maxw = w, minh = h, padding = 0, r = o.r, colour = o.colour or G.C.CLEAR, emboss = o.emboss}, nodes = nodes}
+end
+
+local function port() return UIK and UIK.portrait and UIK.portrait() or false end
+
+local function dims()
+  if port() then return {row_h = 0.72, scale = 0.44, small = 0.42, head = 0.42, per = 9, gap = 0.1, box_h = 1.15, val = 0.5, lab = 0.42} end
+  if touch() then return {row_h = 0.72, scale = 0.44, small = 0.42, head = 0.42, per = 4, gap = 0.1, box_h = 1.15, val = 0.5, lab = 0.42} end
+  return {row_h = 0.5, scale = 0.33, small = 0.29, head = 0.27, per = 6, gap = 0.1, box_h = 0.86, val = 0.4, lab = 0.27}
+end
+
+local LAND_COLS = {
+  {key = "rank", w = 1.1, label = "#"},
+  {key = "name", w = 5.0, label = "Name"},
+  {key = "result", w = 1.7, label = "Result"},
+  {key = "ante", w = 1.4, label = "Ante"},
+  {key = "round", w = 1.4, label = "Round"},
+  {key = "best", w = 2.6, label = "Best hand"},
+}
+local PORT_COLS = {
+  {key = "rank", w = 0.7, label = "#"},
+  {key = "name", w = 2.3, label = "Name"},
+  {key = "result", w = 1.2, label = "Result"},
+  {key = "ante", w = 0.8, label = "Ante"},
+  {key = "round", w = 0.9, label = "Round"},
+  {key = "best", w = 1.2, label = "Best hand"},
+}
+local COLS = LAND_COLS
+local function sync_cols() COLS = port() and PORT_COLS or LAND_COLS end
+
+local function table_w()
+  local w = 0
+  for _, c in ipairs(COLS) do w = w + c.w end
+  return w + (#COLS - 1) * dims().gap
+end
+
+local function row_of(cells, h, colour, o)
+  o = o or {}
+  local d = dims()
+  local nodes = {}
+  for i, c in ipairs(cells) do
+    if i > 1 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = d.gap, minh = h}, nodes = {}} end
+    nodes[#nodes + 1] = c
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = table_w(), minh = h, padding = 0.04, r = 0.1, colour = colour or G.C.CLEAR,
+    outline = o.mine and 1 or nil, outline_colour = o.mine and G.C.GOLD or nil}, nodes = nodes}
+end
+
+local function result_pill(won, w, h)
+  local d = dims()
+  return cell({fit_text(won and L("WIN") or L("LOSS"), w, d.small)}, w, h, {r = 0.08, colour = won and G.C.GREEN or G.C.RED, emboss = 0.03})
+end
+
+local function name_nodes(r, w, h, scale, colour)
+  local B = rawget(_G, "bom_badges")
+  if not (r.dev == true and B and B.dev) then return {fit_text(tostring(r.name or "?"), w, scale, colour)} end
+  local bh = math.min(h, scale * 1.5)
+  local tw = B.dev_w({h = bh})
+  return {fit_text(tostring(r.name or "?"), w - tw - 0.08, scale, colour), {n = G.UIT.C, config = {minw = 0.08}}, B.dev({h = bh})}
+end
+
+local function board_row(i, r)
+  local d = dims()
+  local h = d.row_h
+  local mine = r.me == true
+  local vals = {
+    rank = cell({fit_text("#" .. tostring(i), COLS[1].w, d.scale, i <= 3 and G.C.GOLD or G.C.WHITE)}, COLS[1].w, h),
+    name = cell(name_nodes(r, COLS[2].w, h, d.scale, mine and G.C.GOLD or G.C.WHITE), COLS[2].w, h, {align = "cm"}),
+    result = result_pill(r.won, COLS[3].w, h),
+    ante = cell({fit_text(tostring(r.ante or 0), COLS[4].w, d.scale)}, COLS[4].w, h),
+    round = cell({fit_text(tostring(r.round or 0), COLS[5].w, d.scale)}, COLS[5].w, h),
+    best = cell({fit_text(score(r.best), COLS[6].w, d.scale)}, COLS[6].w, h, {r = 0.08, colour = {0, 0, 0, 0.18}}),
+  }
+  local cells = {}
+  for _, c in ipairs(COLS) do cells[#cells + 1] = vals[c.key] end
+  return row_of(cells, h, mine and {1, 0.85, 0.3, 0.14} or {0, 0, 0, 0.22}, {mine = mine})
+end
+
+local function header_row()
+  local d = dims()
+  local cells = {}
+  for _, c in ipairs(COLS) do cells[#cells + 1] = cell({fit_text(c.label == "#" and "#" or L(c.label), c.w, d.head, UIK.C.muted)}, c.w, d.head + 0.12) end
+  return row_of(cells, d.head + 0.12)
+end
+
+local function stat_box(label, value, w, value_colour)
+  local d = dims()
+  return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, minh = d.box_h, r = 0.1, colour = {0, 0, 0, 0.18}, padding = 0.04}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", minw = w - 0.1}, nodes = {fit_text(value, w, d.val, value_colour or G.C.WHITE)}},
+    {n = G.UIT.R, config = {align = "cm", minw = w - 0.1}, nodes = {fit_text(label, w, d.lab, UIK.C.muted)}},
+  }}
+end
+
+function DB.my_result_text(day)
+  local e = DB.entry(day)
+  if not e then return L("Not played"), G.C.UI.TEXT_LIGHT end
+  local r = e.result
+  if type(r) == "table" then
+    if r.won then return L("Won") .. ", " .. L("Ante") .. " " .. tostring(r.ante), G.C.GREEN end
+    return L("Lost") .. ", " .. L("Ante") .. " " .. tostring(r.ante), G.C.ORANGE
+  end
+  if e.won then return L("Won"), G.C.GREEN end
+  if (tonumber(e.tries) or 0) > 0 then return L("Ante") .. " " .. tostring(e.best_ante or 0), G.C.ORANGE end
+  if e.started then return L("In progress"), G.C.UI.TEXT_LIGHT end
+  return L("Not played"), G.C.UI.TEXT_LIGHT
+end
+
+local function status_block(lines, h)
+  local nodes = {}
+  for i, l in ipairs(lines) do
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {text(l, i == 1 and (touch() and 0.44 or 0.4) or (touch() and 0.34 or 0.3), i == 1 and G.C.UI.TEXT_LIGHT or UIK.C.muted)}}
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = table_w(), minh = h}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = nodes}}}
+end
+
+local function build_board()
+  sync_cols()
+  local S = DB.state
+  local d = dims()
+  local w = UIK.W - 0.6
+  local data = S.status == "ok" and S.data or nil
+  local mine, mine_col = DB.my_result_text(S.day)
+  local rank = data and data.rank and ("#" .. tostring(data.rank) .. " / " .. tostring(data.total or 0)) or "-"
+  local gap = 0.16
+  local bw = (w - 3 * gap) / 4
+  if port() then bw = (w - gap) / 2 end
+  local stats = port() and {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+      stat_box(L("Day"), tostring(S.day), bw, G.C.GOLD), {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+      stat_box(L("Your scored try"), mine, bw, mine_col),
+    }},
+    {n = G.UIT.R, config = {minh = gap}, nodes = {}},
+    {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+      stat_box(L("Your rank"), rank, bw), {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+      stat_box(L("Players"), data and tostring(data.total or 0) or "-", bw),
+    }},
+  }}}} or {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = {
+    stat_box(L("Day"), tostring(S.day), bw, G.C.GOLD), {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+    stat_box(L("Your scored try"), mine, bw, mine_col), {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+    stat_box(L("Your rank"), rank, bw), {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+    stat_box(L("Players"), data and tostring(data.total or 0) or "-", bw),
+  }}
+  local pager_h = touch() and 0.94 or 0.78
+  local list_h = UIK.H - UIK.TOP - d.box_h - 0.3 - pager_h - (port() and d.box_h + 0.16 or 0)
+  local nodes = {stats, {n = G.UIT.R, config = {minh = 0.2}, nodes = {}}}
+  local top = data and type(data.top) == "table" and data.top or {}
+  local pages = math.max(1, math.ceil(#top / d.per))
+  S.page = math.max(1, math.min(pages, S.page or 1))
+  if S.status == "loading" then
+    nodes[#nodes + 1] = status_block({L("Loading the board...")}, list_h)
+  elseif S.status == "offline" then
+    nodes[#nodes + 1] = status_block({L("Could not reach the server."), L("Your scored try is kept and sent next time.")}, list_h)
+  elseif #top == 0 then
+    nodes[#nodes + 1] = status_block({L("Nobody has a scored try today yet."), L("Play the daily run to be first.")}, list_h)
+  else
+    local rows = {header_row()}
+    local first = (S.page - 1) * d.per
+    for i = first + 1, math.min(#top, first + d.per) do
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {board_row(i, top[i])}}
+    end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "tm", minw = w, minh = list_h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = rows}}}
+  end
+  if pages > 1 then
+    nodes[#nodes + 1] = UIK.pager{prev = "bo_daily_board_prev", next = "bo_daily_board_next", text = tostring(S.page) .. " / " .. tostring(pages),
+      prev_disabled = S.page <= 1, next_disabled = S.page >= pages, w = UIK.W}
+  end
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = nodes}}}
+end
+
+local function build_friends()
+  sync_cols()
+  local S = DB.state
+  local d = dims()
+  local w = UIK.W - 0.6
+  local data = S.status == "ok" and S.data or nil
+  local list_h = UIK.H - UIK.TOP - 0.3
+  local list = data and type(data.friends) == "table" and data.friends or nil
+  local nodes = {}
+  if S.status == "loading" then
+    nodes[1] = status_block({L("Loading the board...")}, list_h)
+  elseif S.status == "offline" then
+    nodes[1] = status_block({L("Could not reach the server.")}, list_h)
+  elseif not list then
+    nodes[1] = status_block({L("Friends' scores are not available yet.")}, list_h)
+  elseif #list == 0 or (#list == 1 and list[1].me) then
+    nodes[1] = status_block({L("None of your friends played today's seed yet."), L("Add friends in Multiplayer > Friends.")}, list_h)
+  else
+    local rows = {header_row()}
+    for i = 1, math.min(#list, d.per + 1) do
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {board_row(tonumber(list[i].rank) or i, list[i])}}
+    end
+    nodes[1] = {n = G.UIT.R, config = {align = "tm", minw = w, minh = list_h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = rows}}}
+  end
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = nodes}}}
+end
+
+function DB.open(from)
+  local R = DB.today_rules()
+  DB.from = from
+  DB.state = {page = 1, day = R.date, sig = DB.sig_of(R)}
+r 13 1381 %20%20 -
+l 26
+  G.FUNCS.overlay_menu{definition = UIK.window{id = "bo_daily_board", title = L("DAILY BOARD"),
+    tabs = {{key = "today", label = L("Today"), build = build_board}, {key = "friends", label = L("Friends"), build = build_friends}},
+    footer = {UIK.button{label = L("REFRESH"), button = "bo_daily_board_refresh", colour = UIK.C.accent, id = "bo_daily_board_refresh"}},
+    back_func = "bo_daily_board_back"}}
+  DB.load()
+end
+
+local function find_daily_tab(n)
+  if type(n) ~= "table" then return nil end
+  if n.config and n.config.button == "change_tab" and n.config.ref_table and n.config.ref_table.label == L("Daily") then return n end
+  for _, c in ipairs(n.children or {}) do
+    local f = find_daily_tab(c)
+    if f then return f end
+  end
+end
+
+function DB.back()
+  if DB.from == "daily_tab" and G.FUNCS.setup_run then
+    G.FUNCS.setup_run({config = {}})
+    G.E_MANAGER:add_event(Event({trigger = "immediate", blocking = false, blockable = false, func = function()
+      local t = find_daily_tab(G.OVERLAY_MENU and G.OVERLAY_MENU.UIRoot)
+      if t then G.FUNCS.change_tab(t) end
+      return true
+    end}))
+    return
+  end
+r 13 1375 %20%20 -
+l 19
+end
+
+G.FUNCS.bo_daily_board_open = function(e)
+  local from = e and e.config and e.config.ref_table and e.config.ref_table.from or nil
+  DB.open(from)
+end
+G.FUNCS.bo_daily_board_back = function() DB.back() end
+G.FUNCS.bo_daily_board_refresh = function() DB.load(); UIK.refresh() end
+G.FUNCS.bo_daily_board_prev = function() DB.state.page = (DB.state.page or 1) - 1; UIK.refresh() end
+G.FUNCS.bo_daily_board_next = function() DB.state.page = (DB.state.page or 1) + 1; UIK.refresh() end
+
+local _db_start_run = Game.start_run
+Game.start_run = function(self, args, ...)
+  local R = type(args) == "table" and args.bo_daily or nil
+  local fresh = type(R) == "table" and not args.savetext
+  local scored = fresh and DB.can_score(R) or false
+  local res = _db_start_run(self, args, ...)
+  if G.GAME and G.GAME.daily and not G.GAME.multiplayer then
+    G.GAME.banned_keys = G.GAME.banned_keys or {}
+r 3 229 %20%20%20%20 -
+l 135
+      if type(v) == "table" and v.forge then G.GAME.banned_keys[k] = true end
+    end
+  end
+  if fresh and G.GAME and G.GAME.daily then
+    G.GAME.daily_scored = scored
+    G.GAME.daily_sig = DB.sig_of(R)
+    if scored then DB.mark_started(R.date) end
+  end
+  return res
+end
+
+if DY and DY.record then
+  local _db_record = DY.record
+  DY.record = function(won)
+    local g = G.GAME
+    if not (g and g.daily and type(g.daily_rules) == "table") then return end
+    if g.daily_scored == false then
+      if g.daily_recorded then return end
+      g.daily_recorded = true
+      DB.on_practice()
+      return
+    end
+    local was = g.daily_recorded
+    _db_record(won)
+    if not was and g.daily_recorded then pcall(DB.on_scored, won) end
+  end
+end
+
+local function find_by_id(n, id, parent)
+  if type(n) ~= "table" then return nil end
+  if n.config and n.config.id == id then return n, parent end
+  for _, c in ipairs(n.nodes or {}) do
+    local f, p = find_by_id(c, id, n)
+    if f then return f, p end
+  end
+end
+
+local function find_text(n, list)
+  if type(n) ~= "table" then return nil end
+  if n.n == G.UIT.T and n.config then
+    for _, s in ipairs(list) do if n.config.text == s then return n end end
+  end
+  for _, c in ipairs(n.nodes or {}) do
+    local f = find_text(c, list)
+    if f then return f end
+  end
+end
+
+function DB.patch_tab(def)
+  local play, parent = find_by_id(def, "daily_play")
+  if not (play and parent) then return end
+  local used = DB.used(DY.today())
+  play.n = G.UIT.C
+  play.config.minw = 5.6
+  play.config.colour = G.C.BLUE
+  local label = play.nodes and play.nodes[1]
+  if label and label.config then label.config.text = used and L("PRACTICE") or localize("b_play_cap") end
+  parent.nodes = {
+    play,
+    {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+    {n = G.UIT.C, config = {id = "daily_board", align = "cm", padding = 0.1, minh = 0.75, minw = 3.2, r = 0.1, hover = true, colour = G.C.MONEY,
+      button = "bo_daily_board_open", ref_table = {from = "daily_tab"}, shadow = true}, nodes = {
+      {n = G.UIT.T, config = {text = L("BOARD"), scale = 0.5, colour = G.C.UI.TEXT_LIGHT}},
+    }},
+  }
+  if used then
+    local note = find_text(def, {L("Same rules for everyone today"), L("Today's pools include your mods' content")})
+    if note then
+      note.config.text = L("Your scored try is used. More tries today are practice.")
+      note.config.colour = G.C.ORANGE
+    end
+  end
+  if DB.connected() then pcall(DB.flush) end
+end
+
+if G.UIDEF and G.UIDEF.daily_challenge_tab then
+  local _db_tab = G.UIDEF.daily_challenge_tab
+  G.UIDEF.daily_challenge_tab = function(...)
+    local def = _db_tab(...)
+    pcall(DB.patch_tab, def)
+    return def
+  end
+end
+
+if G.UIDEF and G.UIDEF.daily_run_info then
+  local _db_run_info = G.UIDEF.daily_run_info
+  G.UIDEF.daily_run_info = function(...)
+    local def = _db_run_info(...)
+    pcall(function()
+      local g = G.GAME
+      if not (g and g.daily and def.nodes) then return end
+      local practice = g.daily_scored == false
+      table.insert(def.nodes, 2, {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", padding = 0.08, r = 0.1, colour = practice and G.C.ORANGE or G.C.GREEN}, nodes = {
+          {n = G.UIT.T, config = {text = practice and L("PRACTICE: this try is not scored") or L("SCORED TRY: this result goes on the daily board"), scale = 0.34, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+      }})
+    end)
+    return def
+  end
+end
+
+if bom_events and bom_events.register then
+  bom_events.register("daily_submitted", DB.on_submitted)
+  bom_events.register("daily_board", DB.on_board)
+end
+
+mod_loc_register{
+  fr = {
+    ["Friends' scores are not available yet."] = "Les scores des amis ne sont pas encore disponibles.",
+    ["None of your friends played today's seed yet."] = "Aucun de vos amis n'a encore joué la seed du jour.",
+    ["Add friends in Multiplayer > Friends."] = "Ajoutez des amis dans Multijoueur > Amis.", ["Friends"] = "Amis",
+    ["DAILY BOARD"] = "CLASSEMENT DU JOUR", ["BOARD"] = "CLASSEMENT", ["PRACTICE"] = "ENTRAÎNEMENT",
+    ["Day"] = "Jour", ["Your scored try"] = "Votre essai compté", ["In progress"] = "En cours",
+    ["Loading the board..."] = "Chargement du classement...", ["Your scored try is kept and sent next time."] = "Votre essai compté est gardé et sera envoyé la prochaine fois.",
+    ["Nobody has a scored try today yet."] = "Personne n'a encore d'essai compté aujourd'hui.", ["Play the daily run to be first."] = "Jouez la partie du jour pour être premier.",
+    ["Your scored try is used. More tries today are practice."] = "Votre essai compté est utilisé. Les autres essais du jour sont de l'entraînement.",
+    ["PRACTICE: this try is not scored"] = "ENTRAÎNEMENT : cet essai n'est pas compté",
+    ["SCORED TRY: this result goes on the daily board"] = "ESSAI COMPTÉ : ce résultat va au classement du jour",
+  },
+  es = {
+    ["Friends' scores are not available yet."] = "Las puntuaciones de amigos aún no están disponibles.",
+    ["None of your friends played today's seed yet."] = "Ninguno de tus amigos ha jugado aún el código del día.",
+    ["Add friends in Multiplayer > Friends."] = "Añade amigos en Multijugador > Amigos.", ["Friends"] = "Amigos",
+    ["DAILY BOARD"] = "CLASIFICACIÓN DEL DÍA", ["BOARD"] = "CLASIFICACIÓN", ["PRACTICE"] = "PRÁCTICA",
+    ["Day"] = "Día", ["Your scored try"] = "Tu intento puntuado", ["In progress"] = "En curso",
+    ["Loading the board..."] = "Cargando la clasificación...", ["Your scored try is kept and sent next time."] = "Tu intento puntuado se guarda y se envía la próxima vez.",
+    ["Nobody has a scored try today yet."] = "Nadie tiene aún un intento puntuado hoy.", ["Play the daily run to be first."] = "Juega la partida diaria para ser el primero.",
+    ["Your scored try is used. More tries today are practice."] = "Tu intento puntuado ya está usado. Los demás intentos de hoy son práctica.",
+    ["PRACTICE: this try is not scored"] = "PRÁCTICA: este intento no puntúa",
+    ["SCORED TRY: this result goes on the daily board"] = "INTENTO PUNTUADO: este resultado va a la clasificación del día",
+  },
+}
+
+return DB
+end

@@ -1,0 +1,999 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 125
+PREVIEW = {
+    data      = 0,
+    data_max  = 0,
+    text      = { value = "" },
+    is_active = false,
+    _saved_hand_level = nil,
+    JOKERS = {},
+    _run   = { chips = 0, mult = 0, dollars = 0, reps = 0 },
+    fx     = nil,
+    fx_sel = nil,
+    stats  = { runs = 0, hits = 0, fails = 0, slow = 0 },
+}
+local P = PREVIEW
+
+mod_loc_register{
+    fr = {
+        ["{1} to {2}"] = "{1} à {2}",
+    },
+    es = {
+        ["{1} to {2}"] = "{1} a {2}",
+    },
+}
+
+local _hi_key, _hi_res, _hi_n, _hi_at = nil, {}, 0, 0
+local _hi_scratch = {}
+
+local function _hi_fill(cards, out)
+    local n = 0
+    local function put(v)
+        n = n + 1
+        if v == nil then v = false end
+        out[n] = v
+    end
+    put(#cards)
+    for i = 1, #cards do
+        local c = cards[i]
+        local base = c.base or false
+        put(c); put(c.ability); put(c.config and c.config.center); put(c.edition); put(c.seal)
+        put(c.debuff); put(c.facing); put(base and base.id); put(base and base.suit); put(base and base.value)
+    end
+    local jokers = G.jokers and G.jokers.cards or _hi_scratch
+    put(#jokers)
+    for i = 1, #jokers do
+        local j = jokers[i]
+        put(j); put(j.debuff); put(j.ability); put(j.config and j.config.center)
+    end
+    put(G.consumeables and #G.consumeables.cards)
+    put(G.hand and G.hand.cards and #G.hand.cards)
+    local blind = G.GAME and G.GAME.blind
+    put(G.GAME); put(blind); put(blind and blind.disabled); put(blind and blind.config and blind.config.blind)
+    put(G.STATE)
+    return n
+end
+
+local function _hi_store(cards, ...)
+    local key = {}
+    local n = _hi_fill(cards, key)
+    key.n = n
+    _hi_key = key
+    _hi_n = select("#", ...)
+    for i = 1, _hi_n do _hi_res[i] = (select(i, ...)) end
+    _hi_at = G.TIMERS and G.TIMERS.REAL or 0
+    return ...
+end
+
+local function _hi_hit(cards)
+    local key = _hi_key
+    if not key then return false end
+    local now = G.TIMERS and G.TIMERS.REAL or 0
+    if now < _hi_at or now - _hi_at > 1 then return false end
+    local scratch = _hi_scratch
+    local n = _hi_fill(cards, scratch)
+    local same = n == key.n
+    if same then
+        for i = 1, n do
+            if scratch[i] ~= key[i] then same = false; break end
+        end
+    end
+    for i = 1, n do scratch[i] = nil end
+    return same
+end
+
+local function _hi_get(raw, cards)
+    if P.hi_bypass then return raw(cards) end
+    if _hi_hit(cards) then
+        if P.hi_check then P.hi_check(raw, cards, _hi_res, _hi_n) end
+        return unpack(_hi_res, 1, _hi_n)
+    end
+    return _hi_store(cards, raw(cards))
+end
+
+function PREVIEW.hand_info(cards)
+    return _hi_get(G.FUNCS.get_poker_hand_info, cards)
+end
+
+function PREVIEW.with_hand_info(fn, ...)
+    local raw = G.FUNCS.get_poker_hand_info
+    G.FUNCS.get_poker_hand_info = function(cards)
+        return _hi_get(raw, cards)
+    end
+    local res = {pcall(fn, ...)}
+    G.FUNCS.get_poker_hand_info = raw
+    return unpack(res, 1, table.maxn(res))
+end
+
+local BASE_EVAL = G.FUNCS.evaluate_play
+local REAL_PSEUDORANDOM = pseudorandom
+
+local function NOOP() end
+local VOID
+VOID = setmetatable({}, {
+    __index = function() return VOID end,
+    __newindex = NOOP,
+    __call = function() return VOID end,
+})
+
+local SB = { mode = 'low', rolls = 0, total = nil, dollars = 0, fx = nil, game = nil }
+
+local SHARED = nil
+local function build_shared()
+    SHARED = {}
+    for _, name in ipairs({'P_CENTERS', 'P_BLINDS', 'P_SEALS', 'P_TAGS', 'P_CARDS', 'P_STAKES', 'P_CENTER_POOLS', 'C', 'ASSET_ATLAS', 'ANIMATION_ATLAS'}) do
+        local t = G[name]
+        if type(t) == 'table' then
+            SHARED[t] = true
+r 11 154 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 149
+                if type(v) == 'table' then SHARED[v] = true end
+            end
+        end
+    end
+end
+
+local copy_left = 0
+local function dcopy(v, seen)
+    if type(v) ~= 'table' or getmetatable(v) ~= nil or SHARED[v] then return v end
+    local done = seen[v]
+    if done then return done end
+    if copy_left <= 0 then return v end
+    local t = {}
+    seen[v] = t
+    for k, x in pairs(v) do
+        copy_left = copy_left - 1
+        if type(x) == 'table' then t[k] = dcopy(x, seen) else t[k] = x end
+    end
+    return t
+end
+
+local function shallow(v)
+    if type(v) ~= 'table' then return v end
+    local t = {}
+    for k, x in pairs(v) do t[k] = x end
+    return t
+end
+
+local SW = {}
+local function swap(t, k, v)
+    SW[#SW + 1] = {t, k, rawget(t, k)}
+    rawset(t, k, v)
+end
+local function unswap()
+    for i = #SW, 1, -1 do
+        local e = SW[i]
+        rawset(e[1], e[2], e[3])
+        SW[i] = nil
+    end
+end
+
+local function num(v)
+    local tv = type(v)
+    if tv == 'number' then return v end
+    if tv == 'table' or tv == 'cdata' then
+        local ok, r = pcall(function() return to_number and to_number(v) or tonumber(tostring(v)) end)
+        if ok and type(r) == 'number' then return r end
+    end
+    return nil
+end
+
+local function fx_add(real, r, depth)
+    local f = SB.fx[real]
+    if not f then
+        f = {chips = 0, mult = 0, xmult = 1, dollars = 0, reps = 0, hits = 0}
+        SB.fx[real] = f
+    end
+    local hit = false
+    local c = num(r.chips) or num(r.chip_mod)
+    if c and c ~= 0 then f.chips = f.chips + c; hit = true end
+    local m = num(r.mult) or num(r.mult_mod) or num(r.h_mult)
+    if m and m ~= 0 then f.mult = f.mult + m; hit = true end
+    local x = num(r.x_mult) or num(r.Xmult_mod) or num(r.xmult) or num(r.Xmult) or num(r.x_mult_mod)
+    if x and x ~= 1 then f.xmult = f.xmult * x; hit = true end
+    local d = num(r.dollars) or num(r.p_dollars)
+    if d and d ~= 0 then f.dollars = f.dollars + d; hit = true end
+    local rp = num(r.repetitions)
+    if rp and rp > 0 then f.reps = f.reps + rp; hit = true end
+    if hit then f.hits = f.hits + 1 end
+    if type(r.extra) == 'table' and getmetatable(r.extra) == nil and (depth or 0) < 4 then
+        fx_add(real, r.extra, (depth or 0) + 1)
+    end
+end
+
+local CARD_NOOPS = {'juice_up', 'start_dissolve', 'shatter', 'remove', 'remove_from_deck', 'add_to_deck', 'set_sprites',
+    'flip', 'highlight', 'start_materialize', 'hard_set_T', 'move', 'draw', 'align', 'stop_drag', 'set_cost_UI', 'wiggle'}
+
+local function proxy_card(c, area, map, fresh)
+    if not fresh and map[c] then return map[c] end
+    local p = {}
+    for k, v in pairs(c) do p[k] = v end
+    setmetatable(p, getmetatable(c))
+    local seen = {}
+    p.ability = dcopy(c.ability, seen)
+    p.base = dcopy(c.base, seen)
+    p.edition = dcopy(c.edition, seen)
+    p.config = shallow(c.config)
+    p.T = shallow(c.T)
+    p.VT = shallow(c.VT)
+    p.states = dcopy(c.states, seen)
+    p.joker_display_values = nil
+    p.children = VOID
+    p.area = area
+    p.highlighted = false
+    p._sb_real = c._sb_real or c
+    for _, k in ipairs(CARD_NOOPS) do p[k] = NOOP end
+    p.set_card_area = function(self, a) self.area = a end
+    if not fresh then map[c] = p end
+    return p
+end
+
+local function center_is(name)
+    return function(v) return v.config.center and v.config.center.name == name end
+end
+
+local TALLIES = {
+    ['Steel Joker'] = {'steel_tally', center_is('Steel Card')},
+    ['Stone Joker'] = {'stone_tally', center_is('Stone Card')},
+    ['Cloud 9'] = {'nine_tally', function(v) return v:get_id() == 9 end},
+    ["Driver's License"] = {'driver_tally', function(v) return v.config.center and v.config.center.name ~= 'Default Base' end},
+}
+
+local function fill_tally(p)
+    local t = p.ability and TALLIES[p.ability.name]
+    if not t or p.ability[t[1]] ~= nil then return end
+    local n = 0
+    for _, v in pairs(G.playing_cards or {}) do
+        if t[2](v) then n = n + 1 end
+    end
+    p.ability[t[1]] = n
+end
+
+local function wrap_fx(p, real)
+    local base = p.calculate_joker
+    if type(base) ~= 'function' then return end
+    p.calculate_joker = function(self, ctx, ...)
+        local r, r2 = base(self, ctx, ...)
+        if SB.fx and type(r) == 'table' and type(ctx) == 'table' and not ctx.blueprint then
+            pcall(fx_add, real, r, 0)
+        end
+        return r, r2
+    end
+end
+
+local AREA_NOOPS = {'align_cards', 'set_ranks', 'shuffle', 'sort', 'hard_set_cards', 'juice_up', 'draw', 'update', 'parse_highlighted', 'recalculate'}
+
+local function proxy_area(a)
+    if not a then return nil end
+    local p = {}
+    for k, v in pairs(a) do p[k] = v end
+    setmetatable(p, getmetatable(a))
+    p.config = dcopy(a.config, {})
+    p.T = shallow(a.T)
+    p.states = dcopy(a.states, {})
+    p.children = VOID
+    p.cards = {}
+    p.highlighted = {}
+    for _, k in ipairs(AREA_NOOPS) do p[k] = NOOP end
+    p.emplace = function(self, card)
+r 6 646 %20%20%20%20%20%20%20%20 -
+l 3
+        if type(card) == 'table' then card.area = self end
+    end
+    p.remove_card = function(self, card)
+r 6 322 %20%20%20%20%20%20%20%20 -
+l 4
+            if self.cards[i] == card then table.remove(self.cards, i); return card end
+        end
+    end
+    p.add_to_highlighted = function(self, card)
+r 6 648 %20%20%20%20%20%20%20%20 -
+l 10
+        if type(card) == 'table' then card.highlighted = true end
+    end
+    p.remove_from_highlighted = function(self, card)
+        for i = #self.highlighted, 1, -1 do
+            if self.highlighted[i] == card then table.remove(self.highlighted, i) end
+        end
+        if type(card) == 'table' then card.highlighted = false end
+    end
+    p.unhighlight_all = function(self)
+        for _, c in ipairs(self.highlighted) do if type(c) == 'table' then c.highlighted = false end end
+r 6 17 %20%20%20%20%20%20%20%20 -
+l 517
+    end
+    p.change_size = function(self, d)
+        self.config.card_limit = (self.config.card_limit or 0) + (d or 0)
+    end
+    return p
+end
+
+local function proxy_blind(b)
+    if type(b) ~= 'table' then return b end
+    local p = {}
+    for k, v in pairs(b) do p[k] = v end
+    setmetatable(p, getmetatable(b))
+    local seen = {}
+    for k, v in pairs(b) do
+        if type(v) == 'table' and getmetatable(v) == nil and k ~= 'config' and k ~= 'children' then p[k] = dcopy(v, seen) end
+    end
+    p.config = shallow(b.config)
+    p.T = shallow(b.T)
+    for _, k in ipairs({'juice_up', 'wiggle', 'set_text', 'alert_debuff', 'change_colour', 'set_blind', 'defeat', 'disable'}) do p[k] = NOOP end
+    return p
+end
+
+local STUB_EM = { queues = { base = {}, other = {}, achievement = {}, tutorial = {}, unlock = {} } }
+function STUB_EM.add_event(_, ev)
+    local e = type(ev) == 'table' and ev.ease
+    if e and e.ref_table == SB.game and e.ref_value == 'chips' and e.end_val ~= nil then
+        local ok, d = pcall(function() return e.end_val - (e.start_val or 0) end)
+        if ok then SB.total = d end
+    end
+end
+STUB_EM.clear_queue = NOOP
+STUB_EM.update = NOOP
+
+local function sb_pseudorandom(seed, min, max)
+    SB.rolls = SB.rolls + 1
+    if SB.rolls > 5000 then error('sandbox: too many rolls', 0) end
+    if SB.mode == 'low' then
+        if type(seed) == 'string' then pseudoseed(seed) end
+        if min and max then return min end
+        return 0.999999999
+    elseif SB.mode == 'high' then
+        if type(seed) == 'string' then pseudoseed(seed) end
+        if min and max then return max end
+        return 0
+    end
+    return (SB.real_pr or REAL_PSEUDORANDOM)(seed, min, max)
+end
+
+local function sb_ease_dollars(mod, instant)
+    mod = mod or 0
+    SB.dollars = SB.dollars + (num(mod) or 0)
+    if instant and G.GAME then G.GAME.dollars = G.GAME.dollars + mod end
+end
+
+local function sb_ease_hands(mod, instant)
+    if instant and G.GAME and G.GAME.current_round then
+        G.GAME.current_round.hands_left = G.GAME.current_round.hands_left + (mod or 0)
+    end
+end
+
+local function sb_ease_discard(mod, instant)
+    if instant and G.GAME and G.GAME.current_round then
+        G.GAME.current_round.discards_left = G.GAME.current_round.discards_left + (mod or 0)
+    end
+end
+
+local SB_MAP = nil
+local function sb_copy_card(other)
+    if type(other) ~= 'table' then return nil end
+    return proxy_card(other, nil, SB_MAP or {}, true)
+end
+
+local STUBS = {
+    update_hand_text = NOOP, card_eval_status_text = NOOP, juice_card = NOOP, juice_card_until = NOOP,
+    play_sound = NOOP, highlight_card = NOOP, score_delay = NOOP, delay = NOOP, check_for_unlock = NOOP,
+    check_and_set_high_score = NOOP, set_hand_usage = NOOP, inc_career_stat = NOOP, attention_text = NOOP,
+    play_area_status_text = NOOP, draw_card = NOOP, haptic_buzz = NOOP, discover_card = NOOP, save_run = NOOP,
+    ease_chips = NOOP, add_tag = NOOP,
+    ease_dollars = sb_ease_dollars, ease_hands_played = sb_ease_hands, ease_discard = sb_ease_discard,
+    copy_card = sb_copy_card, pseudorandom = sb_pseudorandom, create_card = function() error('sandbox: card creation', 0) end,
+}
+local NIL_GLOBALS = {'QuestManager', 'AchievementManager', 'progression_on_hand_played'}
+
+local function smods_snap()
+    local S = rawget(_G, 'SMODS')
+    if type(S) ~= 'table' then return nil end
+    local snap = {vals = {}, params = {}, stack = type(S.context_stack) == 'table' and #S.context_stack or nil}
+    for k, v in pairs(S) do
+        local t = type(v)
+        if t ~= 'table' and t ~= 'function' and t ~= 'userdata' then snap.vals[k] = v end
+    end
+    if type(S.Scoring_Parameters) == 'table' then
+        for k, p in pairs(S.Scoring_Parameters) do
+            if type(p) == 'table' then snap.params[k] = p.current end
+        end
+    end
+    return snap
+end
+
+local function smods_restore(snap)
+    local S = rawget(_G, 'SMODS')
+    if not snap or type(S) ~= 'table' then return end
+    local extra = {}
+    for k, v in pairs(S) do
+        local t = type(v)
+        if t ~= 'table' and t ~= 'function' and t ~= 'userdata' and snap.vals[k] == nil then extra[#extra + 1] = k end
+    end
+    for _, k in ipairs(extra) do S[k] = nil end
+    for k, v in pairs(snap.vals) do S[k] = v end
+    if type(S.Scoring_Parameters) == 'table' then
+        for k, v in pairs(snap.params) do
+            if type(S.Scoring_Parameters[k]) == 'table' then S.Scoring_Parameters[k].current = v end
+        end
+    end
+    if snap.stack and type(S.context_stack) == 'table' then
+        for i = #S.context_stack, snap.stack + 1, -1 do S.context_stack[i] = nil end
+    end
+end
+
+local function sb_hook_discard(hand)
+    local picked, pool = {}, {}
+    for i, c in ipairs(hand.cards) do pool[i] = c end
+    for i = 1, 2 do
+        if hand.cards[i] and #pool > 0 then
+            local c, k = pseudorandom_element(pool, pseudoseed('hook'))
+            if not c then break end
+            table.remove(pool, k)
+            picked[#picked + 1] = c
+        end
+    end
+    if #picked == 0 then return end
+    for _, j in ipairs(G.jokers.cards) do j:calculate_joker({pre_discard = true, full_hand = picked, hook = true}) end
+    for _, c in ipairs(picked) do
+        if c.calculate_seal then c:calculate_seal({discard = true}) end
+        for _, j in ipairs(G.jokers.cards) do
+            j:calculate_joker({discard = true, other_card = c, full_hand = picked})
+        end
+    end
+    for _, c in ipairs(picked) do hand:remove_card(c) end
+end
+
+local function by_x(a, b)
+    return (a and a.T and a.T.x or 0) < (b and b.T and b.T.x or 0)
+end
+
+local function sb_body(sel, out)
+    if not SHARED then build_shared() end
+    copy_left = 60000
+    local map = {}
+    SB_MAP = map
+    local selset = {}
+    for _, c in ipairs(sel) do selset[c] = true end
+    local played = {}
+    for i, c in ipairs(sel) do played[i] = c end
+    table.sort(played, by_x)
+
+    local real = G.GAME
+    local seen = {}
+    local g = {}
+    for k, v in pairs(real) do g[k] = dcopy(v, seen) end
+    g.blind = proxy_blind(real.blind)
+    SB.game = g
+
+    local pa_play, pa_hand = proxy_area(G.play), proxy_area(G.hand)
+    local pa_jok, pa_cons, pa_deck = proxy_area(G.jokers), proxy_area(G.consumeables), proxy_area(G.deck)
+    for i, c in ipairs(played) do pa_play.cards[i] = proxy_card(c, pa_play, map) end
+    for _, c in ipairs(G.hand.cards) do
+        if not selset[c] then pa_hand.cards[#pa_hand.cards + 1] = proxy_card(c, pa_hand, map) end
+    end
+    for _, c in ipairs(G.jokers.cards) do
+        local p = proxy_card(c, pa_jok, map)
+        fill_tally(p)
+        wrap_fx(p, c)
+        pa_jok.cards[#pa_jok.cards + 1] = p
+    end
+    if pa_cons then
+        for _, c in ipairs(G.consumeables.cards) do pa_cons.cards[#pa_cons.cards + 1] = proxy_card(c, pa_cons, map) end
+    end
+    if pa_deck then
+        for i, c in ipairs(G.deck.cards) do pa_deck.cards[i] = c end
+    end
+    local pcs = {}
+    for i, c in ipairs(G.playing_cards or {}) do pcs[i] = map[c] or c end
+
+    local cur_pr = rawget(_G, 'pseudorandom')
+    SB.real_pr = cur_pr ~= sb_pseudorandom and type(cur_pr) == 'function' and cur_pr or REAL_PSEUDORANDOM
+    swap(G, 'GAME', g)
+    swap(G, 'play', pa_play)
+    swap(G, 'hand', pa_hand)
+    swap(G, 'jokers', pa_jok)
+    if pa_cons then swap(G, 'consumeables', pa_cons) end
+    if pa_deck then swap(G, 'deck', pa_deck) end
+    swap(G, 'playing_cards', pcs)
+    swap(G, 'playing_card', G.playing_card)
+    swap(G, 'E_MANAGER', STUB_EM)
+    for name, fn in pairs(STUBS) do swap(_G, name, fn) end
+    for _, name in ipairs(NIL_GLOBALS) do swap(_G, name, nil) end
+    swap(_G, 'hand_chips', rawget(_G, 'hand_chips'))
+    swap(_G, 'mult', rawget(_G, 'mult'))
+    swap(P, 'hi_bypass', true)
+    local S = rawget(_G, 'SMODS')
+    if type(S) == 'table' then
+        if type(S.juice_up_blind) == 'function' then swap(S, 'juice_up_blind', NOOP) end
+        if type(S.create_card) == 'function' then swap(S, 'create_card', STUBS.create_card) end
+        if type(S.add_card) == 'function' then swap(S, 'add_card', STUBS.create_card) end
+    end
+
+    local cr = g.current_round
+    if cr and cr.hands_left then cr.hands_left = cr.hands_left - 1 end
+    local blind = g.blind
+    if type(blind) == 'table' then blind.triggered = false end
+    for _, p in ipairs(pa_play.cards) do
+        if type(p.base) == 'table' then p.base.times_played = (p.base.times_played or 0) + 1 end
+        if type(p.ability) == 'table' then p.ability.played_this_ante = true end
+    end
+    if g.round_scores and g.round_scores.cards_played then
+        g.round_scores.cards_played.amt = (g.round_scores.cards_played.amt or 0) + #pa_play.cards
+    end
+    if type(blind) == 'table' and not blind.disabled then
+        if blind.name == 'The Tooth' then g.dollars = g.dollars - #pa_play.cards end
+        if blind.name == 'The Hook' then sb_hook_discard(pa_hand) end
+        if blind.press_play then blind:press_play() end
+    end
+
+    BASE_EVAL()
+
+    local chips, mlt = rawget(_G, 'hand_chips'), rawget(_G, 'mult')
+    if type(S) == 'table' and type(S.Scoring_Parameters) == 'table' then
+        local pc, pm = S.Scoring_Parameters.chips, S.Scoring_Parameters.mult
+        if type(pc) == 'table' and pc.current ~= nil then chips = pc.current end
+        if type(pm) == 'table' and pm.current ~= nil then mlt = pm.current end
+    end
+    local function plain(v)
+        local x = num(v)
+        if x and x == x and math.abs(x) < 1e300 then return x end
+        return v
+    end
+    out.chips, out.mult = plain(chips or 0), plain(mlt or 0)
+    local total = SB.total
+    if total == nil then
+        local ok, t = pcall(function() return math.floor((chips or 0) * (mlt or 0)) end)
+        total = ok and t or 0
+    end
+    out.total = plain(total)
+    out.name = G.GAME.last_hand_played
+end
+
+local function sb_run(sel, mode)
+    SB.mode, SB.rolls, SB.total, SB.dollars, SB.fx = mode, 0, nil, 0, {}
+    local snap = smods_snap()
+    local out = {}
+    P._in_sandbox = true
+    local ok, err = pcall(sb_body, sel, out)
+    unswap()
+    smods_restore(snap)
+    P._in_sandbox = false
+    SB.game, SB_MAP = nil, nil
+    if not ok then return nil, err end
+    out.rolls, out.dollars, out.fx = SB.rolls, SB.dollars, SB.fx
+    SB.fx = nil
+    return out
+end
+
+local fp_buf = {}
+local function fp_put(n, v)
+    fp_buf[n] = tostring(v)
+    return n + 1
+end
+local function fp_ability(n, a)
+    if type(a) ~= 'table' then return n end
+    for _, v in pairs(a) do
+        local t = type(v)
+        if t == 'number' or t == 'boolean' or t == 'string' then n = fp_put(n, v)
+        elseif t == 'table' and getmetatable(v) == nil then
+            for _, w in pairs(v) do
+                local tw = type(w)
+                if tw == 'number' or tw == 'boolean' or tw == 'string' then n = fp_put(n, w) end
+            end
+        else
+            n = fp_put(n, v)
+        end
+    end
+    return n
+end
+local function fp_card(n, c)
+    n = fp_put(n, c.sort_id or c.ID)
+    n = fp_put(n, c.debuff and 1 or 0)
+    n = fp_put(n, c.config and c.config.center and c.config.center.key)
+    local ed = c.edition
+    n = fp_put(n, type(ed) == 'table' and (ed.type or ed.key) or ed)
+    n = fp_put(n, c.seal)
+    local b = c.base
+    if b then n = fp_put(n, b.id); n = fp_put(n, b.suit); n = fp_put(n, b.nominal) end
+    return n
+end
+
+local function fingerprint(sel)
+    local n = 1
+    n = fp_put(n, #sel)
+    local list = {}
+    for i, c in ipairs(sel) do list[i] = c end
+    table.sort(list, by_x)
+    for _, c in ipairs(list) do n = fp_card(n, c); n = fp_ability(n, c.ability) end
+    n = fp_put(n, '|')
+    local selset = {}
+    for _, c in ipairs(sel) do selset[c] = true end
+    for _, c in ipairs(G.hand.cards) do
+        if not selset[c] then n = fp_card(n, c); n = fp_ability(n, c.ability) end
+    end
+    n = fp_put(n, '|')
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do n = fp_card(n, j); n = fp_ability(n, j.ability) end
+    n = fp_put(n, '|')
+    for _, c in ipairs(G.consumeables and G.consumeables.cards or {}) do n = fp_card(n, c) end
+    local g = G.GAME
+    local cr = g.current_round or {}
+    n = fp_put(n, g.dollars); n = fp_put(n, g.chips); n = fp_put(n, cr.hands_left); n = fp_put(n, cr.discards_left)
+    n = fp_put(n, cr.hands_played); n = fp_put(n, g.hands_played); n = fp_put(n, g.skips)
+    n = fp_put(n, g.probabilities and g.probabilities.normal)
+    local b = g.blind
+    if type(b) == 'table' then
+        n = fp_put(n, b.name); n = fp_put(n, b.disabled); n = fp_put(n, b.only_hand)
+        if type(b.hands) == 'table' then for k, v in pairs(b.hands) do if v then n = fp_put(n, k) end end end
+    end
+    for k, h in pairs(g.hands or {}) do
+        if type(h) == 'table' then
+            n = fp_put(n, k); n = fp_put(n, h.level); n = fp_put(n, h.played); n = fp_put(n, h.played_this_round)
+            n = fp_put(n, h.chips); n = fp_put(n, h.mult)
+        end
+    end
+    n = fp_put(n, G.deck and #G.deck.cards); n = fp_put(n, G.playing_cards and #G.playing_cards)
+    return table.concat(fp_buf, ',', 1, n - 1)
+end
+
+local CACHE, CACHE_N = {}, 0
+
+local function now_s()
+    return (love and love.timer and love.timer.getTime and love.timer.getTime()) or os.clock()
+end
+
+local function lt(a, b)
+    local ok, r = pcall(function() return a < b end)
+    return ok and r
+end
+
+function PREVIEW.compute(sel, opts)
+    if P._in_sandbox then return nil end
+    if not (G and G.GAME and G.hand and G.hand.cards and G.jokers and G.play and BASE_EVAL) then return nil end
+    if type(sel) ~= 'table' or #sel < 1 then return nil end
+    for _, c in ipairs(sel) do
+        if type(c) ~= 'table' or not c.ability or c.removed then return nil end
+    end
+    local exact = opts and opts.exact
+    local okf, key = pcall(fingerprint, sel)
+    if not okf then key = nil end
+    if key and exact then key = key .. '#x' end
+    if key and CACHE[key] then
+        P.stats.hits = P.stats.hits + 1
+        return CACHE[key]
+    end
+    local t0 = now_s()
+    P.stats.runs = P.stats.runs + 1
+    local first, err = sb_run(sel, exact and 'real' or 'low')
+    if not first then
+        P.stats.fails = P.stats.fails + 1
+        P.last_error = err
+        return nil
+    end
+    local res = {lo = first.total, hi = first.total, chips = first.chips, mult = first.mult, name = first.name,
+        dollars = first.dollars, fx_lo = first.fx, fx_hi = first.fx, chance = first.rolls > 0}
+    if exact then
+        res.exact = first.total
+        local lo = sb_run(sel, 'low')
+        local hi = lo and lo.rolls > 0 and sb_run(sel, 'high') or lo
+        if lo and hi then
+            res.lo, res.hi = lo.total, hi.total
+            res.fx_lo, res.fx_hi = lo.fx, hi.fx
+        end
+    elseif first.rolls > 0 then
+        local hi = sb_run(sel, 'high')
+        if hi then
+            res.hi, res.fx_hi = hi.total, hi.fx
+        end
+    end
+    if lt(res.hi, res.lo) then res.lo, res.hi, res.fx_lo, res.fx_hi = res.hi, res.lo, res.fx_hi, res.fx_lo end
+    res.ms = (now_s() - t0) * 1000
+    if res.ms > 30 then P.stats.slow = P.stats.slow + 1 end
+    if key then
+        if CACHE_N >= 256 then CACHE, CACHE_N = {}, 0 end
+        CACHE[key] = res
+        CACHE_N = CACHE_N + 1
+    end
+    return res
+end
+
+function PREVIEW.clear_cache()
+    CACHE, CACHE_N = {}, 0
+end
+
+local function sel_key(sel)
+    local parts = {}
+    for i, c in ipairs(sel or {}) do parts[i] = tostring(c.sort_id or c.ID or i) end
+    table.sort(parts)
+    return table.concat(parts, ',')
+end
+PREVIEW.sel_key = sel_key
+
+function PREVIEW.allowed()
+    if not (G and G.GAME and G.GAME.multiplayer) then return true end
+    local ok, r = pcall(function()
+        local bm = rawget(_G, 'bom_match')
+        if bm and bm.get_settings then
+            local s = bm.get_settings() or {}
+            return bm.preview_allowed and bm.preview_allowed(s) or (s.allow_score_preview == true and s.preview_disabled ~= true)
+        end
+        return false
+    end)
+    return ok and r and true or false
+end
+
+function PREVIEW.display_enabled()
+    return G and G.SETTINGS and G.SETTINGS.score_preview_enabled and P.allowed() or false
+end
+
+function PREVIEW.fx_for(card)
+    local fx = P.fx
+    if not fx or not card then return nil end
+    if not (G.hand and G.hand.highlighted and #G.hand.highlighted > 0) then return nil end
+    if P.fx_sel ~= sel_key(G.hand.highlighted) then return nil end
+    if not P.allowed() then return nil end
+    local lo = fx.fx_lo and fx.fx_lo[card]
+    local hi = fx.fx_hi and fx.fx_hi[card]
+    return lo or false, hi or lo or false, fx
+end
+
+local function fmt_n(v)
+    local ok, s = pcall(number_format, v)
+    if ok and type(s) == 'string' then return s end
+    return tostring(v)
+end
+
+function PREVIEW.format(res)
+    if not res then return "" end
+    local a = fmt_n(res.lo)
+    if lt(res.lo, res.hi) then
+        return (mod_loc("{1} to {2}"):gsub("{1}", a):gsub("{2}", fmt_n(res.hi)))
+    end
+    return a
+end
+
+local function clear_values()
+    P.data = 0
+    P.data_max = 0
+    P.text.value = ""
+    P._run.chips, P._run.mult, P._run.dollars = 0, 0, 0
+    P.fx, P.fx_sel, P.last = nil, nil, nil
+end
+
+function PREVIEW.run()
+    if not G or not G.GAME or not G.hand or not G.hand.highlighted then return end
+    if #G.hand.highlighted < 1 then
+        clear_values()
+        return
+    end
+    if not (G.STATE == G.STATES.SELECTING_HAND or G.STATE == G.STATES.DRAW_TO_HAND) then
+        return
+    end
+    local res = P.compute(G.hand.highlighted)
+    if not res then
+        clear_values()
+        P.is_active = false
+        return
+    end
+    P.last = res
+    P.data = res.lo or 0
+    P.data_max = res.hi or P.data
+    P._run.chips, P._run.mult, P._run.dollars = res.chips or 0, res.mult or 0, res.dollars or 0
+    P.fx, P.fx_sel = res, sel_key(G.hand.highlighted)
+    P.text.value = P.format(res)
+    if P.display_enabled() then
+        if not P.is_active and G.GAME.current_round and G.GAME.current_round.current_hand then
+            P._saved_hand_level = G.GAME.current_round.current_hand.hand_level
+        end
+        P.is_active = true
+    end
+end
+
+function PREVIEW.reset()
+    clear_values()
+    CACHE, CACHE_N = {}, 0
+    if P.is_active then
+        P.is_active = false
+        if G and G.GAME and G.GAME.current_round then
+            if P._saved_hand_level ~= nil then
+                G.GAME.current_round.current_hand.hand_level = P._saved_hand_level
+            end
+        end
+        P._saved_hand_level = nil
+    end
+end
+
+local _order_sig = 0
+local function order_sig()
+    local hl = G.hand and G.hand.highlighted
+    if not hl or #hl == 0 then return 0 end
+    local s = 0
+    for i, j in ipairs(G.jokers and G.jokers.cards or {}) do s = s + i * (j.sort_id or 0) end
+    for _, a in ipairs(hl) do
+        local r = 1
+        for _, b in ipairs(hl) do
+            if a.T and b.T and b.T.x < a.T.x then r = r + 1 end
+        end
+        s = s + r * 7919 * (a.sort_id or 0)
+    end
+    return s
+end
+
+local _orig_hand_text_UI_set = G.FUNCS.hand_text_UI_set
+r 13 2036 - -
+l 41
+    if G.STATE == G.STATES.SELECTING_HAND and not P._in_sandbox then
+        local s = order_sig()
+        if s ~= _order_sig then
+            _order_sig = s
+            if s ~= 0 and P.queue then pcall(P.queue) end
+        end
+    end
+    if P.display_enabled() and G.GAME and G.GAME.current_round and G.GAME.blind then
+        if P.is_active then
+            G.GAME.current_round.current_hand.handname_text = P.text.value
+            G.GAME.current_round.current_hand.hand_level = ""
+            if e and e.config and e.config.object then
+                local need = (G.GAME.blind.chips or 0)
+                local have = G.GAME.chips or 0
+                local col = G.C.GOLD
+                local ok1, lo_win = pcall(function() return have + (P.data or 0) >= need end)
+                local ok2, hi_win = pcall(function() return have + (P.data_max or 0) >= need end)
+                local okz, zero = pcall(function() return (P.data_max or 0) <= 0 end)
+                if okz and zero then col = G.C.RED
+                elseif ok1 and lo_win then col = G.C.GREEN
+                elseif ok2 and hi_win then col = G.C.FILTER or G.C.ORANGE or G.C.GOLD end
+                e.config.object.colours = { col }
+            end
+        else
+            _orig_hand_text_UI_set(e)
+            if e and e.config and e.config.object then
+                e.config.object.colours = { G.C.UI.TEXT_LIGHT }
+            end
+        end
+    else
+        _orig_hand_text_UI_set(e)
+        if e and e.config and e.config.object then
+            e.config.object.colours = { G.C.UI.TEXT_LIGHT }
+        end
+    end
+end
+
+local function _queue_preview()
+    local t = love.timer.getTime()
+    if P._queued and t - P._queued < 0.5 then return end
+    P._queued = t
+r 1 112 %20%20%20%20 -
+l 13
+        trigger  = "immediate",
+        blockable = false,
+        blocking  = false,
+        func = function()
+            P._queued = nil
+            pcall(P.run)
+            return true
+        end,
+    }))
+end
+PREVIEW.queue = _queue_preview
+
+local _orig_parse_highlighted = CardArea.parse_highlighted
+r 6 162 - -
+l 66
+    if self.config.type ~= "hand" then return _orig_parse_highlighted(self) end
+    local ok, err = P.with_hand_info(_orig_parse_highlighted, self)
+    if not ok then error(err, 0) end
+    _queue_preview()
+end
+
+local function check_line(status, real, res, extra)
+    local C = P._check
+    if not C then return end
+    C[status] = (C[status] or 0) + 1
+    local jk = {}
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do jk[#jk + 1] = j.config and j.config.center and j.config.center.key or '?' end
+    local b = G.GAME and G.GAME.blind
+    C.f:write(string.format("PREVIEW_CHECK %s real=%s exact=%s lo=%s hi=%s ms=%s hand=%s blind=%s jokers=%s %s\n",
+        status, tostring(real), tostring(res and res.exact), tostring(res and res.lo), tostring(res and res.hi),
+        res and res.ms and string.format('%.2f', res.ms) or '-', tostring(res and res.name),
+        tostring(b and b.config and b.config.blind and b.config.blind.key), table.concat(jk, ','), extra or ''))
+    C.f:flush()
+end
+
+local function check_after(q, n0)
+    local C = P._check
+    local res = C.pending
+    C.pending = nil
+    local real = nil
+    for i = #q, n0 + 1, -1 do
+        local ev = q[i]
+        local e = type(ev) == 'table' and ev.ease
+        if e and e.ref_table == G.GAME and e.ref_value == 'chips' then
+            local ok, d = pcall(function() return e.end_val - e.start_val end)
+            if ok then real = d end
+            break
+        end
+    end
+    if real == nil then return check_line('noreal', nil, res) end
+    if not res then return check_line('none', real, nil, P.last_error and ('err=' .. tostring(P.last_error):gsub('%s+', '_'):sub(1, 160)) or '') end
+    local okx, exact_ok = pcall(function() return math.abs(num(res.exact) - num(real)) <= 1e-6 * math.max(1, math.abs(num(real))) end)
+    local okr, in_range = pcall(function() return res.lo <= real and real <= res.hi end)
+    if okx and exact_ok and okr and in_range then return check_line('ok', real, res) end
+    if not (okr and in_range) then return check_line('range_miss', real, res) end
+    return check_line('exact_miss', real, res)
+end
+
+function PREVIEW.install_check()
+    if P._check then return end
+    local out = (os.getenv('SOAK_OUT') or '.') .. '/preview_check_' .. (os.getenv('SOAK_SEED') or '0') .. '.txt'
+    local f = io.open(out, 'a')
+    if not f then return end
+    P._check = {f = f}
+    local raw_play = G.FUNCS.play_cards_from_highlighted
+    G.FUNCS.play_cards_from_highlighted = function(e, ...)
+        if not (G.play and G.play.cards[1]) and G.hand and G.hand.highlighted and #G.hand.highlighted > 0 then
+            P.clear_cache()
+            local ok, res = pcall(P.compute, G.hand.highlighted, {exact = true})
+            P._check.pending = ok and res or false
+        end
+        return raw_play(e, ...)
+    end
+end
+
+local _orig_evaluate_play = G.FUNCS.evaluate_play
+function G.FUNCS.evaluate_play(e, ...)
+    local q = P._check and P._check.pending ~= nil and G.E_MANAGER and G.E_MANAGER.queues and G.E_MANAGER.queues.base
+    local n0 = q and #q or 0
+    local r1, r2, r3 = _orig_evaluate_play(e, ...)
+    if q then pcall(check_after, q, n0) end
+r 1 112 %20%20%20%20 -
+l 19
+        trigger   = "after",
+        blockable = false,
+        blocking  = false,
+        func = function()
+            pcall(P.reset)
+            return true
+        end,
+    }))
+    return r1, r2, r3
+end
+
+local _orig_discard = G.FUNCS.discard_cards_from_highlighted
+function G.FUNCS.discard_cards_from_highlighted(e, is_hook_blind, ...)
+    local r = _orig_discard(e, is_hook_blind, ...)
+    if not is_hook_blind then P.reset() end
+    return r
+end
+
+local _orig_emplace = CardArea.emplace
+r 6 32 - -
+l 7
+    _orig_emplace(self, card, location, stay_flipped)
+    if self == G.jokers and G.hand and #G.hand.highlighted > 0 and not P._in_sandbox then
+        _queue_preview()
+    end
+end
+
+local _orig_remove_card = CardArea.remove_card
+r 6 66 - -
+l 17
+    local result = _orig_remove_card(self, card, discarded_only)
+    if self == G.jokers and G.hand and #G.hand.highlighted > 0 and not P._in_sandbox then
+        _queue_preview()
+    end
+    return result
+end
+
+local _orig_pm_compute = PREVIEW.compute
+function PREVIEW.compute(sel, opts)
+    if not (PERF_MON and PERF_MON.enabled) then return _orig_pm_compute(sel, opts) end
+    local t0 = love.timer.getTime()
+    local r1, r2, r3 = _orig_pm_compute(sel, opts)
+    PERF_MON.add_sub("score_preview", (love.timer.getTime() - t0) * 1000)
+    return r1, r2, r3
+end
+
+if os and os.getenv and os.getenv('SOAK_PREVIEW_CHECK') == '1' then pcall(PREVIEW.install_check) end
+end

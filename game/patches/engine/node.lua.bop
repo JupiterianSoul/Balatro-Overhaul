@@ -1,0 +1,53 @@
+BOP 2
+eol lf
+final 1
+base 17
+c 121
+l 2
+
+
+e 17 104 %20%20%20%20%20%20%20%20 - +%2D%2D,=34
+e 17 105 %20%20%20%20%20%20%20%20 - +%2D%2D,=26,+%49,=1,-10,=5,+%27%29%2E%2E%27%20%27%2E%2E%28%73%65%6C%66%2E%75%6E%64%65%72%5F%6F%76%65%72%6C%61%79%20%61%6E%64%20%27%2D%27%20%6F%72%20%27%2B,=56,-1,+%30%2E%37,=13
+l 1
+
+c 167
+l 4
+Node.simple_touch = function() return true end
+Node.can_long_press = function() return false end
+Node.can_hover_on_drag = function() return true end
+
+c 19
+l 6
+    local bz = G.BG_UNZOOM
+    if bz then
+        love.graphics.translate(bz.tx, bz.ty)
+        love.graphics.scale(bz.s)
+        love.graphics.translate(bz.rx, bz.ry)
+    end
+c 11
+l 8
+local function remove_last_match(t, obj)
+    if not t then return end
+    for i = #t, 1, -1 do
+        if t[i] == obj then
+            table.remove(t, i)
+            return
+        end
+    end
+r 11 131 %20%20%20%20 -
+l 7
+        if v == obj then
+            table.remove(t, k)
+            return
+        end
+    end
+end
+
+c 2
+s 18
+l 3
+    remove_last_match(G.I.POPUP, self)
+    remove_last_match(G.I.NODE, self)
+    remove_last_match(G.STAGE_OBJECTS[G.STAGE], self)
+c 51
+end

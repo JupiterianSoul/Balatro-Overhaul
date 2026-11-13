@@ -1,0 +1,259 @@
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = 2147483647
+
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = "trigger = 'after',delay = 0.4,"
+position = 'at'
+payload = "trigger = 'after',delay = score_time(0.4),"
+match_indent = true
+
+[[patches]]
+[patches.regex]
+target = 'functions/state_events.lua'
+pattern = '''handname = ''(?:;return true end\)|\s*end\s*return true end\))\s*\}\)\)\s*(?<d>delay\(0\.3\))'''
+root_capture = 'd'
+position = 'at'
+payload = 'score_delay(0.3)'
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_overstock_norm =  \{order = 1,     discovered = false, unlocked = true , '''
+position = 'at'
+payload = '''v_overstock_norm =  {order = 1,     discovered = true, demo = true, unlocked = true , '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_crystal_ball=     \{order = 9,    discovered = false, unlocked = true , '''
+position = 'at'
+payload = '''v_crystal_ball=     {order = 9,     discovered = true, demo = true, unlocked = true , '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_overstock_plus=   \{order = 2,     discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_overstock_plus=   {order = 2,     discovered = true, demo = true, unlocked = false, '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_antimatter=       \{order = 24,    discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_antimatter=       {order = 24,    discovered = true, demo = true, unlocked = false, '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_tarot_tycoon=     \{order = 18,     discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_tarot_tycoon=     {order = 18,    discovered = true, demo = true, unlocked = false, '''
+
+[[patches]]
+[patches.regex]
+target = 'game.lua'
+pattern = '''v_planet_tycoon=    \{order = 20,     discovered = false, unlocked = false, '''
+position = 'at'
+payload = '''v_planet_tycoon=    {order = 20,    discovered = true, demo = true, unlocked = false, '''
+
+[[patches]]
+[patches.regex]
+target = 'functions/UI_definitions.lua'
+pattern = '''total_rate = total_rate \+ (?<a>\( )?G\.GAME\[v:lower\(\)\.\.'_rate'\]'''
+position = 'at'
+payload = "total_rate = total_rate + $a(G.GAME[v:lower()..'_rate'] or 0)"
+
+[[patches]]
+[patches.regex]
+target = 'functions/state_events.lua'
+pattern = '''handname ~= disp_text and 0\.4 or 0\}, \{handname=disp_text'''
+position = 'at'
+payload = 'handname ~= disp_text and score_time(0.4) or 0}, {handname=disp_text'
+
+[[patches]]
+[patches.regex]
+target = 'functions/UI_definitions.lua'
+pattern = '''local challenge_unlocked = SMODS\.challenge_is_unlocked\(v, k\)\n'''
+position = 'at'
+payload = '''local challenge_unlocked = SMODS.challenge_is_unlocked(v, k) or (k > 20 and not v.mod)
+'''
+
+[[patches]]
+[patches.pattern]
+target = '=[SMODS Amulet "talisman/break_inf.lua"]'
+pattern = "if ante <= 8 then return amounts[to_number(ante)] end"
+position = 'at'
+payload = """if ante <= 8 then
+    local n = to_number(ante)
+    local lo = math.floor(n)
+    if lo == n then return amounts[n] end
+    return amounts[lo] + (amounts[lo + 1] - amounts[lo]) * (n - lo)
+end"""
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = "for _,_ in pairs(G.GAME.current_round.voucher.spawn) do vouchers_to_spawn = vouchers_to_spawn + 1 end"
+position = 'before'
+payload = """if type(G.GAME.current_round.voucher) ~= 'table' then
+    local k = G.GAME.current_round.voucher
+    G.GAME.current_round.voucher = k and {k, spawn = {[k] = true}} or {spawn = {}}
+end
+G.GAME.current_round.voucher.spawn = G.GAME.current_round.voucher.spawn or {}"""
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/state_events.lua'
+pattern = "delay =  0.5,"
+position = 'at'
+payload = "delay =  score_time(0.5),"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+pattern = "func = (function() if eval_func(card) then if not first or first then card:juice_up(0.1, 0.1) end;juice_card_until(card, eval_func, nil, 0.8) end return true end)"
+position = 'at'
+payload = "func = (function() if eval_func(card) then if not first or first then card:juice_up(0.1, 0.1, true) end;juice_card_until(card, eval_func, nil, 0.8) end return true end)"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/common_events.lua'
+pattern = "G.ROOM.jiggle = G.ROOM.jiggle + 0.7"
+position = 'at'
+payload = "G.ROOM.jiggle = math.min(G.ROOM.jiggle + 0.7, 5)"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'engine/controller.lua'
+pattern = "if self.hovering.target and self.hovering.target == self.dragging.target and not self.HID.touch then"
+position = 'at'
+payload = "if self.hovering.target and self.hovering.target == self.dragging.target then"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'engine/controller.lua'
+pattern = "self.cursor_hover.time = G.TIMERS.TOTAL"
+position = 'at'
+payload = "self.cursor_hover.time = G.TIMERS.UPTIME"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'engine/controller.lua'
+pattern = "self.cursor_up.time = G.TIMERS.TOTAL"
+position = 'at'
+payload = "self.cursor_up.time = G.TIMERS.UPTIME"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = "for k, v in pairs(self.ANIMATIONS) do"
+position = 'at'
+payload = "do"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'cardarea.lua'
+pattern = "if G.CONTROLLER.HID.controller then"
+position = 'at'
+payload = "if pad_or_touch then"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+pattern = "_tag_sprite.states.collide.can = not not run_info"
+position = 'at'
+payload = "_tag_sprite.states.collide.can = false"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/button_callbacks.lua'
+pattern = "if not e.config.ref_table.run_info and G.blind_select and G.blind_select.VT.y < 10 and e.config.id and G.blind_select_opts[string.lower(e.config.id)] then"
+position = 'at'
+payload = "if not e.config.ref_table.run_info and G.blind_select and G.blind_select.VT.y < math.max(10, G.ROOM and G.ROOM.T.h or 0) and e.config.id and G.blind_select_opts[string.lower(e.config.id)] then"
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+pattern = '''{n=G.UIT.R, config={ref_table = card, r = 0.08, padding = 0.1, align = "bm", minw = 0.5*card.T.w - 0.15, maxw = 0.9*card.T.w - 0.15, minh = 0.3*card.T.h, hover = true, shadow = true, colour = G.C.UI.BACKGROUND_INACTIVE, one_press = true, button = 'use_card', func = 'can_select_card'}, nodes={'''
+position = 'at'
+payload = '''{n=G.UIT.R, config={ref_table = card, r = 0.08, padding = 0.1, align = "bm", minw = 0.5*card.T.w - 0.15, maxw = 0.9*card.T.w - 0.15, minh = 0.3*card.T.h, hover = true, shadow = true, colour = G.C.UI.BACKGROUND_INACTIVE, one_press = true, button = 'use_card', func = 'select_button_check'}, nodes={'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+pattern = '''{n=G.UIT.C, config={align = "cm", padding = 0.05, colour = G.C.L_BLACK,r = 0.1, minw = 0.9}, nodes={'''
+position = 'at'
+payload = '''{n=G.UIT.C, config={align = "cm", padding = 0.05, colour = G.C.L_BLACK,r = 0.1, minw = port and 0.75 or 0.9}, nodes={'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+pattern = '''}} or {n=G.UIT.C, config={align = "cm", padding = 0.1, emboss = 0.05, colour = mix_colours(G.C.BLUE, G.C.BLACK, 0.4), r = 0.1, maxw = 2}, nodes={'''
+position = 'at'
+payload = '''}} or {n=G.UIT.C, config={align = "cm", padding = 0.1, emboss = 0.05, colour = mix_colours(G.C.BLUE, G.C.BLACK, 0.4), r = 0.1, maxw = 2, hover = true, func = 'hover_tag_proxy', ref_table = _tag}, nodes={'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'functions/misc_functions.lua'
+pattern = 'return G.ARGS.LOC_COLOURS[_c] or _default or G.C.UI.TEXT_DARK'
+position = 'at'
+payload = 'return G.ARGS.LOC_COLOURS[_c] or _default or G.C.BLACK'
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = 'if G.hand.config.card_limits.old_slots < G.hand.config.card_limits.total_slots then'
+position = 'before'
+payload = 'if G.hand.config.card_limits.old_slots == nil then G.hand.config.card_limits.old_slots = G.hand.config.card_limits.total_slots or 0 end'
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = '=[SMODS _ "src/game_object.lua"]'
+pattern = '-- until stakes_fixed'
+position = 'before'
+payload = '''
+local overhaul_stake_orders = {}
+for _, stake in ipairs(G.P_CENTER_POOLS[self.set]) do overhaul_stake_orders[stake] = stake.order end
+'''
+match_indent = true
+
+[[patches]]
+[patches.pattern]
+target = '=[SMODS _ "src/game_object.lua"]'
+pattern = 'table.sort(G.P_CENTER_POOLS[self.set], function(a, b) return a.order < b.order end)'
+position = 'before'
+payload = '''
+local overhaul_stake_broken = false
+for _, stake in ipairs(G.P_CENTER_POOLS[self.set]) do
+    for _, key in pairs(stake.applied_stakes or {}) do
+        local below = G.P_STAKES[key]
+        if below and below ~= stake and below.order >= stake.order then overhaul_stake_broken = true end
+    end
+end
+if overhaul_stake_broken then
+    for stake, order in pairs(overhaul_stake_orders or {}) do stake.order = order end
+end
+'''
+match_indent = true

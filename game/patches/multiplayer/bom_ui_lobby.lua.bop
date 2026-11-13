@@ -1,0 +1,888 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 9
+
+local M = {}
+
+function M.init(bom_ui)
+    require("multiplayer.bom_lobby_leave")
+
+    local function _show_mp_overlay(ref_name, definition)
+        if not G or not G.FUNCS or not G.FUNCS.overlay_menu then return end
+        G.SETTINGS = G.SETTINGS or {}
+r 13 1381 %20%20%20%20%20%20%20%20 -
+l 116
+        bom_ui.overlay({definition = definition})
+        G[ref_name] = G.OVERLAY_MENU
+    end
+
+    local function _forget_mp_overlay(ref_name)
+        local overlay = G and G[ref_name]
+        if not overlay then return end
+        if G.OVERLAY_MENU ~= overlay then pcall(function() overlay:remove() end) end
+        G[ref_name] = nil
+    end
+
+    local function _hide_mp_overlay(ref_name)
+        if not G then return end
+        local overlay = G[ref_name]
+        if overlay then
+            if G.OVERLAY_MENU == overlay and G.FUNCS and G.FUNCS.exit_overlay_menu then
+                pcall(function() G.FUNCS.exit_overlay_menu() end)
+            else
+                pcall(function() overlay:remove() end)
+            end
+            G[ref_name] = nil
+        end
+    end
+
+
+    local function _sep()
+        return { n = G.UIT.R, config = { align = "cm", minh = 0.02,
+            minw = (rawget(_G, "UIK") and UIK.portrait() and 7.6 or 9.8), colour = G.C.L_BLACK, padding = 0.02 }, nodes = {} }
+    end
+
+
+    local function _is_host()
+        local ok, result = pcall(function()
+            return bom_match and bom_match.is_host_player()
+        end)
+        return ok and result
+    end
+
+
+    local function disableable_option_cycle(args)
+        local enabled = _is_host()
+        local raw_options = args.options or {}
+        local options = {}
+        for i, v in ipairs(raw_options) do
+            options[i] = type(v) == "string" and v or tostring(v)
+        end
+
+        local function _normalize_cycle_value(value)
+            if value == nil then return nil end
+            local s = tostring(value):lower()
+            s = s:gsub("[%s_%-%./]+", "")
+            s = s:gsub("^gamemode", "")
+            s = s:gsub("^mp", "")
+            s = s:gsub("deck$", "")
+            s = s:gsub("stake$", "")
+            s = s:gsub("lives$", "")
+            return s
+        end
+
+        local current_option = args.current_option or 1
+
+        local numeric_index = tonumber(current_option)
+        if numeric_index and options[numeric_index] ~= nil then
+            current_option = numeric_index
+        else
+            local wanted = _normalize_cycle_value(current_option)
+            local matched_index = nil
+            for i, v in ipairs(options) do
+                local candidate = _normalize_cycle_value(v)
+                if tostring(v) == tostring(current_option)
+                    or tostring(i) == tostring(current_option)
+                    or (wanted and candidate == wanted) then
+                    matched_index = i
+                    break
+                end
+            end
+            current_option = matched_index or 1
+        end
+
+        current_option = tonumber(current_option) or 1
+        if current_option < 1 then current_option = 1 end
+        if #options > 0 and current_option > #options then current_option = 1 end
+
+        return create_option_cycle({
+            id = args.id,
+            label = args.label,
+            scale = args.scale or 0.8,
+            options = options,
+            current_option = current_option,
+            opt_callback = enabled and args.opt_callback or nil,
+            colour = enabled and (args.colour or G.C.RED) or G.C.BLACK,
+            no_pips = args.no_pips,
+            w = args.w or 4,
+            info = args.info,
+        })
+    end
+
+
+
+    local function update_setting(key, value)
+        pcall(function()
+            if bom_room and bom_room.update_setting then
+                bom_room.update_setting(key, value)
+            end
+        end)
+    end
+
+
+    function bom_ui.show_searching_screen()
+        if not G then return end
+        if not G.FUNCS then return end
+
+        G.FUNCS.mp_cancel_search = function()
+            pcall(function() bom_room.cancel_search() end)
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 40
+            blocking = false,
+            blockable = false,
+            func = function()
+                local definition = create_UIBox_generic_options({ back_func = "mp_cancel_search", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.07 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("MATCHMAKING"), scale = 0.59, colour = G.C.GOLD, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", minh = 0.13 }, nodes = {} },
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.07 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Searching for an opponent..."), scale = 0.46, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("This may take a moment"), scale = 0.36, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", minh = 0.13 }, nodes = {} },
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.07 }, nodes = {
+                        UIBox_button({ label = { mod_loc("Cancel") }, button = "mp_cancel_search",
+                            minw = 3.25, minh = 0.65, colour = G.C.RED, scale = 0.46 }),
+                    }},
+                }})
+                _show_mp_overlay("MP_SEARCHING_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+    function bom_ui.hide_searching_screen()
+        _hide_mp_overlay("MP_SEARCHING_OVERLAY")
+    end
+
+
+    function bom_ui.show_waiting_screen()
+        if not G then return end
+        if not G.FUNCS then return end
+
+        G.FUNCS.mp_cancel_waiting = function()
+            pcall(function() bom_core.disconnect() end)
+            bom_ui.hide_waiting_screen()
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 40
+            blocking = false,
+            blockable = false,
+            func = function()
+                local definition = create_UIBox_generic_options({ back_func = "mp_cancel_waiting", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("CREATING ROOM"), scale = 0.45, colour = G.C.GOLD, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", minh = 0.1 }, nodes = {} },
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Setting up your private room..."), scale = 0.35, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", minh = 0.1 }, nodes = {} },
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        UIBox_button({ label = { mod_loc("Cancel") }, button = "mp_cancel_waiting",
+                            minw = 2.5, minh = 0.5, colour = G.C.RED, scale = 0.35 }),
+                    }},
+                }})
+                _show_mp_overlay("MP_WAITING_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+    function bom_ui.hide_waiting_screen()
+        _hide_mp_overlay("MP_WAITING_OVERLAY")
+    end
+
+
+    function bom_ui.show_room_code(code)
+        if not G then return end
+        if not code then return end
+
+        bom_ui.hide_searching_screen()
+        bom_ui.hide_waiting_screen()
+
+        G.FUNCS.mp_cancel_room = function()
+            pcall(function() bom_core.disconnect() end)
+            bom_ui.hide_room_code()
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 51
+            blocking = false,
+            blockable = false,
+            func = function()
+                local definition = create_UIBox_generic_options({ back_func = "mp_cancel_room", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("PRIVATE ROOM"), scale = 0.45, colour = G.C.GOLD, shadow = true } },
+                    }},
+                    _sep(),
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Your room code"), scale = 0.28, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.C, config = { align = "cm", padding = 0.08, colour = G.C.BLACK, r = 0.08 }, nodes = {
+                            { n = G.UIT.T, config = { text = tostring(code), scale = 0.5, colour = G.C.GOLD, shadow = true } },
+                        }},
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Share this with a friend to invite them."), scale = 0.25, colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+                    }},
+                    _sep(),
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("Waiting for opponent to join..."), scale = 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        UIBox_button({ label = { mod_loc("Cancel") }, button = "mp_cancel_room",
+                            minw = 2.5, minh = 0.5, colour = G.C.RED, scale = 0.35 }),
+                    }},
+                }})
+                _show_mp_overlay("BOM_ROOM_CODE_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+    function bom_ui.hide_room_code()
+        _hide_mp_overlay("BOM_ROOM_CODE_OVERLAY")
+    end
+
+
+    function bom_ui.show_match_starting()
+        bom_ui.hide_searching_screen()
+        bom_ui.hide_room_code()
+        pcall(function() bom_ui.hide_waiting_screen() end)
+
+        pcall(function()
+            if bom_match and bom_match.get_phase and bom_match.get_phase() == "lobby" then
+                bom_ui.show_lobby()
+                return
+            end
+        end)
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 21
+            blocking = false,
+            blockable = false,
+            func = function()
+                local opponent_name = "Opponent"
+                pcall(function()
+                    if G.GAME and G.GAME.mp_opponent and G.GAME.mp_opponent.name then
+                        opponent_name = G.GAME.mp_opponent.name
+                    end
+                end)
+
+                local definition = create_UIBox_generic_options({ back_func = "exit_overlay_menu", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("MATCH FOUND!"), scale = 0.45, colour = G.C.GOLD, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("vs ") .. opponent_name, scale = 0.35, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                    }},
+                }})
+                _show_mp_overlay("MP_MATCH_START_OVERLAY", definition)
+
+                local overlay_ref = G.MP_MATCH_START_OVERLAY
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 396
+                    trigger = 'after',
+                    delay = 2,
+                    func = function()
+                        if G.MP_MATCH_START_OVERLAY == overlay_ref then
+                            _hide_mp_overlay("MP_MATCH_START_OVERLAY")
+                        end
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+
+    local function player_panel(panel_label, player_name, is_ready, emote_id, showcase)
+        local LS = 1.4
+        local border_col = is_ready and G.C.GREEN or G.C.JOKER_GREY
+        local ready_text = mod_loc(is_ready and "READY" or "WAITING")
+        local ready_col  = is_ready and G.C.GREEN or G.C.UI.TEXT_INACTIVE
+        local text_w = showcase and 1.7*LS or 2.15*LS
+        local text_col = { n = G.UIT.C, config = { align = "cm", padding = 0.07*LS,
+                colour = G.C.BLACK, r = 0.08*LS, minw = text_w, minh = 0.91*LS }, nodes = {
+                { n = G.UIT.R, config = { align = "cm", padding = 0.01*LS }, nodes = {
+                    { n = G.UIT.T, config = { text = panel_label, scale = 0.27*LS,
+                        colour = G.C.UI.TEXT_INACTIVE, shadow = true } },
+                }},
+                { n = G.UIT.R, config = { align = "cm", padding = 0.03*LS, maxw = text_w - 0.15*LS, minh = 0.5*LS }, nodes = (function()
+                    local name_node = { n = G.UIT.T, config = { text = player_name, scale = 0.34*LS,
+                        colour = G.C.UI.TEXT_LIGHT, shadow = true } }
+                    local dev = bom_room.is_dev_name(player_name) and bom_badges and bom_badges.with_dev
+                    local b = bom_ranked and bom_ranked.badge_for(player_name, (dev and 0.86 or 1) * 0.34*LS, dev and {no_dev = true} or nil)
+                    if dev then b = bom_badges.with_dev(b, {h = 0.34*LS/0.9}) end
+                    if b then return { b, { n = G.UIT.C, config = { minw = 0.06 } }, name_node } end
+                    return { name_node }
+                end)() },
+                { n = G.UIT.R, config = { align = "cm", padding = 0.01*LS }, nodes = {
+                    { n = G.UIT.T, config = { text = ready_text, scale = 0.28*LS,
+                        colour = ready_col, shadow = true } },
+                }},
+            }}
+        if showcase then
+            text_col.config.colour = G.C.CLEAR
+            text_col = { n = G.UIT.C, config = { align = "cm", padding = 0.04*LS,
+                colour = G.C.BLACK, r = 0.08*LS, minh = 0.91*LS }, nodes = { text_col, showcase } }
+        end
+        return { n = G.UIT.C, config = { align = "cm", padding = 0.07*LS,
+            colour = border_col, r = 0.10*LS, minw = 2.34*LS, minh = 1.3*LS, id = emote_id }, nodes = {
+            text_col,
+        }}
+    end
+
+
+    local function create_players_section(state)
+        local my_name  = state.my_name  or "You"
+        local opp_name = state.waiting_guest and mod_loc("Waiting...") or state.opp_name or "Waiting..."
+        local SC = rawget(_G, "BO_SHOWCASE")
+        local my_sc, opp_sc
+        if SC and SC.lobby_pair then
+            local ok, a, b = pcall(SC.lobby_pair, state)
+            if ok then my_sc, opp_sc = a, b end
+        end
+        return { n = G.UIT.R, config = { align = "cm", padding = 0.03*1.4 }, nodes = {
+            player_panel(mod_loc("YOU"), my_name, state.my_ready, "bom_emote_you", my_sc),
+            { n = G.UIT.C, config = { align = "cm", padding = 0.05*1.4, minw = 0.65*1.4 }, nodes = {
+                { n = G.UIT.T, config = { text = mod_loc("VS"), scale = 0.42*1.4,
+                    colour = G.C.GOLD, shadow = true } },
+            }},
+            player_panel(mod_loc("OPPONENT"), opp_name, state.opp_ready, "bom_emote_opp", opp_sc),
+        }}
+    end
+
+
+    local function create_code_buttons(room_code, visibility)
+        local LS = 1.4
+        if visibility == "public" then
+            return { n = G.UIT.R, config = { align = "cm", padding = 0.04*LS }, nodes = {
+                { n = G.UIT.C, config = { align = "cm", padding = 0.08*LS, colour = G.C.BLACK, r = 0.10*LS }, nodes = {
+                    { n = G.UIT.T, config = { text = mod_loc("PUBLIC ROOM"), scale = 0.4*LS,
+                        colour = G.C.GOLD, shadow = true } },
+                }},
+            }}
+        end
+        return { n = G.UIT.R, config = { align = "cm", padding = 0.04*LS }, nodes = {
+            { n = G.UIT.C, config = { align = "cm", padding = 0.08*LS, colour = G.C.BLACK, r = 0.10*LS }, nodes = {
+                { n = G.UIT.T, config = { text = tostring(room_code or "????"), scale = 0.49*LS,
+                    colour = G.C.GOLD, shadow = true } },
+            }},
+            { n = G.UIT.C, config = { align = "cm", padding = 0.05*LS }, nodes = {
+                UIBox_button({ label = { mod_loc("Copy") }, button = "mp_lobby_copy_code",
+                    minw = 1.56*LS, minh = _G._IS_DESKTOP and 0.52*LS or math.max(0.52*LS, 0.85), colour = G.C.BLUE, scale = 0.36*LS }),
+            }},
+        }}
+    end
+
+
+    local BOT_LEVEL_NAMES = {"Easy", "Medium", "Hard"}
+    local BOT_LEVEL_KEYS = {"easy", "medium", "hard"}
+
+    local function bot_funcs()
+        G.FUNCS.mp_lobby_add_bot = function()
+            bom_core.send({ type = "add_bot", level = BOT_LEVEL_KEYS[bom_ui._bot_level or 2] })
+        end
+        G.FUNCS.mp_lobby_remove_bot = function()
+            bom_core.send({ type = "remove_bot" })
+        end
+        G.FUNCS.mp_lobby_bot_level = function()
+            bom_ui._bot_level = (bom_ui._bot_level or 2) % 3 + 1
+            bom_ui.show_lobby()
+        end
+    end
+
+    local function lobby_port()
+        local uik = rawget(_G, "UIK")
+        return uik and uik.portrait and uik.portrait() or false
+    end
+
+    local function grid_spec(n)
+        if lobby_port() then return { w = 3.6, h = 1.0, scale = 0.42 } end
+        local w = n >= 4 and 2.7 or 3.3
+        local touch = UIK and UIK.touch and UIK.touch()
+        return { w = w, h = touch and 1.0 or 0.85, scale = n >= 4 and 0.38 or 0.42 }
+    end
+
+    local function grid_button(g, label, button, colour, id)
+        return UIBox_button({ id = id, label = { label }, button = button, minw = g.w, minh = g.h, maxw = g.w - 0.3,
+            colour = colour, scale = g.scale, col = true })
+    end
+
+    local function grid_row(items)
+        if lobby_port() and #items > 2 then
+            local rows = {}
+            for i = 1, #items, 2 do
+                local pair = { items[i] }
+                if items[i + 1] then pair[2] = items[i + 1] end
+                rows[#rows + 1] = grid_row(pair)
+            end
+            return { n = G.UIT.R, config = { align = "cm", padding = 0 }, nodes = {
+                { n = G.UIT.C, config = { align = "cm", padding = 0 }, nodes = rows },
+            }}
+        end
+        local nodes = {}
+        for i, it in ipairs(items) do
+            if i > 1 then nodes[#nodes + 1] = { n = G.UIT.C, config = { minw = 0.15 } } end
+            nodes[#nodes + 1] = it
+        end
+        return { n = G.UIT.R, config = { align = "cm", padding = 0.06 }, nodes = nodes }
+    end
+
+    local function lobby_waits(state)
+        local mg = rawget(_G, "Minigames")
+        return mg and mg.lobby_wait and mg.lobby_wait(state) or false
+    end
+
+    local function create_start_ready_button(state)
+        bot_funcs()
+        local is_ready = state.my_ready
+        local items = {}
+        if state.is_host and state.opp_bot then
+            items = { { mod_loc("Remove Bot"), "mp_lobby_remove_bot", G.C.RED }, "ready" }
+        elseif state.is_host and state.waiting_guest then
+            local lv = bom_ui._bot_level or 2
+            items = {
+                { mod_loc("Add Bot"), "mp_lobby_add_bot", G.C.PURPLE },
+                "ready",
+                { mod_loc("Bot") .. ": " .. mod_loc(BOT_LEVEL_NAMES[lv]), "mp_lobby_bot_level", G.C.UI.BACKGROUND_INACTIVE },
+            }
+        else
+            items = { "ready" }
+        end
+        if lobby_waits(state) then items[#items + 1] = { mod_loc("Play while you wait"), "mg_wait_play", G.C.PURPLE, "mg_wait_row" } end
+        local g = grid_spec((#items >= 4 or #items == 2) and 4 or 3)
+        if lobby_port() and #items > 1 then
+            local wide = { w = 2 * g.w + 0.15, h = g.h, scale = g.scale + 0.04 }
+            local rest = {}
+            for _, it in ipairs(items) do
+                if it ~= "ready" then rest[#rest + 1] = grid_button(g, it[1], it[2], it[3], it[4]) end
+            end
+            return { n = G.UIT.R, config = { align = "cm", padding = 0 }, nodes = {
+                { n = G.UIT.C, config = { align = "cm", padding = 0 }, nodes = {
+                    grid_row({ grid_button(wide, mod_loc(is_ready and "UNREADY" or "READY"), "mp_lobby_ready", is_ready and G.C.RED or G.C.GREEN) }),
+                    grid_row(rest),
+                }},
+            }}
+        end
+        local nodes = {}
+        for i, it in ipairs(items) do
+            if it == "ready" then
+                nodes[i] = grid_button(g, mod_loc(is_ready and "UNREADY" or "READY"), "mp_lobby_ready", is_ready and G.C.RED or G.C.GREEN)
+            else
+                nodes[i] = grid_button(g, it[1], it[2], it[3], it[4])
+            end
+        end
+        return grid_row(nodes)
+    end
+
+    local function create_lobby_status(state)
+        local warnings = {}
+
+        if state.guest_held and state.waiting_guest then
+            warnings[#warnings + 1] = mod_loc("Your opponent left. Their seat is kept so they can come back.")
+        end
+
+        pcall(function()
+            if state.opp_version and mp_config and mp_config.VERSION then
+                if state.opp_version ~= mp_config.VERSION then
+                    warnings[#warnings + 1] = "Version mismatch! You: " ..
+                        tostring(mp_config.VERSION) .. " Opp: " .. tostring(state.opp_version)
+                end
+            end
+        end)
+
+        if #warnings == 0 then
+            return { n = G.UIT.R, config = { align = "cm", minh = 0.05 }, nodes = {} }
+        end
+
+        local warning_nodes = {}
+        for _, w in ipairs(warnings) do
+            warning_nodes[#warning_nodes + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                { n = G.UIT.T, config = { text = w, scale = 0.34, colour = G.C.RED, shadow = true } },
+            }}
+        end
+
+        return { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = warning_nodes }
+    end
+
+
+    local function rules_parts(s)
+        local parts = {}
+        local custom = bom_match.custom_seed and bom_match.custom_seed(s)
+        if bom_match.different_seeds(s) then
+            parts[#parts + 1] = mod_loc("Seeds: Different")
+        elseif custom then
+            parts[#parts + 1] = mod_loc("Seed: ") .. custom
+        else
+            parts[#parts + 1] = mod_loc("Seeds: Same")
+        end
+        local deck_label = tostring(s.deck or "Red Deck")
+        local lang = G.SETTINGS and G.SETTINGS.language or 'en-us'
+        bom_ui._deck_loc = bom_ui._deck_loc or {}
+        local ck = lang .. '|' .. deck_label
+        if bom_ui._deck_loc[ck] == nil then
+            local found = deck_label
+            for k, v in pairs(G.P_CENTERS or {}) do
+                if type(v) == 'table' and v.set == 'Back' and v.name == deck_label then
+                    local ok, nm = pcall(localize, {type = 'name_text', set = 'Back', key = k})
+                    if ok and type(nm) == 'string' and nm ~= '' and nm ~= 'ERROR' then found = nm end
+                    break
+                end
+            end
+            bom_ui._deck_loc[ck] = found
+        end
+        deck_label = bom_ui._deck_loc[ck]
+        if s.deck == bom_match.RANDOM_DECK then deck_label = mod_loc("Random pick") end
+        parts[#parts + 1] = bom_match.different_decks(s) and mod_loc("Decks: Own pick") or (mod_loc("Deck: ") .. deck_label)
+        local tc = bom_match.timer_config(s)
+        parts[#parts + 1] = tc.on and (mod_loc("Timer: ") .. tostring(tc.base) .. "s") or mod_loc("Timer: Off")
+        local fa = bom_match.final_ante_for and bom_match.final_ante_for(s)
+        if fa then parts[#parts + 1] = mod_loc("Final ante: ") .. tostring(fa) end
+        local n = 0
+        pcall(function() n = #bom_lobby_settings.describe(s) end)
+        parts[#parts + 1] = n > 0 and (tostring(n) .. " " .. mod_loc("changes")) or mod_loc("Default rules")
+        return parts
+    end
+
+    local function rules_line(s)
+        return table.concat(rules_parts(s), "  |  ")
+    end
+    bom_ui._lobby_rules_line = rules_line
+
+    local function rules_halves(s)
+        local p = rules_parts(s)
+        local k = math.ceil(#p / 2)
+        local a, b = {}, {}
+        for i, v in ipairs(p) do
+            if i <= k then a[#a + 1] = v else b[#b + 1] = v end
+        end
+        return table.concat(a, "  |  "), table.concat(b, "  |  ")
+    end
+    bom_ui._lobby_rules_halves = rules_halves
+
+    local function deck_names_list()
+        local names = {}
+        if G.P_CENTER_POOLS and G.P_CENTER_POOLS.Back then
+            for _, v in ipairs(G.P_CENTER_POOLS.Back) do
+                if not v.omit then names[#names + 1] = v.name or "Deck" end
+            end
+        end
+        if #names == 0 then names = { "Red Deck" } end
+        return names
+    end
+
+    local function create_lobby_gameplay_inline(state)
+        local LS = 1.4
+        local s = state.settings or {}
+        local is_host = state.is_host
+
+        local mode_name = "Rivals"
+        pcall(function()
+            if bom_gamemodes and bom_gamemodes.get then
+                local gm = bom_gamemodes.get(s.mode or "nemesis")
+                if gm and gm.display_name then mode_name = gm.display_name end
+                mode_name = mod_loc(mode_name)
+            end
+        end)
+
+        local nodes = {}
+
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03*LS}, nodes = {
+            {n = G.UIT.T, config = {text = mod_loc("Mode: "), scale = 0.35*LS, colour = G.C.UI.TEXT_LIGHT}},
+            {n = G.UIT.T, config = {id = 'bom_lobby_mode', text = mode_name, scale = 0.35*LS, colour = G.C.GOLD, shadow = true}},
+        }}
+        if lobby_port() or #rules_line(s) > 48 then
+            local r1, r2 = rules_halves(s)
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02*LS, maxw = 7.6}, nodes = {
+                {n = G.UIT.T, config = {id = 'bom_lobby_rules', text = r1, scale = 0.28*LS, colour = G.C.UI.TEXT_LIGHT}},
+            }}
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02*LS, maxw = 7.6}, nodes = {
+                {n = G.UIT.T, config = {id = 'bom_lobby_rules2', text = r2, scale = 0.28*LS, colour = G.C.UI.TEXT_LIGHT}},
+            }}
+        else
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02*LS, maxw = 9.4}, nodes = {
+                {n = G.UIT.T, config = {id = 'bom_lobby_rules', text = rules_line(s), scale = 0.28*LS, colour = G.C.UI.TEXT_LIGHT}},
+            }}
+        end
+        bom_ui._lobby_diff_decks = bom_match.different_decks(s)
+
+        G.FUNCS.bom_open_configure_settings = function()
+            pcall(function()
+                if bom_lobby_settings and bom_lobby_settings.show then bom_lobby_settings.show() end
+            end)
+        end
+        G.FUNCS.bom_open_guest_jokers = function()
+            pcall(function()
+                if bom_lobby_settings and bom_lobby_settings.show_guest_jokers then bom_lobby_settings.show_guest_jokers() end
+            end)
+        end
+        local picks = bom_match.joker_picks and bom_match.joker_picks(s) or 0
+        bom_ui._lobby_per_player = picks
+        local n_buttons = 1 + (bom_social and (bom_social.lobby_button_count and bom_social.lobby_button_count() or 2) or 0)
+        local g = grid_spec(n_buttons)
+        local buttons = {
+            grid_button(g, is_host and mod_loc("Configure Settings") or mod_loc("View settings"), "bom_open_configure_settings", G.C.BOOSTER, "bom_open_configure_settings"),
+        }
+        if bom_social then
+            for _, b in ipairs(bom_social.lobby_buttons(LS, "lobby", g)) do buttons[#buttons + 1] = b end
+        end
+        nodes[#nodes + 1] = grid_row(buttons)
+
+        return {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = nodes}
+    end
+
+
+    function bom_ui.show_lobby()
+        if not G then return end
+        if not G.FUNCS then return end
+
+        pcall(function() if bom_ui.release_connecting_screen then bom_ui.release_connecting_screen() end end)
+        pcall(function() bom_lobby_leave.register() end)
+        _forget_mp_overlay("MP_SEARCHING_OVERLAY")
+        _forget_mp_overlay("BOM_ROOM_CODE_OVERLAY")
+        _forget_mp_overlay("MP_WAITING_OVERLAY")
+        _forget_mp_overlay("MP_MATCH_START_OVERLAY")
+        _forget_mp_overlay("BOM_LOBBY_OVERLAY")
+
+
+        G.FUNCS.mp_lobby_ready = function()
+            if bom_room and bom_room.toggle_ready then bom_room.toggle_ready() end
+        end
+
+        G.FUNCS.mp_lobby_leave = function()
+            pcall(function()
+                if bom_room and bom_room.remember_held_seat then bom_room.remember_held_seat() end
+                if bom_match then bom_match.reset() end
+                if bom_core and bom_core.disconnect then bom_core.disconnect() end
+                bom_ui.hide_lobby()
+            end)
+        end
+
+        G.FUNCS.mp_lobby_copy_code = function()
+            pcall(function()
+                local state = bom_match and bom_match.get_state()
+                local code = state and state.room_code or "????"
+                love.system.setClipboardText(code)
+            end)
+        end
+
+        G.FUNCS.mp_lobby_start = function()
+            pcall(function()
+                if bom_room and bom_room.start_match then
+                    bom_room.start_match()
+                end
+            end)
+        end
+
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 73
+            blocking = false,
+            blockable = false,
+            func = function()
+                local state = {}
+                pcall(function()
+                    if bom_match and bom_match.get_state then
+                        state = bom_match.get_state()
+                    end
+                end)
+                state.settings = state.settings or {}
+                local ph = state.phase
+                if G.STAGE == G.STAGES.RUN and (ph == "starting" or ph == "playing" or ph == "pvp_blind" or ph == "pvp_resolve") then return true end
+
+                local is_host = state.is_host
+
+                local LS = 1.4
+
+                local definition = create_UIBox_generic_options({ back_func = "bom_lobby_back", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.04*LS }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc("MATCH LOBBY"), scale = 0.52*LS,
+                            colour = G.C.GOLD, shadow = true } },
+                    }},
+
+                    create_lobby_status(state),
+
+                    create_code_buttons(state.room_code, state.visibility),
+
+                    create_players_section(state),
+
+                    _sep(),
+
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = {
+                        create_lobby_gameplay_inline(state),
+                    }},
+
+                    create_start_ready_button(state),
+                }})
+
+                _show_mp_overlay("BOM_LOBBY_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+    function bom_ui.hide_lobby()
+        _hide_mp_overlay("BOM_LOBBY_OVERLAY")
+    end
+
+
+    function bom_ui.show_quick_match_lobby()
+        if not G then return end
+        if not G.FUNCS then return end
+
+        bom_ui.hide_searching_screen()
+        bom_ui.hide_room_code()
+        pcall(function() bom_ui.hide_waiting_screen() end)
+        _hide_mp_overlay("MP_MATCH_START_OVERLAY")
+        _hide_mp_overlay("BOM_LOBBY_OVERLAY")
+        pcall(function() bom_lobby_leave.register() end)
+
+        G.FUNCS.mp_lobby_ready = function()
+            if bom_room and bom_room.toggle_ready then bom_room.toggle_ready() end
+        end
+
+        G.FUNCS.mp_lobby_leave = function()
+            pcall(function()
+                if bom_room and bom_room.remember_held_seat then bom_room.remember_held_seat() end
+                if bom_match then bom_match.reset() end
+                if bom_core and bom_core.disconnect then bom_core.disconnect() end
+                bom_ui.hide_lobby()
+            end)
+        end
+
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 114
+            blocking = false,
+            blockable = false,
+            func = function()
+                local state = {}
+                pcall(function()
+                    if bom_match and bom_match.get_state then
+                        state = bom_match.get_state()
+                    end
+                end)
+
+                local my_name  = state.my_name  or "Player 1"
+                local opp_name = state.opp_name or "Player 2"
+
+
+                local definition = create_UIBox_generic_options({ back_func = "bom_lobby_back", contents = {
+                    { n = G.UIT.R, config = { align = "cm", padding = 0.1 }, nodes = {
+                        { n = G.UIT.T, config = { text = mod_loc(state.ranked == true and "RANKED MATCH" or "QUICK MATCH"), scale = 0.5,
+                            colour = G.C.GOLD, shadow = true } },
+                    }},
+                    { n = G.UIT.R, config = { align = "cm", minh = 0.1 }, nodes = {} },
+                    create_players_section(state),
+                    { n = G.UIT.R, config = { align = "cm", minh = 0.15 }, nodes = {} },
+                    (function()
+                        local is_ready = state.my_ready
+                        local ready_label = mod_loc(is_ready and "UNREADY" or "READY")
+                        local ready_col = is_ready and G.C.RED or G.C.GREEN
+                        local nodes = {
+                            UIBox_button({
+                                label = { ready_label },
+                                button = "mp_lobby_ready",
+                                minw = 3, minh = 0.6,
+                                colour = ready_col,
+                                scale = 0.4,
+                                col = true,
+                            }),
+                        }
+                        if lobby_waits(state) then
+                            nodes[#nodes + 1] = { n = G.UIT.C, config = { minw = 0.15 } }
+                            nodes[#nodes + 1] = UIBox_button({ id = "mg_wait_row", label = { mod_loc("Play while you wait") }, button = "mg_wait_play",
+                                minw = 3, minh = 0.6, maxw = 2.7, colour = G.C.PURPLE, scale = 0.4, col = true })
+                        end
+                        return { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = nodes }
+                    end)(),
+                }})
+
+                _show_mp_overlay("BOM_LOBBY_OVERLAY", definition)
+                return true
+            end,
+        }))
+    end
+
+
+    function bom_ui.update_lobby_ready()
+        pcall(function()
+            if G and G.OVERLAY_MENU and G.OVERLAY_MENU ~= G.BOM_LOBBY_OVERLAY then return end
+            if not (G.STAGE == G.STAGES.MAIN_MENU and bom_match.get_phase() == bom_match.PHASE.LOBBY) then return end
+            if G and G.GAME and G.GAME.bom_quick_match then
+                bom_ui.show_quick_match_lobby()
+            else
+                bom_ui.show_lobby()
+            end
+        end)
+    end
+
+    function bom_ui.update_lobby_settings()
+        pcall(function()
+            if G and G.GAME and G.GAME.bom_quick_match then return end
+            local box = G.BOM_LOBBY_OVERLAY
+            if not box or G.OVERLAY_MENU ~= box then return end
+            local state = bom_match and bom_match.get_state and bom_match.get_state() or {}
+            local s = state.settings or {}
+            if (bom_match.joker_picks and bom_match.joker_picks(s) or 0) ~= (bom_ui._lobby_per_player or 0) then
+                bom_ui.show_lobby()
+                return
+            end
+            if (bom_match.different_decks(s) and true or false) ~= (bom_ui._lobby_diff_decks and true or false) then
+                bom_ui.show_lobby()
+                return
+            end
+            local rl = box:get_UIE_by_ID('bom_lobby_rules')
+            local rl2 = box:get_UIE_by_ID('bom_lobby_rules2')
+            local want, want2
+            if rl2 and bom_ui._lobby_rules_halves then
+                want, want2 = bom_ui._lobby_rules_halves(s)
+            else
+                want = bom_ui._lobby_rules_line and bom_ui._lobby_rules_line(s)
+            end
+            if rl and want and rl.config.text ~= want then
+                rl.config.text = want
+                if rl.config.text_drawable then rl.config.text_drawable:set(want) end
+                box:recalculate()
+            end
+            if rl2 and want2 and rl2.config.text ~= want2 then
+                rl2.config.text = want2
+                if rl2.config.text_drawable then rl2.config.text_drawable:set(want2) end
+                box:recalculate()
+            end
+            local mode_name = "Rivals"
+            pcall(function()
+                local gm = bom_gamemodes.get(s.mode or "nemesis")
+                if gm and gm.display_name then mode_name = gm.display_name end
+            end)
+            mode_name = mod_loc(mode_name)
+            local el = box:get_UIE_by_ID('bom_lobby_mode')
+            if el and el.config and el.config.text ~= mode_name then
+                el.config.text = mode_name
+                if el.config.text_drawable then el.config.text_drawable:set(mode_name) end
+                box:recalculate()
+            end
+        end)
+    end
+end
+
+return M
+end

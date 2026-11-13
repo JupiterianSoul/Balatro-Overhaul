@@ -1,0 +1,46 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 20
+local TITLE_FX = {foil = 'foil', holo = 'holo', polychrome = 'polychrome', negative = 'negative_shine'}
+local title_fx_last = 'polychrome'
+
+function title_fx_shader()
+    local area = G.title_top
+    local card = area and area.cards and area.cards[1]
+    local edition = card and card.edition
+    if edition then
+        for k, shader in pairs(TITLE_FX) do
+            if edition[k] then title_fx_last = shader end
+        end
+    end
+    return title_fx_last
+end
+
+function title_fx_attach()
+    local logo = G.SPLASH_LOGO
+    if not logo then return end
+    local send = {0, 0}
+    logo.draw = function(self)
+r 2 447 %20%20%20%20%20%20%20%20 -
+l 8
+        self:draw_shader('dissolve')
+        local shader = title_fx_shader()
+        local quality = G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.perf_shader_quality or 3
+        if shader and quality >= 3 and G.SHADERS[shader] then
+            send[1] = G.TIMERS.REAL/28
+            send[2] = G.TIMERS.REAL
+            self:draw_shader(shader, nil, send)
+        end
+r 2 461 %20%20%20%20%20%20%20%20 -
+r 2 455 %20%20%20%20%20%20%20%20 -
+r 30 174 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+        end
+r 2 461 %20%20%20%20%20%20%20%20 -
+r 3 4572 %20%20%20%20%20%20%20%20 -
+l 2
+    end
+end
+end

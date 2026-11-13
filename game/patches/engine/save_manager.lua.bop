@@ -1,0 +1,81 @@
+BOP 1
+eol lf
+final 1
+base 14
+s 1
+r 26 1 - -
+c 1
+s 1
+l 1
+if jit.arch:find('^arm') then jit.off() end
+c 3
+l 1
+require "love.data"
+c 4
+s 2
+l 1
+local requests = love.thread.getChannel("save_request")
+c 1
+s 9
+l 6
+local function settings_name(s)
+    if type(s) == 'table' and type(s.profile) == 'string' and s.profile:match('^modded') then
+        return 'modded_settings.jkr'
+    end
+    return 'settings.jkr'
+end
+c 1
+s 3
+l 5
+local function profile_dir(profile)
+    local dir = (profile or 1)..''
+    if not love.mod_filesystem.getInfo(dir) then love.mod_filesystem.createDirectory(dir) end
+    return dir..'/'
+end
+c 1
+s 4
+l 3
+local function store_packed(name, data)
+    compress_and_save(name, STR_PACK(data))
+end
+c 1
+s 1
+l 21
+local function handle(request)
+    local kind = request.type
+    if kind == 'save_progress' then
+        local progress = request.save_progress
+        local dir = profile_dir(progress.SETTINGS.profile)
+        store_packed(dir..'meta.jkr', progress.META)
+        compress_and_save(settings_name(progress.SETTINGS), progress.SETTINGS)
+        store_packed(dir..'profile.jkr', progress.PROFILE)
+    elseif kind == 'empty_profile' or kind == 'save_settings' then
+        compress_and_save(settings_name(request.save_settings), request.save_settings)
+        store_packed(request.profile_num..'/profile.jkr', request.save_profile)
+    elseif kind == 'save_notify' then
+        local name = profile_dir(request.profile_num)..'unlock_notify.jkr'
+        local seen = get_compressed(name) or ''
+        if request.save_notify and not string.find(seen, request.save_notify) then
+            compress_and_save(name, seen..request.save_notify..'\n')
+        end
+    elseif kind == 'save_run' then
+        compress_and_save(profile_dir(request.profile_num)..'save.jkr', request.save_table)
+    end
+end
+c 1
+s 47
+l 6
+local running, problem = pcall(function()
+    while true do
+        local request = requests:demand()
+        if type(request) == 'table' then
+            if request.type == 'kill' then return end
+            handle(request)
+c 2
+l 4
+end)
+
+if not running then
+    print("[SAVE] save thread stopped: " .. tostring(problem))
+c 1
+end

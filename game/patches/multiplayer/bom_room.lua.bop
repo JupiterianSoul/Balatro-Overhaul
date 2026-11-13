@@ -1,0 +1,982 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 185
+﻿
+local bom_room = {}
+
+local function _mp_dbg(msg)
+    if mp_log and mp_log.info then
+        mp_log.info("BOM_ROOM_DBG", msg)
+    end
+end
+
+
+local function my_profile_name()
+    local name = nil
+    pcall(function()
+        local profile = G.PROFILES[G.SETTINGS.profile]
+        name = profile and profile.name
+    end)
+    name = type(name) == "string" and name:gsub("%c", ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+    return name:sub(1, 32)
+end
+bom_room.my_profile_name = my_profile_name
+
+function bom_room.game_version()
+    return tostring(OVERHAUL_VERSION or "?")
+end
+
+function bom_room.is_default_name(name)
+    local PN = rawget(_G, "PlayerName")
+    if PN and PN.is_default then
+        local ok, r = pcall(PN.is_default, name)
+        if ok and r then return true end
+    end
+    local n = type(name) == "string" and name:lower():match("^%s*(.-)%s*$") or ""
+    if n == "" or n == "opponent" or n == "you" then return true end
+    if n:match("^p%d*$") or n:match("^player%s*%d*$") or n:match("^m%d$") then return true end
+    return false
+end
+
+local function name_ready(retry)
+    local name = my_profile_name()
+    if not bom_room.is_default_name(name) then return name end
+    pcall(function() bom_ui.hide_connecting_screen() end)
+    bom_room.show_name_prompt("default", name, retry)
+    return nil
+end
+
+function bom_room.create(visibility)
+    if not bom_core then return end
+    visibility = visibility == "public" and "public" or "private"
+    if bom_core.mods_refused(visibility == "public") then return end
+    if not name_ready(function() bom_room.create(visibility) end) then return end
+    pcall(function()
+        if G and G.GAME then G.GAME.bom_quick_match = false end
+    end)
+    bom_room.retry = function() bom_room.create(visibility) end
+    bom_core.connect(function()
+        bom_core.send({ type = "create_room", visibility = visibility, mods = bom_core.mods_field(visibility == "public"),
+            version = bom_room.game_version(), name = my_profile_name() })
+    end)
+end
+
+function bom_room.list_rooms()
+    if not bom_core then return end
+    local over = bom_core.mods_overflow and bom_core.mods_overflow(false)
+    if over then
+        pcall(function() if bom_browse then bom_browse.on_list_failed("mods", over) end end)
+        return
+    end
+    bom_room.list_sent_at = love.timer.getTime()
+    bom_core.connect(function()
+        bom_room.list_sent_at = love.timer.getTime()
+        bom_core.send({ type = "list_rooms", mods = bom_core.mods_field(), version = bom_room.game_version() })
+    end, { silent = true, on_fail = function(msg)
+        pcall(function() if bom_browse then bom_browse.on_list_failed(msg) end end)
+    end })
+end
+
+function bom_room.on_room_list(data)
+    local rtt = nil
+    if bom_room.list_sent_at then
+        rtt = math.floor((love.timer.getTime() - bom_room.list_sent_at) * 1000 + 0.5)
+        bom_room.list_sent_at = nil
+    end
+    pcall(function() if bom_browse then bom_browse.on_list(data, rtt) end end)
+end
+
+
+function bom_room.join(code, opts)
+    if not bom_core then return end
+    opts = opts or {}
+    if (not code or code == "") and not opts.id then
+        pcall(function() bom_ui.show_error(mod_loc("Please enter a room code.")) end)
+        return
+    end
+    pcall(function()
+        if G and G.GAME then G.GAME.bom_quick_match = false end
+    end)
+    if code and code ~= "" and not code:match("^%w%w%w%w$") then
+        pcall(function() bom_ui.hide_connecting_screen() end)
+        pcall(function() bom_ui.show_error(mod_loc("Invalid room code. Check and try again.")) end)
+        return
+    end
+    if code and code ~= "" and bom_core.mods_refused(false) then return end
+    if not name_ready(function() bom_room.join(code, opts) end) then return end
+    bom_room.last_join = { code = code and code ~= "" and code:upper() or nil, id = opts.id, from_browse = opts.from_browse }
+    bom_room.retry = function() bom_room.join(code, opts) end
+    local token = bom_room.held_token(bom_room.last_join.code, opts.id)
+    bom_core.connect(function()
+        bom_core.send({ type = "join_room", code = bom_room.last_join.code, id = opts.id, mods = bom_core.mods_field(),
+            version = bom_room.game_version(), name = my_profile_name(), token = token })
+    end)
+end
+
+local HELD_MAX_AGE = 900
+
+function bom_room.on_seat(d)
+    if type(d) ~= "table" or type(d.code) ~= "string" then return end
+    local prev = bom_room.seat
+    local id = d.id or (prev and prev.code == d.code and prev.id) or nil
+    bom_room.seat = { code = d.code, id = id, token = d.token, host = d.host == true or d.playerId == 0 }
+    if bom_room.held_seat and bom_room.held_seat.code == d.code then bom_room.held_seat = nil end
+end
+
+function bom_room.remember_held_seat()
+    local seat = bom_room.seat
+    if not seat or seat.host or type(seat.token) ~= "string" then return end
+    if not bom_match or bom_match.get_phase() ~= bom_match.PHASE.LOBBY then return end
+    bom_room.held_seat = { code = seat.code, id = seat.id, token = seat.token, at = os.time() }
+end
+
+function bom_room.held_for(code, id)
+    local h = bom_room.held_seat
+    if not h then return nil end
+    if os.time() - (h.at or 0) > HELD_MAX_AGE then
+        bom_room.held_seat = nil
+        return nil
+    end
+    if (code and h.code == code) or (id and h.id == id) then return h end
+    return nil
+end
+
+function bom_room.held_token(code, id)
+    local h = bom_room.held_for(code, id)
+    return h and h.token or nil
+end
+
+local NAME_TEXT = {
+    taken = "Another online player is already called {name}.",
+    default = "Multiplayer needs your own name, not P1 or Player 1.",
+    bad_name = "This name is not allowed",
+}
+
+function bom_room.show_name_prompt(reason, name, retry)
+    local profile = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    if not profile then return end
+    bom_room.name_retry = retry or bom_room.retry
+    local msg = mod_loc(NAME_TEXT[reason] or NAME_TEXT.taken):gsub("{name}", function() return tostring(name or "") end)
+    local PN = rawget(_G, "PlayerName")
+    if PN and PN.prompt then
+        local ok = pcall(PN.prompt, {
+            message = msg,
+            taken = reason == "taken" and name or nil,
+            can_cancel = true,
+            on_done = function()
+                local again = bom_room.name_retry
+                bom_room.name_retry = nil
+                if again then
+                    pcall(function() if bom_ui and bom_ui.show_connecting_screen then bom_ui.show_connecting_screen() end end)
+                    again()
+                else
+                    G.FUNCS.open_multiplayer_menu()
+                end
+            end,
+            on_cancel = function()
+                bom_room.name_retry = nil
+                pcall(function()
+                    if bom_match and bom_match.get_phase() == bom_match.PHASE.NONE then bom_core.disconnect() end
+                end)
+                G.FUNCS.open_multiplayer_menu()
+            end,
+        })
+        if ok then return end
+    end
+    G.FUNCS.mp_name_save = function()
+        pcall(function()
+            G:save_settings()
+r 15 5391 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 20
+        end)
+        if bom_room.is_default_name(my_profile_name()) then return end
+        local PN = rawget(_G, "PlayerName")
+        if PN and PN.remember then PN.remember(my_profile_name()) end
+        local again = bom_room.name_retry
+        bom_room.name_retry = nil
+        if again then
+            pcall(function() if bom_ui and bom_ui.show_connecting_screen then bom_ui.show_connecting_screen() end end)
+            again()
+        else
+            G.FUNCS.open_multiplayer_menu()
+        end
+    end
+    G.FUNCS.mp_name_cancel = function()
+        bom_room.name_retry = nil
+        pcall(function()
+            if bom_match and bom_match.get_phase() == bom_match.PHASE.NONE then bom_core.disconnect() end
+        end)
+        G.FUNCS.open_multiplayer_menu()
+    end
+r 13 1381 %20%20%20%20 -
+l 12
+    bom_ui.overlay({ definition = create_UIBox_generic_options({ back_func = "mp_name_cancel", no_back = true, contents = {
+        { n = G.UIT.R, config = { align = "cm", padding = 0.1 }, nodes = {
+            { n = G.UIT.T, config = { text = mod_loc("PICK A NAME"), scale = 0.6, colour = G.C.GOLD, shadow = true } },
+        }},
+        { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+            { n = G.UIT.T, config = { text = msg, scale = 0.4, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+        }},
+        { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = {
+            { n = G.UIT.T, config = { text = mod_loc("Choose another profile name to play online."), scale = 0.36, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+        }},
+        { n = G.UIT.R, config = { align = "cm", minh = 0.8, padding = 0.1 }, nodes = {
+            create_text_input({
+r 15 5387 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 542
+                ref_table = profile, ref_value = 'name', extended_corpus = true, keyboard_offset = 2,
+            }),
+        }},
+        { n = G.UIT.R, config = { align = "cm", padding = 0.1 }, nodes = {
+            UIBox_button({ button = "mp_name_save", label = { mod_loc("SAVE AND RETRY") }, colour = G.C.GREEN, minw = 3.2, minh = 0.75, scale = 0.42, col = true }),
+            { n = G.UIT.C, config = { minw = 0.3 }, nodes = {} },
+            UIBox_button({ button = "mp_name_cancel", label = { mod_loc("CANCEL") }, colour = G.C.RED, minw = 3.2, minh = 0.75, scale = 0.42, col = true }),
+        }},
+    } }) })
+end
+
+function bom_room.on_name_refused(d)
+    d = type(d) == "table" and d or {}
+    pcall(function() bom_ui.hide_connecting_screen() end)
+    if d["for"] == "player_name" then
+        local why = d.reason == "bad_name" and "This name is not allowed" or "That name is already used by another online player."
+        pcall(function() bom_ui.show_error(mod_loc(why)) end)
+        return
+    end
+    pcall(function() if bom_browse then bom_browse.close_state() end end)
+    bom_room.show_name_prompt((d.reason == "default" or d.reason == "bad_name") and d.reason or "taken", d.name, bom_room.retry)
+end
+
+
+function bom_room.note_devs(data)
+    if type(data) ~= "table" or type(data.players) ~= "table" then return end
+    local devs = {}
+    for _, p in ipairs(data.players) do
+        if type(p) == "table" and p.dev == true and type(p.name) == "string" then devs[p.name] = true end
+    end
+    bom_room.devs = devs
+end
+
+function bom_room.is_dev_name(name)
+    return type(name) == "string" and type(bom_room.devs) == "table" and bom_room.devs[name] == true
+end
+
+function bom_room.on_room_created(data)
+    if not G then return end
+    if not G.GAME then return end
+    G.GAME.bom_room_code = data.code
+    bom_room.note_devs(data)
+
+    pcall(function()
+        if bom_match and bom_match.enter_lobby then
+            bom_match.enter_lobby(true, data.code)
+            bom_match.get_state().visibility = data.visibility or "private"
+            bom_match.get_state().waiting_guest = true
+            bom_match.get_state().opp_bot = nil
+        end
+    end)
+
+    pcall(function()
+        local m = bom_browse and bom_browse.pending_mode
+        if bom_browse then bom_browse.pending_mode = nil end
+        if m then bom_room.update_setting("mode", m) end
+    end)
+
+    pcall(function()
+        if bom_ui and bom_ui.show_lobby then bom_ui.show_lobby() end
+    end)
+end
+
+local ROOM_ERROR_TEXT = {
+    invalid_code = "Invalid room code. Check and try again.",
+    room_full = "This room is full.",
+    in_match = "This room is already playing a match.",
+    room_gone = "This room is gone.",
+    already_in_room = "You are already in a room.",
+    mods_private_only = "Mods only work in private rooms. Create a private room, or switch to the normal game.",
+}
+
+local build_loc = false
+function bom_room.version_text(v, name)
+    v = tostring(v or "")
+    if v == "" then return "?" end
+    local tag = v:match("^%d+$") and (" b" .. v) or ""
+    if type(name) == "string" and name ~= "" then return "V " .. name .. tag end
+    if v == tostring(OVERHAUL_VERSION) and OVERHAUL_NAME then return "V " .. tostring(OVERHAUL_NAME) .. tag end
+    local mine = tonumber(OVERHAUL_VERSION)
+    if v:match("^%d+$") and mine then
+        if not build_loc and mod_loc_register then
+            build_loc = true
+            mod_loc_register{
+                fr = {["an older version"] = "une version plus ancienne", ["a newer version"] = "une version plus récente"},
+                es = {["an older version"] = "una versión anterior", ["a newer version"] = "una versión más nueva"},
+            }
+        end
+        local key = tonumber(v) < mine and "an older version" or "a newer version"
+        return (mod_loc and mod_loc(key) or key) .. tag
+    end
+    return "V " .. v
+end
+
+function bom_room.on_room_error(data)
+    local reason = data and data.reason
+    if reason == "mods_mismatch" or reason == "code_required" or reason == "version_mismatch" then
+        pcall(function() bom_ui.hide_connecting_screen() end)
+        pcall(function() bom_browse.on_join_refused(data, bom_room.last_join) end)
+        return
+    end
+    local text = data and data.text or mod_loc(ROOM_ERROR_TEXT[reason or ""] or "Could not join room.")
+    local from_browse = bom_room.last_join and bom_room.last_join.from_browse
+    if bom_browse and (from_browse or (bom_browse.is_open and bom_browse.is_open())) then
+        pcall(function() bom_ui.hide_connecting_screen() end)
+        pcall(function() if bom_match then bom_match.reset() end end)
+        pcall(function() bom_browse.show() end)
+        pcall(function() bom_ui.show_error(text) end)
+        return
+    end
+    pcall(function() bom_ui.hide_connecting_screen() end)
+    pcall(function() bom_ui.show_error(text) end)
+    pcall(function() bom_core.disconnect() end)
+    pcall(function()
+        if bom_match then bom_match.reset() end
+    end)
+end
+
+function bom_room.on_server_error(data)
+    local reason = type(data) == "table" and tostring(data.reason or "") or ""
+    local kind = reason:match("^([%w_]+): invalid mods")
+    if kind then
+        local text = bom_core.refused_mods_text(reason)
+        if kind == "list_rooms" then
+            pcall(function() if bom_browse then bom_browse.on_list_failed("mods", text) end end)
+            return
+        end
+        bom_room.on_room_error({ reason = "mods_refused", text = text })
+        return
+    end
+    local what = reason:match("^join_room: invalid (%a+)")
+    if not what then return end
+    bom_room.on_room_error({ reason = what == "code" and "invalid_code" or "refused" })
+end
+
+function bom_room.on_guest_left(data)
+    if not bom_match or bom_match.get_phase() ~= bom_match.PHASE.LOBBY then return end
+    local st = bom_match.get_state()
+    if not st.is_host then return end
+    st.opp_name = "Opponent"
+    st.opp_bot = nil
+    st.opp_ready = false
+    st.opp_version = nil
+    st.opp_profile = nil
+    st.my_ready = false
+    st.profile_sent = false
+    st.waiting_guest = true
+    st.guest_held = data and data.held == true or nil
+    pcall(function() if G.GAME then G.GAME.mp_opponent = nil end end)
+    pcall(function()
+        if G.OVERLAY_MENU and G.BOM_LOBBY_OVERLAY and G.OVERLAY_MENU ~= G.BOM_LOBBY_OVERLAY then return end
+        bom_ui.show_lobby()
+    end)
+end
+
+
+function bom_room.find_match()
+    if not G then return end
+    if bom_core.mods_refused(true) then return end
+    if G.GAME then
+        G.GAME.mp_searching = true
+        G.GAME.bom_quick_match = true
+    end
+    bom_core.connect(function()
+        pcall(function() if bom_ui and bom_ui.hide_connecting_screen then bom_ui.hide_connecting_screen() end end)
+        bom_core.send({ type = "find_match", mods = bom_core.mods_field(true), version = bom_room.game_version(), name = my_profile_name() })
+        pcall(function()
+            if bom_ui and bom_ui.show_searching_screen then
+                bom_ui.show_searching_screen()
+            end
+        end)
+    end)
+end
+
+function bom_room.cancel_search()
+    if not G then return end
+    if not G.GAME then return end
+    bom_core.send({ type = "cancel_search" })
+    G.GAME.mp_searching = false
+    pcall(function()
+        if bom_ui and bom_ui.hide_searching_screen then
+            bom_ui.hide_searching_screen()
+        end
+    end)
+    bom_core.disconnect()
+    pcall(function()
+        if bom_match then bom_match.reset() end
+    end)
+end
+
+
+local function build_player_profile()
+    local player_profile = { name = "Player", rank = 1, equipped_icon = nil, equipped_title = nil }
+    pcall(function()
+        local profile = G.PROFILES[G.SETTINGS.profile]
+        if profile then
+            player_profile.name = (bom_match and bom_match.get_state and bom_match.get_state().my_name) or profile.name or "Player"
+            if profile.progression then
+                player_profile.rank = profile.progression.rank or 1
+            end
+        end
+    end)
+    pcall(function()
+        if ProfileRewardsManager and ProfileRewardsManager.get_equipped_icon then
+            player_profile.equipped_icon = ProfileRewardsManager.get_equipped_icon()
+        end
+    end)
+    pcall(function()
+        if CosmeticsManager and CosmeticsManager.get_equipped then
+            player_profile.equipped_title = CosmeticsManager.get_equipped("title")
+        end
+    end)
+    pcall(function()
+        local SC = rawget(_G, "BO_SHOWCASE")
+        player_profile.showcase = SC and SC.payload() or nil
+    end)
+    return player_profile
+end
+
+function bom_room.on_room_ready(data)
+    if not G then return end
+    if not G.GAME then return end
+    bom_room.note_devs(data)
+
+    if data and data.code then
+        G.GAME.bom_room_code = data.code
+    end
+
+    local keep_lobby = false
+    pcall(function()
+        local st = bom_match.get_state()
+        keep_lobby = data and data.host == true and st.is_host and st.room_code == data.code
+            and bom_match.get_phase() == bom_match.PHASE.LOBBY
+    end)
+    if keep_lobby then
+        local st = bom_match.get_state()
+        st.opp_bot = data.oppBot == true or nil
+        st.waiting_guest = nil
+        st.guest_held = nil
+        st.opp_ready = false
+        st.my_ready = false
+        st.profile_sent = false
+        pcall(function() bom_match.sync_settings() end)
+        bom_core.send({ type = "player_name", name = st.my_name or "Player" })
+        bom_core.send({
+            type = "room_joined",
+            player = build_player_profile(),
+            mp_version = MP_PROTOCOL_VERSION or 0,
+            version = VERSION or "unknown",
+        })
+        st.profile_sent = true
+        pcall(function()
+            if G.OVERLAY_MENU and G.BOM_LOBBY_OVERLAY and G.OVERLAY_MENU ~= G.BOM_LOBBY_OVERLAY then return end
+            bom_ui.show_lobby()
+        end)
+        return
+    end
+
+    local is_host = false
+    pcall(function()
+        if data and type(data.host) == 'boolean' then
+            is_host = data.host
+        elseif bom_match and bom_match.get_state then
+            local existing = bom_match.get_state()
+            is_host = existing and existing.is_host or false
+        end
+    end)
+    pcall(function()
+        if bom_match and bom_match.enter_lobby then
+            local code = (data and data.code) or G.GAME.bom_room_code
+            bom_match.enter_lobby(is_host, code)
+            bom_match.get_state().visibility = data and data.visibility or "private"
+            if not is_host and data and type(data.settings) == "table" and next(data.settings) then
+                bom_match.update_settings(data.settings)
+            end
+        end
+    end)
+    pcall(function() if bom_browse then bom_browse.close_state() end end)
+
+    pcall(function()
+        local my_name = bom_match and bom_match.get_state() and bom_match.get_state().my_name or "Player"
+        bom_core.send({ type = "player_name", name = my_name })
+    end)
+
+    local player_profile = build_player_profile()
+    bom_core.send({
+        type = "room_joined",
+        player = player_profile,
+        mp_version = MP_PROTOCOL_VERSION or 0,
+        version = VERSION or "unknown",
+    })
+    pcall(function()
+        if bom_match then
+            local state = bom_match.get_state()
+            if state then state.profile_sent = true end
+        end
+    end)
+
+    pcall(function()
+        if bom_ui and bom_ui.hide_searching_screen then bom_ui.hide_searching_screen() end
+        if G.GAME and G.GAME.bom_quick_match and bom_ui.show_quick_match_lobby then
+            bom_ui.show_quick_match_lobby()
+        elseif bom_ui and bom_ui.show_lobby then
+            bom_ui.show_lobby()
+        end
+    end)
+end
+
+
+function bom_room.on_opponent_profile(data)
+    if not G then return end
+    if not G.GAME then return end
+    if not data or not data.player then return end
+
+    local their_mp_ver = data.mp_version or 0
+    local my_mp_ver = MP_PROTOCOL_VERSION or 0
+    mp_log.info("BOM_ROOM", "on_opponent_profile: my_mp_ver=%s their_mp_ver=%s", tostring(my_mp_ver), tostring(their_mp_ver))
+
+    if their_mp_ver ~= my_mp_ver then
+        mp_log.warn("BOM_ROOM", "VERSION MISMATCH: %s vs %s", tostring(my_mp_ver), tostring(their_mp_ver))
+        pcall(function()
+            if bom_core and bom_core.send then
+                bom_core.send({ type = "version_mismatch", version = VERSION or "unknown", mp_version = my_mp_ver })
+            end
+        end)
+        pcall(function()
+            if bom_ui and bom_ui.show_version_mismatch then
+                bom_ui.show_version_mismatch(
+                    (VERSION or "?") .. " (v" .. tostring(my_mp_ver) .. ")",
+                    (data.version or "?") .. " (v" .. tostring(their_mp_ver) .. ")"
+                )
+            end
+        end)
+        return
+    end
+
+    G.GAME.mp_opponent = data.player
+
+    pcall(function()
+        if bom_match and bom_match.set_opponent then
+            bom_match.set_opponent(data.player.name, data.version)
+        end
+        if bom_match and bom_match.set_opponent_profile then
+            bom_match.set_opponent_profile(data.player)
+        end
+    end)
+
+    pcall(function()
+        if bom_ui and bom_ui.build_opponent_panel then
+            bom_ui.build_opponent_panel(data.player)
+        end
+    end)
+
+    pcall(function()
+        local state = bom_match and bom_match.get_state()
+        if state and not state.profile_sent then
+            local player_profile = build_player_profile()
+            bom_core.send({
+                type = "room_joined",
+                player = player_profile,
+                mp_version = MP_PROTOCOL_VERSION or 0,
+                version = VERSION or "unknown",
+            })
+            state.profile_sent = true
+        end
+    end)
+
+
+    pcall(function()
+        if G.OVERLAY_MENU and G.BOM_LOBBY_OVERLAY and G.OVERLAY_MENU ~= G.BOM_LOBBY_OVERLAY then return end
+        if not (G.STAGE == G.STAGES.MAIN_MENU and bom_match.get_phase() == bom_match.PHASE.LOBBY) then return end
+        if G.GAME and G.GAME.bom_quick_match and bom_ui and bom_ui.show_quick_match_lobby then
+            bom_ui.show_quick_match_lobby()
+        elseif bom_ui and bom_ui.show_lobby then
+            bom_ui.show_lobby()
+        end
+    end)
+end
+
+
+function bom_room.toggle_ready()
+    mp_log.debug("BOM_ROOM", "toggle_ready called")
+    if not bom_match then mp_log.error("BOM_ROOM", "bom_match is nil"); return end
+    local state = bom_match.get_state()
+    if not state then mp_log.error("BOM_ROOM", "match state is nil"); return end
+
+    local new_ready = not state.my_ready
+    mp_log.debug("BOM_ROOM", "Setting ready=%s (is_host=%s)", tostring(new_ready), tostring(state.is_host))
+    bom_match.set_ready(new_ready)
+
+    local can = bom_match.can_start()
+    mp_log.debug("BOM_ROOM", "can_start=%s my_ready=%s opp_ready=%s", tostring(can), tostring(state.my_ready), tostring(state.opp_ready))
+    if can then
+        local phase = bom_match.get_phase and bom_match.get_phase()
+        if phase == bom_match.PHASE.LOBBY then
+            bom_room.start_match()
+        else
+            mp_log.warn("BOM_ROOM", "toggle_ready: can_start but phase=%s, skipping start_match", tostring(phase))
+        end
+        return
+    end
+
+    pcall(function()
+        if bom_ui and bom_ui.update_lobby_ready then
+            bom_ui.update_lobby_ready()
+        end
+    end)
+end
+
+function bom_room.on_opponent_ready(data)
+    mp_log.debug("BOM_ROOM", "on_opponent_ready received, data=%s", tostring(data and data.ready))
+    if not data then return end
+    pcall(function()
+        if bom_match and bom_match.on_opponent_ready then
+            bom_match.on_opponent_ready(data.ready)
+        end
+    end)
+
+    local can = bom_match and bom_match.can_start()
+    mp_log.debug("BOM_ROOM", "After opponent ready: can_start=%s", tostring(can))
+    if can then
+        local phase = bom_match.get_phase and bom_match.get_phase()
+        if phase == bom_match.PHASE.LOBBY then
+            bom_room.start_match()
+        else
+            mp_log.warn("BOM_ROOM", "on_opponent_ready: can_start but phase=%s, skipping", tostring(phase))
+        end
+        return
+    end
+
+    pcall(function()
+        if bom_ui and bom_ui.update_lobby_ready then
+            bom_ui.update_lobby_ready()
+        end
+    end)
+end
+
+
+function bom_room.update_setting(key, value)
+    if not bom_match then return end
+    if key == "party_kind" and bom_match.is_host_player and bom_match.is_host_player() then
+        bom_room.update_setting("pvp_start_round", 1)
+    end
+    if bom_match.is_host_player and not bom_match.is_host_player() then
+        if key == "my_starting_jokers" then
+            local own = bom_match.get_settings()
+            if own then own[key] = value end
+        end
+        return
+    end
+    local settings = bom_match.get_settings()
+    if not settings then return end
+    if key == "custom_seed" then value = bom_match.clean_seed(value) or "random" end
+    bom_match.update_settings({ [key] = value })
+    bom_match.sync_settings()
+end
+
+function bom_room.on_settings_received(data)
+    if not data or not data.settings then return end
+    if bom_match and not (bom_party and bom_party.active and bom_party.active()) then
+        if bom_match.is_host_player and bom_match.is_host_player() then return end
+        if bom_match.is_in_match and bom_match.is_in_match() then return end
+    end
+    pcall(function()
+        if bom_match and bom_match.on_settings_received then
+            bom_match.on_settings_received(data.settings)
+        end
+    end)
+    pcall(function()
+        if bom_ui and bom_ui.update_lobby_settings then
+            bom_ui.update_lobby_settings()
+        end
+    end)
+    pcall(function()
+        if bom_lobby_settings and bom_lobby_settings.on_settings_changed then
+            bom_lobby_settings.on_settings_changed()
+        end
+    end)
+end
+
+
+function bom_room.init()
+    if bom_room._ban_hook or not (Back and Back.apply_to_run) then return end
+    bom_room._ban_hook = true
+    local orig_apply = Back.apply_to_run
+    Back.apply_to_run = function(self, ...)
+        if bom_match and bom_match._starting_mp_run and G.GAME then
+            G.GAME.mp_open_pool = bom_match.open_pool() or nil
+        end
+        local r = orig_apply(self, ...)
+        if bom_match and bom_match._starting_mp_run then
+            pcall(function()
+                local s = bom_match.get_settings and bom_match.get_settings()
+                if s and s.balance_enabled and bom_match.apply_bans then
+                    bom_match.apply_bans()
+                    mp_log.info("BOM_ROOM", "apply_bans before the first boss, voucher and tags")
+                end
+            end)
+        end
+        return r
+    end
+end
+
+local function do_mp_start_run(seed, is_host_str)
+    local tag = "BOM_ROOM:" .. (is_host_str or "?")
+    mp_log.info(tag, "do_mp_start_run begin, seed=%s", tostring(seed))
+
+    local stake = 1
+    pcall(function()
+        if bom_match and bom_match.get_settings then
+            local s = bom_match.get_settings()
+            stake = bom_match.match_stake and bom_match.match_stake(s) or tonumber(s.stake) or 1
+            mp_log.info(tag, "stake=%s setting=%s mp_stake=%s", tostring(stake), tostring(s.stake), tostring(s.mp_stake))
+            local keep = is_host_str == "rejoin" and bom_match.rolled_deck and bom_match.rolled_deck()
+            if is_host_str ~= "replay" and not keep and bom_match.roll_my_deck then bom_match.roll_my_deck() end
+            local deck_name = bom_match.get_my_deck and bom_match.get_my_deck() or s.deck
+            if deck_name and deck_name ~= "" then
+                mp_log.info(tag, "deck=%s different_decks=%s", tostring(deck_name), tostring(s.different_decks))
+                G.GAME.viewed_back = Back(get_deck_from_name(deck_name))
+            end
+        end
+    end)
+
+    pcall(function()
+        if bom_match and bom_match.set_starting_mp_run then
+            bom_match.set_starting_mp_run()
+        end
+    end)
+    pcall(function()
+        if RunRules and bom_match and bom_match.rules_for_me then
+            local rules = bom_match.rules_for_me()
+            if bom_rulesets and bom_rulesets.rules_for_run then
+                local ok_rs, merged = pcall(bom_rulesets.rules_for_run, rules)
+                if ok_rs and type(merged) == "table" then rules = merged end
+            end
+            RunRules.arm(rules, 'mp')
+            mp_log.info(tag, "run rules armed: %d", #RunRules.describe(rules))
+        end
+    end)
+    G.FUNCS.start_run(nil, { seed = seed, stake = stake, mp_start = true })
+
+
+r 1 112 %20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20 -
+l 12
+        no_delete = true,
+        func = function()
+            mp_log.info(tag, "apply_to_game executing")
+            pcall(function()
+                if bom_match and bom_match.apply_to_game then
+                    bom_match.apply_to_game()
+                end
+            end)
+            return true
+        end
+    }))
+
+r 1 112 %20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20 -
+l 17
+        no_delete = true,
+        func = function()
+            pcall(function()
+                local s = bom_match and bom_match.get_settings and bom_match.get_settings()
+                if s and s.balance_enabled then
+                    mp_log.info(tag, "apply_bans executing (balance_enabled)")
+                    if bom_match and bom_match.apply_bans then
+                        bom_match.apply_bans()
+                    end
+                else
+                    mp_log.info(tag, "apply_bans skipped (balance_enabled=%s)", tostring(s and s.balance_enabled))
+                end
+            end)
+            return true
+        end
+    }))
+
+r 1 112 %20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20 -
+l 52
+        no_delete = true,
+        func = function()
+            pcall(function()
+                if bom_rulesets and bom_rulesets.after_start then bom_rulesets.after_start(seed) end
+            end)
+            return true
+        end
+    }))
+
+    pcall(function()
+        bom_room.announce_start_rolls(stake, is_host_str ~= "replay" and is_host_str ~= "rejoin")
+    end)
+
+    mp_log.info(tag, "do_mp_start_run complete - vanilla start_run + MP events queued")
+end
+
+bom_room.do_mp_start_run = do_mp_start_run
+
+function bom_room.rolled_deck_text()
+    local name = bom_match and bom_match.rolled_deck and bom_match.rolled_deck()
+    if not name then return nil end
+    local shown = name
+    pcall(function()
+        local c = get_deck_from_name(name)
+        local n = c and localize{type = 'name_text', set = 'Back', key = c.key}
+        if n and n ~= "ERROR" then shown = n end
+    end)
+    return mod_loc("Random pick") .. ": " .. shown, name
+end
+
+function bom_room.rolled_stake_text(stake)
+    local s = bom_match and bom_match.get_settings and bom_match.get_settings() or {}
+    if s.stake ~= "random" then return nil end
+    pcall(function() bom_lobby_settings.register_match_strings() end)
+    local bs = rawget(_G, "bom_stakes")
+    if bs and bs.valid and bs.valid(s.mp_stake) then return nil end
+    local name = "Stake " .. tostring(stake)
+    pcall(function()
+        local c = G.P_CENTER_POOLS.Stake[stake]
+        local n = c and localize{type = "name_text", key = c.key, set = "Stake"}
+        if n and n ~= "ERROR" then name = n end
+    end)
+    return (mod_loc and mod_loc("Random stake: ") or "Random stake: ") .. name
+end
+
+function bom_room.announce_start_rolls(stake, with_deck)
+    local deck_text, deck_name
+    if with_deck then deck_text, deck_name = bom_room.rolled_deck_text() end
+    local stake_text = bom_room.rolled_stake_text(stake)
+    if not deck_text and not stake_text then return end
+    if deck_text then mp_log.info("BOM_ROOM", "random pick shown: %s", deck_name) end
+    if stake_text then mp_log.info("BOM_ROOM", "rolled stake shown: %s", stake_text) end
+r 1 112 %20%20%20%20 -
+l 119
+        trigger = 'after',
+        delay = 1.2,
+        blocking = false,
+        blockable = false,
+        no_delete = true,
+        func = function()
+            if deck_name and G.GAME then G.GAME.mp_rolled_deck = deck_name end
+            if not (G.play and G.STAGE == G.STAGES.RUN) then
+                mp_log.info("BOM_ROOM", "start roll banner skipped: stage=%s", tostring(G.STAGE))
+                return true
+            end
+            local both = deck_text and stake_text
+            if deck_text then
+                pcall(function()
+                    attention_text({text = deck_text, scale = 0.7, hold = both and 5 or 4, major = G.play or G.ROOM_ATTACH, align = "cm", offset = {x = 0, y = -2.5},
+                        backdrop_colour = G.C.SECONDARY_SET.Planet, silent = true})
+                    play_sound('card1')
+                end)
+            end
+            if stake_text then
+                bom_room.last_stake_text = stake_text
+                pcall(function()
+                    if both then
+                        attention_text({text = stake_text, scale = 0.6, hold = 5, major = G.play or G.ROOM_ATTACH, align = "cm", offset = {x = 0, y = -1.4}, backdrop_colour = G.C.BLACK, silent = true})
+                    else
+                        attention_text({text = stake_text, scale = 0.6, hold = 5, major = G.ROOM_ATTACH or G.play, align = "cm", offset = {x = 0, y = -1}, backdrop_colour = G.C.BLACK, silent = true})
+                        play_sound('chips1', 1.1, 0.5)
+                    end
+                end)
+            end
+            return true
+        end
+    }))
+end
+
+function bom_room.start_match()
+    _mp_dbg("start_match CALLED")
+    mp_log.info("BOM_ROOM", "start_match() called")
+    if not G then _mp_dbg("start_match: G is nil!"); mp_log.error("BOM_ROOM", "G is nil"); return end
+
+    local seed = bom_match.new_match_seed and bom_match.new_match_seed() or tostring(os.time())
+    mp_log.info("BOM_ROOM", "seed=%s", tostring(seed))
+    pcall(function() if bom_match.roll_host_deck then bom_match.roll_host_deck() end end)
+    pcall(function() bom_match.roll_match_extras(seed) end)
+
+    local my_name = "Player"
+    pcall(function()
+        if bom_match and bom_match.get_state then
+            my_name = bom_match.get_state().my_name or "Player"
+        end
+    end)
+    pcall(function()
+        if bom_core and bom_core.send then
+            bom_core.send({
+                type = "match_start",
+                seed = seed,
+                settings = bom_match and bom_match.get_settings() or {},
+                player_name = my_name,
+            })
+        end
+    end)
+
+    pcall(function()
+        if bom_match and bom_match.start_match then
+            bom_match.start_match(seed)
+        end
+    end)
+
+    pcall(function()
+        if bom_daily and bom_daily.fetch then bom_daily.fetch() end
+    end)
+
+
+    _mp_dbg("start_match: calling do_mp_start_run(host)")
+    do_mp_start_run(seed, "host")
+    _mp_dbg("start_match: do_mp_start_run returned OK")
+end
+
+
+function bom_room.on_match_start(data)
+    _mp_dbg("on_match_start CALLED")
+    mp_log.info("BOM_ROOM", "on_match_start received")
+    if not G then _mp_dbg("on_match_start: G is nil!"); mp_log.error("BOM_ROOM", "G is nil in on_match_start"); return end
+    if not data then _mp_dbg("on_match_start: data is nil!"); mp_log.error("BOM_ROOM", "data is nil in on_match_start"); return end
+    local _phase = bom_match and bom_match.get_phase and bom_match.get_phase()
+    if _phase and _phase ~= bom_match.PHASE.LOBBY then
+        mp_log.warn("BOM_ROOM", "on_match_start: ignoring duplicate - phase=%s", tostring(_phase))
+        return
+    end
+
+    local seed = data.seed or tostring(os.time())
+    mp_log.info("BOM_ROOM", "match_start seed=%s", tostring(seed))
+
+    if data.settings then
+        pcall(function()
+            if bom_match and bom_match.on_settings_received then
+                bom_match.on_settings_received(data.settings)
+            end
+        end)
+    end
+
+    pcall(function()
+        if bom_match and bom_match.start_match then
+            bom_match.start_match(seed)
+        end
+    end)
+
+    pcall(function()
+        if bom_daily and bom_daily.fetch then bom_daily.fetch() end
+    end)
+
+
+    _mp_dbg("on_match_start: calling do_mp_start_run(joiner)")
+    do_mp_start_run(seed, "joiner")
+    _mp_dbg("on_match_start: do_mp_start_run returned OK")
+end
+
+mp_log.info("BOM_ROOM", "Multiplayer room module loaded")
+return bom_room
+end

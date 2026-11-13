@@ -1,0 +1,273 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 85
+BOT = BOT or {}
+local V = {on = false}
+BOT.versus = V
+
+local function L(s)
+    if mod_loc then return mod_loc(s) end
+    return s
+end
+
+local function mphase()
+    if not bom_match then return nil end
+    local ok, p = pcall(bom_match.get_phase)
+    return ok and p or nil
+end
+
+local function mstate()
+    if not bom_match then return {} end
+    local ok, s = pcall(bom_match.get_state)
+    return ok and s or {}
+end
+
+local function log(text)
+    V.last = text
+    if BOT.note then BOT.note("versus", text) end
+end
+
+function V.bot_name()
+    local cfg = BOT.config
+    local diff = cfg and cfg.get("difficulty") or "normal"
+    return "Bot-latro " .. diff:sub(1, 1):upper() .. diff:sub(2)
+end
+
+function V.start(code, opts)
+    opts = opts or {}
+    V.on = true
+    V.code = code and tostring(code):upper():gsub("%s", "") or nil
+    V.stage = "menu"
+    V.t = 0
+    V.stage_t = 0
+    V.quit_when_done = opts.quit_when_done
+    V.rematch = opts.rematch ~= false
+    V.matches = 0
+    log("joining room " .. tostring(V.code))
+end
+
+local function set_stage(s)
+    V.stage = s
+    V.stage_t = V.t
+end
+
+local function start_bot()
+    local cfg = BOT.config
+    local v = cfg.values or cfg.load()
+    local opts = {brain = BOT.brain_for(v.provider), delay = math.max(0.3, v.delay or 0.6), mode = "auto", text = v.card_text}
+    if BOT.difficulty then opts = BOT.difficulty.prepare(opts) end
+    BOT.start(opts)
+    if BOT.difficulty then BOT.difficulty.after_start() end
+    BOT.on_run_end = function() return true end
+    V.matches = V.matches + 1
+end
+
+function V.update(dt)
+    if not V.on then return end
+    V.t = V.t + dt
+    local age = V.t - V.stage_t
+    local ph = mphase()
+    if V.stage == "menu" then
+        if V.from_env and os.getenv("BOT_VERSUS_WINDOW") and not V.window_set and G.STATE == G.STATES.MENU then
+            V.window_set = true
+            pcall(function()
+                love.window.setMode(800, 450, {resizable = true, fullscreen = false})
+                love.resize(800, 450)
+                love.window.setTitle("Bot-latro")
+            end)
+        end
+        if not (G.STATE == G.STATES.MENU and G.MAIN_MENU_UI) then
+            if G.STATE == G.STATES.MENU and G.OVERLAY_MENU and age > 2 then G.FUNCS.exit_overlay_menu() end
+            return
+        end
+        if G.OVERLAY_MENU then G.FUNCS.exit_overlay_menu() return end
+        if age < 2 then return end
+        local prof = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+        if prof and (not prof.name or (bom_room and bom_room.is_default_name and bom_room.is_default_name(prof.name))) then
+            prof.name = V.bot_name()
+        end
+r 16 1212 %20%20%20%20%20%20%20%20 -
+r 16 1213 %20%20%20%20%20%20%20%20 -
+l 15
+        if not (bom_room and bom_room.join) then
+            log("multiplayer is not available")
+            V.on = false
+            return
+        end
+        bom_room.join(V.code)
+        V.join_tries = (V.join_tries or 0) + 1
+        set_stage("joining")
+    elseif V.stage == "joining" then
+        if ph == "lobby" then
+            log("in the lobby")
+            set_stage("lobby")
+        elseif age > 45 then
+            if (V.join_tries or 0) < 3 then
+                log("join timed out, trying again")
+r 13 1825 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 162
+                set_stage("menu")
+            else
+                log("could not join room " .. tostring(V.code))
+                V.finish()
+            end
+        end
+    elseif V.stage == "lobby" then
+        if ph == "playing" or ph == "pvp_blind" or ph == "starting" then
+            if G.STAGE == G.STAGES.RUN and G.STATE ~= G.STATES.MENU then
+                log("match started")
+                start_bot()
+                set_stage("match")
+            end
+            return
+        end
+        if ph ~= "lobby" then
+            if age > 10 then
+                log("left the lobby")
+                V.finish()
+            end
+            return
+        end
+        if not mstate().my_ready and age > 2 and (V.t - (V.ready_at or -10)) > 3 then
+            V.ready_at = V.t
+            if G.FUNCS.mp_lobby_ready then G.FUNCS.mp_lobby_ready() end
+        end
+    elseif V.stage == "match" then
+        local over = ph == "match_end" or mstate().match_over
+        if over then
+            if BOT.difficulty then
+                local ms = mstate()
+                pcall(BOT.difficulty.record, ((ms.opp_lives or 1) <= 0 and (ms.my_lives or 0) > 0) and "win" or "game_over", BOT_BRIDGE.observe({text = false}))
+            end
+            BOT.stop()
+            log("match over")
+            set_stage("results")
+            return
+        end
+        if ph == nil or ph == "none" or ph == "lobby" then
+            if age > 5 then
+                BOT.stop()
+                set_stage(ph == "lobby" and "lobby" or "gone")
+            end
+        end
+    elseif V.stage == "results" then
+        if age < 4 then return end
+        if V.rematch then
+            if G.FUNCS.mp_vote_rematch_from_screen then
+                G.FUNCS.mp_vote_rematch_from_screen(nil)
+            elseif bom_match and bom_match.vote_rematch then
+                bom_match.vote_rematch()
+            end
+            log("voted for a rematch")
+            set_stage("voted")
+        else
+            set_stage("gone")
+        end
+    elseif V.stage == "voted" then
+        if ph == "lobby" then
+            set_stage("lobby")
+        elseif (ph == "playing" or ph == "starting") and G.STAGE == G.STAGES.RUN and not mstate().match_over then
+            log("rematch started")
+            start_bot()
+            set_stage("match")
+        elseif age > 120 or ph == nil or ph == "none" then
+            set_stage("gone")
+        end
+    elseif V.stage == "gone" then
+        log("the match is finished")
+        V.finish()
+    end
+end
+
+function V.finish()
+    V.on = false
+    BOT.stop()
+    if V.quit_when_done then love.event.quit() end
+end
+
+local function shell_quote(s)
+    return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+function V.can_spawn()
+    local os_name = love.system.getOS()
+    return os_name == "Linux" or os_name == "OS X"
+end
+
+function V.room_code()
+    local seat = bom_room and bom_room.seat
+    if seat and seat.code then return seat.code end
+    return G.GAME and G.GAME.bom_room_code
+end
+
+function V.spawn(code)
+    if not V.can_spawn() then return false, L("Starting a second game only works on Linux and macOS for now") end
+    if not code or code == "" then return false, L("Create a room first") end
+    BOT.config.save()
+    local save = love.filesystem.getSaveDirectory()
+    love.filesystem.createDirectory("bot/versus_data")
+    local F = rawget(_G, "bom_forge")
+    if F and F.prepare_versus then pcall(F.prepare_versus, "bot/versus_data") end
+    local game
+    if love.filesystem.isFused() then
+        game = shell_quote(love.filesystem.getSource())
+    else
+        local exe = (arg and arg[-2]) or "love"
+        game = shell_quote(exe) .. " " .. shell_quote(love.filesystem.getSource())
+    end
+    local env = table.concat({
+        "XDG_DATA_HOME=" .. shell_quote(save .. "/bot/versus_data"),
+        "BOT_VERSUS_CODE=" .. shell_quote(code),
+        "BOT_CONFIG_DIR=" .. shell_quote(save .. "/bot"),
+        "BOT_VERSUS_WINDOW=1",
+        "NO_NAME_PROMPT=1",
+    }, " ")
+    local cmd = "env " .. env .. " " .. game .. " >/dev/null 2>&1 &"
+    local ok = os.execute(cmd)
+    if ok == 0 or ok == true then return true end
+    return false, L("Could not start the bot game")
+end
+
+G.FUNCS.bot_invite = function()
+    local ok, err = V.spawn(V.room_code())
+    if BOT.ui then
+        BOT.ui.status = ok and L("Bot-latro is starting and will join your room") or err
+        BOT.ui.status_bad = not ok
+        if BOT.ui.refresh_settings then BOT.ui.refresh_settings() end
+    end
+end
+
+local env_code = os.getenv("BOT_VERSUS_CODE")
+if env_code and env_code ~= "" then
+    V.start(env_code, {quit_when_done = os.getenv("BOT_VERSUS_STAY") ~= "1"})
+    V.from_env = true
+end
+
+if BOT.ui then
+    BOT.ui.versus_rows = function()
+        local tr = BOT.ui.text_row
+        local rows = {}
+        local code = V.room_code()
+        local in_lobby = mphase() == "lobby" and code
+        rows[#rows + 1] = tr(L("Versus: Bot-latro joins a multiplayer room and plays against you."), 0.3, G.C.UI.TEXT_LIGHT)
+        rows[#rows + 1] = tr(L("It opens a second copy of the game that plays on its own."), 0.28, G.C.UI.TEXT_INACTIVE)
+        if not V.can_spawn() then
+            rows[#rows + 1] = tr(L("Starting a second game only works on Linux and macOS for now"), 0.3, G.C.RED)
+        elseif in_lobby then
+            rows[#rows + 1] = tr(L("Your room") .. ": " .. tostring(code), 0.4, G.C.GOLD)
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {
+                UIBox_button({label = {L("Invite Bot-latro")}, button = "bot_invite", minw = 4.5, minh = 0.7, scale = 0.42, colour = G.C.RED, col = true}),
+            }}
+        else
+            rows[#rows + 1] = tr(L("1. Multiplayer, create a room."), 0.3, G.C.UI.TEXT_LIGHT)
+            rows[#rows + 1] = tr(L("2. In the lobby press Invite Bot-latro."), 0.3, G.C.UI.TEXT_LIGHT)
+            rows[#rows + 1] = tr(L("3. Press Ready. Bot-latro readies up on its own."), 0.3, G.C.UI.TEXT_LIGHT)
+        end
+        if BOT.ui.status and in_lobby then rows[#rows + 1] = tr(BOT.ui.short(BOT.ui.status, 70), 0.28, BOT.ui.status_bad and G.C.RED or G.C.GREEN) end
+        rows[#rows + 1] = tr(L("Difficulty, personality and brain come from the other pages."), 0.26, G.C.UI.TEXT_INACTIVE)
+        return rows
+    end
+end
+end

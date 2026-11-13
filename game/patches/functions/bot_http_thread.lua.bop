@@ -1,0 +1,170 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 1
+require("love.filesystem")
+r 26 1 - -
+l 161
+require "love.timer"
+
+local REQ = love.thread.getChannel("bot_http_req")
+local RES = love.thread.getChannel("bot_http_res")
+local OS = love.system.getOS()
+local UA = "BalatroOverhaulBot/1.0 (" .. tostring(OS) .. ")"
+local TUNNEL_PORT = tonumber(os.getenv("OVERHAUL_TUNNEL_PORT") or "") or 44380
+
+local has_https, https = pcall(require, "https")
+if not has_https then https = nil end
+local has_socket, socket = pcall(require, "socket")
+if not has_socket then socket = nil end
+
+local function split_url(url)
+    local scheme, hostport, path = url:match("^(https?)://([^/]+)(.*)$")
+    if not scheme then return nil end
+    if path == "" then path = "/" end
+    local host, port = hostport:match("^(.-):(%d+)$")
+    if not host then host, port = hostport, (scheme == "https" and 443 or 80) end
+    return scheme, host, tonumber(port), path, hostport
+end
+
+local function dechunk(body)
+    local out = {}
+    local pos = 1
+    while true do
+        local size_line_end = body:find("\r\n", pos, true)
+        if not size_line_end then break end
+        local size = tonumber(body:sub(pos, size_line_end - 1):match("^%x+"), 16)
+        if not size or size == 0 then break end
+        out[#out + 1] = body:sub(size_line_end + 2, size_line_end + 1 + size)
+        pos = size_line_end + 2 + size + 2
+    end
+    return table.concat(out)
+end
+
+local function raw_request(tcp, job, host_header, path)
+    local lines = {job.method .. " " .. path .. " HTTP/1.1", "Host: " .. host_header, "User-Agent: " .. UA,
+        "Accept: application/json", "Accept-Encoding: identity", "Connection: close"}
+    for k, v in pairs(job.headers or {}) do lines[#lines + 1] = k .. ": " .. v end
+    if job.body then lines[#lines + 1] = "Content-Length: " .. #job.body end
+    local req = table.concat(lines, "\r\n") .. "\r\n\r\n" .. (job.body or "")
+    local ok, err = tcp:send(req)
+    if not ok then tcp:close() return nil, "send: " .. tostring(err) end
+    local data, e2, partial = tcp:receive("*a")
+    tcp:close()
+    data = data or partial
+    if not data or data == "" then return nil, "receive: " .. tostring(e2) end
+    local head_end = data:find("\r\n\r\n", 1, true)
+    if not head_end then return nil, "bad response" end
+    local head = data:sub(1, head_end - 1)
+    local body = data:sub(head_end + 4)
+    local code = tonumber(head:match("^HTTP/%d%.?%d?%s+(%d+)"))
+    if not code then return nil, "bad status" end
+    if head:lower():find("transfer%-encoding:%s*chunked") then body = dechunk(body) end
+    return code, body
+end
+
+local function socket_request(job)
+    if not socket then return nil, "no socket" end
+    local scheme, host, port, path, hostport = split_url(job.url)
+    if not scheme then return nil, "bad url" end
+    local tcp = socket.tcp()
+    tcp:settimeout(job.timeout or 120)
+    if scheme == "http" then
+        local ok, err = tcp:connect(host, port)
+        if not ok then tcp:close() return nil, "connect: " .. tostring(err) end
+        return raw_request(tcp, job, hostport, path)
+    end
+    tcp:settimeout(8)
+    local ok, err = tcp:connect("127.0.0.1", TUNNEL_PORT)
+    if not ok then tcp:close() return nil, "no_tunnel: " .. tostring(err) end
+    tcp:send(host .. ":" .. port .. "\n")
+    tcp:settimeout(30)
+    local line = tcp:receive("*l")
+    if line ~= "OK" then tcp:close() return nil, "tunnel: " .. tostring(line) end
+    tcp:settimeout(job.timeout or 120)
+    return raw_request(tcp, job, hostport, path)
+end
+
+local function https_request(job)
+    local headers = {["User-Agent"] = UA}
+    for k, v in pairs(job.headers or {}) do headers[k] = v end
+    local code, body = https.request(job.url, {method = job.method, headers = headers, data = job.body})
+    if not code or code == 0 then return nil, "https: " .. tostring(body) end
+    return code, body
+end
+
+local function quote(s)
+    s = tostring(s)
+    if OS == "Windows" then return '"' .. s:gsub('"', '\\"') .. '"' end
+    return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
+local function curl_request(job)
+    if not tostring(job.method or ""):match("^%u+$") then return nil, "bad method" end
+    if OS == "Windows" and tostring(job.url):find('[%c"%%]') then return nil, "address not allowed" end
+    local dir = love.filesystem.getSaveDirectory() .. "/bot"
+    local base = dir .. "/.http_" .. tostring(job.id)
+    local cfg_path, body_path, out_path = base .. ".cfg", base .. ".body", base .. ".out"
+    local cfg = io.open(cfg_path, "wb")
+    if not cfg then return nil, "cannot write " .. cfg_path end
+    cfg:write('user-agent = "' .. UA .. '"\n')
+    for k, v in pairs(job.headers or {}) do
+        cfg:write('header = "' .. (k .. ": " .. v):gsub("\\", "\\\\"):gsub('"', '\\"') .. '"\n')
+    end
+    cfg:close()
+    local parts = {OS == "Windows" and "curl.exe" or "curl", "-sS", "--max-time", tostring(job.timeout or 120),
+        "-X", job.method, "-K", quote(cfg_path), "-o", quote(out_path), "-w", quote("%{http_code}")}
+    if job.body then
+        local bf = io.open(body_path, "wb")
+        if bf then bf:write(job.body) bf:close() end
+        parts[#parts + 1] = "--data-binary"
+        parts[#parts + 1] = quote("@" .. body_path)
+    end
+    parts[#parts + 1] = quote(job.url)
+    local p = io.popen(table.concat(parts, " ") .. (OS == "Windows" and " 2>NUL" or " 2>/dev/null"))
+    local out = p and p:read("*a") or ""
+    if p then p:close() end
+    os.remove(cfg_path)
+    os.remove(body_path)
+    local code = tonumber(out:match("(%d%d%d)%s*$"))
+    local body
+    local f = io.open(out_path, "rb")
+    if f then body = f:read("*a") f:close() end
+    os.remove(out_path)
+    if not code or code == 0 then return nil, "curl failed" end
+    return code, body or ""
+end
+
+local function backends_for(url)
+    local list = {}
+    if url:match("^http://") then
+        list[#list + 1] = {"socket", socket_request}
+        if https then list[#list + 1] = {"https", https_request} end
+        return list
+    end
+    if https then list[#list + 1] = {"https", https_request} end
+    if OS ~= "Android" and OS ~= "iOS" then list[#list + 1] = {"curl", curl_request} end
+    if socket then list[#list + 1] = {"tunnel", socket_request} end
+    return list
+end
+
+love.filesystem.createDirectory("bot")
+while true do
+    local job = REQ:demand()
+    if type(job) == "table" and job.type == "kill" then break end
+    if type(job) == "table" and job.url then
+        local code, body, used
+        local errs = {}
+        for _, b in ipairs(backends_for(job.url)) do
+            local ok, c, bd = pcall(b[2], job)
+            if ok and c then
+                code, body, used = c, bd, b[1]
+                break
+            end
+            errs[#errs + 1] = b[1] .. ": " .. tostring(ok and bd or c)
+        end
+        RES:push({id = job.id, code = code, body = body, backend = used, err = code and nil or table.concat(errs, "; ")})
+    end
+end
+end

@@ -1,0 +1,738 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 148
+BO_HISTORY = BO_HISTORY or {}
+local H = BO_HISTORY
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() or false end
+
+H.FILE = "run_history.lua"
+H.MAX = 200
+H.page = H.page or 1
+
+local function ser(v)
+  local t = type(v)
+  if t == "number" then
+    if v ~= v then return "0" end
+    if v == math.huge then return "1e999" end
+    if v == -math.huge then return "-1e999" end
+    return string.format("%.17g", v)
+  elseif t == "string" then
+    return string.format("%q", v)
+  elseif t == "boolean" then
+    return v and "true" or "false"
+  elseif t == "table" then
+    local parts = {}
+    for i = 1, #v do parts[#parts + 1] = ser(v[i]) end
+    local keys = {}
+    for k in pairs(v) do if type(k) == "string" then keys[#keys + 1] = k end end
+    table.sort(keys)
+    for _, k in ipairs(keys) do parts[#parts + 1] = "[" .. string.format("%q", k) .. "]=" .. ser(v[k]) end
+    return "{" .. table.concat(parts, ",") .. "}"
+  end
+  return "nil"
+end
+H.ser = ser
+
+function H.parse(data)
+  if type(data) ~= "string" or data == "" then return {} end
+  local fn = loadstring(data)
+  if not fn then return {} end
+  setfenv(fn, {})
+  local ok, t = pcall(fn)
+  if not (ok and type(t) == "table") then return {} end
+  local out = {}
+  for _, e in ipairs(t) do
+    if type(e) == "table" and type(e.id) == "string" then out[#out + 1] = e end
+  end
+  return out
+end
+
+function H.load()
+  if H.list then return H.list end
+  local ok, data = pcall(love.filesystem.read, H.FILE)
+  H.list = H.parse(ok and data or nil)
+  return H.list
+end
+
+function H.encode(list)
+  local out = {}
+  for _, e in ipairs(list) do out[#out + 1] = ser(e) end
+  return "return {\n" .. table.concat(out, ",\n") .. "\n}\n"
+end
+
+function H.save()
+  local list = H.load()
+  while #list > H.MAX do table.remove(list) end
+  local data = H.encode(list)
+  pcall(function() require("functions/fast_fs").write(H.FILE, data) end)
+end
+
+function H.upsert(list, e)
+  for i, old in ipairs(list) do
+    if old.id == e.id then
+      table.remove(list, i)
+      break
+    end
+  end
+  table.insert(list, 1, e)
+  while #list > H.MAX do table.remove(list) end
+  return list
+end
+
+local function num(v)
+  if type(v) == "number" then return v end
+  if type(v) == "table" then
+    local ok, s = pcall(tostring, v)
+    return ok and tonumber(s) or 0
+  end
+  return tonumber(v) or 0
+end
+
+local function new_id()
+  H._n = (H._n or 0) + 1
+  return tostring(os.time()) .. "-" .. tostring(H._n) .. "-" .. tostring(math.floor((love and love.timer and love.timer.getTime() or os.clock()) * 1000) % 100000)
+end
+
+function H.mode_of(g)
+  if g.multiplayer then return "mp" end
+  if g.daily then return "daily" end
+  if g.challenge then return "challenge" end
+  if g.run_rules_source == "custom" then return "custom" end
+  if g.seeded then return "seeded" end
+  return "solo"
+end
+
+local function most_played(g)
+  local best, n = nil, 0
+  for _, v in pairs(g.hand_usage or {}) do
+    if type(v) == "table" and (tonumber(v.count) or 0) > n then best, n = v.order, tonumber(v.count) end
+  end
+  return best, n
+end
+
+local function skip_run(g)
+  if not (g and g.round_resets) then return true end
+  if g.bo_practice then return true end
+  local pb = rawget(_G, "bom_playback")
+  if pb and pb.active and pb.active() then return true end
+  return false
+end
+
+function H.snapshot(won, result)
+  local g = G and G.GAME
+  if skip_run(g) then return nil end
+  g.bo_hist_id = g.bo_hist_id or new_id()
+  local mode = H.mode_of(g)
+  local back = g.selected_back and g.selected_back.effect and g.selected_back.effect.center
+  local jokers = {}
+  for _, c in ipairs(G.jokers and G.jokers.cards or {}) do
+    local key = c.config and c.config.center and c.config.center.key
+    if key then jokers[#jokers + 1] = {k = key, e = c.edition and c.edition.type or nil} end
+  end
+  local hand, count = most_played(g)
+  local e = {
+    id = g.bo_hist_id, t = os.time(), mode = mode,
+    deck = back and back.key or "b_red", stake = tonumber(g.stake) or 1,
+    ante = tonumber(g.round_resets.ante) or 1, round = tonumber(g.round) or 0,
+    best = num(g.round_scores and g.round_scores.hand and g.round_scores.hand.amt),
+    hand = hand, hand_n = count > 0 and count or nil,
+    jokers = jokers, won = won and true or nil, result = result,
+    profile = G.SETTINGS and tostring(G.SETTINGS.profile) or nil,
+  }
+  if mode ~= "mp" then e.seed = g.pseudorandom and g.pseudorandom.seed or nil end
+  if mode == "challenge" then e.challenge = tostring(g.challenge) end
+  if mode == "custom" and type(g.run_rules) == "table" then e.rules = g.run_rules end
+  if mode == "daily" and type(g.daily_rules) == "table" then e.daily = g.daily_rules.date end
+  return e
+end
+
+function H.record(won, result)
+  local e = H.snapshot(won, result)
+r 13 1300 %20%20 -
+l 26
+  local list = H.load()
+  for _, old in ipairs(list) do
+    if old.id == e.id then
+      if old.won then e.won = true end
+      if old.result and not result then e.result = old.result end
+      if old.replay and not e.replay then e.replay = old.replay end
+      if old.sprp and not e.sprp then e.sprp = old.sprp end
+      if old.opp and not e.opp then e.opp = old.opp end
+      if old.mp_mode and not e.mp_mode then e.mp_mode = old.mp_mode end
+    end
+  end
+  if not e.result then e.result = e.won and "win" or "lose" end
+  local SR = rawget(_G, "BO_SPREPLAY")
+  if SR and SR.on_record then pcall(SR.on_record, e, e.result) end
+  H.upsert(list, e)
+  H.save()
+  return e
+end
+
+function H.record_mp()
+  local bm = rawget(_G, "bom_match")
+  local st = bm and bm.get_state and bm.get_state()
+  if not (st and st.match_over) then return end
+  local g = G and G.GAME
+  if not g or g.bo_hist_mp_done then return end
+  local e = H.snapshot(st.match_result == "win", st.match_result == "draw" and "draw" or (st.match_result == "win" and "win" or "lose"))
+r 13 1300 %20%20 -
+l 397
+  g.bo_hist_mp_done = true
+  e.mode = "mp"
+  e.seed, e.challenge, e.rules, e.daily = nil, nil, nil, nil
+  e.opp = st.opp_name and tostring(st.opp_name) or nil
+  e.mp_mode = st.mode and tostring(st.mode) or nil
+  local RP = rawget(_G, "bom_replay")
+  local mid = RP and RP.current_match_id and RP.current_match_id()
+  if type(mid) == "string" and mid ~= "" and mid ~= "local" then e.replay = mid end
+  H.upsert(H.load(), e)
+  H.save()
+end
+
+if type(win_game) == "function" then
+  local _hist_win_game = win_game
+  win_game = function(...)
+    local r = {_hist_win_game(...)}
+    if G and G.GAME and not G.GAME.multiplayer then pcall(H.record, true, "win") end
+    return unpack(r)
+  end
+end
+
+local _hist_update_game_over = Game.update_game_over
+Game.update_game_over = function(self, dt)
+  if not G.STATE_COMPLETE and G.GAME and not G.GAME.multiplayer then
+    pcall(H.record, G.GAME.won and true or false, G.GAME.won and "win" or "lose")
+  end
+  return _hist_update_game_over(self, dt)
+end
+
+do
+  local bm = rawget(_G, "bom_match")
+  if bm and type(bm.end_match) == "function" and not H._mp_hooked then
+    H._mp_hooked = true
+    local orig = bm.end_match
+    bm.end_match = function(...)
+      local r = {orig(...)}
+      pcall(H.record_mp)
+      return unpack(r)
+    end
+  end
+end
+
+local function deck_name(key)
+  local ok, name = pcall(localize, {type = "name_text", set = "Back", key = key})
+  if ok and type(name) == "string" and name ~= "ERROR" then return name end
+  local c = G.P_CENTERS[key]
+  return c and c.name or tostring(key)
+end
+
+local function stake_name(stake)
+  local s = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and G.P_CENTER_POOLS.Stake[stake]
+  if s then
+    local ok, name = pcall(localize, {type = "name_text", set = "Stake", key = s.key})
+    if ok and type(name) == "string" and name ~= "ERROR" then return name end
+  end
+  return L("Stake") .. " " .. tostring(stake)
+end
+
+local function stake_colour(stake)
+  local s = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and G.P_CENTER_POOLS.Stake[stake]
+  local c = s and G.C.STAKES and G.C.STAKES[stake]
+  return c or G.C.WHITE
+end
+
+local MODE_LABEL = {solo = "Solo", seeded = "Seeded", challenge = "Challenge", daily = "Daily", custom = "Custom", mp = "Multiplayer"}
+
+local function mode_label(e)
+  return L(MODE_LABEL[e.mode] or "Solo")
+end
+
+local function challenge_name(id)
+  local ok, name = pcall(localize, id, "challenge_names")
+  if ok and type(name) == "string" and name ~= "ERROR" then return name end
+  return tostring(id)
+end
+
+local function hand_name(h)
+  if not h then return "-" end
+  local ok, name = pcall(localize, h, "poker_hands")
+  if ok and type(name) == "string" and name ~= "ERROR" then return name end
+  return tostring(h)
+end
+
+local function score(v)
+  local ok, s = pcall(number_format, v or 0)
+  return ok and tostring(s) or tostring(v or 0)
+end
+
+local function day(t) return os.date("%Y-%m-%d", tonumber(t) or 0) end
+
+local function result_text(e)
+  if e.result == "draw" then return L("DRAW") end
+  return (e.won or e.result == "win") and L("WIN") or L("LOSS")
+end
+
+local function result_colour(e)
+  if e.result == "draw" then return G.C.UI.BACKGROUND_INACTIVE end
+  return (e.won or e.result == "win") and G.C.GREEN or G.C.RED
+end
+
+function H.can_replay_seed(e)
+  if not (e and e.seed) then return false end
+  if e.mode == "mp" or e.mode == "daily" then return false end
+  if e.mode == "challenge" then return H.find_challenge(e.challenge) ~= nil end
+  return G.P_CENTERS[e.deck] ~= nil
+end
+
+function H.find_challenge(id)
+  for _, ch in ipairs(G.CHALLENGES or {}) do
+    if ch.id == id then return ch end
+  end
+end
+
+function H.can_watch(e)
+  if not e then return false end
+  local SR = rawget(_G, "BO_SPREPLAY")
+  if e.sprp and e.mode ~= "mp" then return SR and SR.exists and SR.exists(e.sprp) or false end
+  local RP = rawget(_G, "bom_replay")
+  return e.replay and RP and type(RP.watch) == "function" and true or false
+end
+
+local function dims()
+  if touch() then
+    if UIK.portrait() then
+      return {row_h = 0.7, scale = 0.44, small = 0.4, head = 0.39, per = 7, gap = 0.1, card = 0.8, box_h = 1.1, val = 0.48, lab = 0.39, port = true}
+    end
+    return {row_h = 0.84, scale = 0.42, small = 0.39, head = 0.39, per = 5, gap = 0.1, card = 0.8, box_h = 1.1, val = 0.46, lab = 0.39}
+  end
+  return {row_h = 0.52, scale = 0.33, small = 0.29, head = 0.27, per = 7, gap = 0.1, card = 0.92, box_h = 0.86, val = 0.4, lab = 0.27}
+end
+
+local COLS = {
+  {key = "date", w = 1.9, label = "Date"},
+  {key = "mode", w = 2.0, label = "Mode"},
+  {key = "deck", w = 2.5, label = "Deck"},
+  {key = "stake", w = 2.0, label = "Stake"},
+  {key = "ante", w = 1.1, label = "Ante"},
+  {key = "best", w = 1.9, label = "Best hand"},
+  {key = "result", w = 1.3, label = "Result"},
+  {key = "view", w = 1.5, label = ""},
+}
+
+local function kit() return rawget(_G, "bom_kit") end
+
+local function fit(str, w, scale)
+  local K = kit()
+  if K and K.fit then return K.fit(str, w, scale) end
+  return str, scale
+end
+
+local function cell(nodes, w, h, o)
+  o = o or {}
+  return {n = G.UIT.C, config = {align = o.align or "cm", minw = w, maxw = w, minh = h, padding = 0, r = o.r, colour = o.colour or G.C.CLEAR, emboss = o.emboss}, nodes = nodes}
+end
+
+local function text(str, scale, colour, shadow)
+  return {n = G.UIT.T, config = {text = tostring(str or ""), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = shadow ~= false}}
+end
+
+local function fit_text(str, w, scale, colour)
+  local s, sc = fit(str, w - 0.12, scale)
+  return text(s, sc, colour)
+end
+
+local function row_of(cells, w, h, colour, id)
+  local d = dims()
+  local nodes = {}
+  for i, c in ipairs(cells) do
+    if i > 1 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = d.gap, minh = h}, nodes = {}} end
+    nodes[#nodes + 1] = c
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, padding = 0.04, r = 0.1, colour = colour or G.C.CLEAR, id = id}, nodes = nodes}
+end
+
+local function table_w()
+  local d = dims()
+  local w = 0
+  for _, c in ipairs(COLS) do w = w + c.w end
+  return w + (#COLS - 1) * d.gap
+end
+
+local function header_row()
+  local d = dims()
+  local cells = {}
+  for _, c in ipairs(COLS) do cells[#cells + 1] = cell({fit_text(c.label ~= "" and L(c.label) or " ", c.w, d.head, UIK.C.muted)}, c.w, d.head + 0.12) end
+  return row_of(cells, table_w(), d.head + 0.12)
+end
+
+local function list_row(i, e)
+  local d = dims()
+  local h = d.row_h
+  local mode = mode_label(e)
+  if e.mode == "challenge" and e.challenge then mode = challenge_name(e.challenge) end
+  local vals = {
+    date = cell({fit_text(day(e.t), COLS[1].w, d.small, UIK.C.muted)}, COLS[1].w, h),
+    mode = cell({fit_text(mode, COLS[2].w, d.small)}, COLS[2].w, h),
+    deck = cell({fit_text(deck_name(e.deck), COLS[3].w, d.small)}, COLS[3].w, h),
+    stake = cell({fit_text(stake_name(e.stake), COLS[4].w, d.small, stake_colour(e.stake))}, COLS[4].w, h),
+    ante = cell({fit_text(tostring(e.ante or 1), COLS[5].w, d.scale)}, COLS[5].w, h),
+    best = cell({fit_text(score(e.best), COLS[6].w, d.scale)}, COLS[6].w, h, {r = 0.08, colour = {0, 0, 0, 0.18}}),
+    result = cell({fit_text(result_text(e), COLS[7].w, d.small)}, COLS[7].w, h, {r = 0.08, colour = result_colour(e), emboss = 0.03}),
+    view = cell({UIK.button{label = L("VIEW"), button = "bo_hist_view", ref_table = {id = e.id}, colour = G.C.BLUE, w = COLS[8].w, h = h, scale = d.small, col = true, id = "bo_hist_view_" .. i}}, COLS[8].w, h),
+  }
+  local cells = {}
+  for _, c in ipairs(COLS) do cells[#cells + 1] = vals[c.key] end
+  return row_of(cells, table_w(), h, {0, 0, 0, 0.22}, "bo_hist_row_" .. i)
+end
+
+local function port_row(i, e)
+  local d = dims()
+  local h = d.row_h
+  local w = UIK.W - 0.3
+  local mode = mode_label(e)
+  if e.mode == "challenge" and e.challenge then mode = challenge_name(e.challenge) end
+  local gap = d.gap
+  local rw, vw, dw = 1.7, 1.6, 2.0
+  local mw = w - dw - rw - vw - 3 * gap - 0.1
+  local top = {
+    cell({fit_text(day(e.t), dw, d.small, UIK.C.muted)}, dw, h),
+    cell({fit_text(mode, mw, d.small)}, mw, h),
+    cell({fit_text(result_text(e), rw, d.small)}, rw, h, {r = 0.08, colour = result_colour(e), emboss = 0.03}),
+    cell({UIK.button{label = L("VIEW"), button = "bo_hist_view", ref_table = {id = e.id}, colour = G.C.BLUE, w = vw, h = h, scale = d.small, col = true, id = "bo_hist_view_" .. i}}, vw, h),
+  }
+  local aw, bw = 1.6, 2.0
+  local kw = (w - aw - bw - 3 * gap - 0.1) / 2
+  local bottom = {
+    cell({fit_text(deck_name(e.deck), kw, d.small)}, kw, h),
+    cell({fit_text(stake_name(e.stake), kw, d.small, stake_colour(e.stake))}, kw, h),
+    cell({fit_text(L("Ante") .. " " .. tostring(e.ante or 1), aw, d.small)}, aw, h),
+    cell({fit_text(score(e.best), bw, d.scale)}, bw, h, {r = 0.08, colour = {0, 0, 0, 0.18}}),
+  }
+  return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.06, r = 0.1, colour = {0, 0, 0, 0.22}, id = "bo_hist_row_" .. i}, nodes = {
+    row_of(top, w - 0.12, h),
+    row_of(bottom, w - 0.12, h),
+  }}
+end
+
+local function body_h()
+  return UIK.H - UIK.TOP
+end
+
+local function build_list()
+  local d = dims()
+  local list = H.load()
+  local pages = math.max(1, math.ceil(#list / d.per))
+  H.page = math.max(1, math.min(pages, H.page or 1))
+  local pager_h = touch() and 0.94 or 0.78
+  local nodes = {}
+  if #list == 0 then
+    local ew = d.port and UIK.dlg_w(UIK.W) or UIK.W
+    local function wrap(str, sc)
+      local cur, lines = "", {}
+      for word in str:gmatch("%S+") do
+        local try = cur == "" and word or (cur .. " " .. word)
+        if d.port and cur ~= "" and UIK.text_w(try, sc) > ew - 0.6 then
+          lines[#lines + 1] = cur
+          cur = word
+        else
+          cur = try
+        end
+      end
+      lines[#lines + 1] = cur
+      return lines
+    end
+    local col = {}
+    local function add(l, sc, colour, pad)
+      col[#col + 1] = {n = G.UIT.R, config = {align = "cm", padding = pad}, nodes = {{n = G.UIT.C, config = {align = "cm", maxw = ew - 0.4}, nodes = {text(l, sc, colour)}}}}
+    end
+    local ts = touch() and 0.6 or 0.42
+    for _, l in ipairs(wrap(L("No finished runs yet."), ts)) do add(l, ts, G.C.UI.TEXT_LIGHT, 0.06) end
+    local hs = touch() and (d.port and 0.5 or 0.42) or 0.32
+    for _, l in ipairs(wrap(L("Win or lose a run and it shows up here."), hs)) do add(l, hs, UIK.C.muted, 0.04) end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minh = 2.6, padding = 0.2}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = col},
+    }}
+    return {n = G.UIT.R, config = {align = "tm", minw = ew, padding = 0}, nodes = nodes}
+  end
+  local rows = {d.port and {n = G.UIT.R, config = {minh = 0.05}, nodes = {}} or header_row()}
+  local first = (H.page - 1) * d.per
+  for i = first + 1, math.min(#list, first + d.per) do
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = d.port and 0.07 or 0.03}, nodes = {d.port and port_row(i, list[i]) or list_row(i, list[i])}}
+  end
+  nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "tm", minw = UIK.W, minh = body_h() - pager_h - 0.1, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = rows},
+  }}
+  if pages > 1 then
+    nodes[#nodes + 1] = UIK.pager{prev = "bo_hist_prev", next = "bo_hist_next", text = tostring(H.page) .. " / " .. tostring(pages),
+      prev_disabled = H.page <= 1, next_disabled = H.page >= pages, w = UIK.W}
+  end
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = nodes}
+end
+
+local function stat_box(label, value, w, colour, value_colour)
+  local d = dims()
+  return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, minh = d.box_h, r = 0.1, colour = colour or {0, 0, 0, 0.18}, padding = 0.04}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", minw = w - 0.1}, nodes = {fit_text(value, w, d.val, value_colour or G.C.WHITE)}},
+    {n = G.UIT.R, config = {align = "cm", minw = w - 0.1}, nodes = {fit_text(label, w, d.lab, UIK.C.muted)}},
+  }}
+end
+
+local function box_row(boxes, w)
+  local gap = 0.16
+  local bw = (w - gap * (#boxes - 1)) / #boxes
+  local nodes = {}
+  for i, b in ipairs(boxes) do
+    if i > 1 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = gap}, nodes = {}} end
+    nodes[#nodes + 1] = stat_box(b[1], b[2], bw, b[3], b[4])
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0}, nodes = nodes}
+end
+
+local function joker_area(e, w)
+  local d = dims()
+  local keys = {}
+  for _, j in ipairs(e.jokers or {}) do
+    if type(j) == "table" and G.P_CENTERS[j.k] then keys[#keys + 1] = j end
+  end
+  local cw, ch = G.CARD_W * d.card, G.CARD_H * d.card
+  local n = math.max(1, #keys)
+  local aw = math.min(w, n * cw * 1.08)
+  local area = CardArea(0, 0, aw, ch, {card_limit = n, card_w = cw, type = "title_2", highlight_limit = 0})
+  for _, j in ipairs(keys) do
+    local card = Card(0, 0, cw, ch, nil, G.P_CENTERS[j.k], {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true})
+    if j.e and G.P_CENTERS["e_" .. j.e] then pcall(card.set_edition, card, {[j.e] = true}, true, true) end
+    area:emplace(card)
+  end
+  return area, #keys
+end
+
+function H.find(id)
+  for _, e in ipairs(H.load()) do
+    if e.id == id then return e end
+  end
+end
+
+local function stat_rows(groups, w)
+  local out = {}
+  for i, g in ipairs(groups) do
+    if i > 1 then out[#out + 1] = {n = G.UIT.R, config = {minh = 0.16}, nodes = {}} end
+    out[#out + 1] = box_row(g, w)
+  end
+  out[#out + 1] = {n = G.UIT.R, config = {minh = 0.2}, nodes = {}}
+  return out
+end
+
+local function build_detail()
+  local e = H.find(H.detail_id)
+  if not e then return {n = G.UIT.R, config = {align = "cm", minh = body_h()}, nodes = {text(L("This run is no longer in the history."), 0.4)}} end
+  local d = dims()
+  local w = UIK.W - 0.6
+  local best_hand = hand_name(e.hand)
+  if e.hand_n then best_hand = best_hand .. " (" .. tostring(e.hand_n) .. ")" end
+  local row1 = {
+    {L("Result"), result_text(e), result_colour(e)},
+    {L("Ante"), tostring(e.ante or 1)},
+    {L("Round"), tostring(e.round or 0)},
+    {L("Best hand"), score(e.best)},
+    {L("Most played hand"), best_hand},
+  }
+  local mode_lab, mode_val = L("Mode"), mode_label(e)
+  if e.mode == "challenge" and e.challenge then mode_lab, mode_val = L("Challenge"), challenge_name(e.challenge) end
+  if e.mode == "mp" and e.mp_mode then
+    local B = rawget(_G, "bom_browse")
+    local ok, name = pcall(function() return B and B.mode_name and B.mode_name(e.mp_mode) end)
+    if ok and type(name) == "string" and name ~= "" then mode_val = L(name) end
+  end
+  local fifth = e.mode == "mp" and {L("Opponent"), e.opp or "-"} or {L("Seed"), e.seed or "-", nil, G.C.GOLD}
+  local row2 = {
+    {mode_lab, mode_val},
+    {L("Deck"), deck_name(e.deck)},
+    {L("Stake"), stake_name(e.stake), nil, stake_colour(e.stake)},
+    {L("Date"), os.date("%Y-%m-%d %H:%M", tonumber(e.t) or 0)},
+    fifth,
+  }
+  local area, count = joker_area(e, w - 0.4)
+  local jokers = {n = G.UIT.R, config = {align = "cm", minw = w, r = 0.12, colour = UIK.C.section, padding = 0.1}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", minw = w - 0.2}, nodes = {text(L("Final jokers"), touch() and 0.44 or 0.4, UIK.C.title)}},
+    {n = G.UIT.R, config = {align = "cm", minw = w - 0.2, minh = G.CARD_H * d.card + 0.1}, nodes = {
+      count > 0 and {n = G.UIT.O, config = {object = area}} or text(L("No jokers"), touch() and 0.4 or 0.36, UIK.C.muted),
+    }},
+  }}
+  if count == 0 then area:remove() end
+  local body = stat_rows(d.port and {{row1[1], row1[2], row1[3]}, {row1[4], row1[5]}, {row2[1], row2[2]}, {row2[3], row2[4]}, {row2[5]}} or {row1, row2}, w)
+  body[#body + 1] = jokers
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = body},
+  }}
+end
+
+local function button_label(str, w, scale)
+  local s, sc = fit(str, w - 0.3, scale)
+  return s, sc
+end
+
+function H.open(page)
+  if page then H.page = page end
+  H.list = nil
+r 13 1381 %20%20 -
+l 19
+  G.FUNCS.overlay_menu{definition = UIK.window{id = "bo_hist", title = L("RUN HISTORY"),
+    tabs = {{key = "runs", label = L("Runs"), build = build_list}}, compact = #H.load() == 0, w = #H.load() == 0 and UIK.portrait() and UIK.DLG_PORT_W or nil,
+    back_func = "bo_hist_back"}}
+end
+
+function H.open_detail(id)
+  H.detail_id = id
+  local e = H.find(id)
+  local footer = {}
+  local bw = touch() and 4.4 or 4.0
+  local bs = touch() and 0.46 or 0.42
+  if e and H.can_replay_seed(e) then
+    local s, sc = button_label(L("PLAY THIS SEED AGAIN"), bw, bs)
+    footer[#footer + 1] = UIK.button{label = s, button = "bo_hist_play", ref_table = {id = id}, colour = UIK.C.ok, w = bw, scale = sc, id = "bo_hist_play"}
+  end
+  if e and H.can_watch(e) then
+    local s, sc = button_label(L("WATCH REPLAY"), bw, bs)
+    footer[#footer + 1] = UIK.button{label = s, button = "bo_hist_watch", ref_table = {id = id}, colour = UIK.C.accent, w = bw, scale = sc, id = "bo_hist_watch"}
+  end
+r 13 1381 %20%20 -
+l 31
+  G.FUNCS.overlay_menu{definition = UIK.window{id = "bo_hist_detail", title = L("RUN DETAILS"),
+    tabs = {{key = "run", label = L("Run"), build = build_detail}},
+    footer = footer, back_func = "bo_hist_open"}}
+end
+
+function H.play_again(e)
+  if not H.can_replay_seed(e) then return end
+  if G.FUNCS.exit_overlay_menu then G.FUNCS.exit_overlay_menu() end
+  local back = G.P_CENTERS[e.deck] or G.P_CENTERS.b_red
+  if e.mode == "challenge" then
+    G.FUNCS.start_run(nil, {stake = 1, seed = e.seed, challenge = H.find_challenge(e.challenge)})
+    return
+  end
+  if e.mode == "custom" and RunRules and RunRules.start then
+    if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = true end
+    RunRules.start(e.rules or {}, {rules_source = "custom", seed = e.seed, stake = e.stake, back = back})
+    return
+  end
+  if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
+  if G.GAME.viewed_back then G.GAME.viewed_back:change_to(back) else G.GAME.viewed_back = Back(back) end
+  G.FUNCS.start_run(nil, {stake = e.stake or 1, seed = e.seed, back = back})
+end
+
+G.FUNCS.open_run_history = function(e)
+  H.from = e and e.config and e.config.ref_table and e.config.ref_table.from or nil
+  H.open(1)
+end
+G.FUNCS.bo_hist_open = function() H.open() end
+G.FUNCS.bo_hist_back = function()
+  local from = H.from
+  if from and G.FUNCS[from] then return G.FUNCS[from]() end
+r 13 1375 %20%20 -
+l 24
+end
+G.FUNCS.bo_hist_prev = function() H.page = (H.page or 1) - 1; UIK.refresh() end
+G.FUNCS.bo_hist_next = function() H.page = (H.page or 1) + 1; UIK.refresh() end
+G.FUNCS.bo_hist_view = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if id then H.open_detail(id) end
+end
+G.FUNCS.bo_hist_play = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  local entry = id and H.find(id)
+  if entry then H.play_again(entry) end
+end
+G.FUNCS.bo_hist_watch = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  local entry = id and H.find(id)
+  local SR = rawget(_G, "BO_SPREPLAY")
+  if entry and entry.sprp and entry.mode ~= "mp" and SR and SR.watch then
+    SR.watch(entry.sprp, entry.id, H.from)
+    return
+  end
+  local RP = rawget(_G, "bom_replay")
+  if entry and entry.replay and RP and RP.watch then
+    local P, from, hist = rawget(_G, "bom_playback"), H.from, entry.id
+    if P then P.back_to = { id = entry.replay, fn = function() H.from = from; H.open_detail(hist) end } end
+r 13 1375 %20%20%20%20 -
+l 75
+    RP.watch(entry.replay)
+  end
+end
+
+local function find_parent(node, button)
+  if type(node) ~= "table" or type(node.nodes) ~= "table" then return nil end
+  for i, child in ipairs(node.nodes) do
+    if type(child) == "table" and child.nodes then
+      for _, gc in ipairs(child.nodes) do
+        if type(gc) == "table" and gc.config and gc.config.button == button then return node, i end
+        if type(gc) == "table" and gc.nodes then
+          for _, ggc in ipairs(gc.nodes) do
+            if type(ggc) == "table" and ggc.config and ggc.config.button == button then return node, i end
+          end
+        end
+      end
+    end
+    local p, idx = find_parent(child, button)
+    if p then return p, idx end
+  end
+end
+
+function H.fit_hub(parent)
+  local buttons = {}
+  local function walk(n)
+    if type(n) ~= "table" then return end
+    if n.config and n.config.button and n.config.minh == 1 then buttons[#buttons + 1] = n end
+    for _, c in ipairs(n.nodes or {}) do walk(c) end
+  end
+  walk(parent)
+  if #buttons < 6 then return end
+  local h = math.max(0.7, 4.8 / #buttons)
+  for _, b in ipairs(buttons) do b.config.minh = h end
+  for _, r in ipairs(parent.nodes) do
+    if r.config and r.config.padding == 0.08 then r.config.padding = 0.06 end
+  end
+end
+
+if type(create_UIBox_tavern_hub) == "function" then
+  local _hist_tavern_hub = create_UIBox_tavern_hub
+  function create_UIBox_tavern_hub(...)
+    local def = _hist_tavern_hub(...)
+    pcall(function()
+      local parent, idx = find_parent(def, "open_seed_library")
+      if parent then
+        table.insert(parent.nodes, idx + 1, {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+          UIBox_button({label = {L("RUN HISTORY")}, button = "open_run_history", ref_table = {from = "open_tavern_hub"}, minw = 5, minh = 1, colour = G.C.RED}),
+        }})
+        H.fit_hub(parent)
+      end
+    end)
+    return def
+  end
+end
+
+mod_loc_register{
+  fr = {
+    ["RUN HISTORY"] = "HISTORIQUE DES PARTIES", ["Runs"] = "Parties", ["RUN DETAILS"] = "DÉTAILS DE LA PARTIE",
+    ["Date"] = "Date", ["VIEW"] = "VOIR", ["Solo"] = "Solo", ["Seeded"] = "Seed", ["Challenge"] = "Défi",
+    ["Most played hand"] = "Main la plus jouée", ["Final jokers"] = "Jokers à la fin",
+    ["No finished runs yet."] = "Aucune partie terminée pour l'instant.", ["Win or lose a run and it shows up here."] = "Gagnez ou perdez une partie et elle apparaîtra ici.",
+    ["This run is no longer in the history."] = "Cette partie n'est plus dans l'historique.",
+    ["PLAY THIS SEED AGAIN"] = "REJOUER CETTE SEED", ["WATCH REPLAY"] = "VOIR LE REPLAY",
+  },
+  es = {
+    ["RUN HISTORY"] = "HISTORIAL DE PARTIDAS", ["Runs"] = "Partidas", ["RUN DETAILS"] = "DETALLES DE LA PARTIDA",
+    ["Date"] = "Fecha", ["VIEW"] = "VER", ["Solo"] = "Solo", ["Seeded"] = "Código", ["Challenge"] = "Desafío",
+    ["Most played hand"] = "Mano más jugada", ["Final jokers"] = "Comodines finales",
+    ["No finished runs yet."] = "Aún no hay partidas terminadas.", ["Win or lose a run and it shows up here."] = "Gana o pierde una partida y aparecerá aquí.",
+    ["This run is no longer in the history."] = "Esta partida ya no está en el historial.",
+    ["PLAY THIS SEED AGAIN"] = "JUGAR ESTE CÓDIGO DE NUEVO", ["WATCH REPLAY"] = "VER REPETICIÓN",
+  },
+}
+
+return H
+end

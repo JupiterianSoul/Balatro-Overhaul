@@ -1,0 +1,403 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 310
+local ST = rawget(_G, "social_toasts") or {}
+social_toasts = ST
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function now() return love.timer.getTime() end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function state() return package.loaded["multiplayer.mps_state"] end
+
+ST.INVITE_SECS = 120
+ST.SHOW_INVITE = 20
+ST.SHOW_ONLINE = 5
+ST.SHOW_INFO = 4
+ST.QUIET_SECS = 60
+ST.WANT_SECS = 30
+ST.list = ST.list or {}
+ST.gone_at = ST.gone_at or {}
+
+function ST.alerts_on()
+    return not (G and G.SETTINGS and G.SETTINGS.social_online_alerts == false)
+end
+
+local function phase_none()
+    return not (bom_match and bom_match.get_phase and bom_match.PHASE and bom_match.get_phase() ~= bom_match.PHASE.NONE)
+end
+
+local function in_party()
+    local ok, v = pcall(function() return bom_party and bom_party.in_party and bom_party.in_party() end)
+    return ok and v and true or false
+end
+
+local function in_match()
+    local ok, v = pcall(function()
+        if bom_playback and bom_playback.active and bom_playback.active() then return false end
+        return bom_match and bom_match.is_in_match and bom_match.is_in_match()
+    end)
+    return ok and v and true or false
+end
+
+function ST.joinable()
+    return G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU and phase_none() and not in_party() and not G.screenwipe or false
+end
+
+local function push(e)
+    for i = #ST.list, 1, -1 do
+        local o = ST.list[i]
+        if o.kind == e.kind and o.key == e.key then table.remove(ST.list, i) end
+    end
+    if ST.cur and ST.cur.kind == e.kind and ST.cur.key == e.key then ST.hide() end
+    e.at = now()
+    if e.kind == "invite" then
+        table.insert(ST.list, 1, e)
+    else
+        ST.list[#ST.list + 1] = e
+    end
+end
+
+function ST.invite(inv)
+    if type(inv) ~= "table" or type(inv.room) ~= "string" then return false end
+    push({kind = "invite", key = tostring(inv.from or inv.room), name = inv.name ~= "" and inv.name or inv.from or "?",
+        room = inv.room, party = inv.party == true, until_t = now() + ST.INVITE_SECS})
+    return true
+end
+
+function ST.ask(a)
+    if type(a) ~= "table" or type(a.code) ~= "string" then return false end
+    push({kind = "ask", key = a.code, name = a.name or "?", code = a.code, until_t = a.until_t or (now() + 60)})
+    return true
+end
+
+function ST.info(name, text)
+    push({kind = "info", key = tostring(name) .. "|" .. tostring(text), name = name, text = text, until_t = now() + ST.SHOW_INFO + 6})
+end
+
+function ST.on_presence(d, f)
+    if type(d) ~= "table" or type(f) ~= "table" or d.online == nil then return end
+    local T = state()
+    local was = T and T.is_online(f) or f.online == true
+    local is = d.online == true
+    local code = tostring(f.code or d.code or "")
+    if was and not is then
+        ST.gone_at[code] = now()
+        return
+    end
+    if is and not was then
+        local gone = ST.gone_at[code]
+        ST.gone_at[code] = nil
+        if gone and now() - gone < ST.QUIET_SECS then return end
+        if not ST.alerts_on() or in_match() then return end
+        push({kind = "online", key = code, name = f.name ~= "" and f.name or "?", until_t = now() + ST.SHOW_ONLINE + 10})
+    end
+end
+
+local REASONS = {
+    slow_down = "Too fast, try again in a moment.", offline = "Friend is offline.", busy = "Friend is in a match.",
+    no_room = "Open a lobby first.", not_friend = "Not on your friends list.",
+}
+
+function ST.on_message(d)
+    if type(d) ~= "table" then return end
+    if d.type == "social_result" and d.action == "social_invite" and ST.sent_to then
+        local who = ST.sent_to
+        ST.sent_to = nil
+        if d.ok and d.many and type(d.sent) == "table" then
+            local T = state()
+            ST.info(who, T and T.fill("Invites sent: {n}.", {n = tostring(#d.sent)}) or L("Invite sent."))
+        elseif d.ok then
+            ST.info(who, L("Invite sent."))
+        else
+            ST.info(who, L(REASONS[d.reason] or "Could not connect."))
+        end
+    end
+end
+
+local function line(text, scale, colour, w)
+    local s, sc = text, scale
+    if bom_kit and bom_kit.fit then s, sc = bom_kit.fit(text, w, scale, scale * 0.7) end
+    return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.02}, nodes = {
+        {n = G.UIT.T, config = {text = s, scale = sc, colour = colour, shadow = true}},
+    }}
+end
+
+function ST.text_of(e)
+    if e.kind == "invite" then
+        return e.party and L("invites you to their party") or L("invites you to their lobby")
+    elseif e.kind == "online" then
+        return L("is online")
+    elseif e.kind == "ask" then
+        return L("asks to join your lobby")
+    end
+    return tostring(e.text or "")
+end
+
+function ST.def(e, can_join)
+    local t = touch()
+    local w = t and 5.8 or 4.9
+    local iw = w - 0.24
+    local bh = t and 0.78 or 0.62
+    local bs = t and 0.42 or 0.38
+    local bw = (iw - 0.2) / 2
+    local nodes = {
+        line(e.name, t and 0.5 or 0.46, G.C.GOLD, iw),
+        line(ST.text_of(e), t and 0.4 or 0.36, e.kind == "online" and G.C.GREEN or G.C.UI.TEXT_LIGHT, iw),
+    }
+    if e.kind == "invite" then
+        if can_join then
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = iw, padding = 0.04}, nodes = {
+                UIK.button{label = L("Join"), button = "social_toast_join", colour = G.C.GREEN, w = bw, h = bh, scale = bs, col = true, id = "social_toast_join"},
+                {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+                UIK.button{label = L("Later"), button = "social_toast_later", colour = G.C.RED, w = bw, h = bh, scale = bs, col = true, id = "social_toast_later"},
+            }}
+        else
+            nodes[#nodes + 1] = line(L("Join from the main menu."), t and 0.34 or 0.3, UIK.C.muted, iw)
+            nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = iw, padding = 0.04}, nodes = {
+                UIK.button{label = L("Later"), button = "social_toast_later", colour = G.C.RED, w = bw, h = bh, scale = bs, col = true, id = "social_toast_later"},
+            }}
+        end
+    end
+    if e.kind == "ask" then
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = iw, padding = 0.04}, nodes = {
+            UIK.button{label = L("Let in"), button = "social_toast_ask_yes", colour = G.C.GREEN, w = bw, h = bh, scale = bs, col = true, id = "social_toast_ask_yes"},
+            {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+            UIK.button{label = L("No"), button = "social_toast_ask_no", colour = G.C.RED, w = bw, h = bh, scale = bs, col = true, id = "social_toast_ask_no"},
+        }}
+    end
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", r = 0.3, padding = 0.07, colour = G.C.JOKER_GREY, emboss = 0.1}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", r = 0.2, padding = 0.12, minw = w, colour = G.C.L_BLACK}, nodes = nodes},
+        }},
+    }}
+end
+
+local function place()
+    if G.STAGE == G.STAGES.RUN then return "tmi", {x = 0, y = 0.12} end
+    return "tri", {x = -0.3, y = 0.3}
+end
+
+local function blockers()
+    local out = {}
+    local mg = rawget(_G, "Minigames")
+    local b = mg and mg.host and mg.host.btn
+    if b and not b.REMOVED and b.T then out[#out + 1] = b end
+    return out
+end
+
+local function dodge(box)
+    if not (box and box.T and box.alignment) then return end
+    for _ = 1, 3 do
+        local hit
+        for _, b in ipairs(blockers()) do
+            if box.T.x < b.T.x + b.T.w and b.T.x < box.T.x + box.T.w and box.T.y < b.T.y + b.T.h and b.T.y < box.T.y + box.T.h then hit = b break end
+        end
+        if not hit then return end
+        box.alignment.offset.y = box.alignment.offset.y + (hit.T.y + hit.T.h + 0.15 - box.T.y)
+        box:align_to_major()
+        box:hard_set_VT()
+    end
+end
+ST.dodge = dodge
+
+function ST.hide()
+    if ST.box then pcall(function() ST.box:remove() end) end
+    ST.box, ST.cur, ST.sig = nil, nil, nil
+end
+
+local function drop(e)
+    for i = #ST.list, 1, -1 do
+        if ST.list[i] == e then table.remove(ST.list, i) end
+    end
+    if ST.cur == e then ST.hide() end
+end
+ST.drop = drop
+
+local function show(e, can_join)
+    ST.hide()
+    local align, offset = place()
+    local ok, box = pcall(function()
+        return UIBox{definition = ST.def(e, can_join), config = {align = align, offset = offset, major = G.ROOM_ATTACH, instance_type = "ALERT"}}
+    end)
+    if not ok then
+        print("[social_toasts] " .. tostring(box))
+        drop(e)
+        return
+    end
+    ST.box, ST.cur = box, e
+    pcall(dodge, box)
+    if e.kind == "invite" and can_join and not e.with_join then
+        e.with_join = true
+        e.shown_until = nil
+    end
+    ST.sig = tostring(can_join) .. "|" .. tostring(G.STAGE) .. "|" .. tostring(G.SETTINGS.paused) .. "|" .. tostring(touch())
+    if not e.shown_until then
+        e.shown_until = now() + ((e.kind == "invite" or e.kind == "ask") and ST.SHOW_INVITE or e.kind == "online" and ST.SHOW_ONLINE or ST.SHOW_INFO)
+        pcall(play_sound, (e.kind == "invite" or e.kind == "ask") and "highlight2" or "card1", 1.1, 0.5)
+    end
+end
+
+local function send_wanted()
+    local w = ST.want
+    if not w then return end
+    if now() > w.until_t then
+        ST.want = nil
+        return
+    end
+    local T = state()
+    local B = rawget(_G, "bom_social")
+    if not (T and T.connected() and B and B.S and B.S.hello and T.lobby_key()) then return end
+    ST.want = nil
+    ST.sent_to = w.name
+    if w.codes then
+        T.send({type = "social_invite", codes = w.codes})
+    else
+        T.send({type = "social_invite", code = w.code})
+    end
+end
+
+local function pick(can_join)
+    for _, e in ipairs(ST.list) do
+        if not (e.dormant and not can_join) then return e end
+    end
+end
+
+function ST.update()
+    send_wanted()
+    if not (G and G.ROOM_ATTACH and G.STAGES) then return end
+    local t = now()
+    for i = #ST.list, 1, -1 do
+        local e = ST.list[i]
+        if t >= e.until_t then
+            table.remove(ST.list, i)
+            if ST.cur == e then ST.hide() end
+        elseif e.shown_until and t >= e.shown_until then
+            if e.kind == "invite" and not e.with_join then
+                e.shown_until, e.dormant = nil, true
+                if ST.cur == e then ST.hide() end
+            else
+                table.remove(ST.list, i)
+                if ST.cur == e then ST.hide() end
+            end
+        end
+    end
+    if ST.box and ST.box.REMOVED then ST.box, ST.cur, ST.sig = nil, nil, nil end
+    if in_match() then
+        if ST.cur then ST.hide() end
+        return
+    end
+    local can_join = ST.joinable()
+    local e = pick(can_join)
+    if not e then
+        if ST.cur then ST.hide() end
+        return
+    end
+    if e.dormant then e.dormant, e.shown_until = nil, nil end
+    local sig = tostring(can_join) .. "|" .. tostring(G.STAGE) .. "|" .. tostring(G.SETTINGS.paused) .. "|" .. tostring(touch())
+    if ST.cur ~= e or ST.sig ~= sig then
+        show(e, can_join)
+    elseif t >= (ST.dodge_at or 0) then
+        ST.dodge_at = t + 0.25
+        pcall(dodge, ST.box)
+    end
+end
+
+function ST.clear()
+    ST.list = {}
+    ST.hide()
+end
+
+function ST.play_with(code, name)
+    if type(code) ~= "string" or code == "" then return end
+    if not ST.joinable() then return end
+    ST.want = {code = code, name = name or "?", until_t = now() + ST.WANT_SECS}
+r 13 1825 %20%20%20%20 -
+l 8
+    if bom_ui and bom_ui.show_connecting_screen then pcall(bom_ui.show_connecting_screen) end
+    if bom_room and bom_room.create then bom_room.create("private") end
+end
+
+function ST.party_with(codes)
+    if type(codes) ~= "table" or #codes == 0 then return end
+    if not ST.joinable() then return end
+    ST.want = {codes = codes, name = L("Party"), until_t = now() + ST.WANT_SECS}
+r 13 1825 %20%20%20%20 -
+l 11
+    if bom_party and bom_party.create then bom_party.create("private", "br") end
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+local function register_funcs()
+    G.FUNCS.social_toast_join = function()
+        local e = ST.cur
+        if not (e and e.kind == "invite") then return end
+        drop(e)
+        if not ST.joinable() then return end
+r 13 1825 %20%20%20%20%20%20%20%20 -
+l 5
+        if bom_ui and bom_ui.show_connecting_screen then pcall(bom_ui.show_connecting_screen) end
+        if bom_room and bom_room.join then bom_room.join(e.room, {}) end
+    end
+    G.FUNCS.social_toast_later = function()
+        local e = ST.cur
+r 13 1300 %20%20%20%20%20%20%20%20 -
+l 55
+        if e.kind == "invite" and not e.with_join then
+            e.shown_until, e.dormant = nil, true
+            ST.hide()
+            return
+        end
+        drop(e)
+    end
+    G.FUNCS.social_toast_ask_yes = function()
+        local e = ST.cur
+        if not (e and e.kind == "ask") then return end
+        drop(e)
+        local T = state()
+        if T then T.send({type = "social_ask_reply", code = e.code, ok = true}) end
+    end
+    G.FUNCS.social_toast_ask_no = function()
+        local e = ST.cur
+        if not (e and e.kind == "ask") then return end
+        drop(e)
+        local T = state()
+        if T then T.send({type = "social_ask_reply", code = e.code, ok = false}) end
+    end
+    G.FUNCS.social_play_with = function(e)
+        local r = ref(e)
+        ST.play_with(r.code, r.name)
+    end
+end
+
+function ST.init()
+    register_funcs()
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["invites you to their lobby"] = "vous invite dans son salon",
+            ["invites you to their party"] = "vous invite dans son groupe",
+            ["is online"] = "est en ligne",
+            ["Join from the main menu."] = "Rejoignez depuis le menu principal.",
+            ["Invite sent."] = "Invitation envoyée.",
+            ["Later"] = "Plus tard",
+            ["asks to join your lobby"] = "demande à rejoindre votre salon",
+            ["Let in"] = "Accepter", ["No"] = "Non",
+        },
+        es = {
+            ["invites you to their lobby"] = "te invita a su sala",
+            ["invites you to their party"] = "te invita a su grupo",
+            ["is online"] = "está en línea",
+            ["Join from the main menu."] = "Únete desde el menú principal.",
+            ["Invite sent."] = "Invitación enviada.",
+            ["Later"] = "Más tarde",
+            ["asks to join your lobby"] = "pide unirse a tu sala",
+            ["Let in"] = "Dejar entrar", ["No"] = "No",
+        },
+    }
+end
+
+return ST
+end

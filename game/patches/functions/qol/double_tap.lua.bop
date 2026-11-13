@@ -1,0 +1,186 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 64
+local Q = QOL
+local M = Q.feature("double_tap", {})
+
+M.WINDOW = 0.45
+M.PROMOTE_GUARD = 0.2
+
+Q.default("qol_double_tap", false)
+
+local function is_selected(card)
+    return card and card.highlighted and true or false
+end
+
+function M.allowed()
+    if not (UIK and UIK.thumb and UIK.thumb()) then return false end
+    if not (Q.on("qol_double_tap") and Q.in_run()) then return false end
+    if bom_playback and bom_playback.active and bom_playback.active() then return false end
+    return G.STATE == G.STATES.SELECTING_HAND and not G.OVERLAY_MENU
+end
+
+function M.find(node, depth)
+    depth = depth or 0
+    if not node or depth > 40 then return nil end
+    if node.config and node.config.button == "play_cards_from_highlighted" then return node end
+    for _, v in pairs(node.children or {}) do
+        local r = M.find(v, depth + 1)
+        if r then return r end
+    end
+    return nil
+end
+
+function M.play_button()
+    if not (G.buttons and G.buttons.UIRoot) then return nil end
+    return M.find(G.buttons.UIRoot)
+end
+
+function M.play_hand()
+    if G.CONTROLLER and G.CONTROLLER.locked then return false end
+    if not (G.hand and G.hand.highlighted and #G.hand.highlighted > 0) then return false end
+    local btn = M.play_button()
+    if btn and btn.click then
+        local ok = pcall(function() btn:click() end)
+        if ok then return true end
+    end
+    if G.FUNCS and G.FUNCS.play_cards_from_highlighted then
+        local ok = pcall(G.FUNCS.play_cards_from_highlighted, {config = {}})
+        return ok and true or false
+    end
+    return false
+end
+
+local function cancel_arm()
+    M.pending_deselect = nil
+    M.last = nil
+end
+
+function M.flush_pending_deselect()
+    local p = M.pending_deselect
+    M.pending_deselect = nil
+    M.last = nil
+    if not p or not p.card then return end
+    local card = p.card
+    if card.area == G.hand and is_selected(card) then
+        pcall(function()
+            G.hand:remove_from_highlighted(card)
+r 3 4617 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 114
+        end)
+    end
+end
+
+function M.tick()
+    local tnow = G.TIMERS and G.TIMERS.REAL or 0
+    if M._just_promoted and (tnow - M._just_promoted.t) > M.PROMOTE_GUARD then
+        M._just_promoted = nil
+    end
+    if not M.pending_deselect then return end
+    if not M.allowed() then
+        cancel_arm()
+        return
+    end
+    if tnow - M.pending_deselect.t > M.WINDOW then
+        M.flush_pending_deselect()
+    end
+end
+
+function M.tap(card, tnow)
+    if not card or card.area ~= G.hand then
+        cancel_arm()
+        return false
+    end
+
+    local prev = M.last
+    if not is_selected(card) then
+        if prev and prev.card == card and (tnow - prev.t) <= M.WINDOW then
+            cancel_arm()
+            M._just_promoted = nil
+            local ok = pcall(function() G.hand:add_to_highlighted(card) end)
+            if not ok or not is_selected(card) then return true end
+            local tries = 0
+            G.E_MANAGER:add_event(Event({blockable = false, blocking = false, func = function()
+                tries = tries + 1
+                if M.play_hand() or tries > 20 or not is_selected(card) then return true end
+                return false
+            end}))
+            return true
+        end
+        cancel_arm()
+        M._just_promoted = {card = card, t = tnow}
+        return false
+    end
+
+    if M._just_promoted and M._just_promoted.card == card and (tnow - M._just_promoted.t) < M.PROMOTE_GUARD then
+        return true
+    end
+
+    cancel_arm()
+    M.last = {card = card, t = tnow}
+    return false
+end
+
+local function wrap_tap(method_name)
+    local prev = Card[method_name]
+    if type(prev) ~= "function" then return end
+    Card[method_name] = function(self, ...)
+        local ok, used = false, false
+        if M.allowed() then
+            ok, used = pcall(M.tap, self, G.TIMERS and G.TIMERS.REAL or 0)
+            if not ok then print("[QoL] double tap: " .. tostring(used)) end
+        end
+        if ok and used then return end
+        return prev(self, ...)
+    end
+end
+
+Q.row("Hand", function()
+    if not UIK.thumb() then return nil end
+    return Q.toggle(
+        'set_qol_double_tap',
+        "Double tap to play",
+        "Quick double-tap an already selected card to play",
+        'qol_double_tap'
+    )
+end)
+
+local function strings()
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["Double tap to play"] = "Double appui pour jouer",
+            ["Quick double-tap an already selected card to play"] =
+                "Double appui rapide sur une carte déjà sélectionnée pour jouer",
+        },
+        es = {
+            ["Double tap to play"] = "Doble toque para jugar",
+            ["Quick double-tap an already selected card to play"] =
+                "Doble toque rápido en una carta ya seleccionada para jugar",
+        },
+    }
+end
+
+function M.init()
+    strings()
+    if M._wrapped or not Card then return end
+    M._wrapped = true
+    wrap_tap("single_tap")
+    wrap_tap("click")
+
+    if not M._tick_wrapped and love and love.update then
+        M._tick_wrapped = true
+        local prev_update = love.update
+        love.update = function(dt, ...)
+            if prev_update then prev_update(dt, ...) end
+            pcall(M.tick)
+        end
+    end
+end
+
+strings()
+
+return M
+end

@@ -1,0 +1,481 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 204
+BO_SHOWCASE = BO_SHOWCASE or {}
+local SC = BO_SHOWCASE
+
+SC.SLOTS = 3
+SC.pick = SC.pick or {slot = 1, page = 1}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() or false end
+
+local function profile()
+  return G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile] or nil
+end
+
+local function save_progress() pcall(function() G:save_progress() end) end
+
+local function is_joker(key)
+  local c = type(key) == "string" and #key <= 64 and G.P_CENTERS and G.P_CENTERS[key] or nil
+  return c ~= nil and c.set == "Joker"
+end
+
+local function discovered(key)
+  return is_joker(key) and G.P_CENTERS[key].discovered == true
+end
+
+function SC.data()
+  local p = profile()
+  if not p then return {j = {"", "", ""}, t = ""} end
+  local d = p.bo_showcase
+  if type(d) ~= "table" then d = {}; p.bo_showcase = d end
+  if type(d.j) ~= "table" then d.j = {} end
+  for i = 1, SC.SLOTS do
+    if type(d.j[i]) ~= "string" then d.j[i] = "" end
+  end
+  if type(d.t) ~= "string" then d.t = "" end
+  return d
+end
+
+local function rank_list()
+  local P = rawget(_G, "PROGRESSION_CONSTANTS")
+  return type(P) == "table" and type(P.RANKS) == "table" and P.RANKS or {}
+end
+
+local function mp_level()
+  local ok, d = pcall(function() return type(get_mp_progression_display) == "function" and get_mp_progression_display() or nil end)
+  return ok and type(d) == "table" and tonumber(d.level) or 1
+end
+
+local function title_defs()
+  local out = {}
+  for i, r in ipairs(rank_list()) do
+    if type(r) == "table" and r.name then
+      out[#out + 1] = {id = "r:" .. i, text = r.name, colour = r.color, unlocked = function() return mp_level() >= (tonumber(r.min_level) or 1) end}
+    end
+  end
+  for _, t in ipairs(type(rawget(_G, "TITLES")) == "table" and TITLES or {}) do
+    if type(t) == "table" and t.id and t.name then
+      out[#out + 1] = {id = "c:" .. t.id, text = t.name, unlocked = function()
+        return CosmeticsManager and CosmeticsManager.is_unlocked and CosmeticsManager.is_unlocked("title", t.id) or false
+      end}
+    end
+  end
+  for _, a in ipairs(type(rawget(_G, "ACHIEVEMENT_DEFINITIONS")) == "table" and ACHIEVEMENT_DEFINITIONS or {}) do
+    local r = type(a) == "table" and a.reward_type == "title" and a.reward_data or nil
+    if type(r) == "table" and (r.name or a.name) then
+      out[#out + 1] = {id = "a:" .. tostring(a.id), text = r.name or a.name, unlocked = function()
+        return AchievementManager and AchievementManager.is_unlocked and AchievementManager.is_unlocked(a.id) or false
+      end}
+    end
+  end
+  return out
+end
+
+function SC.title_info(id)
+  if type(id) ~= "string" or id == "" or #id > 64 then return nil end
+  for _, t in ipairs(title_defs()) do
+    if t.id == id then return t end
+  end
+end
+
+function SC.titles()
+  local out, seen = {}, {}
+  for _, t in ipairs(title_defs()) do
+    local ok, yes = pcall(t.unlocked)
+    if ok and yes and not seen[t.text] then
+      seen[t.text] = true
+      out[#out + 1] = t
+    end
+  end
+  return out
+end
+
+local function unlocked_info(id)
+  local t = SC.title_info(id)
+  if not t then return nil end
+  local ok, yes = pcall(t.unlocked)
+  return ok and yes and t or nil
+end
+
+function SC.current_id()
+  local d = SC.data()
+  if d.t ~= "" and unlocked_info(d.t) then return d.t end
+  local p = profile()
+  local e = p and type(p.progression) == "table" and p.progression.equipped_title
+  if d.t == "" and type(e) == "string" and e ~= "" and unlocked_info("c:" .. e) then return "c:" .. e end
+  return ""
+end
+
+function SC.set_title(id)
+  id = type(id) == "string" and id or ""
+  SC.data().t = id
+  local p = profile()
+  if p and type(p.progression) == "table" then p.progression.equipped_title = id:match("^c:(.+)$") end
+  save_progress()
+end
+
+function SC.my_title()
+  return unlocked_info(SC.current_id())
+end
+
+function SC.opp_title()
+  local sc = SC.opponent()
+  return sc and SC.title_info(sc.t) or nil
+end
+
+function SC.title_text(t)
+  return t and L(t.text) or nil
+end
+
+function SC.jokers()
+  local out = {}
+  for _, c in ipairs(G.P_CENTER_POOLS and G.P_CENTER_POOLS.Joker or {}) do
+    if type(c) == "table" and c.key and c.discovered and not c.no_collection and G.P_CENTERS[c.key] == c then out[#out + 1] = c.key end
+  end
+  return out
+end
+
+function SC.clean(p)
+  if type(p) ~= "table" then return nil end
+  local j, seen = {}, {}
+  if type(p.j) == "table" then
+    for i = 1, SC.SLOTS do
+      local k = p.j[i]
+      if is_joker(k) and not seen[k] then seen[k] = true; j[i] = k else j[i] = "" end
+    end
+  end
+  local t = SC.title_info(p.t) and p.t or ""
+  local any = t ~= ""
+  for i = 1, SC.SLOTS do if (j[i] or "") ~= "" then any = true end end
+  if not any then return nil end
+  for i = 1, SC.SLOTS do j[i] = j[i] or "" end
+  return {j = j, t = t}
+end
+
+function SC.payload()
+  local d = SC.data()
+  local j = {}
+  for i = 1, SC.SLOTS do j[i] = discovered(d.j[i]) and d.j[i] or "" end
+  return SC.clean({j = j, t = SC.current_id()})
+end
+
+function SC.opponent()
+  local ok, sc = pcall(function()
+    local st = bom_match and bom_match.get_state and bom_match.get_state()
+    local p = st and st.opp_profile
+    if st and st.waiting_guest then return nil end
+    return type(p) == "table" and SC.clean(p.showcase) or nil
+  end)
+  return ok and sc or nil
+end
+
+local function title_colour(t)
+  if t and t.colour and G.C[t.colour] and t.colour ~= "WHITE" then return G.C[t.colour] end
+  return G.C.GOLD
+end
+
+local function text(str, scale, colour, o)
+  o = o or {}
+  return {n = G.UIT.T, config = {text = tostring(str), scale = scale, colour = colour or G.C.WHITE, shadow = true, maxw = o.maxw}}
+end
+
+local function fit_text(str, w, scale, colour, min_scale)
+  local K = rawget(_G, "bom_kit")
+  local s, sc = tostring(str or ""), scale
+  if K and K.fit then s, sc = K.fit(s, w, scale, min_scale) end
+  return text(s, sc, colour)
+end
+
+function SC.title_node(t, w, scale, min_scale)
+  if not t then return nil end
+  scale = scale or 0.3
+  return fit_text(L(t.text), w or 3, scale, title_colour(t), min_scale or scale * 0.6)
+end
+
+function SC.title_cell(t, w, scale)
+  local node = SC.title_node(t, w, scale)
+  return {n = G.UIT.C, config = {align = "cm", padding = node and 0.05 or 0}, nodes = {node}}
+end
+
+local function card_area(keys, scale, w)
+  local cw, ch = G.CARD_W * scale, G.CARD_H * scale
+  local list = {}
+  for _, k in ipairs(keys) do if is_joker(k) then list[#list + 1] = k end end
+  if #list == 0 then return nil end
+  local was = G.SETTINGS.paused
+r 13 1381 %20%20 -
+l 216
+  local ok, area = pcall(function()
+    local a = CardArea(0, 0, w or (#list * cw * 1.08), ch, {card_limit = #list, card_w = cw, type = "title_2", highlight_limit = 0})
+    for _, k in ipairs(list) do
+      a:emplace(Card(0, 0, cw, ch, nil, G.P_CENTERS[k], {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true}))
+    end
+    return a
+  end)
+  G.SETTINGS.paused = was
+  return ok and area or nil
+end
+
+local function slot_box(scale, label)
+  local cw, ch = G.CARD_W * scale, G.CARD_H * scale
+  return {n = G.UIT.C, config = {align = "cm", minw = cw, minh = ch, r = 0.1, colour = {0, 0, 0, 0.3}}, nodes = {
+    label and text(label, math.min(touch() and 0.36 or 0.3, 0.46 * scale), G.C.UI.TEXT_INACTIVE) or nil,
+  }}
+end
+
+local function single(k, scale)
+  local area = card_area({k}, scale, G.CARD_W * scale)
+  if not area then return slot_box(scale, L("Empty")) end
+  return {n = G.UIT.C, config = {align = "cm", minw = G.CARD_W * scale, minh = G.CARD_H * scale}, nodes = {{n = G.UIT.O, config = {object = area}}}}
+end
+
+function SC.lobby_column(sc, LS)
+  LS = LS or 1.4
+  local scale = 0.62 * LS / G.CARD_H
+  local cw = G.CARD_W * scale
+  local w = SC.SLOTS * cw + (SC.SLOTS - 1) * 0.05 + 0.1
+  local nodes = {}
+  if sc then
+    local t = SC.title_info(sc.t)
+    local tl = t and L(t.text) or ""
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.2 * LS}, nodes = {
+      t and fit_text(tl, w - 0.05, 0.2 * LS, title_colour(t), 0.12 * LS) or nil,
+    }}
+    local row = {}
+    for i = 1, SC.SLOTS do
+      if i > 1 then row[#row + 1] = {n = G.UIT.C, config = {minw = 0.05}, nodes = {}} end
+      local k = sc.j[i]
+      row[#row + 1] = k ~= "" and single(k, scale) or slot_box(scale)
+    end
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = w}, nodes = row}
+  else
+    local s = L("No showcase")
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.2 * LS + G.CARD_H * scale}, nodes = {
+      fit_text(s, w - 0.1, 0.2 * LS, G.C.UI.TEXT_INACTIVE, 0.12 * LS),
+    }}
+  end
+  return {n = G.UIT.C, config = {align = "cm", minw = w, padding = 0.02}, nodes = nodes}
+end
+
+function SC.lobby_pair(state)
+  local mine = SC.payload()
+  local theirs = SC.opponent()
+  if not mine and not theirs then return nil, nil end
+  return SC.lobby_column(mine), SC.lobby_column(theirs)
+end
+
+local function dims()
+  if touch() then return {card = 0.8, name = 0.52, title = 0.44, info = 0.38, gap = 0.2} end
+  return {card = 0.84, name = 0.5, title = 0.4, info = 0.3, gap = 0.22}
+end
+
+function SC.profile_card(w)
+  local d = dims()
+  local p = profile()
+  local name = p and type(p.name) == "string" and p.name or ""
+  local st = bom_match and bom_match.get_state and bom_match.get_state()
+  if name == "" and st and type(st.my_name) == "string" then name = st.my_name end
+  local sc = SC.payload()
+  local t = sc and SC.title_info(sc.t)
+  local level = mp_level()
+  local rank = type(get_rank) == "function" and get_rank(level) or nil
+  local inner = w - 0.4
+  local name_row = {fit_text(name ~= "" and name or "-", inner * 0.8, d.name, G.C.WHITE)}
+  local b = bom_ranked and bom_ranked.badge_for and name ~= "" and bom_ranked.badge_for(name, d.name) or nil
+  if b then name_row = {b, {n = G.UIT.C, config = {minw = 0.08}, nodes = {}}, name_row[1]} end
+  local tl = t and L(t.text) or L("No title")
+  local info = L("Level") .. " " .. tostring(level) .. (rank and rank.name and ("  " .. L(rank.name)) or "")
+  local row = {}
+  for i = 1, SC.SLOTS do
+    if i > 1 then row[#row + 1] = {n = G.UIT.C, config = {minw = d.gap}, nodes = {}} end
+    local k = sc and sc.j[i] or ""
+    row[#row + 1] = k ~= "" and single(k, d.card) or slot_box(d.card, L("Empty"))
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, r = 0.12, padding = 0.08, colour = G.C.JOKER_GREY}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", minw = w - 0.16, r = 0.1, padding = 0.1, colour = G.C.BLACK}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", minw = inner, minh = 0.62}, nodes = name_row},
+      {n = G.UIT.R, config = {align = "cm", minw = inner, minh = 0.46}, nodes = {fit_text(tl, inner, d.title, t and title_colour(t) or G.C.UI.TEXT_INACTIVE)}},
+      {n = G.UIT.R, config = {align = "cm", minw = inner, minh = 0.36}, nodes = {fit_text(info, inner, d.info, G.C.UI.TEXT_LIGHT)}},
+      {n = G.UIT.R, config = {align = "cm", minw = inner, minh = G.CARD_H * d.card + 0.16}, nodes = row},
+    }},
+  }}
+end
+
+local function joker_name(k)
+  if not is_joker(k) then return L("Empty") end
+  local ok, s = pcall(localize, {type = "name_text", set = "Joker", key = k})
+  if ok and type(s) == "string" and s ~= "" and s ~= "ERROR" then return s end
+  return G.P_CENTERS[k].name or k
+end
+
+local function slot_row(i, k, w)
+  local bh = touch() and 0.9 or 0.78
+  local bw = touch() and 2.3 or 2.1
+  local lw = w - bw - 0.2
+  local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = bh + 0.14, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = "cl", minw = lw, maxw = lw, padding = 0}, nodes = {UIK.text(L("Joker") .. " " .. i .. ": " .. joker_name(k), {shadow = true})}},
+    {n = G.UIT.C, config = {align = "cm", minw = bw + 0.2, padding = 0}, nodes = {
+      UIK.button{label = k ~= "" and L("CHANGE") or L("PICK"), button = "bo_sc_pick", ref_table = {slot = i}, id = "bo_sc_slot_" .. i, w = bw, h = bh, col = true},
+    }},
+  }}
+  node.uik_h = bh + 0.14
+  return node
+end
+
+function SC.build_tab()
+  local d = SC.data()
+  local port = UIK.portrait and UIK.portrait()
+  local cw = port and (UIK.W - 0.3) or (UIK.col_w(2) - 0.3)
+  local h = UIK.H - UIK.TOP
+  local left = UIK.section(L("Your profile card"), {SC.profile_card(cw - 0.4), UIK.note(L("Your opponent sees it in the MP lobby."), {w = cw - 0.4})}, {w = cw, h = not port and h - 0.2 or nil})
+  local rows = {}
+  for i = 1, SC.SLOTS do
+    local k = discovered(d.j[i]) and d.j[i] or ""
+    rows[#rows + 1] = slot_row(i, k, cw - 0.4)
+  end
+  local titles = SC.titles()
+  local opts, cur = {L("None")}, 1
+  local mine = SC.my_title()
+  for i, t in ipairs(titles) do
+    opts[#opts + 1] = L(t.text)
+    if mine and (t.id == mine.id or t.text == mine.text) then cur = i + 1 end
+  end
+  if cur == 1 and d.t ~= "" then d.t = "" end
+  rows[#rows + 1] = UIK.cycle{label = L("Title"), options = opts, current = cur, w = cw - 0.4, callback = function(idx)
+    local t = titles[idx - 1]
+    SC.set_title(t and t.id or "")
+    UIK.refresh()
+  end}
+  local right = UIK.section(L("Showcase"), rows, {w = cw, h = not port and h - 0.2 or nil})
+  if port then
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, minh = h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", padding = 0.1}, nodes = {left, UIK.spacer(0.1), right}}}}
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = h, padding = 0}, nodes = {UIK.columns({{left}, {right}}, {h = h})}}
+end
+
+local function picker_dims()
+  if touch() then return {per = 5, rows = 2, card = 0.62, bw = 1.5, bh = 0.62, bs = 0.36} end
+  return {per = 6, rows = 2, card = 0.64, bw = 1.4, bh = 0.5, bs = 0.32}
+end
+
+local function build_picker()
+  local pd = picker_dims()
+  local list = SC.jokers()
+  local per_page = pd.per * pd.rows
+  local pages = math.max(1, math.ceil(#list / per_page))
+  SC.pick.page = math.max(1, math.min(SC.pick.page or 1, pages))
+  local d = SC.data()
+  local used = {}
+  for i = 1, SC.SLOTS do if d.j[i] ~= "" then used[d.j[i]] = true end end
+  local h = UIK.H - UIK.TOP
+  if #list == 0 then
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = h}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {text(L("No jokers discovered yet."), 0.42, G.C.WHITE)}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {text(L("Discover jokers in your runs to pick them here."), 0.34, G.C.UI.TEXT_LIGHT)}},
+      }},
+    }}
+  end
+  local cw = G.CARD_W * pd.card
+  local cell_w = math.max(cw, pd.bw) + 0.25
+  local grid = {}
+  local first = (SC.pick.page - 1) * per_page
+  for r = 1, pd.rows do
+    local cells = {}
+    for c = 1, pd.per do
+      local k = list[first + (r - 1) * pd.per + c]
+      local nodes = {}
+      if k then
+        nodes[1] = {n = G.UIT.R, config = {align = "cm", minw = cell_w}, nodes = {single(k, pd.card)}}
+        nodes[2] = {n = G.UIT.R, config = {align = "cm", minw = cell_w, padding = 0.04}, nodes = {
+          UIK.button{label = used[k] and L("PICKED") or L("PICK"), button = "bo_sc_choose", ref_table = {key = k}, disabled = used[k],
+            colour = UIK.C.ok, w = pd.bw, h = pd.bh, scale = pd.bs, id = "bo_sc_pick_" .. c .. "_" .. r},
+        }}
+      end
+      cells[#cells + 1] = {n = G.UIT.C, config = {align = "tm", minw = cell_w, minh = G.CARD_H * pd.card + pd.bh + 0.16}, nodes = nodes}
+    end
+    grid[#grid + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = cells}
+  end
+  local slot_text = L("Joker") .. " " .. tostring(SC.pick.slot) .. ": " .. joker_name(d.j[SC.pick.slot])
+  local pager = UIK.pager{prev = "bo_sc_prev", next = "bo_sc_next", text = tostring(SC.pick.page) .. " / " .. tostring(pages),
+    prev_disabled = SC.pick.page <= 1, next_disabled = SC.pick.page >= pages}
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, minh = h, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = 0.42}, nodes = {fit_text(slot_text, UIK.W - 1, touch() and 0.38 or 0.34, G.C.UI.TEXT_LIGHT)}},
+      {n = G.UIT.R, config = {align = "cm", minw = UIK.W}, nodes = {{n = G.UIT.C, config = {align = "cm"}, nodes = grid}}},
+      {n = G.UIT.R, config = {align = "cm", minw = UIK.W, padding = 0.04}, nodes = {pager}},
+    }},
+  }}
+end
+
+function SC.open_picker(slot)
+  SC.pick.slot = math.max(1, math.min(SC.SLOTS, tonumber(slot) or 1))
+  local d = SC.data()
+  local list = SC.jokers()
+  local per_page = picker_dims().per * picker_dims().rows
+  SC.pick.page = 1
+  for i, k in ipairs(list) do
+    if k == d.j[SC.pick.slot] then SC.pick.page = math.ceil(i / per_page) end
+  end
+  local footer = {}
+  if d.j[SC.pick.slot] ~= "" then
+    footer[1] = UIK.button{label = L("REMOVE"), button = "bo_sc_remove", colour = UIK.C.danger, id = "bo_sc_remove"}
+  end
+r 13 1381 %20%20 -
+l 51
+  G.FUNCS.overlay_menu{definition = UIK.window{id = "bo_sc_pick", title = L("PICK A JOKER"),
+    tabs = {{key = "jokers", label = L("Jokers"), build = build_picker}},
+    footer = footer, back_func = "bo_sc_back"}}
+end
+
+function SC.back()
+  local P = rawget(_G, "mpm_profile")
+  if P and P.open then P.open("showcase") else G.FUNCS.exit_overlay_menu() end
+end
+
+G.FUNCS.bo_sc_pick = function(e)
+  local slot = e and e.config and e.config.ref_table and e.config.ref_table.slot
+  SC.open_picker(slot)
+end
+
+G.FUNCS.bo_sc_choose = function(e)
+  local k = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not discovered(k) then return end
+  local d = SC.data()
+  for i = 1, SC.SLOTS do if d.j[i] == k then d.j[i] = "" end end
+  d.j[SC.pick.slot] = k
+  save_progress()
+  SC.back()
+end
+
+G.FUNCS.bo_sc_remove = function()
+  SC.data().j[SC.pick.slot] = ""
+  save_progress()
+  SC.back()
+end
+
+G.FUNCS.bo_sc_back = function() SC.back() end
+G.FUNCS.bo_sc_prev = function() SC.pick.page = (SC.pick.page or 1) - 1; UIK.refresh() end
+G.FUNCS.bo_sc_next = function() SC.pick.page = (SC.pick.page or 1) + 1; UIK.refresh() end
+
+mod_loc_register{
+  fr = {
+    ["Showcase"] = "Vitrine", ["Your profile card"] = "Ta carte de profil", ["Title"] = "Titre", ["No title"] = "Aucun titre",
+    ["Empty"] = "Vide", ["CHANGE"] = "CHANGER", ["PICKED"] = "CHOISI", ["REMOVE"] = "RETIRER", ["PICK A JOKER"] = "CHOISIS UN JOKER",
+    ["Jokers"] = "Jokers", ["No showcase"] = "Pas de vitrine", ["Your opponent sees it in the MP lobby."] = "Ton adversaire la voit dans le salon MP.", ["No jokers discovered yet."] = "Aucun joker découvert pour l'instant.",
+    ["Discover jokers in your runs to pick them here."] = "Découvre des jokers dans tes parties pour les choisir ici.",
+  },
+  es = {
+    ["Showcase"] = "Vitrina", ["Your profile card"] = "Tu tarjeta de perfil", ["Title"] = "Título", ["No title"] = "Sin título",
+    ["Empty"] = "Vacío", ["CHANGE"] = "CAMBIAR", ["PICKED"] = "ELEGIDO", ["REMOVE"] = "QUITAR", ["PICK A JOKER"] = "ELIGE UN COMODÍN",
+    ["Jokers"] = "Comodines", ["No showcase"] = "Sin vitrina", ["Your opponent sees it in the MP lobby."] = "Tu rival la ve en la sala MP.", ["No jokers discovered yet."] = "Aún no has descubierto jokers.",
+    ["Discover jokers in your runs to pick them here."] = "Descubre jokers en tus partidas para elegirlos aquí.",
+  },
+}
+
+return SC
+end

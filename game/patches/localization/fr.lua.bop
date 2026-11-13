@@ -1,0 +1,666 @@
+BOP 1
+eol lf
+final 1
+base 37
+c 372
+l 7
+            e_mp_phantom={
+                name="Fantôme",
+                text={
+                    "{C:attention}Éternel{} et {C:red}lié au Rival{}",
+                    "Créé et détruit par ton {C:attention}Rival{}",
+                },
+            },
+c 58
+l 1
+                    "{C:attention}Immunisée{} contre les malus des Boss",
+c 1441
+l 4
+            apocalypse_sticker={
+                name="Autocollant Apocalypse",
+                text={
+                    "Joker utilisé",
+r 37 1876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                    "{C:attention}Mise {C:attention}Apocalypse{}",
+                },
+            },
+c 25
+l 4
+            chaos_sticker={
+                name="Autocollant Chaos",
+                text={
+                    "Joker utilisé",
+r 37 1876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                    "{C:attention}Mise {C:attention}Chaos{}",
+                },
+            },
+c 8
+l 35
+                },
+            },
+            mp_internal_sell_value={
+                name="Valeur de vente",
+                text={
+                    "{C:money,s:1.3}$#1#",
+                },
+            },
+            mp_sticker_persistent={
+                name="Persistant",
+                text={
+                    "Ne peut pas être détruit",
+                    "Coûte {C:red}${} à vendre",
+                    "Le coût augmente de",
+                    "{C:red}3${} à chaque fin de manche",
+                },
+            },
+            mp_sticker_unreliable={
+                name="Peu fiable",
+                text={
+                    "Ne se déclenche pas lors",
+                    "de la {C:attention}dernière main{}",
+                },
+            },
+            mp_sticker_draining={
+                name="Épuisant",
+                text={
+                    "{X:mult,C:white}X0.75{} Multi",
+                },
+            },
+            mp_sticker_balanced={
+                name="Équilibré",
+                text={
+                    "Marque d'équilibre multijoueur",
+                    "sans effet de carte supplémentaire",
+c 107
+l 6
+                },
+            },
+            oblivion_sticker={
+                name="Autocollant Oblivion",
+                text={
+                    "Joker utilisé",
+r 37 1876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    "{C:attention}Mise {C:attention}Oblivion{}",
+c 259
+l 6
+                },
+            },
+            transcendent_sticker={
+                name="Autocollant Transcendant",
+                text={
+                    "Joker utilisé",
+r 37 1876 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 1
+                    "{C:attention}Mise {C:attention}Transcendante{}",
+c 290
+s 2
+l 3
+                    "Articles de boutique {C:money}+1 ${}",
+                    "Relances : +{C:money}2 ${} chacune",
+                    "{s:0.8}Inclut les mises précédentes",
+c 46
+l 6
+                },
+            },
+            stake_chaos={
+                name="Mise du chaos",
+                text={
+                    "Les {C:attention}Boosters{} ont {C:red}-1{} choix",
+r 37 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                },
+            },
+            stake_apocalypse={
+                name="Mise de l'apocalypse",
+                text={
+                    "Les {C:purple}Blindes de Boss{} obtiennent un {C:red}effet supplémentaire{}",
+r 37 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 7
+                },
+            },
+            stake_oblivion={
+                name="Mise de l'oubli",
+                text={
+                    "Au début de chaque manche,",
+                    "{C:red}1{} emplacement de {C:attention}Joker{} aléatoire est {C:red}désactivé{}",
+r 37 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 6
+                },
+            },
+            stake_transcendent={
+                name="Mise transcendante",
+                text={
+                    "Les {C:purple}Blindes de Boss{} sont toujours des {C:red}Blindes finales{}",
+r 37 2555 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 757
+l 9
+            stake_white="Victoire en mise blanche",
+            stake_red="Victoire en mise rouge",
+            stake_green="Victoire en mise verte",
+            stake_black="Victoire en mise noire",
+            stake_blue="Victoire en mise bleue",
+            stake_purple="Victoire en mise violette",
+            stake_orange="Victoire en mise orange",
+            stake_gold="Victoire en mise d'or",
+            stake_insanity="Victoire en mise Folie",
+c 2
+l 76
+            all_legendary="Collection légendaire",
+            ante_1="Premiers pas",
+            ante_4="Les choses sérieuses",
+            ante_5="Explorateur d'antes",
+            ante_8="Le Boss",
+            ante_10="Maître des antes",
+            ante_12="Légendaire",
+            ante_15="Ante Impossible",
+            ante_20="Mode Dieu",
+            ante_39="Infinity +1",
+            common_only_win="Légende commune",
+            consumables_used_100="Consommateur",
+            daily_complete_1="Participant quotidien",
+            daily_complete_7="Guerrier hebdomadaire",
+            daily_complete_30="Maître du mois",
+            daily_streak_7="Série hebdomadaire",
+            daily_streak_30="Légende quotidienne",
+            deck_win_c_abandoned="Maître du jeu Abandonné",
+            deck_win_c_anaglyph="Maître du jeu Anaglyphe",
+            deck_win_c_base="Maître du jeu Rouge",
+            deck_win_c_black="Maître du jeu Noir",
+            deck_win_c_blue="Maître du jeu Bleu",
+            deck_win_c_checkered="Maître du jeu Damier",
+            deck_win_c_erratic="Maître du jeu Erratique",
+            deck_win_c_ghost="Maître du jeu Fantôme",
+            deck_win_c_green="Maître du jeu Vert",
+            deck_win_c_magic="Maître du jeu Magique",
+            deck_win_c_nebula="Maître du jeu Nébuleuse",
+            deck_win_c_painted="Maître du jeu Peint",
+            deck_win_c_plasma="Maître du jeu Plasma",
+            deck_win_c_yellow="Maître du jeu Jaune",
+            deck_win_c_zodiac="Maître du jeu Zodiaque",
+            discards_100="100 défausses",
+            discards_500="500 défausses",
+            hands_played_100="100 mains jouées",
+            hands_played_500="500 mains jouées",
+            hands_played_1000="1000 mains jouées",
+            joker_5_at_once="Maison pleine de Jokers",
+            joker_10_at_once="Armée de Jokers",
+            joker_20_at_once="Débordement de Jokers",
+            jokers_obtained_50="50 Jokers obtenus",
+            jokers_obtained_100="100 Jokers obtenus",
+            legendary_obtained="Trouvaille légendaire",
+            minimalist="Minimaliste",
+            money_100="100 $",
+            money_500="500 $",
+            money_1000="1000 $",
+            no_discards_win="Sans défausse",
+            no_jokers_win="Pas de rigolade",
+            perfect_ante="Ante parfait",
+            perfectionist="Perfectionniste",
+            play_five_of_kind="Cinq identiques",
+            play_flush_five="Couleur cinq",
+            play_flush_house="Couleur pleine",
+            play_full_house="Main pleine",
+            play_royal_flush="Quinte royale",
+            play_straight_flush="Quinte flush",
+            score_10k="Record 10K",
+            score_100k="Record 100K",
+            score_1m="Record 1M",
+            score_10m="Record 10M",
+            score_100m="Record 100M",
+            score_1b="Record 1B",
+            secret_custom_run="Créateur sur mesure",
+            secret_exactly_52="Jeu classique",
+            secret_jukebox="DJ",
+            secret_lucky_7="7 chanceux",
+            secret_mod_user="Moddeur",
+            secret_money_cap="Plafond d'argent",
+            secret_zero_dollars="Fauché",
+            sell_jokers_50="Marchand de Jokers",
+            shops_visited="Accro au shopping",
+            speed_demon="Démon de vitesse",
+            speed_runner="Coureur rapide",
+            vouchers_used="Collectionneur de coupons",
+            win_5_jokers="Fan de Jokers",
+c 30
+l 10
+            c_bankruptcy_1="Faillite",
+            c_gauntlet_1="Le Gantelet",
+            c_tiny_hands_1="Petites Mains",
+            c_heavy_hitter_1="Poids Lourd",
+            c_glass_cannon_1="Canon de Verre",
+            c_collector_1="Le Collectionneur",
+            c_wildcard_1="Joker Sauvage",
+            c_speed_run_1="Course Rapide",
+            c_alchemist_1="L'Alchimiste",
+            c_duality_1="Dualité",
+c 427
+l 5
+            mp_phantom="Fantôme",
+            mp_sticker_balanced="Équilibré",
+            mp_sticker_draining="Épuisant",
+            mp_sticker_persistent="Persistant",
+            mp_sticker_unreliable="Peu fiable",
+c 372
+l 417
+            sc_welcome={
+                "Salut ! Bienvenue dans",
+                "{C:attention}Balatro Overhaul{} !",
+                "Laisse-moi te montrer tout",
+                "ce qui a été ajouté. Prêt ?",
+            },
+            sc_play={
+                "Voici ton bouton {C:blue}Jouer{} !",
+                "Tu as maintenant des {C:attention}Défis Quotidiens{},",
+                "de nouveaux {C:attention}Défis{}, et un",
+                "{C:attention}Créateur de Partie{} complet avec",
+                "des réglages pour mains, défausses, argent...",
+            },
+            sc_achievements={
+                "Voici le menu {C:attention}Succès{} !",
+                "Il y a plus de {C:attention}200 succès{}",
+                "avec {C:attention}5 niveaux de rareté{} à débloquer.",
+                "Combien peux-tu en obtenir ?",
+            },
+            sc_collection={
+                "La {C:green}Collection{} te permet de parcourir",
+                "tous les jokers, tarots, planètes et plus.",
+                "Plus {C:attention}4 nouvelles Mises Créatives{} !",
+                "{C:attention}Chaos{}, {C:attention}Oubli{}, {C:attention}Apocalypse{},",
+                "et {C:red}Transcendance{} attendent les braves !",
+            },
+            sc_progression={
+                "La {C:green}Progression{} est toute neuve !",
+                "Gagne de l'{C:attention}XP{} en jouant des mains,",
+                "en franchissant des antes, en gagnant,",
+                "et en {C:attention}complétant des quêtes{} !",
+                "Monte à travers {C:attention}7 rangs{} !",
+            },
+            sc_tavern={
+                "La {C:blue}Taverne{} est ton hub !",
+                "Tu y trouveras les {C:attention}Quêtes{},",
+                "ton {C:attention}Profil{}, la {C:money}Boutique{},",
+                "le {C:attention}Créateur de Deck{}, et",
+                "la {C:attention}Bibliothèque de Seeds{} !",
+            },
+            sc_multiplayer={
+                "Le {C:blue}Multijoueur{} est arrivé !",
+                "Affronte tes amis en ligne",
+                "dans des parties compétitives.",
+                "Que la meilleure main gagne !",
+            },
+            sc_settings={
+                "Les {C:attention}Paramètres{} ont plein de nouveautés !",
+                "Réglages de fonctionnalités, {C:attention}Performance{},",
+                "config de l'{C:attention}Optimiseur{}, réglages {C:attention}Jimbo{},",
+                "et le {E:1}Jukebox{} !",
+                "Explore chaque sous-menu !",
+            },
+            sc_modmenu={
+                "Active les {C:red}Triches{} dans Jouer >",
+                "Nouvelle partie : un bouton {C:red}TRICHES{}",
+                "apparaît. Place-le où tu veux !",
+                "(Compte comme une partie à graine.)",
+            },
+            sc_farewell={
+                "C'est tout ! {E:1}Amuse-toi bien{}",
+                "en explorant toutes les nouveautés.",
+                "Tu peux relancer cette visite",
+                "depuis {C:attention}Paramètres{} > {C:attention}Nouveautés{}.",
+                "Maintenant, va éclater des blinds !",
+            },
+            sc_sub_tavern_intro={
+                "Bienvenue à la {C:blue}Taverne{} !",
+                "C'est ton hub principal.",
+                "Découvre les {C:attention}Quêtes{}, ton {C:attention}Profil{},",
+                "la {C:money}Boutique{}, le {C:attention}Créateur de Deck{},",
+                "et la nouvelle {C:attention}Bibliothèque de Seeds{} !",
+            },
+            sc_sub_quests={
+                "Voici tes {C:attention}Quêtes{} !",
+                "{C:blue}Quotidiennes{}, {C:green}hebdomadaires{}, et",
+                "{C:attention}répétables{} : elles rapportent",
+                "des {C:money}Balacoins{} et de l'{C:attention}XP{} !",
+                "Suis tes séries aussi !",
+            },
+            sc_sub_quests_daily={
+                "L'onglet {C:blue}Quotidiennes{} a des quêtes",
+                "qui se réinitialisent toutes les {C:attention}24h{}.",
+                "Complète-les pour des",
+                "{C:money}Balacoins{} rapides !",
+            },
+            sc_sub_quests_weekly={
+                "L'onglet {C:green}Hebdomadaires{} a des quêtes",
+                "plus difficiles, reset tous les {C:attention}7 jours{}.",
+                "De plus grosses récompenses",
+                "pour de plus grands défis !",
+            },
+            sc_sub_quests_repeatable={
+                "Les quêtes {C:attention}Répétables{} n'expirent jamais.",
+                "Complète-les autant de fois",
+                "que tu veux pour un revenu",
+                "régulier de {C:money}Balacoins{} !",
+            },
+            sc_sub_profile={
+                "Voici ton {C:attention}Profil{} !",
+                "Personnalise ton apparence avec",
+                "{C:attention}6 onglets{} d'options.",
+                "Laisse-moi te montrer !",
+            },
+            sc_sub_profile_colors={
+                "L'onglet {C:attention}Couleurs{} te permet",
+                "de changer la palette de ton profil.",
+                "Débloque-en plus dans",
+                "la {C:money}Boutique{} !",
+            },
+            sc_sub_profile_icon={
+                "L'onglet {C:attention}Icône{} te permet",
+                "de choisir ta photo de profil.",
+                "Les icônes se débloquent en jouant !",
+            },
+            sc_sub_profile_icon_effect={
+                "Les {C:attention}Effets d'icône{} ajoutent du style",
+                "à ton icône de profil :",
+                "holographique, foil, et plus !",
+            },
+            sc_sub_profile_decks={
+                "L'onglet {C:attention}Decks{} montre tous",
+                "tes dos de deck. Inclut les",
+                "decks personnalisés que tu as créés !",
+            },
+            sc_sub_profile_badges={
+                "L'onglet {C:attention}Badges{} montre tes",
+                "badges de boss. Équipes-en un",
+                "pour {C:gold}désactiver{} l'effet du boss !",
+            },
+            sc_sub_profile_jimbo_skin={
+                "L'onglet {E:1}Skin de Jimbo{} te permet",
+                "de changer l'apparence de Jimbo !",
+                "Achète des skins dans la {C:money}Boutique{}.",
+            },
+            sc_sub_shop={
+                "Bienvenue à la {C:money}Boutique Balacoins{} !",
+                "Dépense tes {C:money}Balacoins{} en cosmétiques.",
+                "Laisse-moi te montrer chaque section !",
+            },
+            sc_sub_shop_jimbo_skins={
+                "L'onglet {E:1}Skins de Jimbo{} propose",
+                "des skins uniques pour Jimbo.",
+                "Achète-les avec des {C:money}Balacoins{} !",
+            },
+            sc_sub_shop_colors={
+                "L'onglet {C:attention}Couleurs{} vend",
+                "des palettes de couleurs de profil.",
+                "Chacune change toute l'apparence",
+                "de ton profil !",
+            },
+            sc_sub_shop_icon_effects={
+                "L'onglet {C:attention}Effets d'icône{} propose",
+                "des effets spéciaux pour ton",
+                "icône de profil. Fais-le briller !",
+            },
+            sc_sub_achievements={
+                "Parcours tes {C:attention}Succès{} !",
+                "Un onglet par partie du jeu,",
+                "le {C:attention}jeton{} montre sa rareté.",
+                "Les déblocages s'affichent en jeu !",
+            },
+            sc_sub_progression={
+                "Ta page de {C:green}Progression{} !",
+                "Vois ton rang actuel, ta barre d'XP,",
+                "et tes jalons. Continue à jouer",
+                "pour monter en rang !",
+            },
+            sc_sub_collection={
+                "La {C:green}Collection{} montre tout",
+                "ce que tu as découvert. Consulte",
+                "l'onglet {C:attention}Mises{} pour les 4 nouvelles",
+                "Mises Créatives !",
+            },
+            sc_sub_multiplayer={
+                "Bienvenue en {C:blue}Multijoueur{} !",
+                "Crée une salle ou rejoins-en une.",
+                "Joue en face-à-face contre",
+                "un autre joueur en ligne !",
+            },
+            sc_sub_settings_welcome={
+                "Bienvenue dans les {C:attention}Paramètres{} !",
+                "Laisse-moi te présenter",
+                "toutes les nouveautés ici.",
+            },
+            sc_sub_settings_gamespeed={
+                "{C:attention}Vitesse du jeu{} : contrôle la",
+                "vitesse des animations de cartes.",
+                "Plus haut = plus rapide !",
+            },
+            sc_sub_settings_fps_cap={
+                "{C:attention}Limite FPS{} : limite les",
+                "images par seconde pour économiser",
+                "la batterie ou déplafonner.",
+            },
+            sc_sub_settings_score_speed={
+                "{C:attention}Vitesse du score{} : vitesse",
+                "du compteur de score.",
+                "Mets {C:red}Instantané{} pour le passer !",
+            },
+            sc_sub_settings_toggles={
+                "Ces {C:attention}interrupteurs{} contrôlent :",
+                "{C:attention}Triches{}, {C:attention}Aperçu du Score{},",
+                "{C:attention}Info Joker{}, {C:attention}Optimiseur{},",
+                "{C:attention}Glisser pour Sélect.{}, {C:attention}Compteur FPS{},",
+                "{C:attention}Mode Performance{}, et plus !",
+            },
+            sc_sub_tgl_modmenu={
+                "{C:attention}Désactiver les triches{} : cache",
+                "l'option Triches et le bouton",
+                "Triches en partie.",
+            },
+            sc_sub_tgl_online={
+                "{C:attention}Fonctions en ligne{} :",
+                "active la connectivité réseau",
+                "pour le multijoueur et plus.",
+            },
+            sc_sub_tgl_score_preview={
+                "{C:attention}Aperçu du Score{} : affiche",
+                "ton score estimé avant de",
+                "jouer ta main. Très utile !",
+            },
+            sc_sub_tgl_joker_info={
+                "{C:attention}Info Joker{} : affiche des",
+                "détails supplémentaires sur la",
+                "contribution de chaque joker.",
+            },
+            sc_sub_tgl_optimizer={
+                "{C:attention}Optimiseur de Main{} : active",
+                "l'analyseur qui suggère les",
+                "meilleurs jeux et défausses.",
+            },
+            sc_sub_tgl_drag={
+                "{C:attention}Glisser pour Sélectionner{} :",
+                "sélectionne les cartes en",
+                "glissant au lieu de taper.",
+            },
+            sc_sub_tgl_fps={
+                "{C:attention}Compteur FPS{} : affiche le",
+                "nombre d'images par seconde.",
+                "Utile pour le debug !",
+            },
+            sc_sub_tgl_perf_mode={
+                "{C:attention}Mode Performance{} : réduit",
+                "les effets visuels pour de",
+                "meilleures performances.",
+            },
+            sc_sub_tgl_jimbo_comments={
+                "{C:attention}Commentaires de Jimbo{} :",
+                "Jimbo réagit à tes jeux",
+                "et événements pendant une partie !",
+            },
+            sc_sub_tgl_skip_score={
+                "{C:attention}Passer l'Animation de Score{} :",
+                "saute l'animation du compteur",
+                "pour un gameplay plus rapide.",
+            },
+            sc_sub_btn_perf={
+                "Bouton {C:blue}Réglages Performance{} :",
+                "ouvre les options détaillées",
+                "d'optimisation pour ton appareil.",
+            },
+            sc_sub_btn_optimizer={
+                "Bouton {C:blue}Réglages Optimiseur{} :",
+                "configure l'analyseur de main",
+                "et l'affichage des suggestions.",
+            },
+            sc_sub_btn_profile={
+                "Bouton {C:blue}Profil{} : consulte",
+                "ton profil joueur, tes stats",
+                "et ta progression !",
+            },
+            sc_sub_perf_welcome={
+                "Bienvenue dans les {C:attention}Réglages de Performance{} !",
+                "Ajuste ces options pour obtenir",
+                "les meilleurs FPS sur ton appareil.",
+            },
+            sc_sub_perf_resolution={
+                "{C:attention}Échelle de résolution{} : réduis-la",
+                "à {C:green}75%{} ou {C:green}50%{} pour un gros",
+                "gain de FPS sur les appareils faibles.",
+            },
+            sc_sub_perf_shader={
+                "{C:attention}Qualité des shaders{} : contrôle",
+                "les effets visuels comme l'inclinaison",
+                "et la lueur. {C:green}Off{} = le plus rapide.",
+            },
+            sc_sub_perf_particles={
+                "{C:attention}Effets de particules{} : active/désactive",
+                "les particules flottantes. Les désactiver",
+                "aide sur les téléphones bas de gamme.",
+            },
+            sc_sub_perf_canvas={
+                "{C:attention}Cache de canvas{} : saute les",
+                "redessinages complets une frame sur deux.",
+                "Bon gain de FPS, coût visuel minimal.",
+            },
+            sc_sub_perf_culling={
+                "{C:attention}Élimination hors-écran{} : ne dessine",
+                "pas les cartes hors de l'écran.",
+                "Utile quand tu as beaucoup de cartes.",
+            },
+            sc_sub_perf_bg={
+                "{C:attention}Animations d'arrière-plan{} :",
+                "désactive le fond animé pour",
+                "améliorer les FPS.",
+            },
+            sc_sub_perf_gc={
+                "{C:attention}Réglage GC{} : ajuste le",
+                "ramasse-miettes Lua pour des",
+                "frames plus fluides. Essaie !",
+            },
+            sc_sub_perf_filter={
+                "{C:attention}Filtre de texture{} : choisis",
+                "{C:blue}Bilinéaire{} (lisse) ou {C:blue}Nearest{}",
+                "(pixelisé). Nearest est plus rapide.",
+            },
+            sc_sub_perf_heavy={
+                "{C:attention}Passer les gros scores{} :",
+                "saute les longues animations de score",
+                "quand le total est très grand.",
+            },
+            sc_sub_opt_welcome={
+                "Bienvenue dans les {C:attention}Réglages Optimiseur{} !",
+                "Configure comment l'Optimiseur",
+                "analyse tes cartes.",
+            },
+            sc_sub_opt_toggle={
+                "Interrupteur {C:attention}Optimiseur de Main{} :",
+                "active ou désactive l'optimiseur",
+                "globalement.",
+            },
+            sc_sub_opt_beginner={
+                "{C:attention}Mode Débutant{} : affiche",
+                "seulement la {C:green}meilleure{} suggestion.",
+                "Parfait pour apprendre !",
+            },
+            sc_sub_opt_auto_compact={
+                "{C:attention}Compact automatique{} : le",
+                "HUD compact apparaît automatiquement",
+                "pendant la phase de jeu.",
+            },
+            sc_sub_opt_discards={
+                "{C:attention}Afficher les défausses{} : montre",
+                "les cartes recommandées à défausser",
+                "avec leurs noms exacts.",
+            },
+            sc_sub_opt_outs={
+                "{C:attention}Afficher les probabilités{} :",
+                "montre la probabilité d'obtenir",
+                "une main cible après la défausse.",
+            },
+            sc_sub_opt_joker_order={
+                "{C:attention}Optimisation de l'ordre Joker{} :",
+                "analyse les permutations de jokers",
+                "pour trouver le meilleur ordre.",
+            },
+            sc_sub_opt_mode={
+                "{C:attention}Mode{} : choisis entre",
+                "{C:blue}Score Max{}, {C:green}Survivre au Blind{},",
+                "ou {C:attention}Conserver{} les mains.",
+            },
+            sc_sub_opt_perf={
+                "{C:attention}Performance{} : choisis",
+                "{C:green}Rapide{}, {C:blue}Équilibré{}, ou",
+                "{C:red}Recherche Profonde{}.",
+            },
+            sc_sub_opt_scale={
+                "{C:attention}Curseurs de taille{} : ajuste",
+                "la taille du HUD compact et du",
+                "panneau complet à ta convenance.",
+            },
+            sc_sub_modmenu={
+                "La fenêtre {C:red}Triches{} a {C:attention}7 onglets{} :",
+                "partie, jokers, consommables, cartes,",
+                "bons, mains et options.",
+                "Lâche-toi ! (Plus d'XP après une triche.)",
+            },
+            sc_sub_custom_run={
+                "Le {C:attention}Créateur de Partie{} !",
+                "Ajuste mains, défausses, emplacements",
+                "joker, argent de départ, et plus",
+                "avec des curseurs. Tes règles !",
+            },
+            sc_sub_deck_creator={
+                "Le {C:attention}Créateur de Deck{} !",
+                "Crée ton propre deck personnalisé.",
+                "Définis objets de départ, cartes",
+                "interdites, taux, et plus !",
+            },
+            sc_sub_jukebox={
+                "Le {E:1}Jukebox{} !",
+                "Choisis ta bande-son.",
+                "Passe entre les {C:blue}OST{} et",
+                "les {C:attention}remixes{} pendant la partie !",
+            },
+            sc_sub_jukebox_own={
+                "Le {E:1}Jukebox{} !",
+                "Choisis ta bande-son :",
+                "ajoute tes morceaux dans",
+                "{C:attention}Ma musique{} et écoute-les !",
+            },
+            sc_sub_badge_immunity={
+                "Équipe un {C:attention}Badge de Boss{} !",
+                "Ton badge {C:gold}désactive{} l'effet",
+                "de ce boss entièrement.",
+                "Voir {C:attention}Profil > Badges{} !",
+            },
+            sc_sub_seed_library={
+                "Bienvenue dans la {C:attention}Bibliothèque de Seeds{} !",
+                "Sauvegarde tes {C:gold}seeds{} préférées,",
+                "{C:green}copie{} ou {C:green}colle{} depuis le presse-papiers,",
+                "nomme-les et {C:blue}joue{} quand tu veux !",
+            },
+            sc_choose_language={
+                "Choisis ta langue :",
+            },
+c 121
+end

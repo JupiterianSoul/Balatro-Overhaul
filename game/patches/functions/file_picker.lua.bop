@@ -1,0 +1,239 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 130
+local P = {}
+
+local RESULT = "overhaul_pick.txt"
+local gen = 0
+local pending
+
+local function os_name()
+  local ok, n = pcall(love.system.getOS)
+  return ok and n or "Linux"
+end
+
+local function fake_dir()
+  local d = os.getenv("OVERHAUL_PICKER_FAKE")
+  return d and d ~= "" and d or nil
+end
+
+P.OLD_APP = "The file picker needs the newest version of the app."
+P.REBUILD_APP = "Update the Overhaul Launcher, then press REBUILD THE APP to use the file picker."
+
+function P.missing_text()
+  return os_name() == "Android" and P.REBUILD_APP or P.OLD_APP
+end
+
+function P.available()
+  return os_name() == "Android" or fake_dir() ~= nil
+end
+
+local function url_arg(s)
+  return (tostring(s):gsub("[^%w%-%._~/|:,]", function(c) return string.format("%%%02X", c:byte()) end))
+end
+
+local function ext_of(name)
+  return (name:match("%.([^%.]+)$") or ""):lower()
+end
+
+local function fake_pick(kind, dest, exts, max)
+  local dir = fake_dir() .. "/" .. kind
+  local lines = {}
+  local names = {}
+  local h = io.popen('ls -1 "' .. dir .. '" 2>/dev/null')
+  if h then
+    for line in h:lines() do names[#names + 1] = line end
+    h:close()
+  end
+  table.sort(names)
+  if #names == 0 then return "cancel\n" end
+  local want = {}
+  for e in tostring(exts):gmatch("[^,]+") do want[e] = true end
+  for _, name in ipairs(names) do
+    local f = io.open(dir .. "/" .. name, "rb")
+    local data = f and f:read("*a")
+    if f then f:close() end
+    if not want[ext_of(name)] then
+      lines[#lines + 1] = "-" .. name
+    elseif not data then
+      lines[#lines + 1] = "!" .. name
+    elseif max > 0 and #data > max then
+      lines[#lines + 1] = ">" .. name
+    else
+      local old = io.open(dest .. "/" .. name, "rb")
+      local old_size = old and old:seek("end")
+      if old then old:close() end
+      if old_size == #data then
+        lines[#lines + 1] = "=" .. name
+      else
+        local out = io.open(dest .. "/" .. name, "wb")
+        if out then
+          out:write(data)
+          out:close()
+          lines[#lines + 1] = "+" .. name
+        else
+          lines[#lines + 1] = "!" .. name
+        end
+      end
+    end
+    if kind == "zip" then break end
+  end
+  return "ok\n" .. table.concat(lines, "\n") .. "\n"
+end
+
+local function parse(data)
+  local res = {status = "error", added = {}, wrong = {}, failed = {}, big = {}, same = {}}
+  local first = true
+  local slot = {["+"] = "added", ["-"] = "wrong", ["!"] = "failed", [">"] = "big", ["="] = "same"}
+  for line in tostring(data):gmatch("[^\r\n]+") do
+    if first then
+      res.status, first = line, false
+    else
+      local list = res[slot[line:sub(1, 1)] or ""]
+      if list and #line > 1 then list[#list + 1] = line:sub(2) end
+    end
+  end
+  return res
+end
+
+local function poll(mine)
+  if mine ~= gen or not pending then return true end
+  local data = love.filesystem.read(RESULT)
+  if not data then return false end
+  love.filesystem.remove(RESULT)
+  local cb = pending
+  pending = nil
+  local ok, err = pcall(cb, parse(data))
+  if not ok then print("[PICKER] " .. tostring(err)) end
+  return true
+end
+
+local function fake_save(src, name)
+  local f = io.open(src, "rb")
+  local data = f and f:read("*a")
+  if f then f:close() end
+  os.execute('mkdir -p "' .. fake_dir() .. '/save"')
+  local out = data and io.open(fake_dir() .. "/save/" .. name, "wb")
+  if not out then return "error\n" end
+  out:write(data)
+  out:close()
+  return "ok\n+" .. name .. "\n"
+end
+
+local function start(cmd, arg, fake, cb)
+  love.filesystem.remove(RESULT)
+  if fake_dir() then
+    love.filesystem.write(RESULT, fake())
+  else
+    local ok, opened = pcall(love.system.openURL, "overhaul:" .. cmd .. "?" .. url_arg(arg))
+    if not ok or opened ~= true then return false end
+  end
+  gen = gen + 1
+  pending = cb
+  local mine = gen
+r 1 112 %20%20 -
+l 79
+    blocking = false, blockable = false, no_delete = true, pause_force = true, timer = 'REAL',
+    func = function() return poll(mine) end,
+  }))
+  return true
+end
+
+function P.pick(kind, dest, exts, max, cb)
+  if not P.available() or type(dest) ~= "string" or dest == "" then return false end
+  max = math.floor(tonumber(max) or 0)
+  local result = love.filesystem.getSaveDirectory() .. "/" .. RESULT
+  return start("pick", table.concat({kind, dest, result, exts, tostring(max)}, "|"),
+    function() return fake_pick(kind, dest, exts, max) end, cb)
+end
+
+function P.save(src, name, cb)
+  if not P.available() or type(src) ~= "string" or src == "" then return false end
+  local result = love.filesystem.getSaveDirectory() .. "/" .. RESULT
+  return start("save", table.concat({src, result, name}, "|"), function() return fake_save(src, name) end, cb)
+end
+
+P.FILTERS = {
+  image = {label = "Pictures", exts = {"png", "jpg", "jpeg", "bmp", "tga"}},
+  forgemod = {label = "Forge mod", exts = {"forgemod"}},
+  zip = {label = "Zip", exts = {"zip"}},
+  audio = {label = "Music", exts = {"mp3", "ogg", "wav", "flac"}},
+}
+
+local function sio()
+  local ok, M = pcall(require, "functions/save_io")
+  return ok and type(M) == "table" and M or nil
+end
+
+function P.browse_available()
+  if P.available() then return true end
+  local M = sio()
+  return M ~= nil and M.dialog_osn(os_name()) and love.thread ~= nil
+end
+
+local function copy_in(path, dest, want, max)
+  local name = tostring(path):match("([^/\\]+)$") or ""
+  local res = {status = "ok", added = {}, wrong = {}, failed = {}, big = {}, same = {}}
+  if name == "" then res.status = "error" return res end
+  if not want[ext_of(name)] then res.wrong[1] = name return res end
+  local f = io.open(path, "rb")
+  if not f then res.failed[1] = name return res end
+  local size = f:seek("end")
+  if max > 0 and size and size > max then
+    f:close()
+    res.big[1] = name
+    return res
+  end
+  f:seek("set", 0)
+  local data = f:read("*a")
+  f:close()
+  local out = data and io.open(dest .. "/" .. name, "wb")
+  if not out then res.failed[1] = name return res end
+  out:write(data)
+  out:close()
+  res.added[1] = name
+  return res
+end
+
+function P.browse(kind, dest, max, cb, title)
+  local filter = P.FILTERS[kind]
+  if not filter or type(dest) ~= "string" or dest == "" then return false end
+  max = math.floor(tonumber(max) or 0)
+  if P.available() then return P.pick(kind, dest, table.concat(filter.exts, ","), max, cb) end
+  local M = sio()
+  local osn = os_name()
+  if not (M and M.dialog_osn(osn)) then return false end
+  local fake = os.getenv("OVERHAUL_BROWSE_FAKE_PATH")
+  local cmd = fake and fake ~= "" and ("printf '%s\\n' '" .. fake:gsub("'", "") .. "'") or M.pick_command(osn, title or filter.label, filter)
+  local job = M.dialog_start(cmd)
+  if not job then return false end
+  local want = {}
+  for _, e in ipairs(filter.exts) do want[e] = true end
+  gen = gen + 1
+  pending = nil
+  local mine = gen
+r 1 112 %20%20 -
+l 20
+    blocking = false, blockable = false, no_delete = true, pause_force = true, timer = 'REAL',
+    func = function()
+      if mine ~= gen then return true end
+      local st, path = M.dialog_poll(job)
+      if st == nil then return false end
+      local res
+      if st == "ok" then
+        res = copy_in(path, dest, want, max)
+      else
+        res = {status = st == "none" and "none" or "cancel", added = {}, wrong = {}, failed = {}, big = {}, same = {}}
+      end
+      local ok, err = pcall(cb, res)
+      if not ok then print("[PICKER] " .. tostring(err)) end
+      return true
+    end,
+  }))
+  return true
+end
+
+return P
+end

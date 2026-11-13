@@ -1,0 +1,97 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 78
+local MM = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+
+local function workshop() return rawget(_G, "ModWorkshop") end
+
+function MM.is_open()
+    return G.MODS_MENU ~= nil and G.MODS_MENU.mp_only == true
+end
+
+function MM.header()
+    local t = touch()
+    local sc = t and 0.4 or 0.31
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = t and 1.3 or 1.0, minh = sc * 1.4, r = 0.06, colour = G.C.GOLD, emboss = 0.03}, nodes = {
+            {n = G.UIT.T, config = {text = L("BETA"), scale = sc, colour = G.C.UI.TEXT_DARK}},
+        }},
+        {n = G.UIT.C, config = {minw = 0.15}},
+        {n = G.UIT.C, config = {align = "cm"}, nodes = (function()
+            local str = L("Mods in multiplayer are in beta. They may cause issues.")
+            local port = UIK and UIK.portrait and UIK.portrait()
+            local lines = (port and UIK.wrap) and UIK.wrap(str, sc, 6.4, 2) or {str}
+            local out = {}
+            for i, l in ipairs(lines) do
+                out[i] = {n = G.UIT.R, config = {align = "cl"}, nodes = {{n = G.UIT.T, config = {text = l, scale = sc, colour = G.C.UI.TEXT_LIGHT, shadow = true, maxw = port and 6.6 or nil}}}}
+            end
+            return out
+        end)()},
+    }}
+end
+
+function MM.open()
+    if not G.FUNCS.mods_button then return end
+    G.MODS_MENU = G.MODS_MENU or {page = 1, icons = {}}
+    local reset = not G.MODS_MENU.mp_only
+    G.MODS_MENU.mp_only = true
+    if reset then
+        G.MODS_MENU.ws_gen = (G.MODS_MENU.ws_gen or 0) + 1
+        G.MODS_MENU.ws_page = 1
+    end
+    MM.normal_open({config = {}})
+end
+
+function MM.close()
+    if G.MODS_MENU then
+        G.MODS_MENU.mp_only = nil
+        G.MODS_MENU.ws_gen = (G.MODS_MENU.ws_gen or 0) + 1
+        G.MODS_MENU.ws_page = 1
+    end
+end
+
+local function wrap_filter()
+    local W = workshop()
+    if not (W and W.filtered) or W._mpm_wrapped then return end
+    W._mpm_wrapped = true
+    local filtered = W.filtered
+    W.filtered = function(...)
+        local list = filtered(...)
+        if not MM.is_open() or not W.mp_ok then return list end
+        local out = {}
+        for _, e in ipairs(list) do
+            if W.mp_ok(e) then out[#out + 1] = e end
+        end
+        return out
+    end
+end
+
+function MM.init()
+    if G.FUNCS.mods_button and not MM.normal_open then
+        MM.normal_open = G.FUNCS.mods_button
+        G.FUNCS.mods_button = function(e)
+            MM.close()
+            return MM.normal_open(e)
+        end
+    end
+    G.FUNCS.mpm_mods_back = function()
+        MM.close()
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 11
+    end
+    pcall(wrap_filter)
+    if mod_loc_register then
+        mod_loc_register{
+            fr = {["BETA"] = "BÊTA", ["Mods in multiplayer are in beta. They may cause issues."] = "Les mods en multijoueur sont en bêta. Ils peuvent poser problème."},
+            es = {["BETA"] = "BETA", ["Mods in multiplayer are in beta. They may cause issues."] = "Los mods en multijugador están en beta. Pueden causar problemas."},
+        }
+    end
+end
+
+return MM
+end

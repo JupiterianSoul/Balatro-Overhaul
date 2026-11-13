@@ -1,0 +1,276 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 199
+local DC = rawget(_G, "social_dm_cards") or {}
+social_dm_cards = DC
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function state() return require("multiplayer.mps_state") end
+local function friends() return require("multiplayer.mps_friends") end
+local function MG() return rawget(_G, "Minigames") end
+local function SX() return rawget(_G, "social_more") end
+
+DC.page = DC.page or 1
+
+function DC.mg_token(key, score)
+    return ":mg:" .. tostring(key) .. ":" .. tostring(score) .. ":"
+end
+
+function DC.seed_token(e)
+    local deck = tostring(e.deck or ""):gsub("[:|]", ""):sub(1, 40)
+    return ":seed:" .. tostring(e.seed) .. ":" .. tostring(math.floor(tonumber(e.stake) or 1)) .. ":" .. deck .. ":"
+end
+
+function DC.parse(text)
+    if type(text) ~= "string" then return nil end
+    local k, sc = text:match("^:mg:([%w_]+):(%-?[%d%.]+):$")
+    if k and tonumber(sc) then return {kind = "mg", game = k, score = tonumber(sc)} end
+    local seed, stake, deck = text:match("^:seed:(%w+):(%d+):([^:]*):$")
+    if seed and #seed <= 12 then return {kind = "seed", seed = seed:upper(), stake = tonumber(stake) or 1, deck = deck} end
+    return nil
+end
+
+local function bh() return touch() and 0.7 or 0.56 end
+
+function DC.height(scale)
+    return 2 * scale * 1.3 + bh() + 0.1
+end
+
+local function game_def(key)
+    local mg = MG()
+    return mg and mg.def and mg.def(key)
+end
+
+local function at_menu()
+    if not (G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU) then return false end
+    local k = friends().kit
+    return not (k and k.in_lobby and k.in_lobby())
+end
+
+local function stake_name(n)
+    local s = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and G.P_CENTER_POOLS.Stake[n]
+    local name
+    if s and s.key then pcall(function() name = localize{type = "name_text", set = "Stake", key = s.key} end) end
+    if type(name) ~= "string" or name == "" or name == "ERROR" then name = L("Stake") .. " " .. tostring(n) end
+    return name
+end
+
+function DC.lines(c)
+    local T = state()
+    local sx = SX()
+    if c.kind == "mg" then
+        local def = game_def(c.game)
+        local score = sx and sx.game_score and sx.game_score(c.game, c.score) or tostring(c.score)
+        return T.fill("Beat my {score} on {game}!", {score = score, game = def and L(def.name) or c.game}), L("Minigame challenge"), L("Play"), def ~= nil
+    end
+    local sub = c.deck ~= "" and (L(c.deck) .. ", " .. stake_name(c.stake)) or stake_name(c.stake)
+    return T.fill("Seed {seed}", {seed = c.seed}), sub, L("Play this seed"), at_menu()
+end
+
+function DC.node(c, scale, w)
+    local title, sub, label, ok = DC.lines(c)
+    local lh = scale * 1.3
+    return {n = G.UIT.R, config = {align = "cl", padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cl", padding = 0}, nodes = {
+        {n = G.UIT.R, config = {align = "cl", minh = lh, padding = 0}, nodes = {bom_kit.text(bom_kit.fit(title, w, scale), {scale = scale, colour = G.C.GOLD})}},
+        {n = G.UIT.R, config = {align = "cl", minh = lh, padding = 0}, nodes = {bom_kit.text(bom_kit.fit(sub, w, scale * 0.85), {scale = scale * 0.85, colour = G.C.UI.TEXT_LIGHT})}},
+        {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.05}, nodes = {
+            UIK.button{label = label, button = ok and "social_dm_play" or nil, ref_table = {card = c}, colour = c.kind == "mg" and G.C.GREEN or G.C.BLUE,
+                w = math.min(w, 3.2), h = bh(), disabled = not ok, scale = touch() and 0.38 or 0.34, col = true},
+        }},
+    }}}}
+end
+
+function DC.play(c)
+    if type(c) ~= "table" then return end
+    if c.kind == "mg" then
+        local mg = MG()
+        if not (mg and mg.def and mg.def(c.game) and G.FUNCS.open_minigames) then return end
+        if mg.set_last then pcall(mg.set_last, c.game) end
+        if mg.pick then mg.pick.cur = c.game end
+        if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+        G.FUNCS.open_minigames()
+        return
+    end
+    if not at_menu() then return end
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+    if G.OVERLAY_MENU then G.OVERLAY_MENU:remove(); G.OVERLAY_MENU = nil end
+    if c.deck ~= "" and get_deck_from_name then
+        local center = get_deck_from_name(c.deck)
+        if center and center.unlocked then G.GAME.viewed_back = Back(center) end
+    end
+    local max = G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and #G.P_CENTER_POOLS.Stake or 8
+    local vb = G.GAME.viewed_back and G.GAME.viewed_back.effect and G.GAME.viewed_back.effect.center
+    if PlayRandom and PlayRandom.max_stake then max = math.min(max, PlayRandom.max_stake(vb and vb.key or "b_red")) end
+    G.FUNCS.start_run(nil, {stake = math.max(1, math.min(max, c.stake or 1)), seed = c.seed})
+end
+
+local function seed_file()
+    local M = rawget(_G, "MODLOADER")
+    return (M and M.modded) and "modded_seed_library.jkr" or "seed_library.jkr"
+end
+
+function DC.seeds()
+    local out = {}
+    pcall(function()
+        local data = love.filesystem.read(seed_file())
+        if not data then return end
+        for line in data:gmatch("[^\n]+") do
+            local parts = {}
+            for part in (line .. "|||"):gmatch("([^|]*)|") do
+                parts[#parts + 1] = part
+                if #parts == 4 then break end
+            end
+            if (parts[1] or ""):match("^%w+$") then
+                out[#out + 1] = {seed = parts[1], name = parts[2] or "", deck = parts[3] or "", stake = tonumber(parts[4]) or 1}
+            end
+        end
+    end)
+    return out
+end
+
+function DC.games()
+    local mg = MG()
+    local out = {}
+    if not mg then return out end
+    if not mg.booted and mg.boot then pcall(mg.boot) end
+    for _, d in ipairs(mg.GAMES or {}) do
+        local b = mg.best and mg.best(d.key)
+        if type(b) == "number" then out[#out + 1] = {key = d.key, name = L(d.name), best = b} end
+    end
+    return out
+end
+
+local function win_w() return touch() and 9.6 or 8.4 end
+local function per_page() return touch() and 4 or 5 end
+
+local function picker_body()
+    local w = win_w()
+    local inner = w - 0.4
+    local t = touch()
+    local rh = t and 0.78 or 0.62
+    local bw = t and 1.8 or 1.6
+    local d = bom_kit.dims()
+    local list = DC.mode == "seed" and DC.seeds() or DC.games()
+    local n = math.max(1, math.ceil(#list / per_page()))
+    DC.page = math.max(1, math.min(DC.page, n))
+    local T = state()
+    local f = DC.code and T.friend(DC.code)
+    local rows = {}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+        UIK.text(T.fill("To {name}", {name = f and f.name ~= "" and f.name or "?"}), {scale = d.small, colour = UIK.C.muted}),
+    }}
+    local list_h = per_page() * (rh + 0.12)
+    local items = {}
+    if #list == 0 then
+        local msg = DC.mode == "seed" and {L("No seeds saved yet."), L("Save one from Options during a run, or in the Seed Library.")}
+            or {L("No minigame best yet."), L("Play a minigame in the Arcade first.")}
+        items[1] = {n = G.UIT.R, config = {align = "cm", minw = inner, minh = list_h, padding = 0}, nodes = {UIK.note(msg, {w = inner})}}
+    else
+        local sx = SX()
+        for i = (DC.page - 1) * per_page() + 1, math.min(#list, DC.page * per_page()) do
+            local e = list[i]
+            local label, sub
+            if DC.mode == "seed" then
+                label = e.name ~= "" and e.name or e.seed
+                sub = e.seed .. (e.deck ~= "" and ("  " .. L(e.deck)) or "")
+            else
+                label = e.name
+                sub = T.fill("Your best: {score}", {score = sx and sx.game_score and sx.game_score(e.key, e.best) or tostring(e.best)})
+            end
+            local tw = inner - bw - 0.3
+            items[#items + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {
+                {n = G.UIT.C, config = {align = "cl", minw = tw, maxw = tw, minh = rh, r = 0.1, colour = {0, 0, 0, 0.18}, padding = 0.04}, nodes = {
+                    {n = G.UIT.R, config = {align = "cl", padding = 0}, nodes = {bom_kit.text(bom_kit.fit(label, tw - 0.2, d.small), {scale = d.small, colour = G.C.WHITE})}},
+                    {n = G.UIT.R, config = {align = "cl", padding = 0}, nodes = {bom_kit.text(bom_kit.fit(sub, tw - 0.2, d.small * 0.85), {scale = d.small * 0.85, colour = G.C.GOLD})}},
+                }},
+                {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+                UIK.button{label = L("Send"), button = "social_dm_pick", ref_table = {i = i}, colour = G.C.GREEN, w = bw, h = rh, col = true},
+            }}
+        end
+    end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "tm", minw = inner, minh = list_h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm"}, nodes = items}}}
+    if n > 1 then
+        rows[#rows + 1] = UIK.pager{prev = "social_dm_page", next = "social_dm_page", prev_ref = {d = -1}, next_ref = {d = 1},
+            text = tostring(DC.page) .. " / " .. tostring(n), prev_disabled = DC.page <= 1, next_disabled = DC.page >= n, w = inner}
+    end
+    return UIK.stack(rows, {w = w})
+end
+
+function DC.open(mode, code)
+    DC.mode, DC.code, DC.page = mode, code, 1
+    if G.CONTROLLER then G.CONTROLLER.text_input_hook = nil end
+r 13 1381 %20%20%20%20 -
+l 69
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "social_dm_pick", compact = true, w = win_w() + 0.2,
+        title = mode == "seed" and L("SHARE A SEED") or L("CHALLENGE"),
+        tabs = {{key = "main", label = mode == "seed" and L("Seed Library") or L("Minigames"), build = picker_body}},
+        back_func = "social_dm_pick_back",
+    }}
+end
+
+local function send(code, text)
+    local T = state()
+    if not T.S.chat.enabled then
+        T.note(L("Turn on chat in Messages first."), true)
+        T.S.dm_sel = code
+        friends().open("messages")
+        return
+    end
+    T.send({type = "chat_dm_send", to = code, text = text})
+    T.S.dm_sel = code
+    T.S.dm_input.text = ""
+    friends().open("messages")
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+function DC.init()
+    G.FUNCS.social_dm_play = function(e) DC.play(ref(e).card) end
+    G.FUNCS.social_dm_page = function(e)
+        DC.page = DC.page + (ref(e).d or 0)
+        UIK.refresh()
+    end
+    G.FUNCS.social_dm_pick_back = function()
+        local sx = SX()
+        if sx and sx.back_to_card then sx.back_to_card(DC.code) else friends().open("friends") end
+    end
+    G.FUNCS.social_dm_pick = function(e)
+        local i = ref(e).i
+        local list = DC.mode == "seed" and DC.seeds() or DC.games()
+        local it = i and list[i]
+        if not (it and DC.code) then return end
+        send(DC.code, DC.mode == "seed" and DC.seed_token(it) or DC.mg_token(it.key, it.best))
+    end
+    G.FUNCS.social_challenge_open = function(e) if ref(e).code then DC.open("mg", ref(e).code) end end
+    G.FUNCS.social_seed_open = function(e) if ref(e).code then DC.open("seed", ref(e).code) end end
+    if not mod_loc_register then return end
+    mod_loc_register{
+        fr = {
+            ["Beat my {score} on {game}!"] = "Battez mon {score} à {game} !", ["Minigame challenge"] = "Défi mini-jeu",
+            ["Seed {seed}"] = "Seed {seed}", ["Play this seed"] = "Jouer cette seed", ["Play"] = "Jouer",
+            ["To {name}"] = "Pour {name}", ["No seeds saved yet."] = "Aucune seed enregistrée.",
+            ["Save one from Options during a run, or in the Seed Library."] = "Enregistrez-en une depuis Options en partie, ou dans la Bibliothèque de seeds.",
+            ["No minigame best yet."] = "Pas encore de record en mini-jeu.", ["Play a minigame in the Arcade first."] = "Jouez d'abord à un mini-jeu dans la salle d'arcade.",
+            ["Your best: {score}"] = "Votre record : {score}", ["SHARE A SEED"] = "PARTAGER UNE SEED", ["CHALLENGE"] = "DÉFI",
+            ["Seed Library"] = "Bibliothèque de seeds", ["Minigames"] = "Mini-jeux", ["Turn on chat in Messages first."] = "Activez d'abord le chat dans Messages.",
+            ["Send"] = "Envoyer", ["Stake"] = "Mise",
+        },
+        es = {
+            ["Beat my {score} on {game}!"] = "¡Supera mi {score} en {game}!", ["Minigame challenge"] = "Reto de minijuego",
+            ["Seed {seed}"] = "Código {seed}", ["Play this seed"] = "Jugar este código", ["Play"] = "Jugar",
+            ["To {name}"] = "Para {name}", ["No seeds saved yet."] = "Aún no hay códigos guardados.",
+            ["Save one from Options during a run, or in the Seed Library."] = "Guarda uno desde Opciones en una partida, o en la Biblioteca de códigos.",
+            ["No minigame best yet."] = "Aún no tienes récord en minijuegos.", ["Play a minigame in the Arcade first."] = "Juega primero a un minijuego en el salón recreativo.",
+            ["Your best: {score}"] = "Tu récord: {score}", ["SHARE A SEED"] = "COMPARTIR CÓDIGO", ["CHALLENGE"] = "RETO",
+            ["Seed Library"] = "Biblioteca de códigos", ["Minigames"] = "Minijuegos", ["Turn on chat in Messages first."] = "Activa primero el chat en Mensajes.",
+            ["Send"] = "Enviar", ["Stake"] = "Pozo",
+        },
+    }
+end
+
+return DC
+end

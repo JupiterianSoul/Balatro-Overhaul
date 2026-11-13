@@ -1,0 +1,727 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 543
+﻿
+local bom_events = {}
+
+
+local HANDLERS = {
+    room_created = function(d)
+        pcall(function() bom_rejoin.on_room_seat(d) end)
+        pcall(function() bom_room.on_seat(d) end)
+        pcall(function() bom_room.on_room_created(d) end)
+    end,
+    room_ready = function(d)
+        pcall(function() bom_rejoin.on_room_seat(d) end)
+        pcall(function() bom_room.on_seat(d) end)
+        pcall(function() bom_room.on_room_ready(d) end)
+    end,
+
+    match_session = function(d)
+        pcall(function() bom_rejoin.on_match_session(d) end)
+    end,
+    rejoin_status = function(d)
+        bom_rejoin.on_rejoin_status(d)
+    end,
+    server_info = function(d)
+        pcall(bom_rejoin.on_server_info, d)
+    end,
+    server_moving = function(d)
+        pcall(bom_rejoin.on_server_moving, d)
+    end,
+    lobby_rejoined = function(d)
+        pcall(bom_rejoin.on_lobby_rejoined, d)
+    end,
+    rejoin_ok = function(d)
+        bom_rejoin.on_rejoin_ok(d)
+    end,
+    rejoin_failed = function(d)
+        bom_rejoin.on_rejoin_failed(d)
+    end,
+    opponent_reconnected = function(d)
+        bom_rejoin.on_opponent_reconnected(d)
+    end,
+    match_ended = function(d)
+        bom_rejoin.on_match_ended(d)
+    end,
+    room_closed = function(d)
+        bom_rejoin.on_room_closed(d)
+    end,
+    session_replaced = function(d)
+        bom_rejoin.on_session_replaced(d)
+    end,
+    room_expired = function(d)
+        mp_log.info("BOM_EVENTS", "room_expired (room_closed follows)")
+    end,
+    snapshot_ack = function(d)
+        mp_log.debug("BOM_EVENTS", "snapshot_ack seq=%s bytes=%s stale=%s", tostring(d.seq), tostring(d.bytes), tostring(d.stale))
+    end,
+    ante_timer = function(d)
+        pcall(function() bom_match.on_ante_timer(d) end)
+    end,
+    match_seed = function(d)
+        pcall(function() bom_match.on_match_seed(d) end)
+    end,
+    opponent_deck = function(d)
+        pcall(function() bom_match.on_opponent_deck(d) end)
+    end,
+    pvp_timer_paused = function(d)
+        mp_log.info("BOM_EVENTS", "pvp_timer_paused")
+    end,
+    pvp_timer_resumed = function(d)
+        mp_log.info("BOM_EVENTS", "pvp_timer_resumed ms=%s", tostring(d and d.ms))
+    end,
+    room_error = function(d)
+        pcall(function() bom_room.on_room_error(d) end)
+    end,
+    error = function(d)
+        pcall(function() bom_room.on_server_error(d) end)
+    end,
+    room_list = function(d)
+        bom_room.on_room_list(d)
+    end,
+    guest_left = function(d)
+        bom_room.on_guest_left(d)
+    end,
+    name_refused = function(d)
+        bom_room.on_name_refused(d)
+    end,
+    pong = function(d)
+        bom_core.on_pong(d)
+    end,
+
+    searching = function(d)
+        pcall(function() bom_ui.show_searching_screen() end)
+    end,
+    search_cancelled = function(d)
+        pcall(function() bom_ui.hide_searching_screen() end)
+    end,
+
+    room_joined = function(d)
+        pcall(function() bom_room.on_opponent_profile(d) end)
+    end,
+
+    ready_state = function(d)
+        pcall(function() bom_room.on_opponent_ready(d) end)
+    end,
+
+    match_settings = function(d)
+        pcall(function() bom_room.on_settings_received(d) end)
+    end,
+
+    match_start = function(d)
+        bom_room.on_match_start(d)
+    end,
+
+
+    match_state_update = function(d)
+        pcall(function()
+            if bom_match and bom_match.on_server_state_update then
+                bom_match.on_server_state_update(d)
+            end
+        end)
+        pcall(function() bom_rejoin.on_state_update(d) end)
+    end,
+
+    pvp_resolved = function(d)
+        pcall(function()
+            if bom_match and bom_match.on_pvp_resolved then
+                bom_match.on_pvp_resolved(d)
+            end
+        end)
+    end,
+
+    ascension_resolved = function(d)
+        pcall(function()
+            if not d or not bom_match then return end
+            mp_log.info("BOM_EVENTS", "ascension_resolved: result=%s reason=%s", tostring(d.result), tostring(d.reason))
+            if d.result == "win" then
+                if bom_match.end_match then
+                    bom_match.end_match("win", d.reason or "ascension_farthest")
+                end
+            elseif d.result == "lose" then
+                if bom_match.end_match then
+                    bom_match.end_match("lose", d.reason or "ascension_farthest")
+                end
+            else
+                if bom_match.end_match then
+                    bom_match.end_match("draw", d.reason or "ascension_draw")
+                end
+            end
+        end)
+    end,
+
+    opponent_blind_finished = function(d)
+        pcall(function()
+            if bom_match and bom_match.on_opponent_blind_finished then
+                bom_match.on_opponent_blind_finished(d)
+            end
+        end)
+    end,
+
+
+    blind_finished = function(d)
+        mp_log.debug("BOM_EVENTS", "blind_finished (legacy relay, ignored -- server sends opponent_blind_finished)")
+    end,
+
+    pvp_result = function(d)
+        mp_log.debug("BOM_EVENTS", "pvp_result (legacy relay, ignored -- server sends pvp_resolved)")
+    end,
+
+    state_sync = function(d)
+        mp_log.debug("BOM_EVENTS", "state_sync (legacy relay, ignored -- server sends match_state_update)")
+    end,
+
+    match_finished = function(d)
+        pcall(function()
+            if not d or not bom_match then return end
+            if d.result == "lose" and bom_match.on_opponent_eliminated then
+                bom_match.on_opponent_eliminated(d)
+            elseif d.result == "win" and bom_match.end_match then
+                bom_match.end_match("lose", d.reason or "opponent_win")
+            end
+        end)
+    end,
+
+    round_end = function(d)
+        pcall(function() bom_sync.on_round_end(d) end)
+    end,
+
+    boss_sync = function(d)
+        pcall(function()
+            if not d or not G or not G.GAME then return end
+            local panel = G.GAME.mp_opponent_panel
+            if not panel then return end
+            if (panel.seq or 0) <= (panel.over_seq or 0) then return end
+            if d.score ~= nil and bom_ui and bom_ui.update_opponent_score then
+                bom_ui.update_opponent_score(tonumber(d.score) or d.score)
+            end
+            if d.hands_left ~= nil then panel.hands_left = tonumber(d.hands_left) or panel.hands_left end
+            if d.discards_left ~= nil then panel.discards_left = tonumber(d.discards_left) or panel.discards_left end
+            if d.hands_used ~= nil then panel.hands_used = d.hands_used end
+        end)
+    end,
+
+    start_blind = function(d)
+        pcall(function()
+            mp_log.info("BOM_EVENTS", "start_blind received - starting PvP blind")
+            if G and G.GAME then
+                local st = bom_match and bom_match.get_state and bom_match.get_state()
+                local me = st and tonumber(st.server_player_id)
+                local first = d and tonumber(d.first)
+                G.GAME.mp_pvp_first = (first and me) and (first == me) or nil
+            end
+            if bom_pvp_hud and bom_pvp_hud.on_start_blind then
+                bom_pvp_hud.on_start_blind()
+            end
+        end)
+    end,
+
+    ready_blind_rejected = function(d)
+        pcall(function()
+            mp_log.warn("BOM_EVENTS", "ready_blind_rejected reason=%s", tostring(d and d.reason))
+            if G and G.GAME then
+                G.GAME.mp_blind_ready = false
+                G.GAME.mp_blind_ready_text = mod_loc("Ready")
+            end
+            if bom_pvp_hud then
+                bom_pvp_hud._ready_lock_until = nil
+                bom_pvp_hud._last_ready_toggle = nil
+                bom_pvp_hud._pending_blind_context = nil
+            end
+        end)
+    end,
+
+    ready_blind_kept = function(d)
+        pcall(function()
+            mp_log.info("BOM_EVENTS", "ready_blind_kept: server kept us ready")
+            if G and G.GAME and G.STATE == G.STATES.BLIND_SELECT then
+                G.GAME.mp_blind_ready = true
+                G.GAME.mp_blind_ready_text = mod_loc("Unready")
+            end
+        end)
+    end,
+
+    opponent_ready_blind = function(d)
+        pcall(function()
+            mp_log.info("BOM_EVENTS", "opponent_ready_blind received")
+            if G and G.GAME then
+                G.GAME.mp_opponent_blind_ready = true
+            end
+        end)
+    end,
+
+    opponent_unready_blind = function(d)
+        pcall(function()
+            mp_log.info("BOM_EVENTS", "opponent_unready_blind received")
+            if G and G.GAME then
+                G.GAME.mp_opponent_blind_ready = false
+            end
+        end)
+    end,
+
+    sabotage = function(d)
+        if d and bom_sabotage and bom_sabotage.receive_heckle then
+            pcall(bom_sabotage.receive_heckle, d.sabotage_id)
+        end
+    end,
+
+    enemy_info = function(d)
+        pcall(function()
+            if not d or not G or not G.GAME or not G.GAME.mp_opponent_panel then return end
+            local panel = G.GAME.mp_opponent_panel
+
+            if d.score then
+                local score = tonumber(d.score) or 0
+                panel.score = score
+                panel.score_text = tostring(score)
+            end
+
+            if d.hands_left ~= nil then
+                panel.hands_left = tonumber(d.hands_left) or 0
+            end
+            if d.discards_left ~= nil then panel.discards_left = tonumber(d.discards_left) end
+            panel.seq = (panel.seq or 0) + 1
+            panel.seen = true
+
+            if d.lives ~= nil then
+                local old_lives = panel.lives or 99
+                panel.lives = tonumber(d.lives) or panel.lives
+                if panel.lives < old_lives then
+                    pcall(function()
+                        if play_sound then
+                            play_sound("holo1", 0.865, 0.9)
+                            play_sound("gong", 0.765, 0.4)
+                        end
+                    end)
+                end
+            end
+
+            pcall(function()
+                if bom_pvp_hud and bom_pvp_hud.juice_up_pvp_hud then
+                    bom_pvp_hud.juice_up_pvp_hud()
+                end
+            end)
+
+            mp_log.debug("BOM_EVENTS", "enemy_info: score=%s hands=%s",
+                tostring(d.score), tostring(d.hands_left))
+        end)
+    end,
+
+    end_pvp = function(d)
+        pcall(function()
+            mp_log.info("BOM_EVENTS", "end_pvp received from server")
+            if bom_match and bom_match.set_end_pvp then
+                bom_match.set_end_pvp(true)
+            end
+            if G and G.GAME then
+                G.GAME.mp_blind_ready = false
+                G.GAME.mp_blind_ready_text = mod_loc("Ready")
+            end
+        end)
+    end,
+
+    taunt = function(d)
+        pcall(function()
+            if d and bom_ui and bom_ui.receive_taunt then
+                bom_ui.receive_taunt(d)
+            end
+        end)
+    end,
+
+    set_location = function(d)
+        pcall(function()
+            if not d or not d.location then return end
+            local st = bom_match and bom_match.get_state and bom_match.get_state()
+            if st then st.opp_location = d.location end
+            if not G or not G.GAME or not G.GAME.mp_opponent_panel then return end
+            G.GAME.mp_opponent_panel.location = bom_match.format_location(d.location) or "..."
+            mp_log.debug("BOM_EVENTS", "set_location: opp location = %s", G.GAME.mp_opponent_panel.location)
+        end)
+    end,
+
+    match_end = function(d)
+        mp_log.debug("BOM_EVENTS", "match_end (legacy, ignored -- rewards handled by bom_match.end_match)")
+    end,
+
+    opponent_disconnected = function(d)
+        pcall(function()
+            require("functions/fast_fs").append("mp_match_debug.txt",
+                "\n[OPPONENT_DISCONNECTED] - server says opponent's connection dropped")
+        end)
+        if d and d.held == true then
+            bom_rejoin.on_opponent_disconnected(d)
+            return
+        end
+        if d and d.held == false then return end
+        pcall(function()
+            if bom_match and bom_match.on_opponent_disconnected then
+                bom_match.on_opponent_disconnected()
+            else
+                bom_ui.show_opponent_disconnected()
+            end
+        end)
+    end,
+
+    player_left = function(d)
+        pcall(function()
+            require("functions/fast_fs").append("mp_match_debug.txt",
+                "\n[PLAYER_LEFT] - server says other player left")
+        end)
+        pcall(function()
+            if bom_match and bom_match.on_opponent_disconnected then
+                bom_match.on_opponent_disconnected()
+            else
+                bom_ui.show_opponent_disconnected()
+            end
+        end)
+    end,
+
+    opponent_left = function(d)
+        pcall(function()
+            if d and d.gameHistory and bom_ui and bom_ui.update_game_history then
+                bom_ui.update_game_history(d.gameHistory)
+            end
+        end)
+    end,
+
+    opponent_returned_to_lobby = function(d)
+        bom_events.back_to_lobby_after_results(d)
+    end,
+
+    lobby_returned = function(d)
+        bom_events.back_to_lobby_after_results(d)
+    end,
+
+    rematch_status = function(d)
+        pcall(function()
+            if not d or type(d.votes) ~= "table" then return end
+            local st = bom_match.get_state()
+            st.rematch_votes = { d.votes[1] == true, d.votes[2] == true }
+            if bom_ui and bom_ui.refresh_rematch_status then bom_ui.refresh_rematch_status() end
+        end)
+    end,
+
+    version_mismatch = function(d)
+        pcall(function()
+            local my_ver = (VERSION or "?") .. " (v" .. tostring(MP_PROTOCOL_VERSION or 0) .. ")"
+            local their_ver = (d and d.version or "?") .. " (v" .. tostring(d and d.mp_version or "?") .. ")"
+            bom_ui.show_version_mismatch(my_ver, their_ver)
+        end)
+    end,
+
+    match_cancelled = function(d)
+        pcall(function()
+            require("functions/fast_fs").append("mp_match_debug.txt",
+                "\n[MATCH_CANCELLED] reason=" .. tostring(d and d.reason))
+        end)
+
+        local _phase = bom_match and bom_match.get_phase and bom_match.get_phase()
+        local _in_run = G and G.STAGE and G.STAGE == 2
+        local _match_active = _phase and (
+            _phase == bom_match.PHASE.PLAYING or
+            _phase == bom_match.PHASE.STARTING or
+            _phase == bom_match.PHASE.PVP_BLIND or
+            _phase == bom_match.PHASE.PVP_RESOLVE
+        )
+        if _in_run or _match_active then
+            pcall(function()
+                require("functions/fast_fs").append("mp_match_debug.txt",
+                    "\n[MATCH_CANCELLED IGNORED] in_run=" .. tostring(_in_run)
+                    .. " phase=" .. tostring(_phase) .. " - staying in match")
+                mp_log.warn("BOM_EVENTS",
+                    "match_cancelled ignored - already in match (phase=%s G.STAGE=%s)",
+                    tostring(_phase), tostring(G and G.STAGE))
+            end)
+            return
+        end
+
+        pcall(function()
+            mp_log.info("BOM_EVENTS", "Match cancelled: %s", tostring(d and d.reason))
+            bom_rejoin.exit_to_menu({ reason = d and d.reason, title = mod_loc("Match over") })
+        end)
+    end,
+
+    desync_check = function(d)
+        pcall(function()
+            if bom_match and bom_match.check_desync then
+                bom_match.check_desync(d)
+            end
+        end)
+    end,
+
+    rematch_vote = function(d)
+        pcall(function()
+            if bom_match and bom_match.has_voted_rematch and bom_match.has_voted_rematch() then
+                mp_log.debug("BOM_EVENTS", "Opponent also voted rematch, waiting for server rematch_accepted")
+            else
+                mp_log.info("BOM_EVENTS", "Opponent wants rematch")
+            end
+        end)
+    end,
+
+    rematch_accepted = function(d)
+        pcall(function()
+            mp_log.info("BOM_EVENTS", "Rematch accepted! Seed: %s", tostring(d and d.seed))
+            if d and d.gameHistory and bom_ui and bom_ui.update_game_history then
+                bom_ui.update_game_history(d.gameHistory)
+            end
+            if G and G.OVERLAY_MENU then
+                pcall(function() G.FUNCS.exit_overlay_menu() end)
+            end
+            if bom_ui then bom_ui.destroy_match_hud() end
+            if bom_ui then bom_ui._pending_debrief = nil end
+            local seed = d and d.seed or tostring(os.time())
+            local st = bom_match and bom_match.get_settings and bom_match.get_settings()
+            if st and d and type(d.settings) == "table" and type(d.settings.rolled_deck) == "string" then
+                st.rolled_deck = d.settings.rolled_deck
+            end
+            if d and d.settings and bom_match and bom_match.apply_match_roll then bom_match.apply_match_roll(d.settings) end
+            if bom_match and bom_match.start_match then
+                bom_match.start_match(seed)
+            end
+            if bom_room and bom_room.do_mp_start_run then
+                bom_room.do_mp_start_run(seed, "rematch")
+            end
+        end)
+    end,
+
+    opponent_returned_to_menu = function(d)
+        mp_log.info("BOM_EVENTS", "Opponent returned to menu (room_closed follows)")
+    end,
+
+    end_game_jokers = function(d)
+        pcall(function()
+            if bom_ui and bom_ui.load_end_game_jokers then
+                bom_ui.load_end_game_jokers(d)
+            end
+        end)
+    end,
+
+    nemesis_deck_data = function(d)
+        pcall(function()
+            if bom_ui and bom_ui.on_nemesis_deck_data then
+                bom_ui.on_nemesis_deck_data(d)
+            end
+        end)
+    end,
+}
+
+function bom_events.apply_lobby_seat(d)
+    if not (d and type(d.host) == "boolean" and bom_match and bom_match.get_state) then return end
+    pcall(function() bom_room.on_seat(d) end)
+    local st = bom_match.get_state()
+    st.is_host = d.host
+    if d.playerId ~= nil then st.server_player_id = d.playerId end
+    pcall(function() bom_rejoin.on_room_seat(d) end)
+    mp_log.info("BOM_EVENTS", "lobby seat from server: host=%s pid=%s", tostring(d.host), tostring(d.playerId))
+end
+
+function bom_events.back_to_lobby_after_results(d)
+    pcall(function()
+        mp_log.info("BOM_EVENTS", "Opponent returned to lobby")
+        if d and d.gameHistory and bom_ui and bom_ui.update_game_history then
+            bom_ui.update_game_history(d.gameHistory)
+        end
+        local in_lobby = bom_match and bom_match.get_phase and bom_match.get_phase() == bom_match.PHASE.LOBBY
+        if in_lobby then
+            local st = bom_match.get_state()
+            local changed = d and type(d.host) == "boolean" and st.is_host ~= d.host
+            bom_events.apply_lobby_seat(d)
+            if changed and G.GAME and G.GAME.bom_quick_match and bom_ui and bom_ui.show_quick_match_lobby then
+                bom_ui.show_quick_match_lobby()
+            end
+        end
+        if bom_match and bom_match.get_phase and bom_match.get_phase() ~= bom_match.PHASE.LOBBY then
+            local quick = G.GAME and G.GAME.bom_quick_match
+            local code = G.GAME and G.GAME.bom_room_code
+            if bom_ui then bom_ui.destroy_match_hud() end
+            G.GAME.multiplayer = nil
+            if bom_match and bom_match.return_to_lobby then
+                bom_match.return_to_lobby()
+            elseif bom_match and bom_match.reset then
+                bom_match.reset()
+            end
+            bom_events.apply_lobby_seat(d)
+            pcall(function()
+r 13 1825 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 176
+            end)
+            bom_rejoin.exit_to_menu({ keep_match = true, silent = true, after = function()
+                pcall(function()
+                    G.GAME.bom_quick_match = quick
+                    G.GAME.bom_room_code = G.GAME.bom_room_code or code
+                end)
+                if quick and bom_ui.show_quick_match_lobby then
+                    bom_ui.show_quick_match_lobby()
+                else
+                    bom_ui.show_lobby()
+                end
+            end })
+        end
+    end)
+    pcall(function()
+        if d and type(d.settings) == "table" and bom_match and bom_match.update_settings then
+            bom_match.update_settings(d.settings)
+        end
+    end)
+end
+
+local LISTENERS = {}
+
+function bom_events.register(msg_type, fn)
+    if type(msg_type) ~= "string" or type(fn) ~= "function" then return false end
+    local list = LISTENERS[msg_type]
+    if not list then
+        list = {}
+        LISTENERS[msg_type] = list
+    end
+    for _, f in ipairs(list) do
+        if f == fn then return true end
+    end
+    list[#list + 1] = fn
+    return true
+end
+
+function bom_events.unregister(msg_type, fn)
+    local list = LISTENERS[msg_type]
+    if not list then return false end
+    for i = #list, 1, -1 do
+        if list[i] == fn then
+            table.remove(list, i)
+            return true
+        end
+    end
+    return false
+end
+
+local function run_listeners(data)
+    local list = LISTENERS[data.type]
+    if not list or #list == 0 then return false end
+    local consumed = false
+    for _, fn in ipairs({ unpack(list) }) do
+        local ok, res = pcall(fn, data)
+        if not ok then
+            mp_log.error("BOM_EVENTS", "ERROR in registered handler for %s: %s", tostring(data.type), tostring(res))
+        elseif res == true then
+            consumed = true
+        end
+    end
+    return consumed
+end
+
+function bom_events.dispatch(data)
+    if not data or not data.type then return end
+    if PERF_MON and PERF_MON.enabled then PERF_MON.note_mp_message(data.type) end
+    if mp_log.enabled and mp_log.enabled("DEBUG") then pcall(function()
+        require("functions/fast_fs").append("mp_match_debug.txt",
+            "\n[DISPATCH] type=" .. tostring(data.type)
+            .. " phase=" .. tostring(data.phase)
+            .. " reason=" .. tostring(data.reason)
+            .. " event=" .. tostring(data.event))
+    end) end
+    mp_log.debug("BOM_EVENTS", "dispatch: type=%s", tostring(data.type))
+    if run_listeners(data) then return end
+    if bom_ranked and type(data.type) == "string" then
+        if data.type:sub(1, 7) == "ranked_" then
+            pcall(bom_ranked.on_message, data)
+            return
+        end
+        pcall(bom_ranked.peek_names, data)
+    end
+    if bom_social and type(data.type) == "string" and data.type:sub(1, 7) == "social_" then
+        pcall(bom_social.on_message, data)
+        return
+    end
+    if bom_spectate and (data.type == "spec_board" or data.type == "spec_avail") then
+        pcall(bom_spectate.on_message, data)
+        return
+    end
+    if bom_party_run and bom_party_run.on_message then
+        local ok_run, used = pcall(bom_party_run.on_message, data)
+        if not ok_run then
+            mp_log.error("BOM_EVENTS", "ERROR in party run handler for %s: %s", tostring(data.type), tostring(used))
+        elseif used then
+            return
+        end
+    end
+    if bom_party and bom_party.on_message then
+        local ok_party, consumed = pcall(bom_party.on_message, data)
+        if not ok_party then
+            mp_log.error("BOM_EVENTS", "ERROR in party handler for %s: %s", tostring(data.type), tostring(consumed))
+        elseif consumed then
+            return
+        end
+    end
+    local handler = HANDLERS[data.type]
+    if handler then
+        local ok, err = pcall(handler, data)
+        if not ok then
+            mp_log.error("BOM_EVENTS", "ERROR handling %s: %s", tostring(data.type), tostring(err))
+            pcall(function()
+                local msg = string.format("[DISPATCH ERROR] type=%s err=%s", tostring(data.type), tostring(err))
+                print("[MP_DBG] " .. msg)
+                require("functions/fast_fs").append("mp_match_debug.txt", "\n" .. msg)
+            end)
+            if data.type == "match_start" then
+                error("MATCH_START DISPATCH ERROR: " .. tostring(err))
+            end
+        end
+    else
+        mp_log.debug("BOM_EVENTS", "No handler for: %s", tostring(data.type))
+    end
+end
+
+
+function bom_events.on_game_event(event, data)
+    if not G then return end
+    if not G.GAME then return end
+    if not G.GAME.multiplayer then return end
+
+    if event == "boss_defeated" then
+        G.GAME.mp_boss_wins = (G.GAME.mp_boss_wins or 0) + 1
+        pcall(function()
+            if bom_match and bom_match.on_blind_defeated then
+                bom_match.on_blind_defeated(G.GAME.chips or 0)
+            end
+        end)
+
+    elseif event == "game_over" then
+        local is_pvp = false
+        pcall(function()
+            if bom_match and bom_match.is_pvp_blind then
+                is_pvp = bom_match.is_pvp_blind()
+            end
+        end)
+        if is_pvp then
+            pcall(function()
+                if bom_match and bom_match.on_blind_defeated then
+                    local score = 0
+                    pcall(function() score = G.GAME.chips or 0 end)
+                    bom_match.on_blind_defeated(score)
+                end
+            end)
+        else
+            pcall(function()
+                if bom_match and bom_match.on_game_over then
+                    bom_match.on_game_over()
+                end
+            end)
+        end
+
+    elseif event == "blind_entered" then
+        pcall(function()
+            if bom_match and bom_match.on_blind_entered then
+                local ante = data and data.ante or 1
+                local blind_type = data and data.blind_type or "S"
+                bom_match.on_blind_entered(ante, blind_type)
+            end
+        end)
+    end
+end
+
+mp_log.info("BOM_EVENTS", "Multiplayer events module loaded")
+return bom_events
+end

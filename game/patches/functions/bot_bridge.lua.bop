@@ -1,0 +1,794 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 526
+BOT_BRIDGE = BOT_BRIDGE or {}
+local B = BOT_BRIDGE
+
+local PACK_STATES = {"TAROT_PACK", "PLANET_PACK", "SPECTRAL_PACK", "STANDARD_PACK", "BUFFOON_PACK", "SMODS_BOOSTER_OPENED"}
+
+local function in_pack_state()
+    if not (G and G.STATES) then return false end
+    for _, k in ipairs(PACK_STATES) do
+        if G.STATES[k] and G.STATE == G.STATES[k] then return true end
+    end
+    return false
+end
+
+local function find_button(root, name, visited)
+    if type(root) ~= "table" then return nil end
+    visited = visited or {}
+    if visited[root] then return nil end
+    visited[root] = true
+    if root.UIRoot then return find_button(root.UIRoot, name, visited) end
+    if root.config and root.config.button == name and root.click and root.states and root.states.visible ~= false then
+        return root
+    end
+    if type(root.children) == "table" then
+        for _, c in pairs(root.children) do
+            local r = find_button(c, name, visited)
+            if r then return r end
+        end
+    end
+    if root.config and type(root.config.object) == "table" and root.config.object.UIRoot then
+        local r = find_button(root.config.object, name, visited)
+        if r then return r end
+    end
+    return nil
+end
+B.find_button = find_button
+
+local function find_any(root, name)
+    local b = root and find_button(root, name)
+    if b then return b end
+    for _, box in ipairs(G.I and G.I.UIBOX or {}) do
+        b = find_button(box, name)
+        if b then return b end
+    end
+    return nil
+end
+
+local function cash_out_button()
+    local b = find_any(G.round_eval, "cash_out")
+    if b then return b end
+    local found
+    for _, box in ipairs(G.I and G.I.UIBOX or {}) do
+        if box.get_UIE_by_ID and not box.REMOVED then
+            local e = box:get_UIE_by_ID("cash_out_button")
+            if e and e.config and e.config.button then found = e break end
+        end
+    end
+    return found
+end
+
+
+local function on_deck_opt()
+    local key = G.GAME and G.GAME.blind_on_deck
+    return key and G.blind_select_opts and G.blind_select_opts[string.lower(key)] or nil
+end
+
+local function blind_button()
+    local opt = on_deck_opt()
+    local e = opt and opt.get_UIE_by_ID and opt:get_UIE_by_ID("select_blind_button")
+    if e and e.config and e.config.button then return e end
+    return find_button(G.blind_select, "select_blind")
+end
+
+local function skip_button()
+    local opt = on_deck_opt()
+    return (opt and find_button(opt, "skip_blind")) or find_button(G.blind_select, "skip_blind")
+end
+
+function B.busy()
+    if not (G and G.E_MANAGER and G.E_MANAGER.queues) then return true end
+    local paused = G.SETTINGS and G.SETTINGS.paused
+    for _, ev in ipairs(G.E_MANAGER.queues.base or {}) do
+        if ev.blocking ~= false and not (paused and ev.created_on_pause == false) then return true end
+    end
+    if G.CONTROLLER and G.CONTROLLER.locked then return true end
+    if G.CONTROLLER and G.CONTROLLER.locks then
+        for _, v in pairs(G.CONTROLLER.locks) do if v then return true end end
+    end
+    return false
+end
+
+function B.phase()
+    if not (G and G.STATE and G.STATES) then return "busy" end
+    local st = G.STATE
+    if st == G.STATES.MENU then return "menu" end
+    if G.STAGE ~= G.STAGES.RUN or not G.GAME then return "busy" end
+    if B.leaving_game then
+        if B.leaving_game == G.GAME then return "busy" end
+        B.leaving_game = nil
+    end
+    if B.busy() then return "busy" end
+    if st == G.STATES.GAME_OVER then return "game_over" end
+    if G.GAME.won and G.OVERLAY_MENU and not B.win_seen then return "win" end
+    if G.OVERLAY_MENU then return "busy" end
+    if st == G.STATES.BLIND_SELECT and G.blind_select then
+        if G.GAME.mp_blind_ready then return "busy" end
+        return "blind_select"
+    end
+    if st == G.STATES.SELECTING_HAND and G.hand and #G.hand.cards > 0 then
+        if G.GAME.blind and G.GAME.blind.block_play then return "busy" end
+        return "play"
+    end
+    if st == G.STATES.SHOP and G.shop then return "shop" end
+    if in_pack_state() and G.pack_cards and G.pack_cards.cards and #G.pack_cards.cards > 0 then return "pack" end
+    if st == G.STATES.ROUND_EVAL and G.round_eval then return "round_eval" end
+    return "busy"
+end
+
+local function collect_text(node, out, objs, depth)
+    if type(node) ~= "table" or depth > 30 then return end
+    local cfg = node.config
+    if type(cfg) == "table" then
+        if type(cfg.text) == "string" then out[#out + 1] = cfg.text end
+        local o = cfg.object
+        if type(o) == "table" then
+            objs[#objs + 1] = o
+            if type(o.strings) == "table" then
+                for _, s in ipairs(o.strings) do
+                    if type(s) == "table" and type(s.string) == "string" then out[#out + 1] = s.string end
+                end
+            end
+        end
+    end
+    for _, v in ipairs(node) do collect_text(v, out, objs, depth + 1) end
+    if type(node.nodes) == "table" then collect_text(node.nodes, out, objs, depth + 1) end
+    for _, k in ipairs({"main", "info", "name", "type", "badges"}) do
+        if type(node[k]) == "table" then collect_text(node[k], out, objs, depth + 1) end
+    end
+end
+
+local function clean(s)
+    s = s:gsub("{[^}]*}", ""):gsub("%s+", " ")
+    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+function B.card_text(card)
+    if not (card and card.generate_UIBox_ability_table) then return nil end
+    local ok, ui = pcall(card.generate_UIBox_ability_table, card)
+    if not ok or type(ui) ~= "table" then return nil end
+    local out, objs = {}, {}
+    collect_text(ui.main or ui, out, objs, 0)
+    if ui.info then
+        for _, box in ipairs(ui.info) do collect_text(box, out, objs, 0) end
+    end
+    for _, o in ipairs(objs) do
+        if type(o.remove) == "function" then pcall(o.remove, o) end
+    end
+    if ui.name then
+        local n_out, n_objs = {}, {}
+        collect_text(ui.name, n_out, n_objs, 0)
+        for _, o in ipairs(n_objs) do
+            if type(o.remove) == "function" then pcall(o.remove, o) end
+        end
+    end
+    local s = clean(table.concat(out, " "))
+    if s == "" then return nil end
+    return s
+end
+
+local function card_name(card)
+    local c = card.config and card.config.center
+    if c and c.key and c.set and G.localization and G.localization.descriptions then
+        local set = G.localization.descriptions[c.set]
+        local d = set and set[c.key]
+        if d and type(d.name) == "string" then return clean(d.name) end
+    end
+    return card.ability and card.ability.name or (c and c.key) or "?"
+end
+
+local RANK_NAMES = {[11] = "Jack", [12] = "Queen", [13] = "King", [14] = "Ace"}
+
+local function card_info(card, area, with_text)
+    local c = card.config and card.config.center or {}
+    local t = {
+        id = card.sort_id,
+        key = c.key,
+        set = card.ability and card.ability.set,
+        name = card_name(card),
+    }
+    if card.base and card.base.id and (t.set == "Default" or t.set == "Enhanced") then
+        t.rank = RANK_NAMES[card.base.id] or tostring(card.base.id)
+        t.rank_id = card.base.id
+        t.suit = card.base.suit
+        t.chips = card.base.nominal
+        if t.set == "Enhanced" then t.enhancement = t.name end
+        t.name = t.rank .. " of " .. tostring(card.base.suit)
+    end
+    if card.edition then
+        for k, v in pairs(card.edition) do
+            if v == true and k ~= "type" then t.edition = k end
+        end
+        t.edition = card.edition.type or t.edition
+    end
+    if card.seal then t.seal = card.seal end
+    if card.debuff then t.debuffed = true end
+    if card.ability then
+        if card.ability.eternal then t.eternal = true end
+        if card.ability.perishable then t.perishable = card.ability.perish_tally or true end
+        if card.ability.rental then t.rental = true end
+    end
+    if card.facing == "back" then t.face_down = true end
+    if area == "shop_jokers" or area == "shop_vouchers" or area == "shop_booster" then
+        t.cost = card.cost
+    elseif area == "jokers" or area == "consumeables" then
+        t.sell = card.sell_cost
+    end
+    if with_text and not t.face_down then
+        local show = t.set ~= "Default" or card.edition or card.seal
+        if show then t.text = B.card_text(card) end
+    end
+    return t
+end
+
+local function area_cards(area, name, with_text)
+    local out = {}
+    if area and area.cards then
+        for _, card in ipairs(area.cards) do out[#out + 1] = card_info(card, name, with_text) end
+    end
+    return out
+end
+
+local function blind_text(key)
+    local d = G.localization and G.localization.descriptions and G.localization.descriptions.Blind and G.localization.descriptions.Blind[key]
+    if d and type(d.text) == "table" then return clean(table.concat(d.text, " "):gsub("#%d+#", "?")) end
+    return nil
+end
+
+local function blind_info()
+    local bl = G.GAME.blind
+    if not bl or not bl.config or not bl.config.blind or not bl.config.blind.key then return nil end
+    return {
+        key = bl.config.blind.key,
+        name = bl.name,
+        chips_needed = bl.chips,
+        boss = bl.boss and true or false,
+        text = blind_text(bl.config.blind.key),
+        disabled = bl.disabled and true or false,
+    }
+end
+
+local function blind_choices()
+    local out = {}
+    local rr = G.GAME.round_resets
+    if not rr or not rr.blind_choices then return out end
+    for _, slot in ipairs({"Small", "Big", "Boss"}) do
+        local key = rr.blind_choices[slot]
+        local b = key and G.P_BLINDS[key]
+        if b then
+            local tag_key = rr.blind_tags and rr.blind_tags[slot]
+            local tag = tag_key and G.P_TAGS and G.P_TAGS[tag_key]
+            local mult = b.mult or 1
+            out[#out + 1] = {
+                slot = slot,
+                key = key,
+                name = b.name,
+                chips_needed = (get_blind_amount and get_blind_amount(rr.ante) or 0) * mult * (G.GAME.starting_params.ante_scaling or 1),
+                state = rr.blind_states and rr.blind_states[slot],
+                skip_tag = tag and {key = tag_key, name = tag.name} or nil,
+                text = slot == "Boss" and blind_text(key) or nil,
+            }
+        end
+    end
+    return out
+end
+
+B.blind_choices = blind_choices
+
+local function hand_levels()
+    local out = {}
+    for name, h in pairs(G.GAME.hands or {}) do
+        if type(h) == "table" and h.visible ~= false then
+            out[#out + 1] = {name = name, level = h.level, chips = h.chips, mult = h.mult, played = h.played, order = h.order}
+        end
+    end
+    table.sort(out, function(a, b) return (a.order or 99) < (b.order or 99) end)
+    for _, h in ipairs(out) do h.order = nil end
+    return out
+end
+
+local function deck_counts()
+    local ranks, suits = {}, {}
+    local n = 0
+    for _, card in ipairs(G.deck and G.deck.cards or {}) do
+        n = n + 1
+        if card.base and card.base.id then
+            local r = RANK_NAMES[card.base.id] or tostring(card.base.id)
+            ranks[r] = (ranks[r] or 0) + 1
+            suits[card.base.suit] = (suits[card.base.suit] or 0) + 1
+        end
+    end
+    return {remaining = n, ranks = ranks, suits = suits}
+end
+
+local function by_id(area, id)
+    if not (area and area.cards) then return nil end
+    for _, c in ipairs(area.cards) do
+        if c.sort_id == id then return c end
+    end
+    return nil
+end
+
+local function free_slots(area, card)
+    if not area then return 0 end
+    local extra = (card and card.edition and card.edition.negative) and 1 or 0
+    return area.config.card_limit + extra - #area.cards
+end
+
+local function can_buy(card)
+    if not G.FUNCS.can_buy(card) then return false, "not enough money" end
+    local set = card.ability and card.ability.set
+    if set == "Joker" and free_slots(G.jokers, card) <= 0 then return false, "no joker slot" end
+    if card.ability and card.ability.consumeable and free_slots(G.consumeables, card) <= 0 then return false, "no consumable slot" end
+    return true
+end
+
+local function money_left()
+    return (G.GAME.dollars or 0) - (G.GAME.bankrupt_at or 0)
+end
+
+local function target_limits(card)
+    local cons = card.ability and card.ability.consumeable
+    if type(cons) ~= "table" then return nil end
+    local mx = cons.max_highlighted
+    if not mx then return nil end
+    if type(cons.mod_num) == "number" and cons.mod_num < mx then mx = cons.mod_num end
+    return cons.min_highlighted or 1, mx
+end
+
+local function legal_use(out, cards, phase)
+    for _, c in ipairs(cards or {}) do
+        local mn, mx = target_limits(c)
+        local entry = {type = "use", card = c.sort_id, name = card_name(c)}
+        if mn then
+            entry.targets_min = mn
+            entry.targets_max = mx
+            out[#out + 1] = entry
+        elseif c.can_use_consumeable then
+            local ok, can = pcall(c.can_use_consumeable, c)
+            if ok and can then out[#out + 1] = entry end
+        end
+    end
+end
+
+local function legal_sell(out)
+    for _, area in ipairs({G.jokers, G.consumeables}) do
+        for _, c in ipairs(area and area.cards or {}) do
+            if c.can_sell_card and c:can_sell_card() then
+                out[#out + 1] = {type = "sell", card = c.sort_id, name = card_name(c), value = c.sell_cost}
+            end
+        end
+    end
+end
+
+function B.legal(phase)
+    phase = phase or B.phase()
+    local out = {}
+    if phase == "blind_select" then
+        local bb = blind_button()
+        if bb and bb.config.button == "select_blind" then out[#out + 1] = {type = "select"} end
+        if bb and bb.config.button == "bom_toggle_ready_blind" and not G.GAME.mp_blind_ready then out[#out + 1] = {type = "ready", pvp = true} end
+        if skip_button() then out[#out + 1] = {type = "skip"} end
+        if find_button(G.blind_select, "reroll_boss") then out[#out + 1] = {type = "reroll_boss", cost = 10} end
+        if G.jokers and #G.jokers.cards > 1 then out[#out + 1] = {type = "reorder_jokers"} end
+    elseif phase == "play" then
+        local limit = math.min(5, G.hand.config.highlighted_limit or 5)
+        if not (G.GAME.blind and G.GAME.blind.block_play) then
+            out[#out + 1] = {type = "play", cards_min = 1, cards_max = limit}
+        end
+        if (G.GAME.current_round.discards_left or 0) > 0 then
+            out[#out + 1] = {type = "discard", cards_min = 1, cards_max = limit}
+        end
+        legal_use(out, G.consumeables and G.consumeables.cards, phase)
+        legal_sell(out)
+        if G.jokers and #G.jokers.cards > 1 then out[#out + 1] = {type = "reorder_jokers"} end
+        out[#out + 1] = {type = "sort", by = {"rank", "suit"}}
+    elseif phase == "shop" then
+        for _, c in ipairs(G.shop_jokers and G.shop_jokers.cards or {}) do
+            if can_buy(c) then out[#out + 1] = {type = "buy", card = c.sort_id, name = card_name(c), cost = c.cost} end
+            if c.ability and c.ability.consumeable and G.FUNCS.can_buy_and_use(c) and not target_limits(c) then
+                out[#out + 1] = {type = "buy_and_use", card = c.sort_id, name = card_name(c), cost = c.cost}
+            end
+        end
+        for _, c in ipairs(G.shop_vouchers and G.shop_vouchers.cards or {}) do
+            if c.cost <= money_left() then out[#out + 1] = {type = "redeem", card = c.sort_id, name = card_name(c), cost = c.cost} end
+        end
+        for _, c in ipairs(G.shop_booster and G.shop_booster.cards or {}) do
+            if c.cost <= 0 or c.cost <= money_left() then out[#out + 1] = {type = "open", card = c.sort_id, name = card_name(c), cost = c.cost} end
+        end
+        local rc = G.GAME.current_round.reroll_cost or 0
+        if rc == 0 or money_left() - rc >= 0 then out[#out + 1] = {type = "reroll", cost = rc} end
+        legal_use(out, G.consumeables and G.consumeables.cards, phase)
+        legal_sell(out)
+        if G.jokers and #G.jokers.cards > 1 then out[#out + 1] = {type = "reorder_jokers"} end
+        out[#out + 1] = {type = "leave"}
+    elseif phase == "pack" then
+        for _, c in ipairs(G.pack_cards.cards) do
+            local mn, mx = target_limits(c)
+            if c.ability and c.ability.consumeable then
+                local entry = {type = "pick", card = c.sort_id, name = card_name(c)}
+                if mn then
+                    entry.targets_min = mn
+                    entry.targets_max = mx
+                    out[#out + 1] = entry
+                else
+                    local ok, can = pcall(c.can_use_consumeable, c)
+                    if ok and can then out[#out + 1] = entry end
+                end
+            elseif can_select_pack_card(c) then
+                out[#out + 1] = {type = "pick", card = c.sort_id, name = card_name(c)}
+            end
+        end
+        out[#out + 1] = {type = "skip"}
+    elseif phase == "round_eval" then
+        if cash_out_button() then out[#out + 1] = {type = "cash_out"} end
+    elseif phase == "game_over" then
+        out[#out + 1] = {type = "new_run"}
+        out[#out + 1] = {type = "menu"}
+    elseif phase == "win" then
+        out[#out + 1] = {type = "endless"}
+        out[#out + 1] = {type = "new_run"}
+        out[#out + 1] = {type = "menu"}
+    end
+    return out
+end
+
+function B.observe(opts)
+    opts = opts or {}
+    local phase = B.phase()
+    local s = {phase = phase}
+    if not (G and G.GAME) or phase == "menu" or G.STAGE ~= G.STAGES.RUN then return s end
+    local text = opts.text ~= false
+    local g = G.GAME
+    local cr = g.current_round or {}
+    s.run = {
+        ante = g.round_resets and g.round_resets.ante,
+        win_ante = g.win_ante,
+        round = g.round,
+        stake = g.stake,
+        deck = g.selected_back and g.selected_back.name,
+        seed = g.pseudorandom and g.pseudorandom.seed,
+        money = g.dollars,
+        bankrupt_at = g.bankrupt_at,
+        hands_left = cr.hands_left,
+        discards_left = cr.discards_left,
+        hand_size = G.hand and G.hand.config.card_limit,
+        joker_slots = G.jokers and G.jokers.config.card_limit,
+        consumable_slots = G.consumeables and G.consumeables.config.card_limit,
+        reroll_cost = cr.reroll_cost,
+        interest_cap = g.interest_cap,
+        chips = g.chips,
+    }
+    s.blind = blind_info()
+    if phase == "blind_select" then s.blind_choices = blind_choices() s.blind_on_deck = g.blind_on_deck end
+    if bom_match and bom_match.is_in_match and bom_match.is_in_match() then
+        local ms = bom_match.get_state() or {}
+        s.versus = {my_lives = ms.my_lives, opponent_lives = ms.opp_lives, opponent_score = ms.opp_score, pvp_blind = bom_match.is_pvp_blind and bom_match.is_pvp_blind() or nil}
+    end
+    s.hand_levels = hand_levels()
+    s.jokers = area_cards(G.jokers, "jokers", text)
+    s.consumables = area_cards(G.consumeables, "consumeables", text)
+    if phase == "play" or phase == "pack" then
+        s.hand = area_cards(G.hand, "hand", text)
+        s.deck = deck_counts()
+    end
+    if phase == "shop" then
+        s.shop = {
+            cards = area_cards(G.shop_jokers, "shop_jokers", text),
+            vouchers = area_cards(G.shop_vouchers, "shop_vouchers", text),
+            boosters = area_cards(G.shop_booster, "shop_booster", text),
+        }
+    end
+    if phase == "pack" then
+        s.pack = {cards = area_cards(G.pack_cards, "pack_cards", text), choices_left = g.pack_choices}
+    end
+    if phase == "game_over" or phase == "win" then
+        s.result = {won = g.won and true or false, ante = g.round_resets and g.round_resets.ante, best_hand = g.round_scores and g.round_scores.hand and g.round_scores.hand.amt}
+    end
+    if B.last_refusal then s.last_refusal = B.last_refusal end
+    s.legal = B.legal(phase)
+    return s
+end
+
+local function find_legal(legal, a)
+    for _, l in ipairs(legal) do
+        if l.type == a.type and (l.card == nil or l.card == a.card) then return l end
+    end
+    return nil
+end
+
+local function ids_unique(ids)
+    local seen = {}
+    for _, id in ipairs(ids) do
+        if seen[id] then return false end
+        seen[id] = true
+    end
+    return true
+end
+
+local function resolve_cards(area, ids)
+    local out = {}
+    for _, id in ipairs(ids or {}) do
+        local c = by_id(area, id)
+        if not c then return nil, "card " .. tostring(id) .. " is not in hand" end
+        out[#out + 1] = c
+    end
+    return out
+end
+
+local function card_anywhere(id)
+    for _, area in ipairs({G.jokers, G.consumeables, G.shop_jokers, G.shop_vouchers, G.shop_booster, G.pack_cards, G.hand}) do
+        local c = by_id(area, id)
+        if c then return c end
+    end
+    return nil
+end
+
+local function highlight_hand(cards)
+r 2 582 %20%20%20%20 -
+l 56
+    for _, c in ipairs(cards) do G.hand:add_to_highlighted(c, true) end
+end
+
+function B.validate(a, phase)
+    if type(a) ~= "table" or type(a.type) ~= "string" then return false, "action must be a table with a type" end
+    phase = phase or B.phase()
+    if phase == "busy" or phase == "menu" then return false, "the game is busy" end
+    local legal = B.legal(phase)
+    local l = find_legal(legal, a)
+    if not l then return false, "action " .. a.type .. (a.card and (" on card " .. tostring(a.card)) or "") .. " is not legal in phase " .. phase end
+    if l.cards_min then
+        if type(a.cards) ~= "table" then return false, a.type .. " needs a cards list" end
+        if #a.cards < l.cards_min or #a.cards > l.cards_max then
+            return false, a.type .. " needs " .. l.cards_min .. " to " .. l.cards_max .. " cards"
+        end
+        if not ids_unique(a.cards) then return false, "a card is listed twice" end
+        local _, why = resolve_cards(G.hand, a.cards)
+        if why then return false, why end
+    end
+    if l.targets_min then
+        local t = a.targets or {}
+        if type(t) ~= "table" then return false, "targets must be a list" end
+        if #t < l.targets_min or #t > l.targets_max then
+            return false, a.type .. " " .. tostring(l.name) .. " needs " .. l.targets_min .. " to " .. l.targets_max .. " target cards from hand"
+        end
+        if not ids_unique(t) then return false, "a target is listed twice" end
+        if not G.hand then return false, "no hand to target" end
+        local _, why = resolve_cards(G.hand, t)
+        if why then return false, why end
+    end
+    if a.type == "reorder_jokers" then
+        local order = a.order
+        if type(order) ~= "table" or #order ~= #G.jokers.cards or not ids_unique(order) then
+            return false, "reorder_jokers needs every joker id once"
+        end
+        for _, id in ipairs(order) do
+            if not by_id(G.jokers, id) then return false, "joker " .. tostring(id) .. " not found" end
+        end
+    end
+    if a.type == "new_run" then
+        if a.deck ~= nil and not (G.P_CENTERS[a.deck] and G.P_CENTERS[a.deck].set == "Back") then return false, "unknown deck " .. tostring(a.deck) end
+        if a.stake ~= nil and not (tonumber(a.stake) and tonumber(a.stake) >= 1 and tonumber(a.stake) <= ((G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and #G.P_CENTER_POOLS.Stake) or 8)) then return false, "unknown stake " .. tostring(a.stake) end
+    end
+    if a.type == "sort" and a.by ~= "rank" and a.by ~= "suit" then return false, "sort by rank or suit" end
+    return true, l
+end
+
+local function e_for(card, id)
+    return {config = {ref_table = card, id = id}}
+end
+
+local function use_with_targets(card, targets)
+    if targets and #targets > 0 then
+        local cards = resolve_cards(G.hand, targets)
+        highlight_hand(cards)
+    elseif G.hand then
+r 2 582 %20%20%20%20%20%20%20%20 -
+l 51
+    end
+    local ok, can = pcall(card.can_use_consumeable, card)
+    if not (ok and can) then
+        if G.hand then G.hand:unhighlight_all() end
+        return false, "the game refuses to use " .. card_name(card) .. " with these targets"
+    end
+    G.FUNCS.use_card(e_for(card))
+    return true
+end
+
+local APPLY = {}
+
+APPLY.select = function()
+    local b = blind_button()
+    if not (b and b.config.button == "select_blind") then return false, "no select button" end
+    b:click()
+    return true
+end
+
+APPLY.ready = function()
+    local b = blind_button()
+    if not (b and b.config.button == "bom_toggle_ready_blind") then return false, "no ready button" end
+    G.FUNCS.bom_toggle_ready_blind(b)
+    if not G.GAME.mp_blind_ready then return false, "the match did not take the ready" end
+    return true
+end
+
+APPLY.skip = function(a, phase)
+    if phase == "pack" then
+        local b = find_button(G.booster_pack, "skip_booster")
+        if b then b:click() return true end
+        G.FUNCS.skip_booster()
+        return true
+    end
+    local b = skip_button()
+    if not b then return false, "no skip button" end
+    b:click()
+    return true
+end
+
+APPLY.reroll_boss = function()
+    local b = find_button(G.blind_select, "reroll_boss")
+    if not b then return false, "no reroll button" end
+    b:click()
+    return true
+end
+
+APPLY.play = function(a)
+    local cards = resolve_cards(G.hand, a.cards)
+    highlight_hand(cards)
+    if #G.hand.highlighted ~= #cards then
+r 2 582 %20%20%20%20%20%20%20%20 -
+l 10
+        return false, "the hand refused to select these cards"
+    end
+    G.FUNCS.play_cards_from_highlighted()
+    return true
+end
+
+APPLY.discard = function(a)
+    local cards = resolve_cards(G.hand, a.cards)
+    highlight_hand(cards)
+    if #G.hand.highlighted ~= #cards then
+r 2 582 %20%20%20%20%20%20%20%20 -
+l 84
+        return false, "the hand refused to select these cards"
+    end
+    G.FUNCS.discard_cards_from_highlighted()
+    return true
+end
+
+APPLY.use = function(a)
+    local card = by_id(G.consumeables, a.card)
+    return use_with_targets(card, a.targets)
+end
+
+APPLY.sell = function(a)
+    local card = by_id(G.jokers, a.card) or by_id(G.consumeables, a.card)
+    G.FUNCS.sell_card(e_for(card))
+    return true
+end
+
+APPLY.reorder_jokers = function(a)
+    local list = {}
+    for i, id in ipairs(a.order) do list[i] = by_id(G.jokers, id) end
+    for i, c in ipairs(list) do G.jokers.cards[i] = c end
+    G.jokers:set_ranks()
+    return true
+end
+
+APPLY.sort = function(a)
+    local f = a.by == "suit" and G.FUNCS.sort_hand_suit or G.FUNCS.sort_hand_value
+    f({config = {}})
+    return true
+end
+
+APPLY.buy = function(a)
+    local card = by_id(G.shop_jokers, a.card)
+    G.FUNCS.buy_from_shop(e_for(card, "buy"))
+    return true
+end
+
+APPLY.buy_and_use = function(a)
+    local card = by_id(G.shop_jokers, a.card)
+    G.FUNCS.buy_from_shop(e_for(card, "buy_and_use"))
+    return true
+end
+
+APPLY.redeem = function(a)
+    local card = by_id(G.shop_vouchers, a.card)
+    G.FUNCS.use_card(e_for(card))
+    return true
+end
+
+APPLY.open = function(a)
+    local card = by_id(G.shop_booster, a.card)
+    G.FUNCS.use_card(e_for(card))
+    return true
+end
+
+APPLY.reroll = function()
+    G.FUNCS.reroll_shop()
+    return true
+end
+
+APPLY.leave = function()
+    local b = G.shop and find_button(G.shop, "toggle_shop")
+    if b then b:click() else G.FUNCS.toggle_shop() end
+    return true
+end
+
+APPLY.pick = function(a)
+    local card = by_id(G.pack_cards, a.card)
+    if card.ability and card.ability.consumeable then
+        return use_with_targets(card, a.targets)
+    end
+    G.FUNCS.use_card(e_for(card))
+    return true
+end
+
+APPLY.cash_out = function()
+    local b = cash_out_button()
+    if not b then return false, "no cash out button" end
+    if b.config.button == "cash_out" then b:click() else G.FUNCS[b.config.button](b) end
+    return true
+end
+
+APPLY.endless = function()
+    B.win_seen = true
+r 13 1825 %20%20%20%20 -
+l 7
+    return true
+end
+
+APPLY.new_run = function(a)
+    B.win_seen = nil
+    local back = a.deck and G.P_CENTERS[a.deck] or (G.GAME.selected_back and G.GAME.selected_back.effect and G.GAME.selected_back.effect.center)
+    local stake = tonumber(a.stake) or G.GAME.stake or 1
+r 13 1825 %20%20%20%20 -
+l 42
+    B.leaving_game = G.GAME
+    G.FUNCS.start_run(nil, {stake = stake, seed = a.seed, back = back})
+    return true
+end
+
+APPLY.menu = function()
+    B.win_seen = nil
+    B.leaving_game = G.GAME
+    G.FUNCS.go_to_menu()
+    return true
+end
+
+function B.act(a)
+    local phase = B.phase()
+    local ok, why = B.validate(a, phase)
+    if not ok then
+        B.last_refusal = {action = a, reason = why}
+        return false, why
+    end
+    local f = APPLY[a.type]
+    if not f then
+        B.last_refusal = {action = a, reason = "unknown action"}
+        return false, "unknown action"
+    end
+    B.acting = true
+    local pok, res, res_why = pcall(f, a, phase)
+    B.acting = false
+    if not pok then
+        B.last_refusal = {action = a, reason = "error: " .. tostring(res)}
+        return false, "error: " .. tostring(res)
+    end
+    if not res then
+        B.last_refusal = {action = a, reason = res_why}
+        return false, res_why
+    end
+    B.last_refusal = nil
+    B.last_action = a
+    B.actions = (B.actions or 0) + 1
+    return true
+end
+
+B.card_anywhere = card_anywhere
+end

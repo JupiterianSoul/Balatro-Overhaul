@@ -1,0 +1,426 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 371
+Progress = Progress or {}
+local P = Progress
+
+P.LABELS = {
+  replay = "replay",
+  forge_test = "Forge test",
+  forge = "Forge content",
+  cheats = "cheats",
+  custom = "custom run",
+  practice = "Boss Practice",
+  mods = "mods",
+}
+
+P.CUSTOM_REASONS = {["Custom Deck"] = true, ["Custom run"] = true, ["Number Randomizer"] = true}
+
+P.GATED = {
+  "check_for_unlock", "unlock_card", "discover_card",
+  "set_joker_usage", "set_joker_win", "set_joker_loss", "set_deck_usage", "set_deck_win", "set_deck_loss",
+  "set_voucher_usage", "set_challenge_unlock", "inc_career_stat", "inc_steam_stat",
+  "award_xp", "mp_award_xp", "mp_record_match",
+  "progression_on_hand_played", "progression_on_ante_cleared", "progression_on_boss_defeated", "progression_on_run_win",
+}
+P.RUN_ONLY = {"set_consumeable_usage", "set_hand_usage", "check_and_set_high_score"}
+P.PLATFORM = {"unlock_achievement"}
+P.SANDBOX_ONLY = {"save_run", "remove_save"}
+P.METHODS = {
+  {"AchievementManager", {"unlock_achievement", "update_progress", "check_achievement", "on_hand_played", "on_discard", "on_ante_complete",
+    "on_ante_progress", "on_blind_complete", "on_run_start", "on_run_end", "on_joker_added", "on_joker_sold", "on_shop_visit", "on_money_change",
+    "on_voucher_used", "on_consumable_used", "on_daily_complete", "on_blind_skipped", "on_shop_reroll", "on_card_sold", "on_card_enhanced",
+    "on_edition_obtained", "on_daily_finished"}},
+  {"ProfileRewardsManager", {"unlock_deck", "unlock_icon", "check_deck_unlocks", "check_icon_unlocks"}},
+  {"CosmeticsManager", {"unlock", "check_all_unlocks"}},
+  {"ShopManager", {"add_balacoin"}},
+  {"bom_rewards", {"on_match_end"}},
+}
+P.ONLINE_METHODS = {
+  {"BO_DAILY_BOARD", {"on_scored"}},
+}
+P.HISTORY_METHODS = {
+  {"BO_HISTORY", {"record", "record_mp"}},
+  {"BO_SPREPLAY", {"begin"}},
+}
+P.FREE_EVENTS = {replay_watched = true}
+
+local function modded()
+  local L = rawget(_G, "MODLOADER")
+  return L and L.modded and true or false
+end
+
+local function replaying()
+  local PB = rawget(_G, "bom_playback")
+  if PB and type(PB.active) == "function" then
+    local ok, on = pcall(PB.active)
+    if ok and on then return true end
+  end
+  return false
+end
+P.replay_running = replaying
+
+local function forge_key(k)
+  return type(k) == "string" and (k:match("^%a+_forge_") ~= nil or k:match("^[Ff]orge_") ~= nil)
+end
+P.forge_key = forge_key
+
+local function center_forge(c)
+  return type(c) == "table" and (c.forge and true or forge_key(c.key))
+end
+
+local function card_forge(card)
+  if type(card) ~= "table" then return false end
+  local cfg = card.config
+  if cfg and center_forge(cfg.center) then return true end
+  local ed = card.edition
+  if type(ed) == "table" and (ed.forge or forge_key(ed.type) or forge_key(ed.key)) then return true end
+  return forge_key(card.seal)
+end
+P.card_forge = card_forge
+
+P.AREAS = {"jokers", "consumeables", "deck", "hand", "discard", "play"}
+
+function P.forge_in_run()
+  local g = G and G.GAME
+  if not g then return false end
+  if g.forge_try or g.forge_stake then return true end
+  local b = g.selected_back
+  if b and b.effect and center_forge(b.effect.center) then return true end
+  for k in pairs(type(g.used_vouchers) == "table" and g.used_vouchers or {}) do
+    if forge_key(k) then return true end
+  end
+  for _, t in ipairs(type(g.tags) == "table" and g.tags or {}) do
+    if type(t) == "table" and forge_key(t.key) then return true end
+  end
+  local bl = g.blind and g.blind.config and g.blind.config.blind
+  if center_forge(bl) then return true end
+  local rr = g.round_resets
+  for _, k in pairs(rr and type(rr.blind_choices) == "table" and rr.blind_choices or {}) do
+    if forge_key(k) then return true end
+  end
+  for _, name in ipairs(P.AREAS) do
+    local a = G[name]
+    if type(a) == "table" and type(a.cards) == "table" then
+      for _, c in ipairs(a.cards) do
+        if card_forge(c) then return true end
+      end
+    end
+  end
+  return false
+end
+
+function P.mark(reason)
+  local g = G and G.GAME
+  if not (g and reason) then return end
+  if not g.progress_off then g.progress_off = reason end
+end
+
+function P.note_forge()
+  if G and G.STAGES and G.STAGE == G.STAGES.RUN then P.mark("forge") end
+end
+
+local function owned(card)
+  local a = type(card) == "table" and card.area
+  if not a then return false end
+  for _, name in ipairs(P.AREAS) do
+    if G[name] == a then return true end
+  end
+  return false
+end
+
+function P.note(key)
+  if forge_key(key) and G and G.STAGES and G.STAGE == G.STAGES.RUN then P.mark("forge") end
+end
+
+local function in_run()
+  return G and G.STAGES and G.STAGE == G.STAGES.RUN and G.GAME ~= nil
+end
+
+function P.scan()
+  local g = G and G.GAME
+  if not g or g.progress_off or not in_run() then return end
+  local now = G.TIMERS and G.TIMERS.REAL
+  if P._scan_game == g and P._scan_t == now then return end
+  P._scan_game, P._scan_t = g, now
+  local ok, found = pcall(P.forge_in_run)
+  if ok and found then P.mark("forge") end
+end
+
+function P.run_reason()
+  if replaying() then return "replay" end
+  if P.sandbox then return "forge_test" end
+  local g = G and G.GAME
+  if not g then return nil end
+  if g.progress_off then return g.progress_off end
+  if g.cheats_allowed then
+    P.mark("cheats")
+    return "cheats"
+  end
+  if g.modded_run then
+    if g.bo_practice then return "practice" end
+    if P.CUSTOM_REASONS[g.modded_reason] then return "custom" end
+    return "cheats"
+  end
+  P.scan()
+  return g.progress_off
+end
+
+function P.reason(kind)
+  local r = P.run_reason()
+  if r then return r end
+  if (kind == "platform" or kind == "online") and modded() then return "mods" end
+  return nil
+end
+
+function P.allowed(kind)
+  if P.bypass then return true end
+  if kind == "history" then return not (replaying() or P.sandbox) end
+  return P.reason(kind) == nil
+end
+
+function P.notice()
+  if not in_run() or replaying() then return nil end
+  local r = P.run_reason()
+  if not r then return nil end
+  local L = mod_loc or function(s) return s end
+  local fmt = L("Progress is off for this run: %s")
+  local ok, s = pcall(string.format, fmt, L(P.LABELS[r] or r))
+  return ok and s or nil
+end
+
+local function noop() end
+
+function P.sandbox_begin()
+  P.sandbox = {
+    saved_game = G.SAVED_GAME,
+    tutorial = {G.SETTINGS.tutorial_progress, G.SETTINGS.tutorial_complete},
+  }
+  G.SETTINGS.tutorial_progress, G.SETTINGS.tutorial_complete = nil, true
+end
+
+function P.sandbox_end()
+  local s = P.sandbox
+  if not s then return end
+  P.sandbox = nil
+  G.SAVED_GAME = s.saved_game
+  local changed = G.SETTINGS.tutorial_progress ~= s.tutorial[1] or G.SETTINGS.tutorial_complete ~= s.tutorial[2]
+  G.SETTINGS.tutorial_progress, G.SETTINGS.tutorial_complete = s.tutorial[1], s.tutorial[2]
+  if changed then pcall(function() G:save_settings() end) end
+end
+
+local function run_only(fn)
+  return function(...)
+    if P.allowed() then return fn(...) end
+    local key = G.SETTINGS and G.SETTINGS.profile
+    local real = key and G.PROFILES and G.PROFILES[key]
+    local comp = G.SETTINGS and G.SETTINGS.COMP
+    local ss, sp = G.save_settings, G.save_progress
+    if real then
+      G.PROFILES[key] = setmetatable({consumeable_usage = {}, hand_usage = {}, high_scores = {}, voucher_usage = {}, joker_usage = {}, career_stats = {}}, {__index = real})
+    end
+    if comp then G.SETTINGS.COMP = nil end
+    G.save_settings, G.save_progress = noop, noop
+    local discover = rawget(_G, "discover_card")
+    _G.discover_card = noop
+    local res = {pcall(fn, ...)}
+    _G.discover_card = discover
+    G.save_settings, G.save_progress = ss, sp
+    if real then G.PROFILES[key] = real end
+    if comp then G.SETTINGS.COMP = comp end
+    if not res[1] then error(res[2], 0) end
+    return unpack(res, 2)
+  end
+end
+
+local function gate(fn, kind)
+  return function(...)
+    if not P.allowed(kind) then return false end
+    return fn(...)
+  end
+end
+
+local function sandbox_gate(fn)
+  return function(...)
+    if P.sandbox then return end
+    return fn(...)
+  end
+end
+
+P.mine = P.mine or setmetatable({}, {__mode = "k"})
+
+local function wrap_global(name, maker)
+  local fn = rawget(_G, name)
+  if type(fn) ~= "function" or P.mine[fn] then return end
+  local w = maker(fn)
+  P.mine[w] = true
+  _G[name] = w
+end
+
+local function wrap_methods(list, kind)
+  for _, entry in ipairs(list) do
+    local t = rawget(_G, entry[1])
+    if type(t) == "table" then
+      for _, k in ipairs(entry[2]) do
+        local fn = t[k]
+        if type(fn) == "function" and not P.mine[fn] then
+          local w = gate(fn, kind)
+          P.mine[w] = true
+          t[k] = w
+        end
+      end
+    end
+  end
+end
+
+local function wrap_hook(tbl, key, before)
+  if type(tbl) ~= "table" or type(tbl[key]) ~= "function" then return end
+  local orig = tbl[key]
+  tbl[key] = function(self, ...)
+    pcall(before, self, ...)
+    return orig(self, ...)
+  end
+end
+
+function P.install()
+  for _, k in ipairs(P.GATED) do wrap_global(k, function(fn) return gate(fn) end) end
+  for _, k in ipairs(P.RUN_ONLY) do wrap_global(k, run_only) end
+  for _, k in ipairs(P.PLATFORM) do wrap_global(k, function(fn) return gate(fn, "platform") end) end
+  for _, k in ipairs(P.SANDBOX_ONLY) do wrap_global(k, sandbox_gate) end
+  wrap_methods(P.METHODS)
+  wrap_methods(P.ONLINE_METHODS, "online")
+  wrap_methods(P.HISTORY_METHODS, "history")
+  local S = rawget(_G, "Overhaul") and Overhaul.stats
+  if type(S) == "table" and type(S.on) == "function" and not P.mine[S.on] then
+    local on = S.on
+    local w = function(event, ...)
+      if not P.FREE_EVENTS[event] and not P.allowed() then return end
+      return on(event, ...)
+    end
+    P.mine[w] = true
+    S.on = w
+  end
+  if not P.hooked then
+    P.hooked = true
+    wrap_hook(Card, "open", function(self) P.note(self.config and self.config.center and self.config.center.key) end)
+    wrap_hook(Card, "use_consumeable", function(self) P.note(self.config and self.config.center and self.config.center.key) end)
+    wrap_hook(Tag, "apply_to_run", function(self) P.note(self.key) end)
+    wrap_hook(Card, "add_to_deck", function(self) if card_forge(self) then P.note_forge() end end)
+    wrap_hook(Card, "set_ability", function(self, center) if owned(self) and center_forge(center) then P.note_forge() end end)
+    wrap_hook(Card, "set_seal", function(self, seal) if owned(self) and forge_key(seal) then P.note_forge() end end)
+    wrap_hook(Card, "set_edition", function(self, ed)
+      if not owned(self) then return end
+      if forge_key(ed) or (type(ed) == "table" and (ed.forge or forge_key(ed.key) or forge_key(ed.type))) then P.note_forge() end
+    end)
+    for k, fn in pairs(G.FUNCS) do
+      if type(fn) == "function" and k:match("^debug_") and not k:match("^debug_pin") and k ~= "debug_try_unlock" then
+        G.FUNCS[k] = function(...)
+          if not in_run() then return fn(...) end
+          P.mark("cheats")
+          P.bypass = true
+          local res = {pcall(fn, ...)}
+          P.bypass = nil
+          if not res[1] then error(res[2], 0) end
+          return unpack(res, 2)
+        end
+      end
+    end
+  end
+end
+
+if Game and Game.update and not P._update_wrapped then
+  P._update_wrapped = true
+  local orig = Game.update
+  Game.update = function(self, dt)
+    pcall(P.install)
+    if in_run() then
+      P._tick = (P._tick or 0) + (dt or 0)
+      if P._tick > 0.5 then
+        P._tick = 0
+        pcall(P.run_reason)
+      end
+    end
+    return orig(self, dt)
+  end
+end
+
+if Game and Game.start_run and not P._start_wrapped then
+  P._start_wrapped = true
+  local orig = Game.start_run
+  Game.start_run = function(self, args, ...)
+    args = args or {}
+    if args.bo_forge_test and not P.sandbox then P.sandbox_begin() end
+    local res = {orig(self, args, ...)}
+    if G.GAME and not args.savetext then
+      if P.sandbox then P.mark("forge_test") end
+      if args.cheats or G.GAME.cheats_allowed then P.mark("cheats") end
+      if replaying() then P.mark("replay") end
+    end
+    return unpack(res)
+  end
+end
+
+if Game and Game.main_menu and not P._menu_wrapped then
+  P._menu_wrapped = true
+  local orig = Game.main_menu
+  Game.main_menu = function(...)
+    pcall(P.sandbox_end)
+    return orig(...)
+  end
+end
+
+if G and G.FUNCS and type(G.FUNCS.start_run) == "function" and not P._funcs_wrapped then
+  P._funcs_wrapped = true
+  local orig = G.FUNCS.start_run
+r 13 2958 %20%20 -
+l 47
+    if P.sandbox and not (args and args.savetext) then
+      local restart = (e and e.config and e.config.id == 'restart_button') or args == nil
+      if restart or (args and args.bo_forge_test) then
+        args = args or {}
+        args.bo_forge_test = true
+      else
+        P.sandbox_end()
+      end
+    end
+    if args and args.bo_forge_test then
+      if not P.sandbox then P.sandbox_begin() end
+      local BM = rawget(_G, "BoosterManager")
+      local inv = BM and BM.get_inventory
+      if inv then BM.get_inventory = function() return {} end end
+      local res = {pcall(orig, e, args)}
+      if inv then BM.get_inventory = inv end
+      if not res[1] then error(res[2], 0) end
+      return unpack(res, 2)
+    end
+    return orig(e, args)
+  end
+end
+
+if mod_loc_register then mod_loc_register{
+  fr = {
+    ["Progress is off for this run: %s"] = "Progression désactivée pour cette partie : %s",
+    ["Progress is off"] = "Progression désactivée",
+    ["replay"] = "replay",
+    ["Forge test"] = "test de la Forge",
+    ["Forge content"] = "contenu de la Forge",
+    ["cheats"] = "triches",
+    ["custom run"] = "partie personnalisée",
+    ["mods"] = "mods",
+  },
+  es = {
+    ["Progress is off for this run: %s"] = "Progreso desactivado en esta partida: %s",
+    ["Progress is off"] = "Progreso desactivado",
+    ["replay"] = "repetición",
+    ["Forge test"] = "prueba de la Forja",
+    ["Forge content"] = "contenido de la Forja",
+    ["cheats"] = "trucos",
+    ["custom run"] = "partida personalizada",
+    ["mods"] = "mods",
+  },
+} end
+
+return P
+end

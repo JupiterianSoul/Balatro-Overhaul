@@ -1,0 +1,222 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 65
+local Q = QOL
+local Nav = require("functions/qol/nav_history")
+local M = Q.feature("nav_back", {})
+
+M.OPENERS = {options = true, settings = true, high_scores = true, setup_run = true, deck_info = true, run_info = true,
+    challenge_list = true, customize_deck = true, language_selection = true, profile_select = true, usage = true,
+    current_hands = true, mods_button = true, mods_menu_config = true, mod_card_preview = true, jukebox_mini_settings = true,
+    ho_open = true, cr_open_config = true, show_credits = true, link_tree = true,
+    dc_open_deck_creator = true, tavern_open_shop = true, tavern_custom = true}
+M.UNSAFE = {"exit", "confirm", "cancel", "_yes", "_no$", "back", "submit", "save", "buy", "start", "quit", "leave",
+    "remove", "delete", "reset", "join", "create", "ready", "accept", "decline", "kick", "send", "^mp_", "^bom_", "^party_"}
+M.ALIAS = {guide_back_to_guide_tab = "settings", guide_back_to_settings = "settings", cr_back_to_run_setup = "setup_run",
+    mods_menu_back = "mods_button", mods_menu_config_back = "mods_button", workshop_back = "mods_button"}
+M.NOT_BACK = {continue_unlock = true, quit = true, go_to_demo_cta = true, booster_skip_and_start = true,
+    overhaul_update_later = true}
+M.ESC = {"options", "settings", "your_collection", "high_scores", "setup_run", "deck_info", "open_jukebox",
+    "guide_back_to_guide_tab", "guide_back_to_settings", "mods_menu_back", "mods_menu_config_back", "workshop_back",
+    "cr_back_to_run_setup",
+    "dc_back_from_editor", "dc_back_from_list", "dc_picker_back", "dc_rename_cancel", "mod_menu_back",
+    "mod_browse_back_cards", "mod_browse_back_jokers", "mod_browse_back_vouchers", "seed_lib_edit_cancel",
+    "seed_lib_rename_cancel", "shop_confirm_no", "bot_close_settings", "tavern_shop_back", "tavern_custom_back"}
+
+local function helpers() return rawget(_G, "OVERLAY_MENU_HELPERS") or {} end
+
+M.nav = Nav.new(function(a, b)
+    local same = helpers().same
+    return same and same(a, b) or false
+end)
+
+function M.safe(name)
+    if type(name) ~= "string" then return false end
+    for _, p in ipairs(M.UNSAFE) do
+        if name:find(p) then return false end
+    end
+    if M.OPENERS[name] then return true end
+    return name:find("^open_") ~= nil or name:find("^your_collection") ~= nil or name:find("^mod_browse_") ~= nil
+end
+
+local function now() return G and G.TIMERS and G.TIMERS.REAL or 0 end
+
+function M.backing()
+    return M.back_t ~= nil and M.back_t == now()
+end
+
+local function snap(arg)
+    if type(arg) ~= "table" or type(rawget(arg, "config")) ~= "table" then return nil end
+    local c = {}
+    for k, v in pairs(arg.config) do c[k] = v end
+    return c
+end
+
+local function wrapped(fn, key, alt, depth)
+    for i = 1, 60 do
+        local up, v = debug.getupvalue(fn, i)
+        if not up then break end
+        if type(v) == "function" and (up == key or up == "_" .. key or up:find("^_?orig") or up:find("^_?old")) then
+            if alt[v] == nil then alt[v] = key end
+            if depth < 3 then wrapped(v, key, alt, depth + 1) end
+        end
+    end
+end
+
+local function names()
+    local map, alt = {}, {}
+    for k, v in pairs(G.FUNCS) do
+r 21 183 %20%20%20%20%20%20%20%20 -
+l 63
+            local prev = map[v]
+            if not prev or (not M.safe(prev) and M.safe(k)) then map[v] = k end
+        end
+    end
+    for k, v in pairs(G.FUNCS) do
+        if type(v) == "function" and type(k) == "string" then wrapped(v, k, alt, 1) end
+    end
+    return map, alt
+end
+
+local function walk(map)
+    for level = 5, 40 do
+        local info = debug.getinfo(level, "f")
+        if not info then break end
+        local name = info.func and map[info.func]
+        if name and name ~= "overlay_menu" and name ~= "exit_overlay_menu" then
+            local _, arg = debug.getlocal(level, 1)
+            return M.ALIAS[name] or name, arg
+        end
+    end
+end
+
+function M.opener()
+    local map, alt = names()
+    local name, arg = walk(map)
+    if name then return name, arg end
+    name, arg = walk(alt)
+    if name then return name, arg end
+    local c = M.click
+    if c and c.t == now() then return M.ALIAS[c.name] or c.name, c.e end
+end
+
+function M.before_open(args)
+    local h = helpers()
+    local was = G.OVERLAY_MENU
+    local was_open = type(was) == "table"
+    local fp = h.fingerprint and h.fingerprint(args.definition) or nil
+    local name, arg = M.opener()
+    local tabs = was_open and h.chosen_tabs and h.chosen_tabs(was) or nil
+    local how, e = M.nav:opened{name = name, arg = snap(arg), fp = fp, was_open = was_open, backing = M.backing(),
+        reopening = M.reopening, tabs = tabs, safe = M.safe(name)}
+    M.last = how
+    M.pending_tabs = (how == "return" or how == "reopen") and e and e.tabs or nil
+end
+
+function M.after_open()
+    local tabs = M.pending_tabs
+    M.pending_tabs = nil
+    local restore = helpers().restore_tabs
+    if tabs and #tabs > 0 and restore then restore(tabs) end
+end
+
+function M.reopen()
+    local e = M.nav:back()
+    if not e then return false end
+    local fn = G.FUNCS[e.name]
+    if type(fn) ~= "function" then
+        M.nav:reset()
+        return false
+    end
+    local old = G.OVERLAY_MENU
+    local layered = G.NO_MOD_CURSOR_STACK
+    if not layered then
+r 24 972 %20%20%20%20%20%20%20%20 -
+r 24 973 %20%20%20%20%20%20%20%20 -
+l 10
+    end
+    M.reopening = e
+    local ok, err = pcall(fn, {config = snap({config = e.arg or {}}) or {}, UIBox = old})
+    M.reopening = nil
+    if not layered then G.NO_MOD_CURSOR_STACK = nil end
+    if ok and type(G.OVERLAY_MENU) == "table" and G.OVERLAY_MENU ~= old then return true end
+    print("[QoL] back to " .. tostring(e.name) .. " failed: " .. tostring(err))
+    M.nav:reset()
+    if G.OVERLAY_MENU == true then G.OVERLAY_MENU = nil end
+    if type(G.OVERLAY_MENU) == "table" and G.OVERLAY_MENU ~= old then return true end
+r 3 349 %20%20%20%20 -
+r 13 1367 %20%20%20%20%20%20%20%20 -
+r 13 1363 %20%20%20%20%20%20%20%20 -
+l 69
+        return true
+    end
+    return false
+end
+
+local function wrap_overlay()
+    local open = G.FUNCS.overlay_menu
+    G.FUNCS.overlay_menu = function(args)
+        if type(args) == "table" and not args.key then
+            local c = debug.getinfo(2, "Sl")
+            if c then args.key = tostring(c.short_src) .. ":" .. tostring(c.currentline) end
+        end
+        if type(args) == "table" then
+            local ok, err = pcall(M.before_open, args)
+            if not ok then
+                print("[QoL] nav: " .. tostring(err))
+                M.nav:reset()
+            end
+        end
+        open(args)
+        local ok, err = pcall(M.after_open)
+        if not ok then print("[QoL] nav tabs: " .. tostring(err)) end
+    end
+    local exit = G.FUNCS.exit_overlay_menu
+    G.FUNCS.exit_overlay_menu = function(...)
+        if M.backing() and not M.reopening and type(G.OVERLAY_MENU) == "table" and M.nav:depth() > 0 then
+            M.back_t = nil
+            if G.FUNCS.end_menu_sub_showcase then pcall(G.FUNCS.end_menu_sub_showcase) end
+            if M.reopen() then return end
+        end
+        M.nav:reset()
+        return exit(...)
+    end
+end
+
+local function wrap_click()
+    local click = UIElement.click
+    UIElement.click = function(self, ...)
+        local c = self.config
+        local b = c and c.button
+        if b then M.click = {name = b, e = self, t = now()} end
+        local back = b and (c.id == "overlay_menu_back_button" or b == "exit_overlay_menu") and not M.NOT_BACK[b]
+        if back then M.back_t = now() end
+        click(self, ...)
+        if back then M.back_t = nil end
+    end
+end
+
+local function wrap_esc()
+    local kpu = Controller.key_press_update
+    Controller.key_press_update = function(self, key, ...)
+        local esc = key == "escape" and type(G.OVERLAY_MENU) == "table" and not self.text_input_hook and not self.locks.frame
+        if esc then M.back_t = now() end
+        kpu(self, key, ...)
+        if esc then M.back_t = nil end
+    end
+end
+
+function M.init()
+    if M._wrapped or not (G and G.FUNCS and G.FUNCS.overlay_menu and UIElement and Controller) then return end
+    M._wrapped = true
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    for _, name in ipairs(M.ESC) do G.ESC_BACK_FUNCS[name] = true end
+    wrap_overlay()
+    wrap_click()
+    wrap_esc()
+end
+
+return M
+end

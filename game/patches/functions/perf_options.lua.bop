@@ -1,0 +1,324 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 113
+PERF_OPTS = PERF_OPTS or {}
+local P = PERF_OPTS
+
+P.DEFAULTS = {
+    perf_resolution = 1,
+    perf_shader_quality = 3,
+    perf_particles = true,
+    perf_particle_amount = 1,
+    perf_background = 1,
+    perf_bg_anims = true,
+    perf_gc_tuning = false,
+    perf_texture_filter = 1,
+    perf_canvas_caching = false,
+    perf_offscreen_culling = false,
+    perf_away_slow = false,
+    shadows = 'On',
+}
+
+P.PRESET = {
+    perf_resolution = 2,
+    perf_shader_quality = 1,
+    perf_particle_amount = 2,
+    perf_background = 3,
+    perf_offscreen_culling = true,
+    perf_gc_tuning = true,
+    perf_away_slow = true,
+    shadows = 'Off',
+}
+
+P.BG_SHADERS = {background = true, splash = true}
+P.BG_PIXELS = 700
+P.SLOW_EVERY = 3
+P.AWAY_FPS = 15
+
+local function GR() return G and G.SETTINGS and G.SETTINGS.GRAPHICS end
+
+function P.fill_defaults()
+    local g = GR()
+    if not g then return end
+    for k, v in pairs(P.DEFAULTS) do
+        if g[k] == nil then g[k] = v end
+    end
+    if g.perf_particles == false and g.perf_particle_amount == 1 then g.perf_particle_amount = 3 end
+end
+
+function P.particle_mult()
+    local g = GR()
+    if not g then return 1 end
+    local a = g.perf_particle_amount or (g.perf_particles == false and 3 or 1)
+    if a >= 3 or g.perf_particles == false then return 0 end
+    return a == 2 and 2 or 1
+end
+
+function P.set_particles(i)
+    local g = GR()
+    g.perf_particle_amount = i
+    g.perf_particles = i < 3
+end
+
+function P.set_background(i)
+    local g = GR()
+    g.perf_background = i
+    g.perf_bg_anims = i < 3
+    P.bg_sig = nil
+end
+
+local function sig_of(step, w, h)
+    local parts = {step.shader, w, h}
+    for _, v in ipairs(step.send or {}) do
+        if v.name ~= 'time' and v.name ~= 'spin_time' then
+            local val = v.val
+            if val == nil and v.ref_table then val = v.ref_table[v.ref_value] end
+            if type(val) == 'table' then
+                for i = 1, 4 do parts[#parts + 1] = val[i] or 0 end
+            else
+                parts[#parts + 1] = tostring(val)
+            end
+        end
+    end
+    return table.concat(parts, ':')
+end
+
+local function frozen_send(step)
+    P.frozen = P.frozen or {}
+    local key = step.shader
+    local out = {}
+    for i, v in ipairs(step.send or {}) do
+        if v.name == 'time' or v.name == 'spin_time' then
+            P.frozen[key .. v.name] = P.frozen[key .. v.name] or (v.val or (v.ref_table and v.ref_table[v.ref_value]) or 0)
+            out[i] = {name = v.name, val = P.frozen[key .. v.name]}
+        else
+            out[i] = v
+        end
+    end
+    return out
+end
+
+function P.draw_background(spr, unzoom)
+    local g = GR()
+    if not g or not spr or not spr.draw_steps or #spr.draw_steps ~= 1 or not G.CANVAS then return false end
+    local step = spr.draw_steps[1]
+    if not P.BG_SHADERS[step.shader] or not spr.states.visible or next(spr.children) then return false end
+    local mode = g.perf_background or 1
+    local cw, ch = G.CANVAS:getDimensions()
+    if mode >= 4 then
+        local c = step.shader == 'background' and G.C.BACKGROUND and G.C.BACKGROUND.C
+        if not c then
+            for _, v in ipairs(step.send or {}) do
+                if v.name == 'colour_1' then c = v.val or (v.ref_table and v.ref_table[v.ref_value]) end
+            end
+        end
+        c = c or G.C.BLACK
+        love.graphics.push('all')
+r 19 278 %20%20%20%20%20%20%20%20 -
+r 3 4413 %20%20%20%20%20%20%20%20 -
+l 33
+        love.graphics.setColor(c[1], c[2], c[3], 1)
+        love.graphics.rectangle('fill', 0, 0, cw, ch)
+        love.graphics.pop()
+        add_to_drawhash(spr)
+        return true
+    end
+    local ps = math.sqrt(cw * cw + ch * ch) / P.BG_PIXELS
+    if ps < 1 then return false end
+    local bw, bh = math.ceil(cw / ps), math.ceil(ch / ps)
+    local fresh = false
+    if not (P.bg_canvas and P.bg_canvas:getWidth() == bw and P.bg_canvas:getHeight() == bh) then
+        local ok, canvas = pcall(love.graphics.newCanvas, bw, bh)
+        if not ok or not canvas then return false end
+        if P.bg_canvas then P.bg_canvas:release() end
+        P.bg_canvas = canvas
+        P.bg_canvas:setFilter('nearest', 'nearest')
+        fresh = true
+    end
+    local redraw = fresh or mode == 1 or P.bg_shader ~= step.shader
+    if not redraw and mode == 2 then
+        redraw = (G.FRAMES.DRAW % P.SLOW_EVERY) == 0
+    elseif not redraw and mode == 3 then
+        local s = sig_of(step, bw, bh)
+        redraw = s ~= P.bg_sig
+        P.bg_sig = s
+    end
+    if redraw then
+        P.bg_shader = step.shader
+        local send = step.send
+        if mode == 3 then step.send = frozen_send(step) end
+        love.graphics.push('all')
+        love.graphics.setCanvas(P.bg_canvas)
+        love.graphics.clear(0, 0, 0, 1)
+r 19 278 %20%20%20%20%20%20%20%20 -
+l 11
+        love.graphics.scale(G.CANV_SCALE * bw / cw, G.CANV_SCALE * bh / ch)
+        G.BG_UNZOOM = unzoom
+        spr:translate_container()
+        G.BG_UNZOOM = nil
+        spr:draw()
+        love.graphics.pop()
+        step.send = send
+    else
+        add_to_drawhash(spr)
+    end
+    love.graphics.push('all')
+r 19 278 %20%20%20%20 -
+r 3 4413 %20%20%20%20 -
+l 153
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(P.bg_canvas, 0, 0, 0, cw / bw, ch / bh)
+    love.graphics.pop()
+    return true
+end
+
+local function fps_cap_limit(g)
+    local cap = g.fps_cap or 6
+    return cap > 3 and 3 or cap
+end
+
+function P.apply_mode(on)
+    local g = GR()
+    local St = G.SETTINGS
+    P.fill_defaults()
+    if on then
+        local r = g._perf_mode_restore or {}
+        for k, v in pairs(P.PRESET) do
+            if r[k] == nil then r[k] = g[k] end
+            g[k] = v
+        end
+        if r.perf_heavy_scoring == nil then r.perf_heavy_scoring = St.perf_heavy_scoring == true end
+        St.perf_heavy_scoring = true
+        if r.fps_cap == nil then r.fps_cap = g.fps_cap end
+        g.fps_cap = fps_cap_limit(g)
+        g._perf_mode_restore = r
+    else
+        local r = g._perf_mode_restore or {}
+        for k in pairs(P.PRESET) do
+            local v = r[k]
+            if v == nil then v = P.DEFAULTS[k] end
+            g[k] = v
+        end
+        if r.perf_heavy_scoring ~= nil then St.perf_heavy_scoring = r.perf_heavy_scoring end
+        if r.fps_cap ~= nil then g.fps_cap = r.fps_cap end
+        g._perf_mode_restore = nil
+    end
+    P.set_particles(g.perf_particle_amount or 1)
+    P.set_background(g.perf_background or 1)
+    if P.shadow_ref then P.shadow_ref.on = g.shadows ~= 'Off' end
+    if apply_gc_tuning then apply_gc_tuning(g.perf_gc_tuning) end
+end
+
+function P.frame_cap(cap)
+    local g = GR()
+    if not (g and g.perf_away_slow) or cap <= P.AWAY_FPS then return cap end
+    local w = love.window
+    if w and w.hasFocus and not w.hasFocus() then return P.AWAY_FPS end
+    return cap
+end
+
+function P.set_resolution(i)
+    GR().perf_resolution = i
+    if love and love.resize then love.resize(love.graphics.getDimensions()) end
+end
+
+function P.set_shine(i)
+    GR().perf_shader_quality = i
+end
+
+function P.set_shadows(on)
+    GR().shadows = on and 'On' or 'Off'
+end
+
+function P.set_texture_filter(i)
+    local g = GR()
+    g.perf_texture_filter = i
+    local mode = (g.texture_scaling == 1 or i == 2) and 'nearest' or 'linear'
+    love.graphics.setDefaultFilter(mode, mode, 1)
+    for _, list in ipairs({G.ASSET_ATLAS or {}, G.ANIMATION_ATLAS or {}}) do
+        for _, a in pairs(list) do
+            if type(a) == 'table' and a.image and a.image.setFilter then pcall(a.image.setFilter, a.image, mode, mode) end
+        end
+    end
+end
+
+G.FUNCS.perf_reset_all = function()
+    local g = GR()
+    g.performance_mode = false
+    g._perf_mode_restore = nil
+    for k, v in pairs(P.DEFAULTS) do g[k] = v end
+    G.SETTINGS.perf_heavy_scoring = false
+    P.set_particles(1)
+    P.set_background(1)
+    P.set_texture_filter(1)
+    if apply_gc_tuning then apply_gc_tuning(false) end
+    P.set_resolution(1)
+    if G.save_settings then pcall(function() G:save_settings() end) end
+    if UIK and UIK.refresh then UIK.refresh() end
+end
+
+if mod_loc_register then
+    mod_loc_register{
+        ["en-us"] = {
+            perf_full = "Full", perf_half = "Half", perf_moving = "Moving", perf_slow = "Slow", perf_still = "Still", perf_plain = "Plain",
+            perf_simple = "Simple", perf_off = "Off", perf_all = "All", perf_fewer = "Fewer", perf_none = "None", perf_smooth = "Smooth", perf_crisp = "Crisp",
+        },
+        fr = {
+            ["Options > Performance."] = "Options > Performance.", ["One switch for the lighter"] = "Un seul bouton pour les",
+            ["settings: smaller picture,"] = "réglages légers : image réduite,", ["still background, no card"] = "fond figé, sans reflets",
+            ["shine, fewer particles."] = "et moins de particules.", ["Off puts yours back."] = "Coupé, vos réglages reviennent.",
+            ["Each option also works"] = "Chaque option marche aussi", ["on its own: Background,"] = "seule : Fond, Reflets",
+            ["Card Shine, Particles,"] = "des cartes, Particules,", ["Frame Rate Limit and more."] = "Limite de FPS et plus.",
+            ["All light settings at once"] = "Tous les réglages légers d'un coup", ["Every option back to normal"] = "Chaque option par défaut",
+            ["Lower is much faster"] = "Plus bas, bien plus rapide", ["The swirl behind the table"] = "Le tourbillon derrière la table",
+            ["15 FPS while in another app"] = "15 FPS dans une autre appli", ["Cleans memory in small steps"] = "Nettoyage en douceur",
+            ["Faster but choppier"] = "Plus rapide, saccadé", ["Slow in Background"] = "Lent en arrière-plan",
+            ["Fewer Stutters"] = "Moins d'à-coups",
+            ["Quick Setup"] = "Réglage rapide", ["Picture"] = "Image", ["Smoothness"] = "Fluidité",
+            ["See how smooth the game runs"] = "Pour voir si le jeu tourne bien",
+            ["Reset Performance"] = "Réinitialiser les performances", ["Picture Sharpness"] = "Netteté de l'image", perf_full = "Maximum", perf_half = "Moitié",
+            perf_moving = "Animé", perf_slow = "Lent", perf_still = "Figé", perf_plain = "Uni",
+            ["Card Shine"] = "Reflets des cartes", ["Shine and tilt on cards"] = "Reflets et inclinaison des cartes", perf_simple = "Simples", perf_off = "Aucun",
+            ["Particles"] = "Particules", perf_all = "Toutes", perf_fewer = "Moins", perf_none = "Aucune",
+            ["Card Shadows"] = "Ombres des cartes", ["Shadows under cards"] = "Les ombres sous les cartes",
+            ["Texture Look"] = "Aspect des textures", perf_smooth = "Lisse", perf_crisp = "Net",
+            ["Frame Rate Limit"] = "Limite de FPS", ["Lower saves battery and heat"] = "Plus bas, chauffe moins",
+            ["Skip Hidden Cards"] = "Ignorer hors écran",
+            ["Skip Long Score Counts"] = "Décomptes rapides",
+            ["Half-Rate Table"] = "Table à mi-cadence",
+            ["Draws only what you see"] = "Seulement le visible",
+            ["Shortens very long counts"] = "Abrège les longs décomptes",
+        },
+        es = {
+            ["Options > Performance."] = "Opciones > Rendimiento.", ["One switch for the lighter"] = "Un solo interruptor para",
+            ["settings: smaller picture,"] = "los ajustes ligeros: imagen", ["still background, no card"] = "reducida, fondo quieto, sin",
+            ["shine, fewer particles."] = "brillo y menos partículas.", ["Off puts yours back."] = "Al quitarlo, vuelven los tuyos.",
+            ["Each option also works"] = "Cada opción funciona", ["on its own: Background,"] = "sola: Fondo, Brillo de",
+            ["Card Shine, Particles,"] = "cartas, Partículas,", ["Frame Rate Limit and more."] = "Límite de FPS y más.",
+            ["All light settings at once"] = "Todos los ajustes ligeros a la vez", ["Every option back to normal"] = "Cada opción a lo normal",
+            ["Lower is much faster"] = "Más bajo, mucho más rápido", ["The swirl behind the table"] = "El remolino detrás de la mesa",
+            ["15 FPS while in another app"] = "15 FPS en otra app", ["Cleans memory in small steps"] = "Limpieza suave",
+            ["Faster but choppier"] = "Más rápido, a saltos", ["Slow in Background"] = "Lento en segundo plano",
+            ["Fewer Stutters"] = "Menos tirones",
+            ["Quick Setup"] = "Ajuste rápido", ["Picture"] = "Imagen", ["Smoothness"] = "Fluidez",
+            ["See how smooth the game runs"] = "Para ver si el juego va fluido",
+            ["Reset Performance"] = "Restablecer rendimiento", ["Picture Sharpness"] = "Nitidez de imagen", perf_full = "Al máximo", perf_half = "Mitad",
+            perf_moving = "Animado", perf_slow = "Lento", perf_still = "Quieto", perf_plain = "Liso",
+            ["Card Shine"] = "Brillo de cartas", ["Shine and tilt on cards"] = "Brillo e inclinación de las cartas", perf_simple = "Simple", perf_off = "Sin brillo",
+            ["Particles"] = "Partículas", perf_all = "Todas", perf_fewer = "Menos", perf_none = "Ninguna",
+            ["Card Shadows"] = "Sombras de cartas", ["Shadows under cards"] = "Las sombras bajo las cartas",
+            ["Texture Look"] = "Aspecto de texturas", perf_smooth = "Suave", perf_crisp = "Nítido",
+            ["Frame Rate Limit"] = "Límite de FPS", ["Lower saves battery and heat"] = "Ahorra batería y calor",
+            ["Skip Hidden Cards"] = "Omitir cartas ocultas",
+            ["Skip Long Score Counts"] = "Recuentos rápidos",
+            ["Half-Rate Table"] = "Mesa a media cadencia",
+            ["Draws only what you see"] = "Solo dibuja lo visible",
+            ["Shortens very long counts"] = "Acorta recuentos largos",
+        },
+    }
+end
+
+return P
+end

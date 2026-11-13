@@ -1,0 +1,104 @@
+BOP 2
+eol lf
+final 1
+base 30
+c 14
+s 1
+r 30 15 %20%20%20%20 -
+c 10
+s 1
+r 30 26 %20%20%20%20 -
+c 6
+s 1
+r 22 42 %20%20%20%20 -
+c 39
+l 5
+function Sprite:tilt_on_touch()
+    self.touch_collide_tilt = true
+    return self
+end
+
+c 2
+l 6
+    local _perf_shader = G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.perf_shader_quality or 3
+    if _perf_shader <= 2 then
+        if _shader == 'voucher' or _shader == 'booster' or _shader == 'negative_shine' then return end
+        _no_tilt = true
+    end
+    if _perf_shader <= 1 then _shadow_height = nil end
+c 1
+s 1
+r 30 76 %20%20%20%20 -
+c 5
+s 2
+r 30 82 %20%20%20%20 -
+l 1
+        if _send then
+c 4
+s 1
+r 30 88 %20%20%20%20 -
+c 1
+l 16
+        G.SHADERS.vortex:send('DPI', love.graphics.getDPIScale())
+    elseif _perf_shader <= 2 then
+        local _s = G.SHADERS[_shader or 'dissolve']
+        _s:send("dissolve", math.abs(_draw_major.dissolve or 0))
+        _s:send("texture_details", self:get_pos_pixel())
+        _s:send("image_details", self:get_image_dims())
+        _s:send("shadow", false)
+        _s:send('hovering', 0)
+        _s:send("time", 123.33412*((_draw_major.ID or 1)/1.14212)%3000)
+        _s:send("burn_colour_1", _draw_major.dissolve_colours and _draw_major.dissolve_colours[1] or G.C.CLEAR)
+        _s:send("burn_colour_2", _draw_major.dissolve_colours and _draw_major.dissolve_colours[2] or G.C.CLEAR)
+        if _send then
+            local S = rawget(_G, "SMODS")
+            local def = S and S.Shaders and S.Shaders[_shader]
+            _s:send((def and def.original_key) or _shader, _send)
+        end
+c 8
+s 1
+e 30 98 %20%20%20%20%20%20%20%20 - =111,+%28%28%5F%64%72%61%77%5F%6D%61%6A%6F%72%2E%74%6F%75%63%68%5F%63%6F%6C%6C%69%64%65%5F%74%69%6C%74%20%61%6E%64%20%5F%64%72%61%77%5F%6D%61%6A%6F%72%2E%73%74%61%74%65%73%2E%63%6F%6C%6C%69%64%65%2E%69%73%29%20%61%6E%64%20,=28,+%20%6F%72%20%30%29,=20
+c 12
+s 1
+l 1
+    if other_obj then
+c 1
+s 1
+l 1
+    else
+c 5
+s 1
+r 30 76 %20%20%20%20 -
+c 14
+s 1
+l 1
+    if self.video then
+c 29
+s 1
+r 30 164 %20%20%20%20 -
+c 6
+s 1
+l 1
+
+c 29
+s 1
+l 1
+    if self.video then
+c 2
+s 4
+l 3
+    local anims = G.ANIMATIONS
+    for i = #anims, 1, -1 do
+        if anims[i] == self then table.remove(anims, i) end
+c 1
+s 4
+l 3
+    local sprites = G.I.SPRITE
+    for i = #sprites, 1, -1 do
+        if sprites[i] == self then table.remove(sprites, i) end
+c 1
+s 1
+l 1
+
+c 2
+end

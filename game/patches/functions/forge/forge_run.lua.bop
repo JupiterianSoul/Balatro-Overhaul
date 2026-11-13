@@ -1,0 +1,677 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 107
+local Store = require("functions/forge/forge_store")
+local Cat = require("functions/forge/forge_catalog")
+local R = require("functions/forge/forge_rules")
+local FJ = require("functions/forge/forge_joker")
+
+local Run = {}
+ForgeRun = Run
+
+Run.RATE = {Joker = "joker_rate", Tarot = "tarot_rate", Planet = "planet_rate", Spectral = "spectral_rate", Playing = "playing_card_rate"}
+Run.RARE = {[1] = "rarity_common", [2] = "rarity_uncommon", [3] = "rarity_rare"}
+Run.BASE = {pack_slots = 2, voucher_slots = 1, rarity_common = 70, rarity_uncommon = 25, rarity_rare = 5}
+Run.SCORE = {chips = true, mult = true, xmult = true}
+
+local function log_once(key, msg) FJ.log_once("run_" .. key, msg) end
+
+local function game() return G and G.GAME end
+
+function Run.bonus(key)
+  local g = game()
+  local b = g and g.forge_bonus
+  return b and tonumber(b[key]) or 0
+end
+
+local function add_bonus(key, n)
+  local g = game()
+  g.forge_bonus = g.forge_bonus or {}
+  g.forge_bonus[key] = (tonumber(g.forge_bonus[key]) or 0) + n
+end
+
+local function fields_of(c)
+  local f = Cat.default_fields(c.kind)
+  for k, v in pairs(c.fields or {}) do f[k] = v end
+  return f
+end
+Run.fields = fields_of
+
+local function center_item(center)
+  if not (center and center.forge_id and not center.forge_lost) then return nil end
+  return Store.get_item(center.forge_id)
+end
+
+function Run.sources()
+  local out = {}
+  local g = game()
+  if not g then return out end
+  local keys = {}
+  for key, on in pairs(g.used_vouchers or {}) do
+    if on and type(key) == "string" and key:sub(1, 8) == "v_forge_" then keys[#keys + 1] = key end
+  end
+  table.sort(keys)
+  for _, key in ipairs(keys) do
+    local c = center_item(G.P_CENTERS[key])
+    if c and c.kind == "voucher" then out[#out + 1] = {c = c, key = key, times = math.max(1, math.floor(tonumber(g.forge_buys and g.forge_buys[key]) or 1))} end
+  end
+  local back = g.selected_back and g.selected_back.effect and g.selected_back.effect.center
+  if back and back.forge_kind == "deck" then
+    local c = center_item(back)
+    if c then out[#out + 1] = {c = c, key = back.key, times = 1, deck = true} end
+  end
+  if g.forge_stake then
+    local c = Store.get_item(g.forge_stake)
+    if c and c.kind == "stake" then out[#out + 1] = {c = c, key = "stake_forge_" .. c.id, times = 1} end
+  end
+  local b = g.blind
+  local p = b and b.config and b.config.blind
+  if p and p.forge_kind == "blind" and not b.disabled then
+    local c = Store.get_item(p.forge_id)
+    if c then out[#out + 1] = {c = c, key = p.key or ("bl_forge_" .. c.id), times = 1, blind = true} end
+  end
+  return out
+end
+
+function Run.ctx(other)
+  return {scoring_name = Run.hand_name, poker_hands = Run.poker_hands, full_hand = G.play and G.play.cards, other = other}
+end
+
+function Run.pass(e, ctx, key)
+  local every = nil
+  for _, o in ipairs(e.only or {}) do
+    if o.id == "every" then every = o
+    else
+      local ok = R.check(o, ctx, nil, ctx.other, "forge_run_" .. key)
+      if o.neg then ok = not ok end
+      if not ok then return false end
+    end
+  end
+  if every then
+    local g = game()
+    g.forge_count = g.forge_count or {}
+    g.forge_count[key] = (tonumber(g.forge_count[key]) or 0) + 1
+    if g.forge_count[key] % math.max(1, math.floor(tonumber(every.n) or 1)) ~= 0 then return false end
+  end
+  return true
+end
+
+local function each(when, fn)
+  for _, s in ipairs(Run.sources()) do
+    for i, e in ipairs(s.c.effects or {}) do
+      local spec = Cat.effect(s.c.kind, e.id)
+      if spec and spec.run and (e.when or "now") == when then fn(s, i, e, spec) end
+    end
+  end
+end
+Run.each = each
+
+local function change_slots(area, n)
+  if not area then return end
+r 3 617 %20%20 -
+l 55
+    area.config.card_limit = math.max(0, area.config.card_limit + n)
+    return true
+  end}))
+end
+
+local function level(hand, n)
+  local g = game()
+  if hand == "all" then
+    for k in pairs(g.hands) do level_up_hand(nil, k, true, n) end
+    return
+  end
+  if hand == "random" then
+    local list = {}
+    for k, v in pairs(g.hands) do if v.visible then list[#list + 1] = k end end
+    table.sort(list)
+    hand = pseudorandom_element(list, pseudoseed("forge_run_level"))
+  end
+  if hand and g.hands[hand] then level_up_hand(nil, hand, true, n) end
+end
+Run.level = level
+
+local function random_cards(n)
+  local pool, out = {}, {}
+  for _, v in ipairs(G.playing_cards or {}) do pool[#pool + 1] = v end
+  for _ = 1, math.min(#pool, n) do
+    local v, at = pseudorandom_element(pool, pseudoseed("forge_run_cards"))
+    out[#out + 1] = v
+    table.remove(pool, at)
+  end
+  return out
+end
+
+function Run.apply(e, src)
+  local g = game()
+  if not g then return end
+  local id = e.id
+  local n = tonumber(e.n) or 0
+  local whole = math.floor(n)
+  if id == "hand_size" or id == "hand_size_plus" then
+    if G.hand then G.hand:change_size(math.max(whole, 1 - G.hand.config.card_limit)) end
+  elseif id == "joker_slots" or id == "joker_slots_plus" then change_slots(G.jokers, whole)
+  elseif id == "consumable_slots" then change_slots(G.consumeables, whole)
+  elseif id == "hands" then
+    local d = math.max(whole, 1 - g.round_resets.hands)
+    g.round_resets.hands = g.round_resets.hands + d
+    ease_hands_played(d)
+  elseif id == "discards" then
+    local d = math.max(whole, -g.round_resets.discards)
+    g.round_resets.discards = g.round_resets.discards + d
+    ease_discard(d)
+  elseif id == "interest_cap" then g.interest_cap = (g.interest_cap or 25) + n
+  elseif id == "reroll_cost" then
+    g.round_resets.reroll_cost = math.max(0, g.round_resets.reroll_cost + n)
+    g.current_round.reroll_cost = math.max(0, g.current_round.reroll_cost + n)
+  elseif id == "discount" then
+r 3 617 %20%20%20%20 -
+l 27
+      g.discount_percent = math.max(g.discount_percent or 0, n)
+      for _, v in pairs(G.I.CARD) do if v.set_cost then v:set_cost() end end
+      return true
+    end}))
+  elseif id == "shop_slots" then
+    local have = g.shop and g.shop.joker_max or 2
+    local d = math.max(whole, 1 - have)
+    G.E_MANAGER:add_event(Event({func = function() change_shop_size(d) return true end}))
+  elseif id == "money" or id == "dollars" then ease_dollars(n)
+  elseif id == "interest_amount" then g.interest_amount = math.max(0, (g.interest_amount or 1) + n)
+  elseif id == "money_per_hand" then g.modifiers.money_per_hand = (g.modifiers.money_per_hand or 1) + n
+  elseif id == "money_per_discard" then g.modifiers.money_per_discard = (g.modifiers.money_per_discard or 0) + n
+  elseif id == "blind_size" then g.starting_params.ante_scaling = (g.starting_params.ante_scaling or 1) * math.max(0.0001, n)
+  elseif id == "probability" then
+    for k, v in pairs(g.probabilities) do g.probabilities[k] = v * math.max(0, n) end
+  elseif id == "shop_rate" then
+    local key = Run.RATE[e.v]
+    if key then g[key] = math.max(0, (g[key] or 0) + n) end
+  elseif id == "edition_rate" then g.edition_rate = (g.edition_rate or 1) * math.max(0, n)
+  elseif id == "rarity_weight" then
+    local key = Run.RARE[tonumber(e.v) or 3]
+    if key then add_bonus(key, n) end
+  elseif id == "pack_slots" or id == "voucher_slots" then add_bonus(id, whole)
+  elseif id == "free_rerolls" then
+    add_bonus("free_rerolls", whole)
+    if G.STATE == G.STATES.SHOP and g.current_round then
+      g.current_round.free_rerolls = math.max(0, (g.current_round.free_rerolls or 0) + whole)
+r 3 603 %20%20%20%20%20%20 -
+l 363
+    end
+  elseif id == "ante_now" then
+    local d = math.max(whole, -g.round_resets.ante)
+    if d ~= 0 then
+      ease_ante(d)
+      g.round_resets.blind_ante = (g.round_resets.blind_ante or g.round_resets.ante) + d
+    end
+  elseif id == "win_ante" then g.win_ante = math.max(1, whole)
+  elseif id == "create" then
+    for _ = 1, math.max(1, whole) do if not R.create_one(e.v or "Tarot", nil) then break end end
+  elseif id == "level_up" then level(e.v or "random", math.max(1, whole))
+  elseif id == "level_random" then for _ = 1, math.max(1, whole) do level("random", 1) end
+  elseif id == "tag" then
+    for _ = 1, math.max(1, math.min(whole, 50)) do
+      local key = e.v
+      if key == R.TAG_RANDOM then key = R.roll_tag() end
+      if key and G.P_TAGS and G.P_TAGS[key] then add_tag(Tag(key)) end
+    end
+  elseif id == "enhance_random" then
+    local cen = G.P_CENTERS[e.v]
+    if cen then for _, v in ipairs(random_cards(math.max(1, whole))) do v:set_ability(cen, nil, true) end end
+  elseif id == "add_cards" then
+    if G.deck then
+      local made = {}
+      local keys = {}
+      for k in pairs(G.P_CARDS) do if k:match("^[HDSC]_") then keys[#keys + 1] = k end end
+      table.sort(keys)
+      for i = 1, math.max(1, math.min(whole, 200)) do
+        local front = G.P_CARDS[pseudorandom_element(keys, pseudoseed("forge_run_add"))]
+        made[i] = create_playing_card({front = front, center = G.P_CENTERS[e.v] or G.P_CENTERS.c_base}, G.deck, nil, true, {G.C.SECONDARY_SET.Enhanced})
+      end
+      if playing_card_joker_effects then playing_card_joker_effects(made) end
+    end
+  elseif id == "joker_edition" then
+    local pool = {}
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do if not j.edition then pool[#pool + 1] = j end end
+    if #pool > 0 then
+      local j = pseudorandom_element(pool, pseudoseed("forge_run_edition"))
+      j:set_edition({[e.v or "foil"] = true})
+    end
+  elseif id == "sell_value" then
+    for _, j in ipairs(G.jokers and G.jokers.cards or {}) do
+      j.ability.extra_value = (j.ability.extra_value or 0) + n
+      j:set_cost()
+    end
+  elseif id == "hands_round" then
+    local left = g.current_round and g.current_round.hands_left or 0
+    ease_hands_played(math.max(whole, -left))
+  elseif id == "discards_round" then
+    local left = g.current_round and g.current_round.discards_left or 0
+    ease_discard(math.max(whole, -left))
+  elseif id == "disable_boss" then
+    local b = g.blind
+    if b and b.boss and not b.disabled and b.disable then b:disable() end
+  end
+end
+
+local function juice(s)
+  if s.deck and G.deck and G.deck.cards and G.deck.cards[1] then G.deck.cards[1]:juice_up(0.3, 0.3) end
+end
+
+function Run.fire(when, ctx)
+  if Run.firing or not game() then return end
+  if when == "now" then return end
+  Run.firing = true
+  local ok, err = pcall(function()
+    ctx = ctx or Run.ctx()
+    each(when, function(s, i, e)
+      if Run.SCORE[e.id] then return end
+      if when == "card_scored" then return end
+      if Run.pass(e, ctx, s.key .. "_" .. i) then
+        for _ = 1, s.times do Run.apply(e, s) end
+        juice(s)
+      end
+    end)
+  end)
+  Run.firing = false
+  if not ok then log_once("fire_" .. tostring(when), "run effect failed: " .. tostring(err)) end
+end
+
+function Run.apply_now(c, src)
+  for i, e in ipairs(c.effects or {}) do
+    local spec = Cat.effect(c.kind, e.id)
+    if spec and spec.run and (e.when or "now") == "now" and not (src and src.skip and src.skip[e.id] and not (e.only and #e.only > 0)) then
+      local ok, err = pcall(function()
+        if Run.pass(e, Run.ctx(), (src and src.key or c.id) .. "_now_" .. i) then Run.apply(e, src) end
+      end)
+      if not ok then log_once("now_" .. c.id .. "_" .. tostring(e.id), "effect " .. tostring(e.id) .. " failed: " .. tostring(err)) end
+    end
+  end
+end
+
+function Run.score(chips, mult)
+  local changed = false
+  local ctx = Run.ctx()
+  each("hand_played", function(s, i, e)
+    if not Run.SCORE[e.id] then return end
+    if not Run.pass(e, ctx, s.key .. "_" .. i) then return end
+    local n = tonumber(e.n) or 0
+    for _ = 1, s.times do
+      if e.id == "chips" then chips = chips + n
+      elseif e.id == "mult" then mult = mult + n
+      else mult = mult * n end
+    end
+    changed = true
+  end)
+  return math.max(0, chips), math.max(0, mult), changed
+end
+
+function Run.previewing()
+  local P = rawget(_G, "PREVIEW")
+  return type(P) == "table" and P._in_sandbox == true
+end
+
+function Run.scoring()
+  return G.STATE == G.STATES.HAND_PLAYED or Run.previewing()
+end
+
+function Run.card_bonus(card, id)
+  if not (G.play and card.area == G.play and not card.debuff and Run.scoring()) then return nil end
+  local total = nil
+  local ctx = Run.ctx(card)
+  each("card_scored", function(s, i, e)
+    if e.id ~= id then return end
+    if not Run.pass(e, ctx, s.key .. "_" .. i) then return end
+    local n = tonumber(e.n) or 0
+    for _ = 1, s.times do
+      if id == "xmult" then total = (total or 1) * n else total = (total or 0) + n end
+    end
+  end)
+  return total
+end
+
+function Run.voucher_ok(c, key, f)
+  local g = game()
+  if not g then return false end
+  if (tonumber(f.min_ante) or 1) > (g.round_resets and g.round_resets.ante or 1) then return false end
+  local need = f.requires
+  if need and need ~= "none" and G.P_CENTERS[need] and not (g.used_vouchers or {})[need] then return false end
+  local max = math.max(1, math.floor(tonumber(f.max_buys) or 1))
+  local buys = tonumber(g.forge_buys and g.forge_buys[key]) or ((g.used_vouchers or {})[key] and 1 or 0)
+  if buys >= max then return false end
+  for _, card in ipairs(G.shop_vouchers and G.shop_vouchers.cards or {}) do
+    if card.config and card.config.center and card.config.center.key == key then return false end
+  end
+  if g.banned_keys and g.banned_keys[key] then return false end
+  return true
+end
+
+function Run.voucher_pool(pool)
+  for _, center in ipairs(G.P_CENTER_POOLS.Voucher or {}) do
+    if center.forge_kind == "voucher" and center.forge_on then
+      local c = center_item(center)
+      if c then
+        local key = center.key
+        local f = fields_of(c)
+        local at = nil
+        for i, k in ipairs(pool) do if k == key then at = i end end
+        local ok = Run.voucher_ok(c, key, f)
+        local w = math.max(0, math.floor(tonumber(f.weight) or 1))
+        if at and (not ok or w == 0) then pool[at] = "UNAVAILABLE"; at = nil end
+        if ok and w > 0 then
+          local add = at and (w - 1) or w
+          for _ = 1, math.min(add, 1000) do pool[#pool + 1] = key end
+        end
+      end
+    end
+  end
+  local real = false
+  for _, k in ipairs(pool) do if k ~= "UNAVAILABLE" then real = true end end
+  if not real then pool[#pool + 1] = "v_blank" end
+end
+
+local NEED_TYPES = {Joker = "j_joker", Tarot = "c_strength", Planet = "c_pluto", Spectral = "c_incantation", Tarot_Planet = "c_strength", Consumeables = "c_strength"}
+
+function Run.need_of(center)
+  if not (center and center.forge_id and not center.forge_lost) then return nil end
+  local need
+  if center.forge_kind then
+    local c = center_item(center)
+    need = c and fields_of(c).requires
+  elseif center.forge then
+    local c = Store.get(center.forge_id)
+    need = c and c.requires
+  end
+  if not need or need == "none" or need == center.key then return nil end
+  local v = G.P_CENTERS[need]
+  if not v or v.forge_on == false then return nil end
+  return need
+end
+
+function Run.need_met(center)
+  local need = Run.need_of(center)
+  if not need then return true end
+  local g = game()
+  return (g and g.used_vouchers or {})[need] and true or false
+end
+
+function Run.need_pool(_type, pool)
+  local fallback = NEED_TYPES[_type]
+  if not fallback then return end
+  local real = false
+  for i, k in ipairs(pool) do
+    if k ~= "UNAVAILABLE" then
+      local center = G.P_CENTERS[k]
+      if center and not Run.need_met(center) then pool[i] = "UNAVAILABLE" else real = true end
+    end
+  end
+  if not real then pool[#pool + 1] = fallback end
+end
+
+function Run.need_bans()
+  local g = game()
+  if not (g and g.banned_keys) then return nil end
+  local added = nil
+  for _, center in ipairs(G.P_CENTER_POOLS.Booster or {}) do
+    if center.forge_kind and not g.banned_keys[center.key] and not Run.need_met(center) then
+      g.banned_keys[center.key] = true
+      added = added or {}
+      added[#added + 1] = center.key
+    end
+  end
+  return added
+end
+
+function Run.count_buy(key)
+  local g = game()
+  if not g then return 1 end
+  g.forge_buys = g.forge_buys or {}
+  g.forge_buys[key] = (tonumber(g.forge_buys[key]) or 0) + 1
+  return g.forge_buys[key]
+end
+
+function Run.fix_requires()
+  for _, center in ipairs(G.P_CENTER_POOLS and G.P_CENTER_POOLS.Voucher or {}) do
+    if center.forge_kind == "voucher" then
+      local c = center_item(center)
+      local need = c and fields_of(c).requires
+      if need and need ~= "none" and need ~= center.key and G.P_CENTERS[need] and (G.P_CENTERS[need].forge_on ~= false) then center.requires = {need}
+      else center.requires = nil end
+    end
+  end
+end
+
+local function wrap(obj, name, make)
+  if obj and type(obj[name]) == "function" then obj[name] = make(obj[name]) end
+end
+
+function Run.wrap_rules()
+  local RR = rawget(_G, "RunRules")
+  if not RR or RR.forge_wrapped or type(RR.active) ~= "function" then return end
+  RR.forge_wrapped = true
+  local orig = RR.active
+  RR.active = function(key, ...)
+    local v = orig(key, ...)
+    local base = Run.BASE[key]
+    if base then
+      local add = Run.bonus(key)
+      if add ~= 0 then return math.max(0, (tonumber(v) or base) + add) end
+    end
+    return v
+  end
+end
+
+function Run.install()
+  if Run.hooked then return end
+  Run.hooked = true
+  Run.wrap_rules()
+  if G and G.FUNCS and G.FUNCS.get_poker_hand_info then
+    local orig = G.FUNCS.get_poker_hand_info
+    G.FUNCS.get_poker_hand_info = function(cards, ...)
+      local a, b, c2, d, e2 = orig(cards, ...)
+      if cards == (G.play and G.play.cards) then Run.hand_name, Run.poker_hands = a, c2 end
+      return a, b, c2, d, e2
+    end
+  end
+  wrap(Back, "trigger_effect", function(orig) return function(self, args, ...)
+    local nc, nm = orig(self, args, ...)
+    if type(args) == "table" and args.context == "final_scoring_step" and Run.scoring() then
+      local ok, c2, m2, changed = pcall(Run.score, nc or args.chips, nm or args.mult)
+      if not Run.previewing() then Run.fire("hand_played") end
+      if ok and changed then
+        update_hand_text({delay = 0, sound = "multhit1"}, {chips = c2, mult = m2})
+        return c2, m2
+      end
+      if not ok then log_once("score", "run scoring failed: " .. tostring(c2)) end
+    end
+    return nc, nm
+  end end)
+  local function card_hook(name, id, mode)
+    wrap(Card, name, function(orig) return function(self, ...)
+      local r = orig(self, ...)
+      local ok, add = pcall(Run.card_bonus, self, id)
+      if not ok or add == nil then return r end
+      if mode == "x" then
+        if add == 1 then return r end
+        return (r and r > 0 and r or 1) * add
+      end
+      if mode == "money" and add ~= 0 then
+        G.GAME.dollar_buffer = (G.GAME.dollar_buffer or 0) + add
+        G.E_MANAGER:add_event(Event({func = function() G.GAME.dollar_buffer = 0; return true end}))
+      end
+      return (r or 0) + add
+    end end)
+  end
+  card_hook("get_chip_bonus", "chips")
+  card_hook("get_chip_mult", "mult")
+  card_hook("get_chip_x_mult", "xmult", "x")
+  card_hook("get_p_dollars", "money", "money")
+  wrap(Blind, "set_blind", function(orig) return function(self, blind, reset, silent, ...)
+    local r = orig(self, blind, reset, silent, ...)
+    if blind and not reset and G.GAME and G.GAME.round_resets then Run.fire("blind_selected") end
+    return r
+  end end)
+  if type(end_round) == "function" then
+    local orig = end_round
+    end_round = function(...)
+      Run.fire("round_end")
+      return orig(...)
+    end
+  end
+  if type(ease_ante) == "function" then
+    local orig = ease_ante
+    ease_ante = function(mod, ...)
+      local r = orig(mod, ...)
+      if (tonumber(mod) or 0) > 0 then Run.fire("ante_up") end
+      return r
+    end
+  end
+  if type(get_current_pool) == "function" then
+    local orig = get_current_pool
+    get_current_pool = function(_type, ...)
+      local pool, key = orig(_type, ...)
+      if _type == "Voucher" and type(pool) == "table" then
+        local ok, err = pcall(Run.voucher_pool, pool)
+        if not ok then log_once("pool", "voucher pool failed: " .. tostring(err)) end
+      elseif type(pool) == "table" and NEED_TYPES[_type] then
+        local ok, err = pcall(Run.need_pool, _type, pool)
+        if not ok then log_once("need_pool", "pool rule failed: " .. tostring(err)) end
+      end
+      return pool, key
+    end
+  end
+  if type(get_pack) == "function" then
+    local orig = get_pack
+    get_pack = function(...)
+      local ok, added = pcall(Run.need_bans)
+      local r = {orig(...)}
+      if ok and added then for _, k in ipairs(added) do G.GAME.banned_keys[k] = nil end end
+      return unpack(r)
+    end
+  end
+  Run.wrap_funcs()
+end
+
+function Run.wrap_funcs()
+  if not (G and G.FUNCS) or Run.funcs_hooked then return end
+  Run.funcs_hooked = true
+  local F = G.FUNCS
+  if F.cash_out then
+    local orig = F.cash_out
+    F.cash_out = function(e, ...)
+      local r = orig(e, ...)
+r 3 617 %20%20%20%20%20%20 -
+l 3
+        local n = Run.bonus("free_rerolls")
+        if n ~= 0 and G.GAME.current_round then
+          G.GAME.current_round.free_rerolls = math.max(0, (G.GAME.current_round.free_rerolls or 0) + n)
+r 3 603 %20%20%20%20%20%20%20%20%20%20 -
+l 106
+        end
+        Run.fire("shop_enter")
+        return true
+      end}))
+      return r
+    end
+  end
+  if F.reroll_shop then
+    local orig = F.reroll_shop
+    F.reroll_shop = function(e, ...)
+      local r = orig(e, ...)
+      Run.fire("reroll")
+      return r
+    end
+  end
+  if F.discard_cards_from_highlighted then
+    local orig = F.discard_cards_from_highlighted
+    F.discard_cards_from_highlighted = function(e, hook, ...)
+      if not hook and G.hand and #G.hand.highlighted > 0 then Run.fire("discard") end
+      return orig(e, hook, ...)
+    end
+  end
+end
+
+if mod_loc_register then
+  mod_loc_register{
+    fr = {
+      ["Interest per $5"] = "Intérêts par tranche de 5 $", ["Interest gives {C:money}%s{} more for every $5"] = "Les intérêts donnent {C:money}%s{} de plus par tranche de 5 $",
+      ["$ per hand left"] = "$ par main restante", ["{C:money}%s{} more per hand left at cash out"] = "{C:money}%s{} de plus par main restante à l'encaissement",
+      ["$ per discard left"] = "$ par défausse restante", ["{C:money}%s{} per discard left at cash out"] = "{C:money}%s{} par défausse restante à l'encaissement",
+      ["Blind size"] = "Taille des blindes", ["Blinds are {C:attention}%s{} as big"] = "Les blindes sont {C:attention}%s{} plus grandes",
+      ["Chances"] = "Probabilités", ["All chances are {C:green}%s{}"] = "Toutes les probabilités sont {C:green}%s{}",
+      ["Shop weight of a card type"] = "Fréquence d'un type de carte en boutique", ["{C:attention}%s{} cards in the shop: {C:attention}%s{} weight"] = "Cartes {C:attention}%s{} en boutique : poids {C:attention}%s{}",
+      ["Edition chance"] = "Chance d'édition", ["Editions show up {C:dark_edition}%s{} as often"] = "Les éditions apparaissent {C:dark_edition}%s{} plus souvent",
+      ["Joker rarity weight"] = "Poids d'une rareté de Joker", ["{C:attention}%s{} Jokers: {C:attention}%s{} weight"] = "Jokers {C:attention}%s{} : poids {C:attention}%s{}",
+      ["Booster pack slots"] = "Places de paquets", ["{C:attention}%s{} booster pack slot in the shop"] = "{C:attention}%s{} place de paquet en boutique",
+      ["Voucher slots"] = "Places de bons", ["{C:attention}%s{} voucher slot in the shop"] = "{C:attention}%s{} place de bon en boutique",
+      ["Free rerolls every shop"] = "Relances gratuites à chaque boutique", ["{C:green}%s{} free reroll in every shop"] = "{C:green}%s{} relance gratuite à chaque boutique",
+      ["Change the ante"] = "Changer la mise", ["Ante {C:attention}%s{}"] = "Mise {C:attention}%s{}",
+      ["Win at ante"] = "Victoire à la mise", ["Level up a hand"] = "Monter une main", ["Levels up {C:attention}%s{} %d times"] = "Monte {C:attention}%s{} de %d niveaux",
+      ["Give tags"] = "Donner des badges", ["Gives {C:attention}%d{} %s"] = "Donne {C:attention}%d{} %s",
+      ["Enhance random deck cards"] = "Améliorer des cartes du jeu au hasard", ["Turns {C:attention}%d{} random cards in your deck into {C:attention}%s{}"] = "Change {C:attention}%d{} cartes au hasard de votre jeu en {C:attention}%s{}",
+      ["Add cards to the deck"] = "Ajouter des cartes au jeu", ["Adds {C:attention}%d{} %s to your deck"] = "Ajoute {C:attention}%d{} %s à votre jeu",
+      ["Jokers gain sell value"] = "Les Jokers prennent de la valeur", ["Every Joker gains {C:money}%s{} sell value"] = "Chaque Joker gagne {C:money}%s{} de valeur de revente",
+      ["+Hands this round"] = "+Mains cette manche", ["{C:blue}%s{} hand this round"] = "{C:blue}%s{} main cette manche",
+      ["+Discards this round"] = "+Défausses cette manche", ["{C:red}%s{} discard this round"] = "{C:red}%s{} défausse cette manche",
+      ["Disable the Boss Blind"] = "Désactiver la Blinde Boss", ["Disables the {C:attention}Boss Blind{}"] = "Désactive la {C:attention}Blinde Boss{}",
+      ["{C:chips}%s{} Chips"] = "{C:chips}%s{} Jetons", ["{C:mult}%s{} Mult"] = "{C:mult}%s{} Multi", ["{X:mult,C:white}%s{} Mult"] = "{X:mult,C:white}%s{} Multi",
+      ["Cards gain Chips for good"] = "Les cartes gagnent des Jetons pour de bon", ["The cards gain {C:chips}%s{} Chips for good"] = "Les cartes gagnent {C:chips}%s{} Jetons pour de bon",
+      ["+Hand size for good"] = "+Taille de main pour de bon", ["{C:attention}%s{} hand size for the rest of the run"] = "{C:attention}%s{} taille de main pour le reste de la partie",
+      ["+Joker slots for good"] = "+Emplacements de Joker pour de bon", ["{C:attention}%s{} Joker slot for the rest of the run"] = "{C:attention}%s{} emplacement de Joker pour le reste de la partie",
+      ["Level up random hands"] = "Monter des mains au hasard", ["Levels up {C:attention}%d{} random poker hands"] = "Monte {C:attention}%d{} mains de poker au hasard",
+      ["Levels up every poker hand {C:attention}%d{} times"] = "Monte chaque main de poker de {C:attention}%d{} niveaux",
+      ["+Hands next round"] = "+Mains à la prochaine manche", ["{C:blue}+%d{} hand next round"] = "{C:blue}+%d{} main à la prochaine manche",
+      ["Held in hand: XMult"] = "En main : XMulti", ["{X:mult,C:white}%s{} Mult while held in hand"] = "{X:mult,C:white}%s{} Multi tant qu'elle est en main",
+      ["Held in hand: +Mult"] = "En main : +Multi", ["{C:mult}+%d{} Mult while held in hand"] = "{C:mult}+%d{} Multi tant qu'elle est en main",
+      ["Debuff a rank"] = "Affaiblir une valeur", ["Every {C:attention}%s{} is debuffed"] = "Chaque {C:attention}%s{} est affaibli",
+      ["Playing cards"] = "Cartes à jouer", ["a random hand"] = "une main au hasard", ["Random card"] = "Carte au hasard", ["Random Tag"] = "Étiquette au hasard",
+      ["Right away"] = "Tout de suite", ["When bought"] = "À l'achat", ["At the start of the run"] = "Au début de la partie", ["When you discard"] = "Quand vous défaussez",
+      ["When you enter the shop"] = "Quand vous entrez en boutique", ["When a new ante starts"] = "Quand une nouvelle mise commence", ["every {C:attention}%d{} times"] = "toutes les {C:attention}%d{} fois",
+      ["Appears in shops"] = "Apparaît en boutique", ["Times it can be bought"] = "Achats possibles", ["Shows from ante"] = "Apparaît dès la mise", ["Scores again"] = "Compte à nouveau", ["+$ sell value"] = "+$ de revente",
+      ["+ Only if"] = "+ Seulement si", ["WHEN DOES IT HAPPEN?"] = "QUAND CELA ARRIVE-T-IL ?", ["Directly, no voucher needed"] = "Directement, sans autre bon", ["After %s is bought"] = "Après l'achat de %s",
+      ["WHEN DOES IT SHOW UP?"] = "QUAND APPARAÎT-IL ?", ["Every N times"] = "Toutes les N fois", ["Needs {C:attention}%s{} first"] = "Demande {C:attention}%s{} avant", ["Can be bought {C:attention}%d{} times"] = "S'achète {C:attention}%d{} fois",
+    },
+    es = {
+      ["Interest per $5"] = "Interés por cada $5", ["Interest gives {C:money}%s{} more for every $5"] = "El interés da {C:money}%s{} más por cada $5",
+      ["$ per hand left"] = "$ por mano restante", ["{C:money}%s{} more per hand left at cash out"] = "{C:money}%s{} más por mano restante al cobrar",
+      ["$ per discard left"] = "$ por descarte restante", ["{C:money}%s{} per discard left at cash out"] = "{C:money}%s{} por descarte restante al cobrar",
+      ["Blind size"] = "Tamaño de las ciegas", ["Blinds are {C:attention}%s{} as big"] = "Las ciegas son {C:attention}%s{} más grandes",
+      ["Chances"] = "Probabilidades", ["All chances are {C:green}%s{}"] = "Todas las probabilidades son {C:green}%s{}",
+      ["Shop weight of a card type"] = "Frecuencia de un tipo de carta en la tienda", ["{C:attention}%s{} cards in the shop: {C:attention}%s{} weight"] = "Cartas {C:attention}%s{} en la tienda: peso {C:attention}%s{}",
+      ["Edition chance"] = "Probabilidad de edición", ["Editions show up {C:dark_edition}%s{} as often"] = "Las ediciones salen {C:dark_edition}%s{} más a menudo",
+      ["Joker rarity weight"] = "Peso de una rareza de comodín", ["{C:attention}%s{} Jokers: {C:attention}%s{} weight"] = "Comodines {C:attention}%s{}: peso {C:attention}%s{}",
+      ["Booster pack slots"] = "Huecos de sobres", ["{C:attention}%s{} booster pack slot in the shop"] = "{C:attention}%s{} hueco de sobre en la tienda",
+      ["Voucher slots"] = "Huecos de vales", ["{C:attention}%s{} voucher slot in the shop"] = "{C:attention}%s{} hueco de vale en la tienda",
+      ["Free rerolls every shop"] = "Renovaciones gratis en cada tienda", ["{C:green}%s{} free reroll in every shop"] = "{C:green}%s{} renovación gratis en cada tienda",
+      ["Change the ante"] = "Cambiar la apuesta", ["Ante {C:attention}%s{}"] = "Apuesta {C:attention}%s{}",
+      ["Win at ante"] = "Ganar en la apuesta", ["Level up a hand"] = "Subir una mano", ["Levels up {C:attention}%s{} %d times"] = "Sube {C:attention}%s{} %d niveles",
+      ["Give tags"] = "Dar etiquetas", ["Gives {C:attention}%d{} %s"] = "Da {C:attention}%d{} %s",
+      ["Enhance random deck cards"] = "Mejorar cartas al azar de la baraja", ["Turns {C:attention}%d{} random cards in your deck into {C:attention}%s{}"] = "Convierte {C:attention}%d{} cartas al azar de tu baraja en {C:attention}%s{}",
+      ["Add cards to the deck"] = "Añadir cartas a la baraja", ["Adds {C:attention}%d{} %s to your deck"] = "Añade {C:attention}%d{} %s a tu baraja",
+      ["Jokers gain sell value"] = "Los comodines ganan valor", ["Every Joker gains {C:money}%s{} sell value"] = "Cada comodín gana {C:money}%s{} de valor de venta",
+      ["+Hands this round"] = "+Manos esta ronda", ["{C:blue}%s{} hand this round"] = "{C:blue}%s{} mano esta ronda",
+      ["+Discards this round"] = "+Descartes esta ronda", ["{C:red}%s{} discard this round"] = "{C:red}%s{} descarte esta ronda",
+      ["Disable the Boss Blind"] = "Desactivar la ciega jefe", ["Disables the {C:attention}Boss Blind{}"] = "Desactiva la {C:attention}ciega jefe{}",
+      ["{C:chips}%s{} Chips"] = "{C:chips}%s{} fichas", ["{C:mult}%s{} Mult"] = "{C:mult}%s{} multi", ["{X:mult,C:white}%s{} Mult"] = "{X:mult,C:white}%s{} multi",
+      ["Cards gain Chips for good"] = "Las cartas ganan fichas para siempre", ["The cards gain {C:chips}%s{} Chips for good"] = "Las cartas ganan {C:chips}%s{} fichas para siempre",
+      ["+Hand size for good"] = "+Tamaño de mano para siempre", ["{C:attention}%s{} hand size for the rest of the run"] = "{C:attention}%s{} tamaño de mano el resto de la partida",
+      ["+Joker slots for good"] = "+Huecos de comodín para siempre", ["{C:attention}%s{} Joker slot for the rest of the run"] = "{C:attention}%s{} hueco de comodín el resto de la partida",
+      ["Level up random hands"] = "Subir manos al azar", ["Levels up {C:attention}%d{} random poker hands"] = "Sube {C:attention}%d{} manos de póker al azar",
+      ["Levels up every poker hand {C:attention}%d{} times"] = "Sube cada mano de póker {C:attention}%d{} niveles",
+      ["+Hands next round"] = "+Manos la próxima ronda", ["{C:blue}+%d{} hand next round"] = "{C:blue}+%d{} mano la próxima ronda",
+      ["Held in hand: XMult"] = "En la mano: Xmulti", ["{X:mult,C:white}%s{} Mult while held in hand"] = "{X:mult,C:white}%s{} multi mientras esté en la mano",
+      ["Held in hand: +Mult"] = "En la mano: +multi", ["{C:mult}+%d{} Mult while held in hand"] = "{C:mult}+%d{} multi mientras esté en la mano",
+      ["Debuff a rank"] = "Debilitar un valor", ["Every {C:attention}%s{} is debuffed"] = "Cada {C:attention}%s{} queda debilitado",
+      ["Playing cards"] = "Cartas de juego", ["a random hand"] = "una mano al azar", ["Random card"] = "Carta al azar", ["Random Tag"] = "Etiqueta al azar",
+      ["Right away"] = "Al momento", ["When bought"] = "Al comprarlo", ["At the start of the run"] = "Al empezar la partida", ["When you discard"] = "Cuando descartas",
+      ["When you enter the shop"] = "Al entrar en la tienda", ["When a new ante starts"] = "Cuando empieza una apuesta nueva", ["every {C:attention}%d{} times"] = "cada {C:attention}%d{} veces",
+      ["Appears in shops"] = "Sale en la tienda", ["Times it can be bought"] = "Veces que se compra", ["Shows from ante"] = "Sale desde la apuesta", ["Scores again"] = "Anota otra vez", ["+$ sell value"] = "+$ de venta",
+      ["+ Only if"] = "+ Solo si", ["WHEN DOES IT HAPPEN?"] = "¿CUÁNDO PASA?", ["Directly, no voucher needed"] = "Directamente, sin otro vale", ["After %s is bought"] = "Tras comprar %s",
+      ["WHEN DOES IT SHOW UP?"] = "¿CUÁNDO SALE?", ["Every N times"] = "Cada N veces", ["Needs {C:attention}%s{} first"] = "Necesita {C:attention}%s{} antes", ["Can be bought {C:attention}%d{} times"] = "Se compra {C:attention}%d{} veces",
+    },
+  }
+end
+
+return Run
+end

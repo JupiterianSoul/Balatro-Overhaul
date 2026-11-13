@@ -1,0 +1,594 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 406
+local C = Controls
+local P = {}
+local L = function(s) return mod_loc(s) end
+
+P.MODE_LABELS = {mouse = "Mouse", keyboard = "Keyboard", trackpad = "Trackpad", trackpad_keys = "Trackpad + keys", controller = "Controller"}
+P.TITLES = {keyboard = "KEYBOARD KEYS", trackpad = "TRACKPAD GESTURES", trackpad_keys = "TRACKPAD AND KEYS"}
+P.GESTURES = {
+    {id = "scroll", label = "Two-finger scroll"},
+    {id = "swipe", label = "Two-finger swipe"},
+    {id = "two_tap", label = "Two-finger tap"},
+    {id = "drag", label = "Drag cards"},
+}
+P.CHOICE_LABELS = {
+    scroll = {focus = "Move the focus", off = "Off"},
+    swipe = {move = "Move card or tab", focus = "Move the focus", off = "Off"},
+    two_tap = {back = "Back", run_info = "Run Info", speed = "Speed up", off = "Off"},
+    drag = {off = "Off", on = "On"},
+}
+P.HELP_TABS = {"keyboard", "trackpad", "trackpad_keys", "controller"}
+
+local function kp()
+    return Extras and Extras.modules and Extras.modules.keyboard_play
+end
+
+local function tp()
+    return C.modules and C.modules.trackpad
+end
+
+local function pad()
+    return C.modules and C.modules.pad
+end
+
+function P.pad_in_use()
+    local c = G.CONTROLLER
+    local o = c and c.GAMEPAD and c.GAMEPAD.object
+    return c and c.HID.controller and not c.HID.keyboard and o ~= nil and o ~= c.keyboard_controller or false
+end
+
+local function save()
+    if G and G.save_settings then pcall(function() G:save_settings() end) end
+end
+
+P.MODE_W = 6.4
+
+local function mode_labels()
+    local out = {}
+    for i, m in ipairs(C.MODES) do out[i] = L(P.MODE_LABELS[m]) end
+    return out
+end
+
+local function widest(labels, scale, min)
+    local w = min
+    for _, s in ipairs(labels) do w = math.max(w, UIK.text_w(s, scale) + 0.5) end
+    return w
+end
+
+local function touch_mod()
+    return C.modules and C.modules.touch
+end
+
+local function touch_row(bw)
+    local T = touch_mod()
+    if not T then return nil end
+    return UIK.action{id = "set_touch_controls", label = L("Touch controls"), info = L("Auto: on from the first touch of the screen"), button_label = L(T.LABELS[T.mode()]),
+        button = "ctl_touch_mode", button_id = "ctl_touch_mode_btn", colour = UIK.C.accent, bw = bw}
+end
+
+local function cursor_row(bw)
+    local CS = C.modules and C.modules.cursor
+    if not CS then return nil end
+    local labels, cur, now = {}, 3, CS.get()
+    for i, v in ipairs(CS.STEPS) do
+        labels[i] = v .. "%"
+        if v == now then cur = i end
+    end
+    return UIK.cycle{id = "set_cursor_speed", label = L("Cursor speed"), info = L("How fast the mouse and the stick cursor move"), options = labels, current = cur, cw = bw and math.max(1.6, bw - 2.75) or nil,
+        callback = function(i)
+            CS.set(CS.STEPS[i])
+            save()
+        end}
+end
+
+local function pad_row(bw)
+    return UIK.action{id = "set_pad_binds", label = L("Controller"), info = L("See and change every button"), button_label = L("Open"),
+        button = "open_pad_binds", colour = UIK.C.accent, bw = bw}
+end
+
+function P.settings_rows()
+    if C.touch() then
+        local D = pad()
+        if not (D and D.connected()) then return {} end
+        return {UIK.header(L("Controls")), pad_row(widest({L("Open")}, 0.47, 2.85))}
+    end
+    local m = C.mode()
+    local labels = mode_labels()
+    labels[#labels + 1] = L("Open")
+    labels[#labels + 1] = L("Show")
+    local T = touch_mod()
+    for _, m in ipairs(T and T.MODES or {}) do labels[#labels + 1] = L(T.LABELS[m]) end
+    local bw = widest(labels, 0.47, 2.85)
+    return {
+        UIK.header(L("Controls")),
+        UIK.action{id = "set_input_mode", label = L("Input mode"), info = L("How you play on this computer"), button_label = L(P.MODE_LABELS[m]),
+            button = "ctl_input_mode", button_id = "ctl_input_mode_btn", colour = UIK.C.accent, bw = bw},
+        UIK.action{id = "set_keyboard_binds", label = L("Keys and gestures"), info = L("See and change every key and gesture"), button_label = L("Open"),
+            button = "open_keyboard_binds", colour = UIK.C.accent, disabled = m == "mouse", bw = bw},
+        UIK.action{id = "set_controls_help", label = L("Help"), info = L("Every action and its key, for each mode"), button_label = L("Show"),
+            button = "ctl_help_from_settings", colour = UIK.C.accent, bw = bw},
+        touch_row(bw),
+        cursor_row(bw),
+        pad_row(bw),
+    }
+end
+
+function P.mode_body()
+    local cur = C.mode()
+    local w = P.MODE_W - 0.4
+    local bw = widest(mode_labels(), 0.47, 3.6)
+    local rows = {}
+    for _, m in ipairs(C.MODES) do
+        local b = UIK.button{id = "ctl_mode_" .. m, label = L(P.MODE_LABELS[m]), button = "ctl_pick_mode", ref_table = {mode = m}, colour = UIK.C.accent, w = bw,
+            focus_args = m == cur and {snap_to = true} or nil}
+        if m == cur then b.nodes[1].config.chosen = "vert" end
+        local row = {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.08}, nodes = {b}}
+        row.uik_h = 0.94
+        rows[#rows + 1] = row
+    end
+    return UIK.stack(rows, {w = w})
+end
+
+function P.mode_window()
+    return UIK.window{
+        id = "ctl_mode",
+        title = L("INPUT MODE"),
+        compact = true,
+        w = P.MODE_W,
+        tabs = {{key = "mode", label = L("Input mode"), build = P.mode_body}},
+        back_func = "ctl_mode_back",
+    }
+end
+
+local function focus_settings_button()
+    if not (G.OVERLAY_MENU and G.CONTROLLER and G.CONTROLLER.HID.controller) then return end
+    local b = G.OVERLAY_MENU:get_UIE_by_ID("ctl_input_mode_btn")
+    if b then G.CONTROLLER:snap_to{node = b} end
+end
+
+function P.pause_row(settings)
+    if C.touch() then return settings end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        UIBox_button({button = "settings", label = {localize("b_settings")}, minw = 2.45, col = true, focus_args = {snap_to = true}}),
+        {n = G.UIT.C, config = {align = "cm", minw = 0.1, padding = 0}, nodes = {}},
+        UIBox_button({id = "ctl_pause_controls", button = "ctl_help_from_pause", label = {L("Controls")}, minw = 2.45, col = true}),
+    }}
+end
+
+local function gesture_rows(w)
+    local T = tp()
+    local rows = {}
+    for _, g in ipairs(P.GESTURES) do
+        local choices = T.CHOICES[g.id]
+        local labels = {}
+        for i, v in ipairs(choices) do labels[i] = L(P.CHOICE_LABELS[g.id][v]) end
+        local cur = 1
+        for i, v in ipairs(choices) do if v == T.bind(g.id) then cur = i end end
+        rows[#rows + 1] = UIK.cycle{id = "ctl_gesture_" .. g.id, label = L(g.label), options = labels, current = cur, w = w,
+            callback = function(i)
+                T.set_bind(g.id, choices[i])
+                save()
+            end}
+    end
+    return rows
+end
+
+function P.trackpad_body()
+    local K = kp()
+    local inner = UIK.col_w(2) - 2 * UIK.PAD
+    local rows = gesture_rows(inner)
+    local note_h = 0.5
+    local notice = K and K.ui and K.ui.notice
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+            UIK.columns({{rows[1], rows[2]}, {rows[3], rows[4]}}, {h = UIK.H - UIK.TOP - note_h, cards = true}),
+            {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = note_h, padding = 0}, nodes = {
+                {n = G.UIT.T, config = {text = notice or L("Tap presses, as with a mouse. Gestures never play, buy or sell."), scale = 0.32, colour = notice and UIK.C.title or UIK.C.muted}},
+            }},
+        }},
+    }}
+end
+
+function P.binds_mode()
+    return C.edit_mode or C.mode()
+end
+
+local function edit_trackpad()
+    local m = P.binds_mode()
+    return (m == "trackpad" or m == "trackpad_keys") and not C.touch()
+end
+
+local function edit_keys()
+    local m = P.binds_mode()
+    return m == "keyboard" or m == "trackpad_keys"
+end
+
+function P.binds_window()
+    local K = kp()
+    local m = P.binds_mode()
+    local tabs = {}
+    if edit_trackpad() and tp() then tabs[#tabs + 1] = {key = "trackpad", label = L("Trackpad"), build = P.trackpad_body} end
+    if edit_keys() and K and K.group_body then
+        for _, t in ipairs(K.TABS) do
+            tabs[#tabs + 1] = {key = t.key, label = L(t.label), build = function() return K.group_body(t.key) end}
+        end
+    end
+    return UIK.window{
+        id = "kb_binds",
+        title = L(P.TITLES[m] or "KEYBOARD KEYS"),
+        tabs = tabs,
+        footer = {{label = L("Reset to defaults"), button = edit_trackpad() and "ctl_binds_reset" or "kb_binds_reset", colour = UIK.C.danger}},
+        back_func = "kb_binds_back",
+    }
+end
+
+local function set_binds(set)
+    local K = kp()
+    local saved_key, keys = "keyboard_binds", nil
+    local s = K and K.SETS and K.SETS[set]
+    if s then saved_key, keys = s.saved, s.keys end
+    local saved = G.SETTINGS[saved_key]
+    local out = {}
+    for _, a in ipairs(K and K.ACTIONS or {}) do
+        local v = type(saved) == "table" and saved[a.id] or nil
+        if v == false then out[a.id] = nil
+        elseif type(v) == "string" then out[a.id] = v
+        elseif keys and keys[a.id] ~= nil then out[a.id] = keys[a.id] or nil
+        else out[a.id] = a.key end
+    end
+    return out
+end
+
+local function key_text(b, id)
+    local K = kp()
+    local k = b[id]
+    return k and K.key_name(k) or L("Unbound")
+end
+
+P.VAL_W = 2.6
+P.ROW_H = 0.5
+
+local function help_row(label, value, w, ls, vs)
+    local h = P.ROW_H
+    local vw = math.min(P.VAL_W, w * 0.4)
+    local lw = w - vw - 0.4
+    local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = h + 0.1, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cr", minw = lw, minh = h, padding = 0}, nodes = {
+            {n = G.UIT.T, config = {text = label, scale = ls, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = 0.2, minh = h, padding = 0}, nodes = {}},
+        {n = G.UIT.C, config = {align = "cm", minw = vw, minh = h, r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0}, nodes = {
+            {n = G.UIT.T, config = {text = value, scale = vs, colour = UIK.C.title, shadow = true}},
+        }},
+    }}
+    node.uik_h = h + 0.1
+    return node
+end
+
+local function section(col, title, rows)
+    col[#col + 1] = {title = title}
+    for _, r in ipairs(rows) do col[#col + 1] = r end
+end
+
+local function build(cols, w)
+    local vw = math.min(P.VAL_W, w * 0.4)
+    local lw = w - vw - 0.4
+    local base = 0.36
+    local ls, vs = base, base
+    for _, col in ipairs(cols) do
+        for _, r in ipairs(col) do
+            if not r.title then
+                ls = math.min(ls, base * lw / math.max(UIK.text_w(r[1], base), 0.01))
+                vs = math.min(vs, base * (vw - 0.2) / math.max(UIK.text_w(r[2], base), 0.01))
+            end
+        end
+    end
+    local out = {}
+    for c, col in ipairs(cols) do
+        out[c] = {}
+        for _, r in ipairs(col) do
+            out[c][#out[c] + 1] = r.title and UIK.header(r.title, {w = w}) or help_row(r[1], r[2], w, ls, vs)
+        end
+    end
+    return UIK.columns(out, {cards = true})
+end
+
+local function key_sections(set, with_nav)
+    local K = kp()
+    local b = set_binds(set)
+    local by = {}
+    for _, a in ipairs(K.ACTIONS) do by[a.id] = a end
+    local function r(id) return {K.action_label(by[id]), key_text(b, id)} end
+    local nav = {}
+    if with_nav then
+        local arrows = b.nav_up == "up" and b.nav_down == "down" and b.nav_left == "left" and b.nav_right == "right"
+        nav[#nav + 1] = {L("Move the focus"), arrows and L("Arrows") or table.concat({key_text(b, "nav_up"), key_text(b, "nav_left"), key_text(b, "nav_down"), key_text(b, "nav_right")}, " ")}
+        if b.confirm then nav[#nav + 1] = r("confirm") end
+        nav[#nav + 1] = r("back")
+    end
+    nav[#nav + 1] = r("tab_prev")
+    nav[#nav + 1] = r("tab_next")
+    nav[#nav + 1] = r("run_info")
+    nav[#nav + 1] = {L("Options"), L("Esc")}
+    local plain = true
+    for i = 1, 10 do if b["card" .. i] ~= tostring(i % 10) then plain = false end end
+    local hand = {r("play"), r("discard"), r("sort_rank"), r("sort_suit"),
+        {L("Pick card 1 to 10"), plain and L("1 to 0") or (key_text(b, "card1") .. " ... " .. key_text(b, "card10"))}}
+    local cards = {r("use"), r("sell"), r("move_left"), r("move_right")}
+    local shop = {r("buy"), r("buy_use"), r("reroll")}
+    local replay = {{L("Pause or play"), key_text(b, b.confirm and "confirm" or "play")}, {L("Next hand"), key_text(b, "discard")},
+        {L("Previous / next action"), key_text(b, "nav_left") .. " / " .. key_text(b, "nav_right")}}
+    return nav, hand, cards, shop, replay
+end
+
+local function gesture_rows_help(full)
+    local T = tp()
+    local b = {}
+    for _, g in ipairs(P.GESTURES) do b[g.id] = T.bind(g.id) end
+    local rows = {{L("Press or pick"), L("Tap")}}
+    if b.scroll ~= "off" then rows[#rows + 1] = {L("Move the focus"), L("Scroll")} end
+    if b.swipe == "move" then rows[#rows + 1] = {L("Move a card"), L("Swipe")} end
+    if b.swipe ~= "off" then rows[#rows + 1] = {L("Switch tabs"), L("Swipe")} end
+    if b.two_tap ~= "off" then
+        rows[#rows + 1] = {L("Unselect cards"), L("2-finger tap")}
+        if b.two_tap == "run_info" then rows[#rows + 1] = {L("Run Info"), L("2-finger tap")} end
+        if b.two_tap == "speed" then rows[#rows + 1] = {L("Speed up"), L("2-finger tap")} end
+        if b.two_tap ~= "speed" then rows[#rows + 1] = {L("Back"), L("2-finger tap")} end
+    end
+    rows[#rows + 1] = {L("Drag cards"), L(b.drag == "on" and "On" or "Off")}
+    if b.drag ~= "on" then rows[#rows + 1] = {L("Select several cards"), L("Press and slide")} end
+    local other = full and {
+        {L("Play, discard, buy, sell"), L("Tap the button")},
+        {L("Text fields"), L("On-screen keyboard")},
+        {L("Options"), L("Tap Options")},
+    } or nil
+    return rows, other
+end
+
+function P.help_body(m)
+    local cols = {{}, {}, {}}
+    local w = UIK.col_w(3) - 2 * UIK.PAD
+    if m == "controller" then
+        local D = pad()
+        local nav, hand, shop, quick, replay, mg = D.help_sections()
+        section(cols[1], L("Navigation"), nav)
+        section(cols[2], L("Hand"), hand)
+        section(cols[2], L("Shop and cards"), shop)
+        section(cols[3], L("Quick actions"), quick)
+        section(cols[3], L("Replays"), replay)
+        section(cols[3], L("Minigames"), mg)
+    elseif m == "keyboard" then
+        local nav, hand, cards, shop, replay = key_sections("keyboard", true)
+        section(cols[1], L("Navigation"), nav)
+        section(cols[2], L("Hand"), hand)
+        section(cols[2], L("Replays"), replay)
+        section(cols[3], L("Jokers and consumables"), cards)
+        section(cols[3], L("Shop and packs"), shop)
+    elseif m == "trackpad" then
+        local rows, other = gesture_rows_help(true)
+        w = UIK.col_w(2) - 2 * UIK.PAD
+        cols = {{}, {}}
+        section(cols[1], L("Trackpad"), rows)
+        section(cols[2], L("Everything else"), other)
+    else
+        local rows = gesture_rows_help(false)
+        local nav, hand, cards, shop = key_sections("trackpad_keys", false)
+        section(cols[1], L("Trackpad"), rows)
+        section(cols[2], L("Navigation"), nav)
+        section(cols[2], L("Jokers and consumables"), cards)
+        section(cols[3], L("Hand"), hand)
+        section(cols[3], L("Shop and packs"), shop)
+    end
+    return build(cols, w)
+end
+
+function P.help_window()
+    local m = C.mode()
+    local tabs = {}
+    for _, t in ipairs(P.HELP_TABS) do
+        if t ~= "controller" or pad() then
+            tabs[#tabs + 1] = {key = t, label = L(P.MODE_LABELS[t]), build = function() return P.help_body(t) end}
+        end
+    end
+    local tab = m ~= "mouse" and m or nil
+    if P.pad_in_use() and pad() then tab = "controller" end
+    if P.help_tab then tab, P.help_tab = P.help_tab, nil end
+    return UIK.window{
+        id = "ctl_help",
+        title = L("CONTROLS"),
+        tabs = tabs,
+        tab = tab,
+        footer = {{label = L("Remap"), button = "ctl_help_remap", colour = UIK.C.accent, id = "ctl_help_remap"}},
+        back_func = "ctl_help_back",
+    }
+end
+
+local function open_help(from)
+    P.from = from
+r 13 1381 %20%20%20%20 -
+l 28
+    G.FUNCS.overlay_menu{definition = P.help_window()}
+end
+P.open_help = open_help
+
+function C.back_to(from, e)
+    if type(from) == "table" and from.help then
+        P.help_tab = from.tab
+        open_help(from.help)
+        return true
+    end
+    if from == "pause" and G.FUNCS.options then G.FUNCS.options(e) return true end
+    if from == "settings" and G.FUNCS.settings then G.FUNCS.settings(e) return true end
+    return false
+end
+
+function P.init()
+    if P._hooked then return end
+    P._hooked = true
+    local K = kp()
+    G.FUNCS.open_keyboard_binds = function()
+        if C.mode() == "mouse" or C.touch() then return end
+        C.edit_mode = nil
+        P.binds_from = nil
+        if K then
+            K.capture = nil
+            K.ui.notice = nil
+            K.refresh()
+        end
+r 13 1381 %20%20%20%20%20%20%20%20 -
+l 14
+        G.FUNCS.overlay_menu{definition = P.binds_window()}
+    end
+    G.FUNCS.ctl_binds_reset = function()
+        if edit_keys() and K then K.reset_binds() end
+        local T = tp()
+        if edit_trackpad() and T then
+            T.reset_binds()
+            save()
+        end
+        if K then K.ui.notice = L("Every key and gesture is back to its default") end
+        UIK.refresh()
+    end
+    G.FUNCS.ctl_input_mode = function()
+        if C.touch() then return end
+r 13 1381 %20%20%20%20%20%20%20%20 -
+l 31
+        G.FUNCS.overlay_menu{definition = P.mode_window()}
+    end
+    G.FUNCS.ctl_pick_mode = function(e)
+        local m = e and e.config and e.config.ref_table and e.config.ref_table.mode
+        if m and m ~= C.mode() then
+            C.set_mode(m)
+            save()
+        end
+        G.FUNCS.ctl_mode_back(e)
+    end
+    G.FUNCS.ctl_touch_mode = function()
+        local T = touch_mod()
+        if not T then return end
+        local cur = 1
+        for i, m in ipairs(T.MODES) do if m == T.mode() then cur = i end end
+        T.set_mode(T.MODES[cur % #T.MODES + 1])
+        save()
+        UIK.refresh()
+        if G.OVERLAY_MENU and G.CONTROLLER and G.CONTROLLER.HID.controller then
+            local body = G.OVERLAY_MENU:get_UIE_by_ID("uik_body")
+            local box = body and body.config.object
+            local b = box and box.get_UIE_by_ID and box:get_UIE_by_ID("ctl_touch_mode_btn")
+            if b then G.CONTROLLER:snap_to{node = b} end
+        end
+    end
+    G.FUNCS.ctl_mode_back = function(e)
+        if G.FUNCS.settings then
+            G.FUNCS.settings(e)
+            focus_settings_button()
+            return
+        end
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 18
+    end
+    G.FUNCS.ctl_help_remap = function()
+        local win = UIK._win
+        local tab = win and win.id == "ctl_help" and win._cur or nil
+        if not tab then return end
+        local from = {help = P.from, tab = tab}
+        if tab == "controller" then
+            local D = pad()
+            if D then D.open_binds(from) end
+            return
+        end
+        C.edit_mode = tab
+        if K then
+            K.capture = nil
+            K.ui.notice = nil
+            K.refresh()
+        end
+        P.binds_from = from
+r 13 1381 %20%20%20%20%20%20%20%20 -
+l 13
+        G.FUNCS.overlay_menu{definition = P.binds_window()}
+    end
+    G.FUNCS.kb_binds_back = function(e)
+        if K then
+            K.capture = nil
+            K.ui.notice = nil
+        end
+        local from = P.binds_from
+        P.binds_from = nil
+        C.edit_mode = nil
+        if K and K.refresh then K.refresh() end
+        if C.back_to(from, e) then return end
+        if G.FUNCS.settings then return G.FUNCS.settings(e) end
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 8
+    end
+    G.FUNCS.ctl_help_from_settings = function() open_help("settings") end
+    G.FUNCS.ctl_help_from_pause = function() open_help("pause") end
+    G.FUNCS.ctl_help_back = function(e)
+        local from = P.from
+        P.from = nil
+        if from == "pause" and G.FUNCS.options then return G.FUNCS.options(e) end
+        if from == "settings" and G.FUNCS.settings then return G.FUNCS.settings(e) end
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 56
+    end
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    G.ESC_BACK_FUNCS.ctl_help_back = true
+    G.ESC_BACK_FUNCS.ctl_mode_back = true
+end
+
+local function register_new(t)
+    local out = {}
+    for lang, entries in pairs(t) do
+        out[lang] = {}
+        local have = MOD_TRANSLATIONS and MOD_TRANSLATIONS[lang] or {}
+        for k, v in pairs(entries) do if have[k] == nil then out[lang][k] = v end end
+    end
+    mod_loc_register(out)
+end
+
+register_new{
+    fr = {["Controls"] = "Contrôles", ["CONTROLS"] = "CONTRÔLES", ["INPUT MODE"] = "MODE DE CONTRÔLE", ["Input mode"] = "Mode de contrôle", ["How you play on this computer"] = "Votre façon de jouer sur cet ordinateur",
+        ["Mouse"] = "Souris", ["Keyboard"] = "Clavier", ["Trackpad"] = "Pavé tactile", ["Trackpad + keys"] = "Pavé + touches",
+        ["Keys and gestures"] = "Touches et gestes", ["See and change every key and gesture"] = "Voir et changer chaque touche et geste", ["Open"] = "Ouvrir",
+        ["Every action and its key, for each mode"] = "Chaque action et sa touche, pour chaque mode", ["Show"] = "Voir",
+        ["TRACKPAD GESTURES"] = "GESTES DU PAVÉ", ["TRACKPAD AND KEYS"] = "PAVÉ ET TOUCHES",
+        ["Two-finger scroll"] = "Défilement à deux doigts", ["Two-finger swipe"] = "Glisser à deux doigts", ["Two-finger tap"] = "Toucher à 2 doigts", ["Drag cards"] = "Glisser les cartes",
+        ["Move the focus"] = "Déplacer le curseur", ["Off"] = "Non", ["On"] = "Oui", ["Move card or tab"] = "Carte ou onglet", ["Back"] = "Retour", ["Run Info"] = "Infos partie",
+        ["Tap presses, as with a mouse. Gestures never play, buy or sell."] = "Toucher clique, comme une souris. Un geste ne joue, n'achète et ne vend jamais.",
+        ["Every key and gesture is back to its default"] = "Toutes les touches et tous les gestes sont revenus par défaut",
+        ["Arrows"] = "Flèches", ["Esc"] = "Échap", ["Options"] = "Options", ["Pick card 1 to 10"] = "Cartes 1 à 10", ["1 to 0"] = "1 à 0",
+        ["Tap"] = "Toucher", ["Press or pick"] = "Appuyer ou choisir", ["Move a card"] = "Déplacer une carte", ["Switch tabs"] = "Changer d'onglet",
+        ["Unselect cards"] = "Désélectionner", ["2-finger tap"] = "Toucher à 2 doigts", ["Scroll"] = "Défiler", ["Swipe"] = "Glisser", ["Help"] = "Aide", ["Everything else"] = "Tout le reste", ["Play, discard, buy, sell"] = "Jouer, défausser, acheter, vendre",
+        ["Tap the button"] = "Touchez le bouton", ["Text fields"] = "Champs de texte", ["On-screen keyboard"] = "Clavier à l'écran", ["Tap Options"] = "Touchez Options", ["Speed up"] = "Accélérer", ["Select several cards"] = "Choisir plusieurs cartes", ["Press and slide"] = "Appuyer et glisser",
+        ["Remap"] = "Changer les touches", ["Controller"] = "Manette", ["See and change every button"] = "Voir et changer chaque bouton", ["Hand"] = "Main", ["Shop and cards"] = "Boutique et cartes", ["Quick actions"] = "Actions rapides",
+        ["Replays"] = "Replays", ["Minigames"] = "Mini-jeux", ["Navigation"] = "Navigation",
+        ["Touch controls"] = "Contrôles tactiles", ["Cursor speed"] = "Vitesse du curseur", ["How fast the mouse and the stick cursor move"] = "Vitesse de la souris et du curseur au joystick", ["Auto"] = "Auto", ["Auto: on from the first touch of the screen"] = "Auto : actifs dès le premier toucher de l'écran"},
+    es = {["Controls"] = "Controles", ["CONTROLS"] = "CONTROLES", ["INPUT MODE"] = "MODO DE CONTROL", ["Input mode"] = "Modo de control", ["How you play on this computer"] = "Cómo juegas en este ordenador",
+        ["Mouse"] = "Ratón", ["Keyboard"] = "Teclado", ["Trackpad"] = "Panel táctil", ["Trackpad + keys"] = "Panel + teclas",
+        ["Keys and gestures"] = "Teclas y gestos", ["See and change every key and gesture"] = "Ver y cambiar cada tecla y gesto", ["Open"] = "Abrir",
+        ["Every action and its key, for each mode"] = "Cada acción y su tecla, para cada modo", ["Show"] = "Ver",
+        ["TRACKPAD GESTURES"] = "GESTOS DEL PANEL", ["TRACKPAD AND KEYS"] = "PANEL Y TECLAS",
+        ["Two-finger scroll"] = "Desplazar con dos dedos", ["Two-finger swipe"] = "Deslizar con dos dedos", ["Two-finger tap"] = "Toque a 2 dedos", ["Drag cards"] = "Arrastrar cartas",
+        ["Move the focus"] = "Mover el cursor", ["Off"] = "No", ["On"] = "Sí", ["Move card or tab"] = "Carta o pestaña", ["Back"] = "Volver", ["Run Info"] = "Info de partida",
+        ["Tap presses, as with a mouse. Gestures never play, buy or sell."] = "Un toque pulsa, como un ratón. Un gesto nunca juega, compra ni vende.",
+        ["Every key and gesture is back to its default"] = "Todas las teclas y gestos vuelven a su valor por defecto",
+        ["Arrows"] = "Flechas", ["Esc"] = "Esc", ["Options"] = "Opciones", ["Pick card 1 to 10"] = "Cartas 1 a 10", ["1 to 0"] = "1 a 0",
+        ["Tap"] = "Toque", ["Press or pick"] = "Pulsar o elegir", ["Move a card"] = "Mover una carta", ["Switch tabs"] = "Cambiar de pestaña",
+        ["Unselect cards"] = "Deseleccionar", ["2-finger tap"] = "Toque 2 dedos", ["Scroll"] = "Desplazar", ["Swipe"] = "Deslizar", ["Help"] = "Ayuda", ["Everything else"] = "Todo lo demás", ["Play, discard, buy, sell"] = "Jugar, descartar, comprar, vender",
+        ["Tap the button"] = "Toca el botón", ["Text fields"] = "Campos de texto", ["On-screen keyboard"] = "Teclado en pantalla", ["Tap Options"] = "Toca Opciones", ["Speed up"] = "Acelerar", ["Select several cards"] = "Elegir varias cartas", ["Press and slide"] = "Pulsar y deslizar",
+        ["Remap"] = "Cambiar teclas", ["Controller"] = "Mando", ["See and change every button"] = "Ver y cambiar cada botón", ["Hand"] = "Mano", ["Shop and cards"] = "Tienda y cartas", ["Quick actions"] = "Acciones rápidas",
+        ["Replays"] = "Repeticiones", ["Minigames"] = "Minijuegos", ["Navigation"] = "Navegación",
+        ["Touch controls"] = "Controles táctiles", ["Cursor speed"] = "Velocidad del cursor", ["How fast the mouse and the stick cursor move"] = "Velocidad del ratón y del cursor con el joystick", ["Auto"] = "Auto", ["Auto: on from the first touch of the screen"] = "Auto: activos desde el primer toque en la pantalla"},
+}
+
+C.settings_rows = P.settings_rows
+C.settings_page = P.settings_rows
+C.pause_row = P.pause_row
+
+return P
+end

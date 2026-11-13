@@ -1,0 +1,542 @@
+BOP 2
+eol lf
+final 1
+base 24
+c 47
+s 1
+r 24 48 %20%20%20%20%20%20%20%20 -
+c 18
+l 1
+    self.building = true
+c 10
+l 5
+    self.building = nil
+    if self.recalc_pending then
+        self.recalc_pending = nil
+        self:recalculate()
+    end
+c 13
+s 1
+l 1
+
+c 1
+s 2
+r 24 92 %20%20%20%20 -
+r 24 93 %20%20%20%20%20%20%20%20 -
+c 24
+l 26
+local ui_utf8_ok, ui_utf8 = pcall(require, 'utf8')
+local function ui_valid_text(s)
+    if type(s) ~= 'string' or not ui_utf8_ok then return s end
+    local ok, pos = ui_utf8.len(s)
+    local n = 0
+    while not ok and pos and n < 256 do
+        s = s:sub(1, pos - 1) .. '?' .. s:sub(pos + 1)
+        ok, pos = ui_utf8.len(s)
+        n = n + 1
+    end
+    return ok and s or '?'
+end
+
+local function ui_text_string(v)
+    if type(v) ~= 'table' then return tostring(v) end
+    local mt = getmetatable(v)
+    if mt and mt.__tostring then return tostring(v) end
+    if type(v.array) == 'table' and v.sign ~= nil then
+        local n = #v.array <= 1 and (v.sign == -1 and -1 or 1) * (tonumber(v.array[1]) or 0) or math.huge
+        return rawget(_G, 'number_format') and tostring(number_format(n)) or tostring(n)
+    end
+    local parts = {}
+    for _, p in ipairs(v) do parts[#parts + 1] = ui_text_string(p) end
+    return table.concat(parts, ' ')
+end
+
+c 10
+s 1
+r 24 128 %20%20%20%20%20%20%20%20 -
+c 6
+s 1
+c 3
+s 1
+l 1
+                if node.config.func and not recalculate then local _fn = G.FUNCS[node.config.func]; if type(_fn) == 'function' then _fn(node) end end
+c 2
+l 2
+            if type(node.config.text) ~= 'string' then node.config.text = ui_text_string(node.config.text) end
+            node.config.text = ui_valid_text(node.config.text)
+c 1
+l 3
+            local td = node.config.text_drawable
+            if td then
+                if node.config.text_drawable_font ~= node.config.lang.font.FONT then
+r 24 135 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 5
+                elseif node.config.text_drawable_text ~= node.config.text then
+                    td:set(node.config.text)
+                    node.config.text_drawable_text = node.config.text
+                end
+            end
+c 3
+s 1
+r 24 128 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+s 1
+r 24 165 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 24 128 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+l 1
+
+c 6
+s 1
+r 24 183 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 2
+l 1
+                        if _th and _tw then
+r 24 187 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 24 189 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 23
+s 1
+r 24 213 %20%20%20%20%20%20%20%20 -
+c 11
+s 2
+l 2
+
+    if not node.parent then self:calculate_xywh(self.UIRoot, self.T, true); self.UIRoot:set_wh(); self.UIRoot:set_alignment() end
+c 34
+s 1
+l 1
+        self.UIRoot = UIE
+c 4
+s 1
+r 24 266 %20%20%20%20 -
+c 31
+l 11
+            local more = self.draw_more and self.draw_more[k]
+            if more then
+                for i = #more, 1, -1 do
+                    local m = more[i]
+                    if m.REMOVED or m.UIBox ~= self then table.remove(more, i) end
+                end
+                for _, m in ipairs(more) do
+                    if m.draw_self then m:draw_self() else m:draw() end
+                    if m.draw_children then m:draw_children() end
+                end
+            end
+c 9
+l 1
+    if self.building then self.recalc_pending = true return end
+c 1
+s 1
+r 24 308 %20%20%20%20 -
+c 18
+s 1
+e 24 322 %20%20%20%20 - +%2D%2D,=30
+c 34
+l 4
+        local again = self.VT ~= nil
+        local mv = G.MOVEABLES
+        local so = not G.STAGE_OBJECT_INTERRUPT and G.STAGE_OBJECTS[G.STAGE]
+        local mv_n, so_n = #mv, so and #so or 0
+c 1
+l 4
+        if again then
+            if #mv > mv_n and mv[#mv] == self then mv[#mv] = nil end
+            if so and #so > so_n and so[#so] == self then so[#so] = nil end
+        end
+c 4
+s 1
+l 1
+        self.T.x = _T.x
+c 8
+s 1
+r 24 376 %20%20%20%20 -
+c 6
+s 1
+l 13
+        local dl, cur = self.UIBox.draw_layers, self.UIBox.draw_layers[self.config.draw_layer]
+        if cur and cur ~= self and not cur.REMOVED and cur.UIBox == self.UIBox then
+            self.UIBox.draw_more = self.UIBox.draw_more or {}
+            local more = self.UIBox.draw_more[self.config.draw_layer] or {}
+            self.UIBox.draw_more[self.config.draw_layer] = more
+            local seen = false
+            for _, m in ipairs(more) do if m == self then seen = true end end
+            if not seen then more[#more + 1] = self end
+        else
+            dl[self.config.draw_layer] = self
+            local more = self.UIBox.draw_more and self.UIBox.draw_more[self.config.draw_layer]
+            if more then for i = #more, 1, -1 do if more[i] == self then table.remove(more, i) end end end
+        end
+c 14
+s 1
+r 24 398 %20%20%20%20%20%20%20%20 -
+c 13
+s 1
+l 1
+
+c 17
+s 1
+r 24 430 %20%20%20%20 -
+c 8
+s 1
+r 24 439 %20%20%20%20%20%20%20%20 -
+c 23
+s 1
+l 1
+    if self.config and self.config.func and (((self.config.button_UIE or self.config.button) and self.config.func ~= 'set_button_pip') or self.config.insta_func) then local _fn = G.FUNCS[self.config.func]; if type(_fn) == 'function' then _fn(self) end end
+c 8
+s 1
+l 1
+    if UIT == 'O' then
+c 1
+s 5
+r 24 474 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 475 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 476 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 477 %20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 478 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 24 480 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 2
+s 1
+r 24 483 %20%20%20%20 -
+c 4
+s 1
+r 24 488 %20%20%20%20%20%20%20%20 -
+c 31
+s 1
+r 24 520 %20%20%20%20 -
+c 17
+s 1
+r 24 538 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 1
+s 1
+r 24 297 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 11
+s 1
+l 1
+
+c 4
+s 1
+l 1
+            if w.set_wh then
+c 22
+s 1
+l 1
+        if v.align then
+c 12
+s 1
+r 24 593 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 24 597 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+l 1
+                end
+c 16
+l 1
+        self.config.text = ui_valid_text(self.config.text)
+c 2
+l 2
+        self.config.text_drawable_font = self.config.lang.font.FONT
+        self.config.text_drawable_text = self.config.text
+c 3
+s 1
+l 1
+        self.config.text = ui_valid_text(tostring(self.config.ref_table[self.config.ref_value]))
+c 1
+l 1
+        self.config.text_drawable_text = self.config.text
+c 1
+s 1
+r 24 398 %20%20%20%20%20%20%20%20 -
+c 36
+s 1
+r 24 664 %20%20%20%20 -
+c 12
+s 1
+r 24 677 %20%20%20%20 -
+c 2
+s 1
+l 1
+
+c 11
+s 1
+r 24 692 %20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 24 697 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 39
+s 1
+l 1
+                else
+c 2
+s 1
+r 24 740 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+l 1
+
+c 1
+s 1
+r 24 749 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 6
+s 1
+e 24 756 %20%20%20%20%20%20%20%20%20%20%20%20 - =97,+%20%61%6E%64%20%28%28%6E%6F%74%20%47%2E%43%4F%4E%54%52%4F%4C%4C%45%52%2E%48%49%44%2E%74%6F%75%63%68%29%20%6F%72%20%47%2E%43%4F%4E%54%52%4F%4C%4C%45%52%2E%69%73%5F%63%75%72%73%6F%72%5F%64%6F%77%6E%29,=116
+c 2
+s 2
+r 24 740 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 760 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 19
+s 1
+r 24 780 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 16
+s 1
+l 1
+
+c 2
+s 1
+r 24 800 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 24 804 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 24 740 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 8
+e 24 804 %20%20%20%20 - =15,+%70%75,=1,-2,+%73,=2,-2,=2,-2,+%72%64%65%72,=5
+e 24 820 %20%20%20%20%20%20%20%20 - =5,-1,+%62,=1,-1,+%72%64%65%72%5F%70,=1,+%6C,=1,+%65,=14,-1,+%62,=1,-1,+%72%64%65%72%5F%70,=1,+%6C,=1,+%65,=23
+l 2
+        local lw = math.max(0, math.cos(6*(G.TIMERS.REAL - self.border_pulse_timer)) + 1)
+        prep_draw(self, 1)
+r 24 784 %20%20%20%20%20%20%20%20 -
+e 24 785 %20%20%20%20%20%20%20%20 - =33,-2,=1
+e 24 786 %20%20%20%20%20%20%20%20 - =40,-5,+%42%4C%41%43%4B,=16
+r 24 762 %20%20%20%20%20%20%20%20 -
+r 24 788 %20%20%20%20%20%20%20%20 -
+r 24 789 %20%20%20%20%20%20%20%20 -
+l 3
+        love.graphics.pop()
+    end
+
+c 1
+s 1
+r 3 4373 %20%20%20%20 -
+c 15
+s 1
+r 24 835 %20%20%20%20 -
+c 17
+l 2
+local PIX_VERTS = {}
+
+c 9
+s 14
+l 13
+    then
+        local pr = self.pixellated_rect
+        if pr and pr.fill and pr.shadow and pr.line and pr.emboss and pr.line_emboss then
+            pr.w, pr.h = self.VT.w, self.VT.h
+            pr.sw, pr.sh = self.shadow_parrallax.x, self.shadow_parrallax.y
+            pr.progress = (_progress or 1)
+            pr.parallax = _parallax
+            if not _emboss then
+                local e, le = pr.emboss.vertices, pr.line_emboss.vertices
+                for i = #e, 1, -1 do e[i] = nil end
+                for i = #le, 1, -1 do le[i] = nil end
+            end
+        else
+r 24 863 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+                w = self.VT.w,
+                h = self.VT.h,
+r 24 866 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 867 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 868 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 869 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 870 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 871 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 872 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 24 873 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 3
+                parallax = _parallax
+            }
+        end
+c 4
+s 32
+l 68
+        local V = PIX_VERTS
+        V[1], V[2], V[3], V[4], V[5], V[6], V[7], V[8], V[9], V[10],
+        V[11], V[12], V[13], V[14], V[15], V[16], V[17], V[18], V[19], V[20],
+        V[21], V[22], V[23], V[24], V[25], V[26], V[27], V[28], V[29], V[30],
+        V[31], V[32], V[33], V[34], V[35], V[36], V[37], V[38], V[39], V[40],
+        V[41], V[42], V[43], V[44], V[45], V[46], V[47], V[48], V[49], V[50],
+        V[51], V[52], V[53], V[54], V[55], V[56], V[57], V[58], V[59], V[60] =
+            subw/2,
+            subh/2-ext_up,
+            0,
+            4*res-ext_up,
+            1*res,
+            4*res-ext_up,
+            1*res,
+            2*res-ext_up,
+            2*res,
+            2*res-ext_up,
+            2*res,
+            1*res-ext_up,
+            4*res,
+            1*res-ext_up,
+            4*res,
+            0*res-ext_up,
+            subw,
+            0*res-ext_up,
+            subw,
+            1*res-ext_up,
+            subw+2*res,
+            1*res-ext_up,
+            subw+2*res,
+            2*res-ext_up,
+            subw+3*res,
+            2*res-ext_up,
+            subw+3*res,
+            4*res-ext_up,
+            totw,
+            4*res-ext_up,
+            totw,
+            subh-ext_up,
+            subw+3*res,
+            subh-ext_up,
+            subw+3*res,
+            subh+2*res-ext_up,
+            subw+2*res,
+            subh+2*res-ext_up,
+            subw+2*res,
+            subh+3*res-ext_up,
+            subw,
+            subh+3*res-ext_up,
+            subw,
+            toth-ext_up,
+            4*res,
+            toth-ext_up,
+            4*res,
+            subh+3*res-ext_up,
+            2*res,
+            subh+3*res-ext_up,
+            2*res,
+            subh+2*res-ext_up,
+            1*res,
+            subh+2*res-ext_up,
+            1*res,
+            subh-ext_up,
+            0,
+            subh-ext_up,
+            0,
+            4*res-ext_up
+        local vertices = V
+c 26
+l 19
+function release_tutorial_buttons()
+    rawset(G, 'DISABLED_BUTTONS', nil)
+end
+
+local function sync_tutorial_lock(e)
+    local locked = G.DISABLED_BUTTONS
+    if locked and e.config.button and not e.tutorial_disabled then
+        local readable = G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.overhaul
+        for _, name in ipairs(locked) do
+            if e.config.button == name then
+                e.tutorial_disabled, e.disable_button = name, true
+                if not readable then e.config.button = nil end
+            end
+        end
+    elseif not locked and e.tutorial_disabled then
+        e.config.button, e.tutorial_disabled, e.disable_button = e.config.button or e.tutorial_disabled, nil, nil
+    end
+end
+
+c 1
+l 2
+    sync_tutorial_lock(self)
+
+c 11
+s 1
+l 1
+        local _fn = G.FUNCS[self.config.func]; if type(_fn) == 'function' then _fn(self) end
+c 20
+s 1
+r 24 971 %20%20%20%20%20%20%20%20 -
+c 6
+s 2
+l 4
+        local _btn_fn = G.FUNCS[self.config.button]; if type(_btn_fn) == 'function' then _btn_fn(self) end
+        local touch = G.CONTROLLER.touch_control
+        touch.only_hover = G.ROOM
+
+c 21
+s 1
+l 1
+            if v.children[1] and v.children[1].config.chosen then return v.children[1]:put_focused_cursor() end
+c 1
+l 12
+        local function chosen(n, d)
+            if d > 6 then return end
+            for _, c in pairs(n.children or {}) do
+                if type(c) == 'table' and c.config then
+                    if c.config.chosen and c.config.button then return c end
+                    local f = chosen(c, d + 1)
+                    if f then return f end
+                end
+            end
+        end
+        local c = chosen(self, 0)
+        if c then return c:put_focused_cursor() end
+r 24 1004 %20%20%20%20%20%20%20%20 -
+c 11
+s 2
+r 24 1014 %20%20%20%20 -
+r 24 1015 %20%20%20%20%20%20%20%20 -
+c 2
+s 1
+l 1
+
+c 3
+s 1
+r 24 1022 - -
+c 23
+l 2
+    local on_release = self.config.release_func
+    if on_release then on_release(other) end
+c 9
+l 25
+
+local function ui_set_recursive(node, recursive, apply)
+  apply(node)
+  if recursive and type(node.children) == 'table' then
+    for _, child in pairs(node.children) do
+      if type(child) == 'table' and child.is and child:is(UIElement) then ui_set_recursive(child, true, apply) end
+    end
+  end
+end
+
+function UIElement:set_zoom(zoom, recursive)
+  ui_set_recursive(self, recursive, function(n) n.zoom = zoom end)
+end
+
+function UIElement:set_hover_state(state, recursive)
+  ui_set_recursive(self, recursive, function(n) if n.states and n.states.hover then n.states.hover.is = state end end)
+end
+
+function UIElement:set_drag_state(state, recursive)
+  ui_set_recursive(self, recursive, function(n) if n.states and n.states.drag then n.states.drag.is = state end end)
+end
+
+function UIElement:set_created_on_pause(state, recursive)
+  ui_set_recursive(self, recursive, function(n) n.created_on_pause = state end)
+end
+end

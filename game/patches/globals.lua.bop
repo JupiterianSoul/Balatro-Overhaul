@@ -1,0 +1,132 @@
+BOP 2
+eol lf
+final 1
+base 18
+s 2
+l 4
+OVERHAUL_VERSION = '65'
+OVERHAUL_NAME = '2.0.6'
+VERSION = 'V ' .. OVERHAUL_NAME .. ' - Overhaul'
+MP_PROTOCOL_VERSION = 10
+c 23
+s 1
+l 1
+    self.F_CRASH_REPORTS = true
+c 17
+s 1
+c 4
+s 1
+l 4
+        self.F_CRASH_REPORTS = true
+
+        self.F_MOBILE = false
+
+e 18 97 %20%20%20%20%20%20%20%20 - =7,-2,+%4C,=1,-1,+%4E%4B%54%52%45,=8
+l 4
+        self.F_DISP_USERNAME = (love.platform and love.platform.getLocalPlayerName) and love.platform.getLocalPlayerName() or nil
+
+        self.F_RUMBLE = 1
+        self.F_QUIT_BUTTON = true
+c 6
+s 1
+l 1
+        self.F_CRASH_REPORTS = true
+e 18 97 %20%20%20%20%20%20%20%20 - =7,-2,+%4C,=1,-1,+%4E%4B%54%52%45,=8
+l 3
+    end
+
+    if love.system.getOS() == 'Linux' then
+r 18 47 %20%20%20%20%20%20%20%20 -
+l 3
+    end
+
+    if love.system.getOS() == 'Android' then
+e 18 40 %20%20%20%20%20%20%20%20 - =20,-1,+%31,=1
+l 1
+        self.F_DISCORD = nil
+r 18 48 %20%20%20%20%20%20%20%20 -
+l 3
+
+        self.F_RUMBLE = 1
+        self.F_CRASH_REPORTS = true
+e 18 68 %20%20%20%20%20%20%20%20 - =22,-3,+%66%61%6C%73,=1
+l 2
+        self.F_QUIT_BUTTON = love.system.getOS() == 'Android'
+        self.F_MOBILE = true
+e 18 97 %20%20%20%20%20%20%20%20 - =7,-2,+%4C,=1,-1,+%4E%4B%54%52%45,=8
+e 18 80 %20%20%20%20%20%20%20%20 - =12,+%4C%4F%41%44%49%4E%47%5F,=1,-1,+%41%52,=7
+r 18 72 %20%20%20%20%20%20%20%20 -
+c 21
+s 1
+l 1
+
+c 17
+s 1
+l 1
+
+c 58
+s 1
+l 1
+        crashreports = true,
+c 1
+l 1
+        jimbo_comments_enabled = false,
+c 4
+l 2
+        haptic_feedback = true,
+        haptic_intensity = 50,
+c 3
+l 1
+        profile_counters = {0, 0, 0},
+c 28
+s 2
+l 14
+            crt = (self.F_MOBILE and 30) or 70,
+            bloom = 1,
+            performance_mode = false,
+            perf_resolution = 1,
+            perf_shader_quality = 3,
+            perf_particles = true,
+            perf_particle_amount = 1,
+            perf_background = 1,
+            perf_gc_tuning = false,
+            perf_texture_filter = 1,
+            perf_canvas_caching = false,
+            perf_offscreen_culling = false,
+            perf_bg_anims = true,
+            perf_log = false,
+c 77
+s 2
+l 2
+    self.TILE_W = 21
+    self.TILE_H = 11.2
+c 32
+l 1
+    self.STATES.ASYNC_WAIT = 1001
+c 6
+l 1
+    self.STAGES.ASYNC_LIMBO = 1001
+c 3
+l 1
+    self.STAGE_OBJECTS[self.STAGES.ASYNC_LIMBO] = {}
+c 34
+l 1
+    self.HAPTIC_LEVEL = 0
+c 19
+s 1
+r 18 367 %20%20%20%20%20%20%20%20 -
+c 63
+s 1
+l 1
+        },
+c 9
+s 1
+l 1
+        },
+c 16
+s 2
+l 2
+            HEX('fae37e'),
+            HEX('ffc052'),
+c 63
+end

@@ -1,0 +1,280 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 252
+local X = Extras
+local KEY = "match_recap"
+local M = X.feature(KEY, {})
+local L = function(s) return mod_loc(s) end
+
+M.MAX_COLS = 8
+M.rows = {}
+M.players = {}
+
+
+local BLIND_LETTER = {bl_small = "S", bl_big = "B", S = "S", B = "B"}
+
+local function num(v)
+    if v == nil then return nil end
+    return tonumber(v) or v
+end
+
+local function fmt(v)
+    if v == nil then return "-" end
+    if type(v) == "number" then
+        local ok, s = pcall(number_format, v)
+        if ok and s then return tostring(s) end
+    end
+    return tostring(v)
+end
+
+local function my_name()
+    local n
+    pcall(function() n = G.PROFILES[G.SETTINGS.profile].name end)
+    return (type(n) == "string" and n ~= "") and n or L("You")
+end
+
+function M.reset()
+    M.rows = {}
+    M.fix_row = nil
+    M.players = {{id = "me", name = my_name(), me = true}}
+end
+
+local function add_player(id, name)
+    for _, p in ipairs(M.players) do
+        if p.id == id then
+            if name and name ~= "" then p.name = name end
+            return
+        end
+    end
+    M.players[#M.players + 1] = {id = id, name = (name and name ~= "") and name or "?"}
+end
+
+local function party_state()
+    local S = bom_party and bom_party.S
+    return S and S.ps, S and S.me
+end
+
+function M.on_resolved(d)
+    if not X.on(KEY) or type(d) ~= "table" or d.solo then return end
+    if #M.players == 0 then M.reset() end
+    local ante = tonumber(d.ante) or (G.GAME and G.GAME.round_resets and G.GAME.round_resets.ante) or 0
+    local row = {ante = ante, blind = d.blind, result = d.result, cells = {}}
+    row.cells.me = {score = num(d.myScore), lives = num(d.myLives), lost = d.party and d.lifeLost == true or (not d.party and d.result == "lose")}
+    local ps, me = party_state()
+    if d.party and ps and type(ps.players) == "table" then
+        local losers = {}
+        for _, n in ipairs(type(d.losers) == "table" and d.losers or {}) do losers[n] = true end
+        for _, p in ipairs(ps.players) do
+            if p.pid ~= me and p.pid ~= nil then
+                add_player(p.pid, p.name)
+                row.cells[p.pid] = {score = num(p.score), lives = num(p.lives), out = p.alive == false, lost = losers[p.name] == true}
+            end
+        end
+        for _, side in ipairs({"highest", "lowest"}) do
+            local name, score = d[side .. "Name"], d[side .. "Score"]
+            if name and score ~= nil then
+                for _, p in ipairs(M.players) do
+                    local c = row.cells[p.id]
+                    if not p.me and p.name == name and c and c.score == nil then c.score = num(score) end
+                end
+            end
+        end
+    else
+        local opp
+        pcall(function() opp = bom_match.get_state().opp_name end)
+        add_player("opp", opp or L("Opponent"))
+        row.cells.opp = {score = num(d.oppScore), lives = num(d.oppLives), lost = d.result == "win"}
+    end
+    local last = M.rows[#M.rows]
+    if last and last.ante == row.ante and last.blind == row.blind and last.cells.me.score == row.cells.me.score then return end
+    M.rows[#M.rows + 1] = row
+    M.fix_row = d.party and row or nil
+end
+
+function M.on_party_state(d)
+    local row = M.fix_row
+    if not (row and type(d) == "table" and type(d.players) == "table") then return end
+    M.fix_row = nil
+    for _, p in ipairs(d.players) do
+        local c = p.pid ~= nil and row.cells[p.pid]
+        if c and p.pid ~= d.myId then
+            c.lives = num(p.lives)
+            c.out = p.alive == false
+        end
+    end
+end
+
+function M.init()
+    if M._wired or not bom_events or not bom_events.register then return end
+    M._wired = true
+    M.reset()
+    bom_events.register("match_start", function() if X.on(KEY) then M.reset() end end)
+    bom_events.register("pvp_resolved", function(d) pcall(M.on_resolved, d) end)
+    bom_events.register("party_state", function(d) if M.fix_row then pcall(M.on_party_state, d) end end)
+    if bom_ui and type(bom_ui.mp_results_buttons) == "function" then
+        local orig = bom_ui.mp_results_buttons
+        bom_ui.mp_results_buttons = function(...)
+            local list = orig(...)
+            if X.on(KEY) and type(list) == "table" and #M.rows > 0 and #list > 0 then
+                pcall(function()
+                    local t = UIK.touch()
+                    local h = (t or _G._IS_DESKTOP == false) and 0.85 or 0.7
+                    local function recap(w, col)
+                        return UIBox_button({id = "match_recap_btn", button = "open_match_recap", label = {L("Match recap")}, colour = G.C.BLUE,
+                            minw = w, maxw = w - 0.2, minh = h, scale = 0.4, col = col, focus_args = {nav = "wide"}})
+                    end
+                    local rp = rawget(_G, "bom_replay")
+                    for i, node in ipairs(list) do
+                        local watch = node.nodes and node.nodes[1] and node.nodes[1].config and node.nodes[1].config.id == "mp_watch_replay_btn"
+                        if (watch or (node.config and node.config.id == "mp_watch_replay_btn")) and rp and rp.results_button_node then
+                            local half = rp.results_button_node(1.65)
+                            if half then
+                                half.n = G.UIT.C
+                                list[i] = {n = G.UIT.R, config = {align = "cm"}, nodes = {half, {n = G.UIT.C, config = {align = "cm", minw = 0.1}, nodes = {}}, recap(1.65, true)}}
+                                return
+                            end
+                        end
+                    end
+                    table.insert(list, #list, recap(3.4))
+                    table.insert(list, #list, {n = G.UIT.R, config = {align = "cm", minh = 0.2, minw = 0.1}, nodes = {}})
+                end)
+            end
+            return list
+        end
+    end
+end
+
+local function columns()
+    local first = math.max(1, #M.rows - M.MAX_COLS + 1)
+    local cols, per_ante = {}, {}
+    for i = 1, #M.rows do
+        local a = M.rows[i].ante
+        per_ante[a] = (per_ante[a] or 0) + 1
+    end
+    for i = first, #M.rows do
+        local r = M.rows[i]
+        local label = tostring(r.ante)
+        if per_ante[r.ante] > 1 then label = label .. (BLIND_LETTER[r.blind] or "") end
+        cols[#cols + 1] = {row = r, index = i, label = label}
+    end
+    return cols, first > 1
+end
+
+local function lost_life(pid, i)
+    local cur = M.rows[i] and M.rows[i].cells[pid]
+    return cur and cur.lost == true
+end
+
+local function best_of(i)
+    local best, who = nil, {}
+    for id, c in pairs(M.rows[i].cells) do
+        local s = tonumber(c.score)
+        if s and (best == nil or s > best) then best, who = s, {[id] = true} elseif s and s == best then who[id] = true end
+    end
+    return who
+end
+
+local function cell(text, w, colour, h, bg)
+    return {n = G.UIT.C, config = {align = "cm", minw = w, maxw = w, minh = h, r = 0.08, colour = bg or G.C.CLEAR}, nodes = {
+        {n = G.UIT.T, config = {text = text, scale = UIK.touch() and 0.36 or 0.33, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}},
+    }}
+end
+
+local function grid(kind)
+    local cols, cut = columns()
+    local W = UIK.W - 2 * UIK.PAD
+    local name_w = 2.8
+    local col_w = math.min(1.45, (W - name_w - 0.2) / math.max(1, #cols))
+    local h = UIK.touch() and 0.52 or 0.44
+    local rows = {}
+    local head = {cell(L("Ante"), name_w, UIK.C.title, h)}
+    for _, c in ipairs(cols) do head[#head + 1] = cell(c.label, col_w, UIK.C.title, h) end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = head}
+    for pi, p in ipairs(M.players) do
+        local line = {cell(p.name, name_w, p.me and G.C.GOLD or G.C.UI.TEXT_LIGHT, h)}
+        for _, c in ipairs(cols) do
+            local v = c.row.cells[p.id]
+            local text, colour = "-", UIK.C.muted
+            if v then
+                if kind == "score" then
+                    text = fmt(v.score)
+                    if best_of(c.index)[p.id] then colour = G.C.GREEN
+                    elseif lost_life(p.id, c.index) then colour = G.C.RED
+                    else colour = G.C.UI.TEXT_LIGHT end
+                else
+                    text = v.lives ~= nil and fmt(v.lives) or "-"
+                    if v.out or tonumber(v.lives) == 0 then colour = G.C.RED
+                    elseif lost_life(p.id, c.index) then colour = G.C.ORANGE
+                    else colour = G.C.UI.TEXT_LIGHT end
+                end
+            end
+            line[#line + 1] = cell(text, col_w, colour, h, v and {0, 0, 0, 0.18} or nil)
+        end
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02, r = 0.08, colour = pi % 2 == 0 and {0, 0, 0, 0.12} or G.C.CLEAR}, nodes = line}
+    end
+    local table_node = {n = G.UIT.R, config = {align = "cm", padding = 0.08, r = 0.1, colour = UIK.C.section}, nodes = {
+        {n = G.UIT.C, config = {align = "cm"}, nodes = rows},
+    }}
+    local notes = {}
+    if kind == "score" then
+        notes[1] = L("Green: best score of that PvP blind. Red: lost a life there.")
+        local won, played = 0, 0
+        for _, r in ipairs(M.rows) do
+            played = played + 1
+            if r.result == "win" then won = won + 1 end
+        end
+        local best = G.GAME and G.GAME.round_scores and G.GAME.round_scores.hand and G.GAME.round_scores.hand.amt
+        notes[2] = L("PvP blinds won") .. ": " .. won .. " / " .. played .. "    " .. L("Your best hand") .. ": " .. fmt(best or 0)
+    else
+        notes[1] = L("Lives after each PvP blind. Orange: a life lost in that PvP blind. Red: out.")
+    end
+    if cut then notes[#notes + 1] = L("Showing the last 8 PvP blinds.") end
+    local fair = rawget(_G, "MPFair") and MPFair.recap_line and MPFair.recap_line()
+    if fair then notes[#notes + 1] = fair end
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {table_node}},
+            UIK.note(notes, {w = W}),
+        }},
+    }}
+end
+
+function M.window()
+    return UIK.window{
+        id = "match_recap",
+        title = L("MATCH RECAP"),
+        tabs = {
+            {key = "score", label = L("Scores"), build = function() return grid("score") end},
+            {key = "lives", label = L("Lives"), build = function() return grid("lives") end},
+        },
+        back_func = "mp_end_view_back",
+    }
+end
+
+G.FUNCS.open_match_recap = function()
+    if not X.on(KEY) then return end
+r 13 1381 %20%20%20%20 -
+l 20
+    local def = M.window()
+    if bom_ui and bom_ui.overlay then bom_ui.overlay({definition = def, config = {no_esc = true}}) else G.FUNCS.overlay_menu{definition = def} end
+end
+
+mod_loc_register{
+    fr = {["Match recap"] = "Résumé du match", ["Scores"] = "Scores",
+        ["MATCH RECAP"] = "RÉSUMÉ DU MATCH",
+        ["Green: best score of that PvP blind. Red: lost a life there."] = "Vert : meilleur score de cette blinde JcJ. Rouge : une vie perdue.",
+        ["PvP blinds won"] = "Blindes JcJ gagnées", ["Your best hand"] = "Votre meilleure main",
+        ["Lives after each PvP blind. Orange: a life lost in that PvP blind. Red: out."] = "Vies après chaque blinde JcJ. Orange : une vie perdue dans cette blinde. Rouge : éliminé.",
+        ["Showing the last 8 PvP blinds."] = "Les 8 dernières blindes JcJ sont affichées."},
+    es = {["Scores"] = "Puntuaciones", ["Match recap"] = "Resumen de partida",
+        ["MATCH RECAP"] = "RESUMEN DE PARTIDA",
+        ["Green: best score of that PvP blind. Red: lost a life there."] = "Verde: mejor puntuación de esa ciega JcJ. Rojo: perdió una vida.",
+        ["PvP blinds won"] = "Ciegas JcJ ganadas", ["Your best hand"] = "Tu mejor mano",
+        ["Lives after each PvP blind. Orange: a life lost in that PvP blind. Red: out."] = "Vidas tras cada ciega JcJ. Naranja: perdió una vida en esa ciega. Rojo: eliminado.",
+        ["Showing the last 8 PvP blinds."] = "Se muestran las últimas 8 ciegas JcJ."},
+}
+
+return M
+end

@@ -1,0 +1,315 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 169
+local C = require("functions/shop/tavern_catalog")
+local S = require("functions/shop/tavern_store")
+local A = require("functions/shop/tavern_apply")
+
+local TC = {}
+
+function TC.rarity_colour(rk)
+  local r = C.RARITIES[C.RARITY_INDEX[rk] or 1]
+  local k = r and r.colour or "WHITE"
+  if k == "WHITE" then return G.C.UI.TEXT_LIGHT or G.C.WHITE end
+  if k == "GREEN" then return G.C.GREEN end
+  if k == "BLUE" then return G.C.BLUE end
+  if k == "PURPLE" then return G.C.PURPLE or G.C.SECONDARY_SET.Tarot end
+  if k == "GOLD" then return G.C.GOLD end
+  return G.C.WHITE
+end
+
+local function rgb255(t)
+  return {t[1] / 255, t[2] / 255, t[3] / 255, 1}
+end
+
+local function palette_def(key)
+  key = TAVERN_PALETTES.resolve(key)
+  if key == "polychromatic" then
+    local p = AshCardManager and AshCardManager.get_poly_colors and AshCardManager.get_poly_colors()
+    if p then
+      return {blue = {p.blue_r, p.blue_g, p.blue_b}, red = {p.red_r, p.red_g, p.red_b}, green = {p.green_r, p.green_g, p.green_b}, yellow = {p.yellow_r, p.yellow_g, p.yellow_b}}
+    end
+    return {blue = {255, 60, 60}, red = {60, 255, 60}, green = {60, 60, 255}, yellow = {255, 255, 60}}
+  end
+  for _, s in ipairs(rawget(_G, "SHOP_COLOR_SETS") or {}) do
+    if s.id == key then return s end
+  end
+  for _, s in ipairs(C.NEW_PALETTES) do
+    if s.id == key then return s end
+  end
+  return nil
+end
+
+local function swatch(col, w, h)
+  return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, r = 0.06, colour = col, emboss = 0.03}, nodes = {}}
+end
+
+local function face_ui(card, nodes, align)
+  local box = UIBox{
+    definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = nodes},
+    config = {align = align or "cm", offset = {x = 0, y = 0}, major = card, bond = "Strong", parent = card},
+  }
+  local draw = box.draw
+  box.draw = function(self)
+    if card.sprite_facing ~= "front" or (card.dissolve or 0) > 0 then return end
+    draw(self)
+  end
+  box.states.collide.can = false
+  return box
+end
+
+local function plate(card, w, h, colour, inner)
+  card.children.tavern_face = face_ui(card, {
+    {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, r = 0.1, colour = colour or G.C.BLACK, emboss = 0.04, padding = 0.04}, nodes = inner or {}},
+  })
+end
+
+local function wrap_words(s, max_chars)
+  local lines, cur = {}, ""
+  for word in tostring(s):gmatch("%S+") do
+    if cur == "" then cur = word
+    elseif #cur + 1 + #word <= max_chars then cur = cur .. " " .. word
+    else lines[#lines + 1] = cur; cur = word end
+  end
+  if cur ~= "" then lines[#lines + 1] = cur end
+  return lines
+end
+
+local function overlay_sprite(card, atlas, pos, steps)
+  local spr = Sprite(card.T.x, card.T.y, card.T.w, card.T.h, atlas, pos)
+  spr.states.drag.can = false
+  spr.states.collide.can = false
+  spr.states.hover.can = false
+  spr:set_role({major = card, role_type = "Glued", draw_major = card})
+  local send = {0, 0}
+  spr.draw = function(self)
+    if card.sprite_facing ~= "front" or not self.states.visible then return end
+    local t = G.TIMERS.REAL
+    send[1] = t / 28
+    send[2] = t
+    for _, sh in ipairs(steps or {}) do self:draw_shader(sh, nil, send, nil, card.children.center) end
+  end
+  return spr
+end
+
+local function sleeve_sprite(card, atlas, pos, finish)
+  local spr = Sprite(card.T.x, card.T.y, card.T.w, card.T.h, atlas, pos)
+  spr.states.drag.can = false
+  spr.states.collide.can = false
+  spr.states.hover.can = false
+  spr:set_role({major = card, role_type = "Glued", draw_major = card})
+  spr.draw = function(self)
+    if card.sprite_facing ~= "front" or not self.states.visible then return end
+    local send = card.ARGS.send_to_shader
+    self:draw_shader("dissolve", nil, nil, nil, card.children.center)
+    if finish == "negative" then
+      self:draw_shader("negative", nil, send, nil, card.children.center)
+      self:draw_shader("negative_shine", nil, send, nil, card.children.center)
+    elseif finish then
+      self:draw_shader(finish, nil, send, nil, card.children.center)
+    end
+  end
+  return spr
+end
+
+local function flame_obj(card, cols, fw, fh)
+  local spr = Sprite(0, 0, fw, fh, G.ASSET_ATLAS.ui_1, {x = 2, y = 0})
+  spr.states.drag.can = false
+  spr.states.collide.can = false
+  spr.states.hover.can = false
+  local function col(c) return type(c) == "string" and A.hex(c) or c end
+  local args = {timer = 0, real_intensity = 5, colour_1 = col(cols[1]), colour_2 = col(cols[2])}
+  spr:define_draw_steps({{
+    shader = "flame",
+    send = {
+      {name = "time", ref_table = args, ref_value = "timer"},
+      {name = "amount", ref_table = args, ref_value = "real_intensity"},
+      {name = "image_details", ref_table = spr, ref_value = "image_dims"},
+      {name = "texture_details", ref_table = spr.RETS, ref_value = "get_pos_pixel"},
+      {name = "colour_1", ref_table = args, ref_value = "colour_1"},
+      {name = "colour_2", ref_table = args, ref_value = "colour_2"},
+      {name = "id", val = spr.ID},
+    },
+  }})
+  spr:get_pos_pixel()
+  local draw = spr.draw
+  spr.draw = function(self, ...)
+    if card.sprite_facing ~= "front" then return end
+    args.timer = G.TIMERS.REAL
+    draw(self, ...)
+  end
+  return spr
+end
+
+local function classic_flames()
+  local function lick(c)
+    local out = {}
+    for i = 1, 3 do out[i] = math.min(math.max(((c[i] * 0.5 + G.C.YELLOW[i] * 0.5) + 0.1) ^ 2, 0.1), 1) end
+    out[4] = 1
+    return out
+  end
+  local ch, mu = G.C.UI_CHIPS or G.C.BLUE, G.C.UI_MULT or G.C.RED
+  return {chips = {ch, lick(ch)}, mult = {mu, lick(mu)}}
+end
+
+local function confetti_obj(card, cols, pw, ph)
+  local list = {}
+  for _, c in ipairs(cols or {}) do list[#list + 1] = type(c) == "string" and A.hex(c) or c end
+  if #list == 0 then list = {G.C.WHITE} end
+  local p = Particles(0, 0, pw, ph, {timer = 0.035, scale = 0.16, speed = 0.9, lifespan = 1.4, colours = list, fill = true})
+  local draw = p.draw
+  p.draw = function(self, ...)
+    if card.sprite_facing ~= "front" then return end
+    draw(self, ...)
+  end
+  return p
+end
+
+local EDITION = {foil = {foil = true}, holo = {holo = true}, polychrome = {polychrome = true}, negative = {negative = true}}
+
+function TC.make(it, w, h, opts)
+  opts = opts or {}
+  w, h = w or G.CARD_W, h or G.CARD_H
+r 15 3797 %20%20 -
+l 4
+  if it.type == "jimbo" then center = G.P_CENTERS[it.key] or G.P_CENTERS.j_joker end
+  if it.type == "effect" then center = G.P_CENTERS.j_joker end
+  local card = Card(0, 0, w, h, G.P_CARDS.empty, center, {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_back = G.P_CENTERS.b_red.pos})
+  card.tavern_item = it
+r 6 219 %20%20 -
+l 132
+  card.update_alert = function() end
+  local t = it.type
+  if t == "portrait" then
+    local a = A.atlas("tavern_portraits")
+    if a and it.pos then
+      card.children.center.atlas = a
+      card.children.center:set_sprite_pos(it.pos)
+    end
+  elseif t == "back" then
+    local a = A.atlas(it.atlas or "tavern_backs")
+    if a and it.pos then
+      local deck = G.P_CENTERS.b_red
+      card.children.center.atlas = G.ASSET_ATLAS[deck.atlas or "centers"]
+      card.children.center:set_sprite_pos(deck.pos)
+      card.children.tavern_sleeve = sleeve_sprite(card, a, it.pos, it.finish)
+    end
+  elseif t == "deck" then
+    local a = G.ASSET_ATLAS[it.key .. "_1"]
+    if a then
+      card.children.center.atlas = a
+      card.children.center:set_sprite_pos({x = 2, y = 0})
+    end
+  elseif t == "effect" then
+    local steps = A.effect_steps(it.key) or {}
+    local single = #steps == 1 and steps[1]
+    if single and EDITION[single] then
+      card:set_edition(EDITION[single], true, true)
+    else
+      card.children.tavern_fx = overlay_sprite(card, card.children.center.atlas, center.pos, steps)
+    end
+  elseif t == "palette" then
+    local p = palette_def(it.key)
+    if p then
+      local sw, sh = w * 0.34, h * 0.26
+      plate(card, w * 0.86, h * 0.86, G.C.BLACK, {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {swatch(rgb255(p.blue), sw, sh), swatch(rgb255(p.red), sw, sh)}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {swatch(rgb255(p.green), sw, sh), swatch(rgb255(p.yellow), sw, sh)}},
+      })
+    end
+  elseif t == "felt" then
+    local f = it.def or S.def("felt", it.key)
+    if f then
+      plate(card, w * 0.86, h * 0.86, A.hex(f.special), {
+        {n = G.UIT.R, config = {align = "cm", minw = w * 0.66, minh = h * 0.66, r = 0.3, colour = A.hex(f.colour)}, nodes = {}},
+      })
+    end
+  elseif t == "flame" then
+    local f = it.def or S.def("flame", it.key) or (it.classic and classic_flames())
+    local inner = {}
+    if f then
+      local fw, fh, bw, bh = w * 0.4, h * 0.58, w * 0.32, h * 0.12
+      local function side(cols, box)
+        return {n = G.UIT.C, config = {align = "bm"}, nodes = {
+          {n = G.UIT.R, config = {align = "cm"}, nodes = {{n = G.UIT.O, config = {object = flame_obj(card, cols, fw, fh)}}}},
+          {n = G.UIT.R, config = {align = "cm", minw = bw, minh = bh, r = 0.05, colour = box, emboss = 0.03}, nodes = {}},
+        }}
+      end
+      inner = {{n = G.UIT.R, config = {align = "cm"}, nodes = {
+        side(f.chips, G.C.UI_CHIPS or G.C.BLUE),
+        {n = G.UIT.C, config = {minw = w * 0.04}, nodes = {}},
+        side(f.mult, G.C.UI_MULT or G.C.RED),
+      }}}
+    end
+    plate(card, w * 0.86, h * 0.86, G.C.BLACK, inner)
+  elseif t == "celebration" then
+    local c = it.def or S.def("celebration", it.key)
+    local inner = {}
+    if c then inner = {{n = G.UIT.O, config = {object = confetti_obj(card, c.colours, w * 0.78, h * 0.78)}}} end
+    plate(card, w * 0.86, h * 0.86, G.C.BLACK, inner)
+  elseif t == "title" then
+    local lines = wrap_words(mod_loc(it.name), 9)
+    local rows = {}
+    for _, ln in ipairs(lines) do
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {{n = G.UIT.T, config = {text = ln, scale = 0.3 * (w / G.CARD_W), colour = G.C.GOLD, shadow = true}}}}
+    end
+    plate(card, w * 0.86, h * 0.86, G.C.BLACK, {{n = G.UIT.C, config = {align = "cm"}, nodes = rows}})
+  end
+  card.hover = function(self)
+    if self.facing == "front" or opts.on_click then self:juice_up(0.05, 0.03) end
+    pcall(play_sound, "paper1", math.random() * 0.2 + 0.9, 0.35)
+    Node.hover(self)
+  end
+  card.stop_hover = function(self) Node.stop_hover(self) end
+  card.click = function(self)
+    if opts.on_click then opts.on_click(self) end
+  end
+  if opts.locked then
+    card.facing = "back"
+    card.sprite_facing = "back"
+  end
+  if opts.equipped then TC.tag(card, "EQUIPPED", G.C.GREEN) end
+  if opts.locked and opts.rarity then
+    local r = C.RARITIES[C.RARITY_INDEX[opts.rarity] or 1]
+    local bg = opts.rarity == "common" and G.C.UI.BACKGROUND_INACTIVE or TC.rarity_colour(opts.rarity)
+    TC.tag(card, r and r.name or "", bg, "bm")
+  end
+  return card
+end
+
+function TC.tag(card, label, colour, align)
+  local slot = align == "bm" and "tavern_tag_b" or "tavern_tag"
+  if card.children[slot] then card.children[slot]:remove() end
+  card.children[slot] = UIBox{
+    definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", r = 0.06, padding = 0.04, colour = colour or G.C.GREEN, emboss = 0.03}, nodes = {
+        {n = G.UIT.T, config = {text = mod_loc(label), scale = 0.24, colour = G.C.WHITE, shadow = true}},
+      }},
+    }},
+    config = {align = align or "tm", offset = {x = 0, y = align == "bm" and -0.08 or 0.08}, major = card, bond = "Strong", parent = card},
+  }
+  card.children[slot].states.collide.can = false
+end
+
+function TC.name(it)
+  if not it then return "" end
+  if it.type == "back" and it.base then
+    local base = mod_loc(C.title_case(it.base))
+    for _, f in ipairs(C.FINISHES) do
+      if f.shader and f.shader == it.finish then return base .. " " .. mod_loc(f.name) end
+    end
+    return base
+  end
+  return mod_loc(it.name or it.key or "")
+end
+
+function TC.area(w, h, n)
+  local area = CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, w, h,
+    {card_limit = n or 1, type = "title", highlight_limit = 0, collection = true, card_w = (n or 1) == 1 and w or nil})
+  return area
+end
+
+return TC
+end

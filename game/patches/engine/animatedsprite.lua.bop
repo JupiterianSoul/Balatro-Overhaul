@@ -1,0 +1,21 @@
+BOP 1
+eol lf
+final 1
+base 22
+c 77
+s 1
+l 2
+    local anim_fps = G.ANIMATION_FPS
+    local new_frame = math.floor(anim_fps*(G.TIMERS.REAL - self.offset_seconds))%self.current_animation.frames
+c 10
+l 3
+        local _bg = G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.perf_bg_anims
+        if _bg == nil then _bg = true end
+        if _bg then
+c 3
+l 1
+        end
+c 4
+s 10
+c 2
+end

@@ -1,0 +1,177 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 64
+local MG = Minigames
+local K = MG.kit
+local L = MG.L
+
+local min, max, sin = math.min, math.max, math.sin
+
+local Game = {}
+Game.__index = Game
+
+local REVEAL, SLIDE, DEAL, BUST = 0.35, 0.32, 0.25, 0.9
+
+function Game:next_card()
+    self.di = self.di + 1
+    if self.di > #self.deck then
+        self.deck = K.deck(self.rng)
+        self.di = 1
+    end
+    return self.deck[self.di]
+end
+
+function Game:start()
+    self.deck = K.deck(self.rng)
+    self.di = 0
+    self.cur = self:next_card()
+    self.nxt = self:next_card()
+    self.state = "guess"
+    self.t = 0
+    self.score = 0
+    self.ties = 0
+    self.pops = K.pops(4)
+    self.cj, self.nj, self.chj = {}, {}, {}
+    self.end_sound = "whoosh1"
+    local touch = UIK.touch()
+    local bw, bh = touch and 2.7 or 2.4, touch and 0.95 or 0.8
+    local cy = self.H - bh - 0.25
+    self.hi = {x = self.W / 2 - bw - 0.15, y = cy, w = bw, h = bh, label = L("Higher"), colour = G.C.BLUE, scale = touch and 0.5 or 0.45}
+    self.lo = {x = self.W / 2 + 0.15, y = cy, w = bw, h = bh, label = L("Lower"), colour = G.C.RED, scale = touch and 0.5 or 0.45}
+    self.card_y = (cy - 0.15) / 2 + 0.05
+    self.scale = min(1, (cy - 0.45) / K.card_h())
+    self.cx = self.W / 2 - 1.55
+    self.nx = self.W / 2 + 1.55
+    self.dx = self.W - 1.3
+    self.chx = 1.2
+end
+
+function Game:guess(up)
+    if self.state ~= "guess" then return end
+    local a, b = self.cur.rank, self.nxt.rank
+    self.correct = (up and b >= a) or (not up and b <= a)
+    K.press(up and self.hi or self.lo)
+    self.state = "reveal"
+    self.t = 0
+    K.sound("card1", 1, 0.6)
+end
+
+function Game:press(x, y)
+    if K.hit(self.hi, x, y, 0.1) then self:guess(true)
+    elseif K.hit(self.lo, x, y, 0.1) then self:guess(false) end
+end
+
+function Game:key(k)
+    if k == "up" or k == "w" then self:guess(true) elseif k == "down" or k == "s" then self:guess(false) end
+end
+
+r 9 2449 - -
+l 105
+    self.t = self.t + dt
+    if self.state == "reveal" and self.t >= REVEAL then
+        self.t = 0
+        K.juice(self.nj, 0.45)
+        local top = self.card_y - K.card_h() * self.scale / 2 - 0.1
+        if self.correct then
+            self.score = self.score + 1
+            K.juice(self.chj, 0.5)
+            if self.cur.rank == self.nxt.rank then
+                self.ties = self.ties + 1
+                K.pop(self.pops, L("Tie!"), self.W / 2, top + 0.35, G.C.GOLD, 0.6)
+            end
+            K.pop(self.pops, "+1", self.nx, top + 0.25, G.C.BLUE, 0.7)
+            K.sound("chips1", 1 + min(self.score, 20) * 0.03, 0.6)
+            if self.score % 5 == 0 then
+                K.sound("multhit1", 1 + min(self.score, 30) * 0.01, 0.55)
+                K.flash(G.C.BLUE, 0.15)
+                K.pop(self.pops, string.format(L("%d in a row!"), self.score), self.W / 2, top + 0.9, G.C.WHITE, 0.75)
+            end
+            self.state = "slide"
+        else
+            K.sound("cancel", 0.8, 0.7)
+            K.pop(self.pops, localize and localize("k_nope_ex") or "Nope!", self.nx, top + 0.25, G.C.RED, 0.75)
+            K.shake(0.12)
+            K.flash(G.C.RED, 0.22)
+            self.state = "bust"
+        end
+    elseif self.state == "slide" and self.t >= SLIDE then
+        self.t = 0
+        self.cur = self.nxt
+        self.nxt = self:next_card()
+        self.state = "deal"
+        K.sound("cardSlide1", 1.1, 0.4)
+    elseif self.state == "deal" and self.t >= DEAL then
+        self.t = 0
+        self.state = "guess"
+        K.juice(self.cj, 0.12)
+    elseif self.state == "bust" and self.t >= BUST then
+        self.result = "Bust!"
+        self.summary = string.format(L("Right: %d   Ties: %d"), self.score, self.ties)
+        self.over = true
+    end
+end
+
+function Game:draw(ox, oy)
+    local s, y = self.scale, oy + self.card_y
+    local now = K.now()
+    for i = 3, 1, -1 do K.card(nil, ox + self.dx + i * 0.04, y - i * 0.04, s * 0.8, {flip = 1, shadow = i == 3}) end
+    local n = min(self.score, 14)
+    local ck = K.jk(self.chj)
+    for i = 1, n do K.chip("stake_white", ox + self.chx, y + 1.0 - (i - 1) * 0.13 * ck, 0.75, {shadow = i == 1}) end
+    if self.score > 0 then K.text(tostring(self.score), ox + self.chx, y + 1.65, 0.5 * ck, G.C.BLUE, "c") end
+    local st, t = self.state, self.t
+    local cx, nx = self.cx, self.nx
+    local ch, cw = K.card_h() * s, K.card_w() * s
+    K.hover(self.cj, ox + cx - cw / 2, y - ch / 2, cw, ch)
+    K.hover(self.nj, ox + nx - cw / 2, y - ch / 2, cw, ch)
+    local sway = sin(now * 1.3) * 0.018
+    if st == "slide" then
+        local u = K.smooth(t / SLIDE)
+        K.card(self.cur.key, ox + cx - u * 2.2, y, s, {a = 1 - u})
+        K.card(self.nxt.key, ox + K.lerp(nx, cx, u), y, s)
+    elseif st == "deal" then
+        local u = K.smooth(t / DEAL)
+        K.card(self.cur.key, ox + cx, y, s)
+        K.card(nil, ox + K.lerp(self.dx, nx, u), y, s, {flip = 1})
+    else
+        local jx = 0
+        if st == "bust" then jx = sin(t * 45) * 0.1 * max(0, 1 - t / 0.5) end
+        K.card(self.cur.key, ox + cx, y, s * K.jk(self.cj), {r = sway + K.jr(self.cj)})
+        local flip = 1
+        if st == "reveal" then flip = 1 - min(1, t / REVEAL) elseif st == "bust" then flip = 0 end
+        K.card(self.nxt.key, ox + nx + jx, y, s * K.jk(self.nj), {flip = flip, r = (st == "guess" and -sway or 0) + K.jr(self.nj)})
+    end
+    if st == "guess" then K.text("?", ox + self.W / 2, y, 0.9, G.C.GOLD, "c", 0.6 + 0.4 * sin(K.now() * 3)) end
+    local off = st == "bust"
+    self.hi.disabled, self.lo.disabled = off, off
+    K.button(self.hi, 1, ox, oy)
+    K.button(self.lo, 1, ox, oy)
+    K.draw_pops(self.pops, ox, oy)
+end
+
+MG.register{
+    key = "high_low",
+    name = "High or Low",
+    desc = "Guess if the next card is higher or lower",
+    how = "Higher or Lower? Ties keep your streak going.",
+    score = "Streak",
+    new = function() return setmetatable({}, Game) end,
+}
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["High or Low"] = "Plus ou Moins", ["Guess if the next card is higher or lower"] = "Devinez si la carte suivante est plus haute ou plus basse",
+            ["Higher or Lower? Ties keep your streak going."] = "Plus haut ou plus bas ? Une égalité garde la série.", ["Streak"] = "Série",
+            ["Higher"] = "Plus haut", ["Lower"] = "Plus bas", ["Bust!"] = "Perdu !", ["Tie!"] = "Égalité !", ["%d in a row!"] = "%d d'affilée !",
+            ["Right: %d   Ties: %d"] = "Justes : %d   Égalités : %d"},
+        es = {["High or Low"] = "Mayor o Menor", ["Guess if the next card is higher or lower"] = "Adivina si la siguiente carta es mayor o menor",
+            ["Higher or Lower? Ties keep your streak going."] = "¿Mayor o menor? Un empate mantiene la racha.", ["Streak"] = "Racha",
+            ["Higher"] = "Mayor", ["Lower"] = "Menor", ["Bust!"] = "¡Fallaste!", ["Tie!"] = "¡Empate!", ["%d in a row!"] = "¡%d seguidas!",
+            ["Right: %d   Ties: %d"] = "Aciertos: %d   Empates: %d"},
+    }
+end
+
+return Game
+end

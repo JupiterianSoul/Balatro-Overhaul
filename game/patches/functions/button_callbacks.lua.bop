@@ -1,0 +1,1732 @@
+BOP 2
+eol lf
+final 1
+base 13
+c 20
+s 2
+r 13 21 %20%20 -
+r 13 22 %20%20%20%20 -
+c 17
+s 1
+l 1
+
+c 9
+s 1
+l 16
+function G.FUNCS.check_drag_target_active(e)
+  local cfg, args = e.config, e.config.args
+  local live = args.active_check(args.card)
+  local changed = (live and not cfg.pulse_border) or (not live and cfg.pulse_border)
+  if changed or not args.init then
+    if live then
+      cfg.pulse_border, cfg.colour, cfg.release_func = true, args.colour, args.release_func
+      args.text_colour[4] = 1
+    else
+      cfg.pulse_border, cfg.colour, cfg.release_func = nil, adjust_alpha(G.C.L_BLACK, 0.9), nil
+      args.text_colour[4] = 0.5
+    end
+  end
+  args.init = true
+end
+
+r 13 50 - -
+c 4
+s 2
+l 15
+G.FUNCS.shop_check_result = function(ok, e)
+  if ok == nil then return e.config.button ~= nil end
+  return ok and true or false
+end
+
+G.FUNCS.card_can_buy = function(_card)
+  local e = {config = {ref_table = _card}}
+  return G.FUNCS.shop_check_result(G.FUNCS.can_buy(e), e)
+end
+
+G.FUNCS.card_can_buy_and_use = function(_card)
+  local e = {config = {ref_table = _card}}
+  return G.FUNCS.shop_check_result(G.FUNCS.can_buy_and_use(e), e)
+end
+
+e 13 887 - - =8,-2,+%62%75,=8,+%5F%63%68%65%63%6B,=14
+l 1
+    if not G.FUNCS.shop_check_result(G.FUNCS.can_buy(e), e) then
+c 15
+s 1
+e 13 55 - - =27,-1,+%5F%63%61%72%64,=1
+l 13
+  local e
+  if _card and not _card.ability and _card.config and _card.config.ref_table then
+    e, _card = _card, _card.config.ref_table
+  end
+  local big = rawget(_G, "to_big") or tonumber
+  local ok = not (big(_card.cost) > big(G.GAME.dollars) - big(G.GAME.bankrupt_at) and big(_card.cost) > big(0))
+  if e then
+    e.config.colour = ok and G.C.ORANGE or G.C.UI.BACKGROUND_INACTIVE
+    e.config.button = ok and 'buy_from_shop' or nil
+  end
+  return ok
+end
+
+r 13 50 - -
+c 4
+s 2
+e 13 77 - - =8,-4,=11,+%5F%62%75%74%74%6F%6E%5F%63%68%65%63%6B,=14
+l 1
+    if not G.FUNCS.shop_check_result(G.FUNCS.can_buy_and_use(e), e) then
+c 12
+s 1
+e 13 77 - - =35,-1,+%5F%63%61%72%64,=1
+l 13
+  local e
+  if _card and not _card.ability and _card.config and _card.config.ref_table then
+    e, _card = _card, _card.config.ref_table
+  end
+  local big = rawget(_G, "to_big") or tonumber
+  local ok = not ((big(_card.cost) > big(G.GAME.dollars) - big(G.GAME.bankrupt_at) and big(_card.cost) > big(0)) or (not _card:can_use_consumeable()))
+  if e then
+    e.config.colour = ok and G.C.SECONDARY_SET.Voucher or G.C.UI.BACKGROUND_INACTIVE
+    e.config.button = ok and 'buy_from_shop' or nil
+  end
+  return ok
+end
+
+r 13 91 - -
+c 14
+s 1
+r 13 106 - -
+c 33
+s 1
+r 13 140 %20%20%20%20 -
+c 7
+s 1
+r 13 148 %20%20%20%20 -
+c 24
+s 1
+r 13 173 %20%20%20%20 -
+c 6
+s 1
+r 13 180 %20%20%20%20 -
+c 15
+s 1
+e 13 196 %20%20%20%20 - =17,-4,+%47,=1,-14,+%46,=1,-4,+%4C%45%53%5B,=35,-1,+%5D
+c 4
+s 4
+l 1
+      G.SAVED_GAME = G.SAVED_GAME or savefile
+c 1
+r 13 57 %20%20%20%20%20%20%20%20 -
+r 13 58 %20%20%20%20%20%20%20%20 -
+l 1
+      elseif G.SAVED_GAME.GAME and G.SAVED_GAME.GAME.multiplayer then
+c 30
+e 13 218 %20%20%20%20%20%20 - -3,=20,-1,=19,-4,+%6F%72%20%31
+c 3
+s 1
+r 13 296 %20%20%20%20%20%20 -
+c 3
+s 1
+l 1
+      G.PROFILES[G.focused_profile].name = _name or G.PROFILES[G.focused_profile].name
+e 13 296 %20%20%20%20%20%20 - =29,+%2E%64%65%6C%65%74%65%64,=3,-2,+%6E%69%6C
+l 1
+      G.RESET_PROTOTYPES = true
+c 1
+l 19
+      pcall(function()
+          if AchievementManager and AchievementManager.reload_for_profile then
+              AchievementManager.reload_for_profile()
+          end
+      end)
+      pcall(function()
+          if ProfileRewardsManager and ProfileRewardsManager.reload_for_profile then
+              ProfileRewardsManager.reload_for_profile()
+          end
+      end)
+      pcall(function()
+        if AshCardManager then AshCardManager.initialized_profile = nil end
+        if ShopManager then ShopManager.initialized_profile = nil end
+        if BoosterManager then BoosterManager.initialized_profile = nil end
+      end)
+      pcall(function()
+        if reset_colors_to_default then reset_colors_to_default() end
+        if auto_apply_color_set then auto_apply_color_set() end
+      end)
+c 5
+s 1
+l 1
+    blockable = true,
+c 11
+s 1
+l 2
+  G.CHECK_PROFILE_DATA = G.CHECK_PROFILE_DATA or not check_profile(G.FILES[G.focused_profile..'/profile.jkr'])
+
+c 10
+s 3
+e 13 273 - - =35,+%2C%20%62%79%70%61%73%73%5F%77%61%72%6E%69%6E%67,=1
+e 13 274 %20%20 - =20,+%20%62%79%70%61%73%73%5F%77%61%72%6E%69%6E%67%20%6F%72,=38
+e 13 275 %20%20 - =3,+%6E%6F%74%20%62%79%70%61%73%73%5F%77%61%72%6E%69%6E%67%20%61%6E%64%20%28,=39,+%29,=5
+c 12
+s 5
+e 13 289 %20%20%20%20 - =5,+%6D%6F%64%5F,=53
+e 13 290 %20%20%20%20 - =5,+%6D%6F%64%5F,=53
+e 13 291 %20%20%20%20 - =5,+%6D%6F%64%5F,=62
+l 1
+    for _, name in ipairs({'save.jkr', 'meta.jkr', 'unlock_notify.jkr'}) do love.mod_filesystem.remove(G.focused_profile..'/'..name..'.prev') end
+e 13 292 %20%20%20%20 - =5,+%6D%6F%64%5F,=40
+l 21
+    pcall(function()
+        if AchievementManager and AchievementManager.delete_profile_data then
+            AchievementManager.delete_profile_data(G.focused_profile)
+        end
+    end)
+    pcall(function()
+        if ProfileRewardsManager and ProfileRewardsManager.reload_for_profile then
+            ProfileRewardsManager.reload_for_profile()
+        end
+    end)
+    pcall(function()
+      if AshCardManager then AshCardManager.initialized_profile = nil end
+      if ShopManager then ShopManager.initialized_profile = nil end
+      if BoosterManager then BoosterManager.initialized_profile = nil end
+    end)
+    pcall(function()
+      if reset_colors_to_default then reset_colors_to_default() end
+    end)
+    for _, name in ipairs({'save.jkr', 'meta.jkr', 'unlock_notify.jkr'}) do
+      G.FILES[G.focused_profile..'/'..name] = nil
+    end
+c 3
+s 1
+l 3
+    local counters = G.SETTINGS.profile_counters
+    counters[G.focused_profile] = 1 + (counters[G.focused_profile] or 0)
+
+e 13 242 %20%20%20%20 - =2,-4,+%65%6D%70%74%79,=27
+l 2
+
+    if bypass_warning then return end
+c 1
+s 1
+r 13 298 %20%20%20%20%20%20 -
+c 8
+s 1
+l 1
+  if G.PROFILES[G.SETTINGS.profile].all_unlocked or G.PROFILES[G.SETTINGS.profile].debug_unlocked or e.config.disable_button then
+c 11
+s 2
+r 13 319 %20%20 -
+r 15 6321 %20%20%20%20 -
+c 17
+s 1
+r 13 338 %20%20%20%20%20%20 -
+c 6
+s 1
+r 13 338 %20%20%20%20%20%20 -
+c 6
+s 1
+r 13 338 %20%20%20%20%20%20 -
+c 77
+s 1
+r 13 430 %20%20 -
+c 34
+s 1
+r 13 465 %20%20 -
+c 2
+l 16
+end
+
+local _orig_toggle_button = G.FUNCS.toggle_button
+G.FUNCS.toggle_button = function(e)
+  if G.GAME and G.GAME.multiplayer and G.GAME.mp_settings and e.config.ref_table then
+    local rv = e.config.ref_table.ref_value
+    local blocked = {
+      hand_optimizer        = not G.GAME.mp_settings.allow_hand_optimizer,
+      score_preview_enabled = not (G.GAME.mp_settings.allow_score_preview and not G.GAME.mp_settings.preview_disabled),
+    }
+    if rv and blocked[rv] then
+      pcall(play_sound, 'cancel')
+      return
+    end
+  end
+  _orig_toggle_button(e)
+c 10
+s 2
+l 1
+    if e.children[1] then
+r 13 478 %20%20%20%20%20%20 -
+l 3
+      local obj = e.children[1].config.object
+      if obj then obj.states.visible = false end
+    end
+c 3
+s 2
+l 1
+    if e.children[1] then
+r 13 483 %20%20%20%20%20%20 -
+l 3
+      local obj = e.children[1].config.object
+      if obj then obj.states.visible = true end
+    end
+c 1
+s 1
+l 1
+
+c 116
+s 18
+l 1
+  COLL.page('Joker', args, 1, COLL.joker_after)
+c 7
+s 19
+l 1
+  COLL.page('Tarot', args)
+c 3
+s 19
+l 1
+  COLL.page('Spectral', args)
+c 7
+s 19
+l 1
+  COLL.page('Booster', args, 1.27)
+c 7
+s 18
+l 1
+  COLL.page('Voucher', args, 1, COLL.voucher_after)
+c 98
+s 1
+l 96
+  G.SETTINGS.GAMESPEED = tonumber(args.to_val) or G.SETTINGS.GAMESPEED or 1
+end
+
+G.FUNCS.change_score_speed = function(args)
+  local score_options = {1.0, 0.75, 0.5, 0.25, 0}
+  G.SETTINGS.fast_score_resolve = score_options[args.to_key] or 1.0
+  G:save_settings()
+end
+
+G.FUNCS.change_filter_type = function(args)
+  G.SETTINGS.GRAPHICS.filter_type = args.to_key
+end
+
+G.FUNCS.apply_filter = function(e)
+  G.SETTINGS.GRAPHICS.filter_applied = true
+end
+
+G.FUNCS.reset_filter = function(e)
+  G.SETTINGS.GRAPHICS.filter_type = 1
+  G.SETTINGS.GRAPHICS.filter_intensity = 50
+  G.SETTINGS.GRAPHICS.rainbow_speed = 50
+  G.SETTINGS.GRAPHICS.filter_applied = false
+end
+
+G.FUNCS.apply_custom_colors = function(e)
+  local function ic(t,a,b,c) t[1]=a; t[2]=b; t[3]=c; t[4]=1 end
+  if G.SETTINGS.GRAPHICS.blue_r then
+    local r = (G.SETTINGS.GRAPHICS.blue_r or 0) / 255
+    local g = (G.SETTINGS.GRAPHICS.blue_g or 157) / 255
+    local b = (G.SETTINGS.GRAPHICS.blue_b or 255) / 255
+    ic(G.C.BLUE,     r, g, b)
+    ic(G.C.CHIPS,    r, g, b)
+    ic(G.C.UI_CHIPS, r, g, b)
+  end
+  if G.SETTINGS.GRAPHICS.red_r then
+    local r = (G.SETTINGS.GRAPHICS.red_r or 254) / 255
+    local g = (G.SETTINGS.GRAPHICS.red_g or 95) / 255
+    local b = (G.SETTINGS.GRAPHICS.red_b or 85) / 255
+    ic(G.C.RED,     r, g, b)
+    ic(G.C.MULT,    r, g, b)
+    ic(G.C.XMULT,   r, g, b)
+    ic(G.C.UI_MULT, r, g, b)
+  end
+  if G.SETTINGS.GRAPHICS.green_r then
+    local r = (G.SETTINGS.GRAPHICS.green_r or 75) / 255
+    local g = (G.SETTINGS.GRAPHICS.green_g or 194) / 255
+    local b = (G.SETTINGS.GRAPHICS.green_b or 146) / 255
+    ic(G.C.GREEN,      r, g, b)
+    ic(G.C.CHANCE,     r, g, b)
+    ic(G.C.PALE_GREEN, r * 0.85, g * 0.85, b * 0.85)
+  end
+  if G.SETTINGS.GRAPHICS.yellow_r then
+    local r = (G.SETTINGS.GRAPHICS.yellow_r or 255) / 255
+    local g = (G.SETTINGS.GRAPHICS.yellow_g or 255) / 255
+    local b = (G.SETTINGS.GRAPHICS.yellow_b or 0) / 255
+    ic(G.C.YELLOW, r, g, b)
+    ic(G.C.GOLD, r * 0.92, g * 0.75, b * 0.35 + 0.1)
+    ic(G.C.ORANGE, math.min(r, 1), g * 0.64, b * 0.05)
+    ic(G.C.MONEY, r * 0.95, g * 0.73, b * 0.35 + 0.05)
+    ic(G.C.IMPORTANT, math.min(r, 1), g * 0.6, b * 0.05)
+    ic(G.C.FILTER,    math.min(r, 1), g * 0.6, b * 0.05)
+  end
+end
+
+G.FUNCS.reset_custom_colors = function(e)
+  G.SETTINGS.GRAPHICS.blue_r = 0
+  G.SETTINGS.GRAPHICS.blue_g = 157
+  G.SETTINGS.GRAPHICS.blue_b = 255
+  G.SETTINGS.GRAPHICS.red_r = 254
+  G.SETTINGS.GRAPHICS.red_g = 95
+  G.SETTINGS.GRAPHICS.red_b = 85
+  G.SETTINGS.GRAPHICS.green_r = 75
+  G.SETTINGS.GRAPHICS.green_g = 194
+  G.SETTINGS.GRAPHICS.green_b = 146
+  G.SETTINGS.GRAPHICS.yellow_r = 255
+  G.SETTINGS.GRAPHICS.yellow_g = 255
+  G.SETTINGS.GRAPHICS.yellow_b = 0
+
+  local function ic(t,a,b,c) t[1]=a; t[2]=b; t[3]=c; t[4]=1 end
+  local function ihex(t, hex) local _c = HEX(hex); t[1]=_c[1]; t[2]=_c[2]; t[3]=_c[3]; t[4]=_c[4] end
+  ic(G.C.BLUE,      0, 157/255, 1)
+  ic(G.C.CHIPS,     0, 157/255, 1)
+  ic(G.C.UI_CHIPS,  0, 157/255, 1)
+  ic(G.C.RED,       254/255, 95/255, 85/255)
+  ic(G.C.MULT,      254/255, 95/255, 85/255)
+  ic(G.C.XMULT,     254/255, 95/255, 85/255)
+  ic(G.C.UI_MULT,   254/255, 95/255, 85/255)
+  ic(G.C.GREEN,     75/255, 194/255, 146/255)
+  ic(G.C.CHANCE,    75/255, 194/255, 146/255)
+  ic(G.C.PALE_GREEN,86/255, 168/255, 135/255)
+  ic(G.C.YELLOW,    1, 1, 0)
+  ihex(G.C.GOLD,      'eac058')
+  ihex(G.C.ORANGE,    'fda200')
+  ihex(G.C.MONEY,     'f3b958')
+  ihex(G.C.IMPORTANT, 'ff9a00')
+  ihex(G.C.FILTER,    'ff9a00')
+c 22
+l 13
+
+G.FUNCS.toggle_performance_mode = function()
+  local _g = G.SETTINGS.GRAPHICS
+  PERF_OPTS.apply_mode(_g.performance_mode)
+  apply_gc_tuning(_g.perf_gc_tuning)
+  G:save_settings()
+  if love and love.resize then
+    local w, h = love.graphics.getDimensions()
+    love.resize(w, h)
+  end
+end
+
+G.FUNCS.open_performance_settings = function(e)
+r 13 1382 %20%20 -
+l 36
+    definition = create_UIBox_performance_settings(),
+    config = {offset = {x=0,y=10}}
+  }
+  pcall(function()
+    if G.FUNCS.trigger_sub_showcase_perf_settings then
+      G.FUNCS.trigger_sub_showcase_perf_settings()
+    end
+  end)
+end
+
+function create_UIBox_performance_settings()
+  local _g = G.SETTINGS.GRAPHICS
+
+  local res_options = {"100%", "75%", "50%"}
+  local shader_options = {mod_loc("Off"), mod_loc("Low"), mod_loc("Full")}
+  local filter_options = {mod_loc("Bilinear"), mod_loc("Nearest")}
+
+  local left_col = {n=G.UIT.C, config={align = "tm", padding = 0.05, colour = G.C.CLEAR}, nodes={
+    create_option_cycle({id = 'sc_perf_resolution', w = 4, scale = 0.8, label = mod_loc("Resolution Scale"), options = res_options, opt_callback = 'change_perf_resolution', current_option = _g.perf_resolution or 1}),
+    create_option_cycle({id = 'sc_perf_shader', w = 4, scale = 0.8, label = mod_loc("Shader Quality"), options = shader_options, opt_callback = 'change_perf_shader_quality', current_option = _g.perf_shader_quality or 3}),
+    create_toggle_group({
+      {id = 'sc_perf_particles', label = mod_loc("Particle Effects"), ref_table = _g, ref_value = 'perf_particles', active_colour = G.C.GREEN, callback = G.FUNCS.toggle_perf_particles},
+      {id = 'sc_perf_gc', label = mod_loc("GC Tuning"), ref_table = _g, ref_value = 'perf_gc_tuning', active_colour = G.C.BLUE, callback = G.FUNCS.toggle_perf_gc_tuning},
+    }, {col = false, padding = 0.05}),
+  }}
+  local right_col = {n=G.UIT.C, config={align = "tm", padding = 0.05, colour = G.C.CLEAR}, nodes={
+    create_option_cycle({id = 'sc_perf_filter', w = 4, scale = 0.8, label = mod_loc("Texture Filter"), options = filter_options, opt_callback = 'change_perf_texture_filter', current_option = _g.perf_texture_filter or 1}),
+    create_toggle_group({
+      {id = 'sc_perf_canvas', label = mod_loc("Canvas Caching"), ref_table = _g, ref_value = 'perf_canvas_caching', active_colour = G.C.BLUE, callback = G.FUNCS.toggle_perf_canvas_caching},
+      {id = 'sc_perf_culling', label = mod_loc("Off-screen Culling"), ref_table = _g, ref_value = 'perf_offscreen_culling', active_colour = G.C.BLUE, callback = G.FUNCS.toggle_perf_offscreen_culling},
+      {id = 'sc_perf_bg', label = mod_loc("Background Animations"), ref_table = _g, ref_value = 'perf_bg_anims', active_colour = G.C.GREEN, callback = G.FUNCS.toggle_perf_bg_anims},
+      {id = 'sc_perf_heavy', label = mod_loc("Auto-Skip Heavy Scoring"), ref_table = G.SETTINGS, ref_value = 'perf_heavy_scoring', active_colour = G.C.ORANGE},
+    }, {col = false, padding = 0.05}),
+  }}
+
+  return create_UIBox_generic_options({back_func = 'settings', contents = {
+r 15 71 %20%20%20%20 -
+l 61
+      {n=G.UIT.T, config={text = mod_loc("PERFORMANCE SETTINGS"), scale = 0.5, colour = G.C.ORANGE}}
+    }},
+    {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+      {n=G.UIT.T, config={text = mod_loc("Tune each option to improve performance on your device."), scale = 0.3, colour = G.C.UI.TEXT_INACTIVE}}
+    }},
+    {n=G.UIT.R, config={align = "tm", padding = 0.1, colour = G.C.CLEAR}, nodes={left_col, right_col}},
+  }})
+end
+
+G.FUNCS.change_perf_resolution = function(args)
+  G.SETTINGS.GRAPHICS.perf_resolution = args.to_key
+  G:save_settings()
+  if love and love.resize then
+    local w, h = love.graphics.getDimensions()
+    love.resize(w, h)
+  end
+end
+
+G.FUNCS.change_perf_shader_quality = function(args)
+  G.SETTINGS.GRAPHICS.perf_shader_quality = args.to_key
+  G:save_settings()
+end
+
+G.FUNCS.toggle_perf_particles = function()
+  G:save_settings()
+end
+
+G.FUNCS.toggle_perf_gc_tuning = function()
+  apply_gc_tuning(G.SETTINGS.GRAPHICS.perf_gc_tuning)
+  G:save_settings()
+end
+
+G.FUNCS.change_perf_texture_filter = function(args)
+  G.SETTINGS.GRAPHICS.perf_texture_filter = args.to_key
+  local mode = args.to_key == 2 and 'nearest' or 'linear'
+  love.graphics.setDefaultFilter(mode, mode)
+  G:save_settings()
+end
+
+G.FUNCS.toggle_perf_canvas_caching = function()
+  G:save_settings()
+end
+
+G.FUNCS.toggle_perf_offscreen_culling = function()
+  G:save_settings()
+end
+
+G.FUNCS.toggle_perf_bg_anims = function()
+  if G.ANIMATIONS and not G.SETTINGS.GRAPHICS.perf_bg_anims then
+    for _, anim in pairs(G.ANIMATIONS) do
+      if anim and anim.float then
+        anim.T.r = 0
+        anim.offset = anim.offset or {x = 0, y = 0}
+        anim.offset.x = 0
+        anim.offset.y = 0
+      end
+    end
+  end
+  G:save_settings()
+end
+
+c 27
+l 37
+G.FUNCS.change_default_hand_sort = function(args)
+  G.SETTINGS.default_hand_sort = args.to_key == 2 and 2 or 1
+  if G.hand and G.STAGE == G.STAGES.RUN then
+    G.hand:sort(G.SETTINGS.default_hand_sort == 2 and 'suit desc' or 'desc')
+  end
+  G:save_settings()
+end
+
+G.FUNCS.apply_focus_mute = function(focused)
+  if not (love.audio and love.audio.setVolume) then return end
+  if G.SETTINGS and G.SETTINGS.mute_unfocused and not focused then
+    love.audio.setVolume(0)
+  else
+    love.audio.setVolume(1)
+  end
+end
+
+local _settings_prev_focus = love.focus
+function love.focus(focused)
+  if _settings_prev_focus then _settings_prev_focus(focused) end
+  G.FUNCS.apply_focus_mute(focused)
+end
+
+G.FUNCS.change_fps_cap = function(args)
+  local fps_values = {30, 40, 60, 90, 120, 144, 165, 9999}
+  G.SETTINGS.GRAPHICS.fps_cap = args.to_key
+  G.SETTINGS.GRAPHICS.fps_cap_v = 2
+  G.FPS_CAP = fps_values[args.to_key] or 60
+  G:save_settings()
+end
+
+G.FUNCS.reset_fps_position = function(e)
+  G.SETTINGS.GRAPHICS.fps_x = nil
+  G.SETTINGS.GRAPHICS.fps_y = nil
+  G:save_settings()
+end
+
+c 1
+s 1
+l 2
+  local collab_list = (G._filtered_collab_ids and G._filtered_collab_ids[args.cycle_config.curr_suit]) or G.COLLABS.options[args.cycle_config.curr_suit]
+  G.SETTINGS.CUSTOM_DECK.Collabs[args.cycle_config.curr_suit] = collab_list[args.to_key] or 'default'
+c 1
+s 1
+r 13 871 %20%20%20%20 -
+c 15
+l 55
+local TEXT_ACCENTS_LOWER = {'à','â','ä','ç','é','è','ê','ë','î','ï','ô','ö','ù','û','ü','ÿ','œ','æ','ñ','á','í','ó','ú'}
+local TEXT_ACCENTS_UPPER = {'À','Ä','Ç','É','È','Ê','Ë','Î','Ï','Ô','Ö','Ù','Û','Ü','Ÿ','Œ','Æ','Ñ','Á','Í','Ó','Ú'}
+local TEXT_ACCENT_BASE = {}
+local TEXT_ACCENT_UPPER_OF = {}
+local TEXT_WIDE_CHARS = {["'"] = true, ['¡'] = true, ['¿'] = true}
+do
+  local bases = 'aaaceeeeiioouuuyoanaiou'
+  for i, c in ipairs(TEXT_ACCENTS_LOWER) do
+    TEXT_ACCENT_BASE[c] = bases:sub(i, i)
+    TEXT_WIDE_CHARS[c] = true
+  end
+  local upper_bases = 'AACEEEEIIOOUUUYOANAIOU'
+  for i, c in ipairs(TEXT_ACCENTS_UPPER) do
+    TEXT_ACCENT_BASE[c] = upper_bases:sub(i, i):lower()
+    TEXT_WIDE_CHARS[c] = true
+  end
+  for _, c in ipairs(TEXT_ACCENTS_LOWER) do
+    for _, u in ipairs(TEXT_ACCENTS_UPPER) do
+      if TEXT_ACCENT_BASE[u] == TEXT_ACCENT_BASE[c] and not TEXT_ACCENT_UPPER_OF[c] then
+        local lc, uc = c:byte(2), u:byte(2)
+        if c:byte(1) == u:byte(1) and lc and uc and lc - uc == 32 then TEXT_ACCENT_UPPER_OF[c] = u end
+      end
+    end
+  end
+  TEXT_ACCENT_UPPER_OF['ÿ'] = 'Ÿ'
+  TEXT_ACCENT_UPPER_OF['œ'] = 'Œ'
+end
+
+G.TEXT_INPUT_CHARSET = {lower = TEXT_ACCENTS_LOWER, upper = TEXT_ACCENTS_UPPER, wide = TEXT_WIDE_CHARS}
+
+local function text_utf8_chars(s)
+  local out = {}
+  for ch in (s or ''):gmatch('[%z\1-\127\194-\244][\128-\191]*') do out[#out+1] = ch end
+  return out
+end
+
+local function text_utf8_len(s)
+  return #text_utf8_chars(s)
+end
+
+G.FUNCS.text_input_wide = function(ref_table)
+  return ref_table and ref_table.extended_corpus and not ref_table.strict_corpus and true or false
+end
+
+G.FUNCS.text_input_char = function(t)
+  local hook = G.CONTROLLER and G.CONTROLLER.text_input_hook
+  if not hook or not t then return end
+  for _, ch in ipairs(text_utf8_chars(t)) do
+    if #ch > 1 then
+      G.CONTROLLER.text_input_composed = {base = TEXT_ACCENT_BASE[ch], t = love.timer.getTime()}
+      G.FUNCS.text_input_key({key = ch, raw = true})
+    end
+  end
+end
+
+c 2
+l 19
+  if args.key == 'accents' then
+    G.CONTROLLER.kb_accents = not G.CONTROLLER.kb_accents
+    G.CONTROLLER.kb_symbols = nil
+    G.CONTROLLER.kb_rebuild = true
+    return
+  end
+  if args.key == 'symbols' then
+    G.CONTROLLER.kb_symbols = not G.CONTROLLER.kb_symbols or nil
+    G.CONTROLLER.kb_accents = nil
+    G.CONTROLLER.kb_rebuild = true
+    return
+  end
+  if args.key == 'shift' then
+    G.CONTROLLER.kb_lower = not G.CONTROLLER.kb_lower or nil
+    G.CONTROLLER.kb_symbols = nil
+    G.CONTROLLER.kb_accents = nil
+    G.CONTROLLER.kb_rebuild = true
+    return
+  end
+c 22
+s 12
+l 1
+  do
+r 13 911 %20%20%20%20 -
+l 2
+    if G.CONTROLLER.text_input_hook == e and G.CONTROLLER.kb_rebuild and OSkeyboard_e.children.controller_keyboard then
+      G.CONTROLLER.kb_rebuild = nil
+r 13 925 %20%20%20%20%20%20 -
+r 13 926 %20%20%20%20%20%20 -
+r 13 927 %20%20%20%20%20%20 -
+r 24 972 %20%20%20%20%20%20 -
+c 1
+s 5
+l 1
+    if G.CONTROLLER.text_input_hook == e and (G.F_MOBILE or (G.CONTROLLER.HID.controller and not G.CONTROLLER.HID.keyboard) or (Controls and Controls.screen_keyboard and Controls.screen_keyboard()) or (TouchInput and TouchInput.osk())) then
+r 13 913 %20%20%20%20%20%20 -
+l 3
+        local wide = G.FUNCS.text_input_wide(args)
+        if not wide then G.CONTROLLER.kb_accents, G.CONTROLLER.kb_symbols = nil, nil end
+        if PORTRAIT then PORTRAIT._kb_args = args end
+r 13 914 %20%20%20%20%20%20%20%20 -
+l 3
+          definition = create_keyboard_input{backspace_key = true, return_key = true, space_key = wide, wide = wide, accents = wide and G.CONTROLLER.kb_accents, lower_ok = not args.all_caps},
+          config = {
+            align= 'cm',
+r 13 918 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 2
+            major = e.UIBox, parent = OSkeyboard_e, draw_layer = 'screen_keyboard'}
+        }
+r 13 921 %20%20%20%20%20%20%20%20 -
+l 1
+        if PORTRAIT and PORTRAIT.place_keyboard then pcall(PORTRAIT.place_keyboard, OSkeyboard_e.children.controller_keyboard, e.parent.parent) end
+r 13 922 %20%20%20%20%20%20%20%20 -
+l 1
+      end
+r 13 924 %20%20%20%20 -
+r 13 925 %20%20%20%20%20%20 -
+r 13 926 %20%20%20%20%20%20 -
+r 13 927 %20%20%20%20%20%20 -
+r 24 972 %20%20%20%20%20%20 -
+l 1
+    end
+c 1
+l 4
+end
+
+G.FUNCS.ui_size_slide = function(rt)
+  G.UI_SIZE_PENDING = true
+c 40
+s 1
+l 2
+  local ext = G.CONTROLLER.text_input_hook and G.CONTROLLER.text_input_hook.config.ref_table.extended_corpus
+  if args.key == '0' and not ext then args.key = 'o' end
+c 6
+s 1
+l 10
+  if args.raw then
+    args.caps = hook_config.all_caps
+  else
+    args.caps = args.caps or G.CONTROLLER.capslock or hook_config.all_caps
+  end
+  local composed = G.CONTROLLER.text_input_composed
+  if args.physical and composed and #args.key == 1 then
+    G.CONTROLLER.text_input_composed = nil
+    if composed.base == args.key:lower() and love.timer.getTime() - composed.t < 0.25 then return end
+  end
+c 11
+s 3
+l 4
+  local corpus = '123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'..(hook.config.ref_table.extended_corpus and " 0!$&()<>?:{}+-=,.[]_'/#%*@;\"" or '')
+  local wide = G.FUNCS.text_input_wide(hook.config.ref_table)
+
+  if hook.config.ref_table.extended_corpus and not args.raw and args.physical and #args.key == 1 then
+c 2
+s 2
+l 2
+    if string.find(lower_ext, args.key, 1, true) and args.caps then
+      args.key = string.sub(string.sub(upper_ext,string.find(lower_ext, args.key, 1, true)), 0, 1)
+c 5
+s 2
+l 2
+  args.key = keymap[args.key] or (args.caps and (TEXT_ACCENT_UPPER_OF[args.key] or string.upper(args.key)) or args.key)
+
+c 32
+s 3
+l 2
+  elseif hook_config.max_length > text_utf8_len(text.ref_table[text.ref_value]) and
+        ((string.len(args.key) == 1 and string.find( corpus,  args.key , 1, true)) or (wide and TEXT_WIDE_CHARS[args.key])) then
+c 31
+s 1
+r 13 1069 %20%20 -
+c 42
+s 1
+l 1
+
+c 20
+s 1
+r 13 1133 %20%20 -
+c 13
+s 1
+l 1
+  if can_apply then
+c 30
+s 5
+r 13 1178 %20%20%20%20%20%20 -
+e 13 1179 %20%20%20%20%20%20 - =31,+%20%3D%3D%20%31%20%61%6E%64%20%31%20%6F%72%20%30,=1
+l 1
+      resizable = true,
+r 13 1181 %20%20%20%20%20%20 -
+l 1
+      highdpi = love.system.getOS() == 'OS X'
+c 32
+s 1
+r 13 1215 %20%20 -
+c 2
+s 1
+r 13 1218 %20%20%20%20 -
+c 9
+s 1
+r 13 1228 %20%20 -
+c 2
+s 1
+r 13 1218 %20%20%20%20 -
+c 11
+s 2
+r 13 1243 %20%20 -
+r 13 1218 %20%20%20%20 -
+c 9
+s 2
+r 13 1254 %20%20 -
+r 13 1218 %20%20%20%20 -
+c 12
+l 3
+G.FUNCS.open_guide_overlay = G.FUNCS.open_guide_overlay or function(e)
+end
+
+c 1
+s 2
+r 13 1269 %20%20 -
+r 13 1218 %20%20%20%20 -
+c 5
+l 7
+    if e.UIBox then e.UIBox:recalculate() end
+    if G.OVERLAY_MENU and G.OVERLAY_MENU ~= e.UIBox then G.OVERLAY_MENU:recalculate() end
+    if G.OVERLAY_MENU then G.OVERLAY_MENU.portrait_read_key = nil end
+  end
+end
+
+G.FUNCS.profile_icon_page = function(args)
+r 13 603 %20%20 -
+l 13
+  if not G.profile_icon_collection then return end
+
+  local num_rows = #G.profile_icon_collection
+  for j = 1, num_rows do
+    for i = #G.profile_icon_collection[j].cards, 1, -1 do
+      local c = G.profile_icon_collection[j]:remove_card(G.profile_icon_collection[j].cards[i])
+      c:remove()
+    end
+  end
+
+  if G._icon_populate then
+    local equipped = ProfileRewardsManager and ProfileRewardsManager.get_equipped_icon and ProfileRewardsManager.get_equipped_icon()
+    pcall(function() G._icon_populate(args.cycle_config.current_option, equipped) end)
+c 4
+s 1
+r 13 1215 %20%20 -
+c 1
+s 1
+r 13 1218 %20%20%20%20 -
+c 9
+s 1
+r 13 1292 %20%20 -
+c 9
+s 2
+r 13 1302 %20%20 -
+r 15 6321 %20%20%20%20 -
+c 24
+l 69
+local function overlay_fingerprint(def)
+  local fp, n = {}, 0
+  local function walk(node, depth)
+    if type(node) ~= 'table' or depth > 40 then return end
+    local c = node.config
+    if type(c) == 'table' then
+      local k
+      if c.button then k = 'b:'..tostring(c.button) end
+      if k and not fp[k] then fp[k] = true; n = n + 1 end
+      if type(c.id) == 'string' then k = 'i:'..c.id; if not fp[k] then fp[k] = true; n = n + 1 end end
+    end
+    if type(node.nodes) == 'table' then
+      for _, v in ipairs(node.nodes) do walk(v, depth + 1) end
+    end
+  end
+  walk(def, 0)
+  return {set = fp, n = n}
+end
+
+local function overlay_same(a, b)
+  if not (a and b) or a.n < 2 or b.n < 2 then return false end
+  local common = 0
+  for k in pairs(a.set) do if b.set[k] then common = common + 1 end end
+  return common / math.max(a.n, b.n) >= 0.75
+end
+
+local function overlay_chosen_tabs(box)
+  local out = {}
+  local function walk(node, depth)
+    if not node or depth > 60 then return end
+    local c = node.config
+    if c and type(c.id) == 'string' and c.id:sub(1, 8) == 'tab_but_' and c.chosen then out[#out + 1] = c.id end
+    for _, v in pairs(node.children or {}) do walk(v, depth + 1) end
+    if c and c.object and c.object.UIRoot then walk(c.object.UIRoot, depth + 1) end
+  end
+  if box and box.UIRoot then walk(box.UIRoot, 0) end
+  return out
+end
+
+local function overlay_restore_tabs(tabs)
+  if not (tabs and G.OVERLAY_MENU and G.OVERLAY_MENU.get_UIE_by_ID) then return end
+  for _, id in ipairs(tabs) do
+    local btn = G.OVERLAY_MENU:get_UIE_by_ID(id)
+    if btn and not btn.config.chosen and btn.UIBox and btn.config.ref_table then
+      local group = btn.UIBox:get_group(nil, btn.config.group)
+      pcall(function()
+        G.FUNCS.change_tab(btn)
+        for _, v in pairs(group) do if v.config and v.config.choice then v.config.chosen = false end end
+        btn.config.chosen = true
+      end)
+    end
+  end
+end
+
+local function overlay_track(box, fp)
+  if not box or box == true then return end
+  local _remove = box.remove
+  box.remove = function(self, ...)
+    if not self._overlay_gone_saved then
+      self._overlay_gone_saved = true
+      local ok, tabs = pcall(overlay_chosen_tabs, self)
+      G.OVERLAY_MENU_GONE = {fp = fp, tabs = ok and tabs or {}, t = love.timer.getTime()}
+    end
+    return _remove(self, ...)
+  end
+end
+
+OVERLAY_MENU_HELPERS = {fingerprint = overlay_fingerprint, same = overlay_same, chosen_tabs = overlay_chosen_tabs, restore_tabs = overlay_restore_tabs}
+
+c 2
+l 7
+  local _caller = debug.getinfo(2, "Sl")
+  local _key = args.key or (_caller and (tostring(_caller.short_src) .. ":" .. tostring(_caller.currentline))) or nil
+  local _was_open = G.OVERLAY_MENU and true or false
+  local _closed = G.OVERLAY_MENU_CLOSED
+  local _reopen = not _was_open and _closed and _key ~= nil and _closed.key == _key and (love.timer.getTime() - _closed.t) < 0.5
+  local _refresh = ((_was_open and _key ~= nil and G.OVERLAY_MENU_KEY == _key) or _reopen) and not args.animate
+  local _fp = overlay_fingerprint(args.definition)
+c 2
+l 18
+  local _now = love.timer.getTime()
+  local _gone = G.OVERLAY_MENU_GONE
+  local _recent = _gone and (_now - _gone.t) < 0.5
+  local _keep_tabs = nil
+  if not args.animate and _recent then
+    if overlay_same(_gone.fp, _fp) or args.refresh then
+      _refresh = true
+      _keep_tabs = _gone.tabs
+      G.OVERLAY_MENU_STASH = nil
+    elseif G.OVERLAY_MENU_STASH and (_now - G.OVERLAY_MENU_STASH.t) < 300 and overlay_same(G.OVERLAY_MENU_STASH.fp, _fp) then
+      _refresh = true
+      _keep_tabs = G.OVERLAY_MENU_STASH.tabs
+      G.OVERLAY_MENU_STASH = nil
+    else
+      G.OVERLAY_MENU_STASH = _gone
+    end
+  end
+  if not _was_open and not _recent then G.OVERLAY_MENU_STASH = nil end
+c 3
+s 1
+l 1
+  G.CONTROLLER:mod_cursor_context_layer((G.NO_MOD_CURSOR_STACK or (_refresh and _was_open)) and 0 or 1)
+c 9
+l 1
+  if _refresh then args.config.offset = {x = args.config.offset.x or 0, y = 0} end
+c 2
+s 1
+l 2
+  local _box = setmetatable({}, UIBox)
+  local _ok, _err = pcall(_box.init, _box, {
+c 2
+s 1
+l 6
+  })
+  if not _ok then
+    print('[overlay_menu] ' .. tostring(_err))
+    pcall(_box.remove, _box)
+    G.OVERLAY_MENU = nil
+    G.OVERLAY_MENU_KEY = nil
+r 13 1363 %20%20%20%20 -
+r 13 1367 %20%20%20%20 -
+l 6
+    pcall(play_sound, 'cancel')
+    return
+  end
+  G.OVERLAY_MENU = _box
+  G.OVERLAY_MENU_KEY = _key
+  overlay_track(G.OVERLAY_MENU, _fp)
+c 3
+s 1
+l 1
+  if not _refresh then G.ROOM.jiggle = G.ROOM.jiggle + 1 end
+c 1
+l 5
+  if PORTRAIT and PORTRAIT.center_overlay then pcall(PORTRAIT.center_overlay, G.OVERLAY_MENU, true) end
+  if _refresh then G.OVERLAY_MENU:hard_set_VT() end
+  if _keep_tabs and #_keep_tabs > 0 then overlay_restore_tabs(_keep_tabs) end
+
+  G.CONTROLLER:drop_touch()
+c 5
+l 1
+  G.OVERLAY_MENU_CLOSED = {key = G.OVERLAY_MENU_KEY, t = love.timer.getTime()}
+c 7
+l 1
+  G.CONTROLLER:drop_touch()
+c 18
+s 1
+l 1
+
+c 21
+l 1
+G.FUNCS.mp_lobby_info = function(e)
+r 13 1381 %20%20 -
+r 13 1382 %20%20 -
+l 6
+    definition = G.UIDEF.mp_lobby_info(),
+  }
+end
+
+G.FUNCS.mp_lobby_info_visible = function(e)
+  if G.GAME and G.GAME.multiplayer then
+r 13 101 %20%20%20%20 -
+l 7
+    e.config.hover = true
+    e.config.button = "mp_lobby_info"
+    e.config.shadow = true
+    if e.parent and e.parent.config then
+      e.parent.config.minh = nil
+    end
+  else
+r 13 2647 %20%20%20%20 -
+l 1
+    e.config.hover = false
+r 13 58 %20%20%20%20 -
+l 12
+    e.config.minh = 0
+    e.config.minw = 0
+    e.config.padding = 0
+    e.config.shadow = false
+  end
+end
+
+G.FUNCS.mp_lobby_info_text_visible = function(e)
+  if G.GAME and G.GAME.multiplayer then
+    e.config.colour = G.C.UI.TEXT_LIGHT
+    e.config.shadow = true
+  else
+r 13 2647 %20%20%20%20 -
+l 4
+    e.config.shadow = false
+  end
+end
+
+c 2
+s 1
+r 13 1410 %20%20 -
+c 5
+s 1
+r 13 1416 %20%20%20%20%20%20 -
+c 4
+l 2
+G.FUNCS.settings_apply_window = function(e)
+  G.FUNCS.apply_window_changes()
+r 15 2313 %20%20 -
+l 9
+  if UIK and UIK.refresh then UIK.refresh() end
+end
+
+G.FUNCS.settings_reset_filter = function(e)
+  G.FUNCS.reset_filter(e)
+  G:save_settings()
+  if UIK and UIK.refresh then UIK.refresh() end
+end
+
+c 2
+r 15 2313 %20%20 -
+c 4
+l 5
+  pcall(function()
+    if G.FUNCS.trigger_sub_showcase_settings then
+      G.FUNCS.trigger_sub_showcase_settings()
+    end
+  end)
+c 4
+l 1
+  if not (PORTRAIT and PORTRAIT._capture) then CREDITS_PAGES = {} end
+c 17
+l 5
+  pcall(function()
+    if G.FUNCS.trigger_sub_showcase_collection then
+      G.FUNCS.trigger_sub_showcase_collection()
+    end
+  end)
+c 6
+l 4
+  }
+end
+
+G.FUNCS.your_collection_stakes = function(e)
+r 13 1381 %20%20 -
+r 13 1382 %20%20 -
+l 1
+    definition = create_UIBox_your_collection_stakes(),
+c 116
+l 1
+G.FUNCS.mp_stats = function(e)
+r 13 1381 %20%20 -
+r 13 1382 %20%20 -
+l 74
+    definition = create_UIBox_mp_stats()
+  }
+end
+
+function create_UIBox_mp_stats()
+  local profile = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+  local progression = profile and profile.progression or {}
+
+  local mp_matches = progression.mp_total_matches or 0
+  local mp_wins    = progression.mp_match_wins or 0
+  local mp_losses  = math.max(0, mp_matches - mp_wins)
+  local mp_ratio   = (mp_matches > 0)
+      and string.format("%.0f%%", (mp_wins / mp_matches) * 100)
+      or "N/A"
+  local mp_streak  = progression.mp_win_streak_best or 0
+  local pvp_wins   = progression.mp_pvp_wins_total or 0
+  local pvp_losses = progression.mp_pvp_losses_total or 0
+
+  local function stat_row(label, value, val_col)
+    val_col = val_col or G.C.GOLD
+    return {n=G.UIT.R, config={align="cm", padding=0.045, r=0.06, colour=G.C.L_BLACK, minw=8}, nodes={
+      {n=G.UIT.C, config={align="cl", minw=5.5, padding=0.08}, nodes={
+        {n=G.UIT.T, config={text=label, scale=0.3, colour=G.C.UI.TEXT_LIGHT, shadow=true}}
+      }},
+      {n=G.UIT.C, config={align="cr", minw=2.5, padding=0.08}, nodes={
+        {n=G.UIT.T, config={text=tostring(value), scale=0.34, colour=val_col, shadow=true}}
+      }},
+    }}
+  end
+
+  local function divider()
+    return {n=G.UIT.R, config={align="cm", minw=8.5, minh=0.015, colour={1,1,1,0.12}}, nodes={}}
+  end
+
+  local function section_header(txt)
+    return {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
+      {n=G.UIT.T, config={text=txt, scale=0.26, colour=G.C.UI.TEXT_INACTIVE, shadow=true}}
+    }}
+  end
+
+  return create_UIBox_generic_options({back_func='high_scores', contents={
+    {n=G.UIT.R, config={align="cm", padding=0.07}, nodes={
+      {n=G.UIT.T, config={text=mod_loc("MULTIPLAYER STATS"), scale=0.5, colour=G.C.GOLD, shadow=true}}
+    }},
+    {n=G.UIT.R, config={align="cm", padding=0.05, r=0.1, colour=G.C.BLACK, emboss=0.05, minw=8.8, minh=5.5}, nodes={
+      {n=G.UIT.C, config={align="tm", padding=0.06}, nodes={
+        section_header("MATCH RECORD"),
+        divider(),
+        stat_row("Matches Played", mp_matches, G.C.UI.TEXT_LIGHT),
+        stat_row("Wins",           mp_wins,    G.C.GREEN),
+        stat_row("Losses",         mp_losses,  G.C.RED),
+        stat_row("Win Rate",       mp_ratio,   G.C.BLUE),
+        stat_row("Best Win Streak",mp_streak,  G.C.GOLD),
+        divider(),
+        section_header("NEMESIS BLINDS (PvP)"),
+        divider(),
+        {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
+          {n=G.UIT.C, config={align="cm", padding=0.1, minw=4}, nodes={
+            {n=G.UIT.T, config={text=mod_loc("WON"), scale=0.25, colour=G.C.UI.TEXT_INACTIVE, shadow=true}},
+            {n=G.UIT.R, config={align="cm", minh=0.04}, nodes={}},
+            {n=G.UIT.T, config={text=tostring(pvp_wins),   scale=0.6, colour=G.C.GREEN, shadow=true}},
+          }},
+          {n=G.UIT.C, config={align="cm", colour={1,1,1,0.15}, minw=0.02, minh=1.4}, nodes={}},
+          {n=G.UIT.C, config={align="cm", padding=0.1, minw=4}, nodes={
+            {n=G.UIT.T, config={text=mod_loc("LOST"), scale=0.25, colour=G.C.UI.TEXT_INACTIVE, shadow=true}},
+            {n=G.UIT.R, config={align="cm", minh=0.04}, nodes={}},
+            {n=G.UIT.T, config={text=tostring(pvp_losses), scale=0.6, colour=G.C.RED,   shadow=true}},
+          }},
+        }},
+      }},
+    }},
+  }})
+end
+
+c 9
+s 2
+r 13 1579 %20%20 -
+r 13 1218 %20%20%20%20 -
+c 41
+s 2
+r 13 1622 %20%20%20%20%20%20 -
+r 13 1623 %20%20%20%20%20%20%20%20 -
+c 5
+s 1
+r 13 1629 %20%20%20%20%20%20 -
+c 9
+s 3
+l 1
+    if ch_list then
+r 13 1640 %20%20%20%20%20%20 -
+r 13 1641 %20%20%20%20%20%20%20%20 -
+c 6
+l 6
+      G.OVERLAY_MENU:recalculate()
+    end
+  end
+end
+
+G.FUNCS.change_ach_list_page = function(args)
+r 13 603 %20%20 -
+r 23 214 %20%20 -
+l 9
+    local ach_list = G.OVERLAY_MENU:get_UIE_by_ID('ach_list')
+    if ach_list then
+      if ach_list.config.object then
+        ach_list.config.object:remove()
+      end
+      ach_list.config.object = UIBox{
+        definition = G.UIDEF.achievements_list_page(args.cycle_config.current_option-1),
+        config = {offset = {x=0,y=0}, align = 'cm', parent = ach_list}
+      }
+c 18
+s 1
+e 13 1666 %20%20%20%20 - =35,+%6D%6F%64%5F,=68
+c 17
+s 1
+l 1
+
+c 6
+s 1
+r 13 1691 %20%20 -
+c 6
+s 1
+r 13 1698 %20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+s 1
+l 1
+                  Jimbo:add_speech_bubble( {mod_loc("Having fun?"), {{text = mod_loc("Wishlist Balatro!"), type = 'GREEN'}}})
+c 32
+e 13 2981 - - =14,-4,+%66%61%71,=14
+e 13 1726 %20%20 - =49,+%2F%66%61%71,=3
+l 2
+end
+
+c 26
+s 1
+r 13 871 %20%20%20%20 -
+c 5
+l 12
+G.FUNCS.refresh_haptic_settings = function()
+  if G.save_settings then G:save_settings() end
+  if G.OVERLAY_MENU and UIK and UIK.refresh then UIK.refresh() end
+end
+
+G.FUNCS.haptic_intensity_preview = function(rt)
+  pcall(function()
+    if not G or not G.SETTINGS or not G.SETTINGS.haptic_feedback then return end
+    haptic_buzz(2)
+  end)
+end
+
+c 2
+s 2
+r 13 1771 %20%20 -
+r 15 6321 %20%20%20%20 -
+c 19
+l 4
+G.FUNCS.restart_after_settings_save = function()
+  local smods = rawget(_G, 'SMODS')
+  if not (smods and smods.restart_game) then return false end
+  G:save_settings()
+r 15 5391 %20%20 -
+r 1 112 %20%20 -
+l 14
+    trigger = 'after',
+    delay = 0.5,
+    timer = 'REAL',
+    no_delete = true,
+    blockable = false,
+    blocking = false,
+    func = function()
+      smods.restart_game()
+      return true
+    end
+  }))
+  return true
+end
+
+c 2
+s 1
+r 13 1794 %20%20 -
+c 3
+l 1
+    if G.FUNCS.restart_after_settings_save() then return end
+c 5
+s 1
+l 1
+      blockable = true,
+c 17
+s 1
+l 16
+  end
+end
+
+G.FUNCS.replay_run = function(e)
+  local saved = G.ARGS and G.ARGS.replay_run
+  if not saved then
+    if G.GAME and G.GAME.pseudorandom then
+      saved = {
+        seed  = G.GAME.pseudorandom.seed,
+        stake = G.GAME.stake or 1,
+      }
+    end
+  end
+  if not saved then return end
+  if G.OVERLAY_MENU then G.OVERLAY_MENU:remove(); G.OVERLAY_MENU = nil end
+  G.FUNCS.start_run(nil, {stake = saved.stake, seed = saved.seed})
+c 4
+s 1
+r 13 1826 %20%20 -
+c 2
+s 1
+r 13 1829 %20%20%20%20%20%20%20%20 -
+c 12
+s 1
+e 13 1842 %20%20%20%20%20%20 - =35,+%63%6F%70%79%5F%74%61%62%6C%65%28,=12,+%29,=2
+c 36
+s 1
+r 13 1879 %20%20 -
+c 39
+s 1
+r 13 1919 %20%20 -
+c 9
+s 1
+r 13 1929 %20%20%20%20 -
+c 12
+s 1
+r 13 1942 %20%20%20%20 -
+c 1
+s 1
+l 1
+
+c 1
+s 1
+r 13 1946 %20%20%20%20%20%20 -
+c 26
+s 1
+l 1
+      id = 'flame_chips',
+c 5
+s 1
+l 1
+      id = 'flame_mult',
+c 6
+s 2
+r 13 1986 %20%20%20%20 -
+r 13 1987 %20%20%20%20%20%20 -
+c 10
+s 1
+l 1
+        }
+c 21
+s 1
+l 1
+
+c 16
+s 1
+r 13 2037 %20%20 -
+c 11
+s 1
+r 13 2049 %20%20%20%20 -
+c 9
+s 1
+r 13 2059 %20%20%20%20 -
+c 9
+s 1
+r 13 2069 %20%20%20%20 -
+c 7
+s 1
+r 13 2077 %20%20%20%20 -
+c 15
+s 1
+r 13 2093 %20%20%20%20 -
+c 7
+s 1
+l 1
+
+c 1
+s 1
+r 13 2103 %20%20%20%20 -
+c 8
+s 2
+e 13 408 %20%20 - =10,+%6C%65%63,=9,-3,+%63%68%65%63%6B,=14
+r 13 2113 %20%20%20%20 -
+c 8
+r 13 2112 %20%20 -
+l 13
+    return G.FUNCS.select_button_check(e)
+  end
+
+  function can_select_pack_card(card)
+    if not card or not card.ability then return false end
+    local e = {config = {ref_table = card}}
+    if not pcall(G.FUNCS.can_select_card, e) then
+      e = {config = {ref_table = card}}
+      G.FUNCS.select_button_check(e)
+    end
+    return e.config.button ~= nil
+  end
+
+c 1
+s 1
+r 13 2123 %20%20%20%20 -
+c 9
+s 2
+e 13 2133 %20%20%20%20 - =10,+%63%61%72%64%73%20%61%6E%64%20%47%2E%70%61%63%6B%5F%63%61%72%64%73%2E,=37
+r 13 2134 %20%20%20%20 -
+c 9
+s 1
+r 13 2144 %20%20%20%20 -
+c 8
+s 1
+l 1
+
+c 5
+l 1
+    if area and area == G.pack_cards and G.bo_pack_closing and G.bo_pack_closing.game == G.GAME then return end
+c 4
+s 1
+r 13 2163 %20%20%20%20 -
+c 15
+s 1
+r 13 2179 %20%20%20%20 -
+c 6
+s 1
+l 1
+
+c 23
+s 1
+l 1
+
+c 11
+s 1
+r 13 2222 %20%20%20%20 -
+c 10
+s 1
+r 13 2233 %20%20%20%20 -
+c 6
+s 1
+r 13 2240 %20%20%20%20 -
+c 2
+s 2
+r 13 2243 %20%20%20%20%20%20 -
+r 13 2244 %20%20%20%20%20%20 -
+c 3
+s 1
+r 13 2248 %20%20%20%20 -
+c 1
+s 1
+r 13 2243 %20%20%20%20%20%20 -
+c 23
+s 1
+r 13 2274 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 11
+l 4
+                  for _, key in ipairs({'shop', 'blind_select', 'round_eval'}) do
+                    local box = G[key]
+                    if box and not box.alignment.offset.py then box.alignment.offset.py = box.alignment.offset.y end
+                  end
+c 16
+s 1
+r 13 2302 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 18
+l 5
+
+    if QuestManager and QuestManager.on_card_sold then
+      pcall(function() QuestManager.on_card_sold() end)
+    end
+
+c 1
+s 1
+r 13 2322 %20%20%20%20%20%20 -
+c 6
+s 1
+r 13 2329 %20%20%20%20 -
+c 12
+l 1
+    if G.PROFILE_ICON_FRAME then G.PROFILE_ICON_FRAME:remove(); G.PROFILE_ICON_FRAME = nil end
+c 9
+l 1
+    if G.PROFILE_ICON_FRAME then G.PROFILE_ICON_FRAME:remove(); G.PROFILE_ICON_FRAME = nil end
+c 28
+s 1
+l 1
+    end
+c 5
+s 1
+r 13 2385 %20%20 -
+c 63
+l 6
+            if QuestManager and QuestManager.on_joker_bought then
+              pcall(function()
+                local is_legendary = c1.config and c1.config.center and c1.config.center.rarity == 4
+                QuestManager.on_joker_bought(is_legendary)
+              end)
+            end
+c 6
+s 1
+r 3 1800 %20%20%20%20%20%20%20%20%20%20 -
+c 9
+l 1
+          pcall(function() haptic_buzz(2) end)
+c 7
+s 1
+r 13 2472 %20%20%20%20%20%20%20%20%20%20 -
+c 7
+s 1
+l 1
+
+c 3
+s 1
+l 1
+    if G.shop then
+c 10
+s 1
+l 1
+      }))
+c 17
+l 10
+  function blind_choice_off_deck(e)
+    local on_deck = G.GAME and G.GAME.blind_on_deck
+    local box = e and e.UIBox
+    if not (box and on_deck and G.blind_select_opts) then return false end
+    for k, v in pairs(G.blind_select_opts) do
+      if v == box then return k ~= string.lower(on_deck) end
+    end
+    return false
+  end
+
+c 1
+l 1
+    if blind_choice_off_deck(e) then return end
+c 1
+s 1
+r 13 2290 %20%20%20%20 -
+c 4
+s 1
+r 13 2520 %20%20%20%20%20%20%20%20 -
+c 38
+l 1
+    if G.bo_pack_closing and G.bo_pack_closing.game == G.GAME then return end
+c 7
+l 2
+    if G.bo_pack_closing and G.bo_pack_closing.game == G.GAME then return end
+    G.bo_pack_closing = {game = G.GAME}
+c 10
+s 1
+l 1
+          if G.booster_pack then G.booster_pack:remove() end
+c 18
+s 1
+r 13 2595 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 12
+s 2
+l 1
+
+r 3 617 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+c 5
+l 1
+                G.bo_pack_closing = nil
+c 17
+s 1
+l 1
+    if not e.config.ref_table.run_info and G.blind_select and G.blind_select.VT.y < math.max(10, G.ROOM and G.ROOM.T.h or 0) and e.config.id and G.blind_select_opts[string.lower(e.config.id)] then
+c 20
+s 1
+r 13 2653 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 19
+s 1
+r 13 2673 %20%20%20%20%20%20%20%20%20%20 -
+c 8
+s 1
+r 13 2653 %20%20%20%20%20%20%20%20%20%20%20%20 -
+c 24
+s 1
+l 1
+            if _top_button then
+c 33
+l 1
+    if blind_choice_off_deck(e) then return end
+c 2
+l 5
+
+    if QuestManager and QuestManager.on_blind_skipped then
+      pcall(function() QuestManager.on_blind_skipped() end)
+    end
+
+c 13
+s 1
+l 1
+    if _tag then
+c 1
+s 1
+r 13 2758 %20%20%20%20%20%20 -
+c 28
+s 1
+r 13 2787 %20%20%20%20%20%20 -
+c 3
+s 1
+r 13 2791 %20%20%20%20%20%20%20%20 -
+c 4
+s 1
+r 13 2796 %20%20%20%20%20%20 -
+c 3
+s 1
+r 13 2800 %20%20 -
+c 38
+s 1
+l 1
+
+c 15
+s 1
+r 13 2855 %20%20 -
+c 3
+s 1
+r 13 2859 %20%20%20%20 -
+c 4
+l 5
+
+    if QuestManager and QuestManager.on_shop_reroll then
+      pcall(function() QuestManager.on_shop_reroll() end)
+    end
+
+c 18
+s 1
+l 1
+
+c 31
+s 1
+l 1
+      if G.round_eval then
+c 9
+s 1
+l 1
+              if G.round_eval then
+c 22
+l 1
+        haptic_buzz(2)
+c 2
+s 1
+r 13 2949 %20%20%20%20%20%20 -
+c 8
+s 1
+r 13 2958 - -
+l 17
+  local is_restart = e and e.config and e.config.id == 'restart_button'
+  local is_resume = args and args.savetext
+  local is_mp_start = args and args.mp_start
+  local show_boosters = false
+
+  if not is_restart and not is_resume and not is_mp_start then
+    pcall(function()
+      if BoosterManager and BoosterManager.init and BoosterManager.get_inventory then
+        BoosterManager.init()
+        local inv = BoosterManager.get_inventory()
+        for _, _ in pairs(inv) do show_boosters = true; break end
+      end
+    end)
+  end
+
+  if show_boosters then
+    G._pending_run_args = args
+r 13 1381 %20%20%20%20 -
+l 1
+    pcall(function()
+r 13 1382 %20%20%20%20%20%20 -
+l 6
+        definition = create_UIBox_booster_selection(args)
+      }
+    end)
+    return
+  end
+
+c 1
+s 1
+l 1
+  if is_restart then G.GAME.viewed_back = nil end
+c 33
+s 1
+l 1
+    blockable = true,
+c 26
+s 1
+l 1
+    blockable = true,
+c 5
+s 1
+l 1
+      blockable = false,
+c 26
+s 1
+l 1
+
+c 15
+s 1
+l 1
+  if not no_card then
+c 7
+s 1
+l 1
+  if message then
+c 7
+s 1
+l 1
+    definition =
+c 20
+s 1
+l 1
+  if message then
+c 12
+s 1
+l 1
+        if not no_card then
+c 12
+l 1
+      if not G.screenwipe then return true end
+c 37
+s 1
+l 1
+      if G.screenwipe and G.screenwipe:get_UIE_by_ID('text') then
+c 14
+l 1
+      if not G.screenwipe then return true end
+c 19
+l 5
+
+
+G.FUNCS.change_guide_page = function(e)
+  if e and e.config and e.config.args and e.config.args.page then
+    G.SETTINGS.guide_page = e.config.args.page
+r 13 1382 %20%20%20%20 -
+l 7
+      definition = create_UIBox_generic_options({back_func = 'options'}),
+      config = {offset = {x=0,y=10}}
+    }
+  end
+end
+
+G.FUNCS.open_debug_pin = function(e)
+r 13 1381 %20%20 -
+l 2
+  local success, err = pcall(function()
+    if create_UIBox_debug_pin then
+r 13 1382 %20%20%20%20%20%20 -
+l 10
+        definition = create_UIBox_debug_pin()
+      }
+    end
+  end)
+  if not success then print("[DEBUG] Error: " .. tostring(err)) end
+end
+
+G.FUNCS.open_achievements_menu = function(e)
+  if not create_UIBox_achievements_main then return end
+  if Overhaul and Overhaul.achievements_ui then Overhaul.achievements_ui.back = 'exit_overlay_menu' end
+r 13 1381 %20%20 -
+r 13 1382 %20%20 -
+l 10
+    definition = create_UIBox_achievements_main()
+  }
+  pcall(function()
+    if G.FUNCS.trigger_sub_showcase_achievements then
+      G.FUNCS.trigger_sub_showcase_achievements()
+    end
+  end)
+end
+
+
+end

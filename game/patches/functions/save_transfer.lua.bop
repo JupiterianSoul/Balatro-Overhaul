@@ -1,0 +1,663 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 259
+SaveTransfer = SaveTransfer or {}
+local T = SaveTransfer
+local SIO = require("functions/save_io")
+
+T.EXPORTS, T.IMPORTS, T.BACKUPS = "exports", "imports", "backups"
+T.PENDING = "imports/pending.zip"
+
+local fs = love.filesystem
+
+local function L(s)
+  return mod_loc and mod_loc(s) or s
+end
+
+local function phone()
+  local osn = love.system.getOS()
+  return osn == "Android" or osn == "iOS"
+end
+
+local function picker()
+  local ok, P = pcall(require, "functions/file_picker")
+  if ok and type(P) == "table" and P.available() then return P end
+  return nil
+end
+
+local function keep_settings(name)
+  return SIO.skip(name) and not SIO.SKIP_FILES[name]
+end
+
+function T.backup(tag, incoming)
+  local files = SIO.collect(fs, "", keep_settings)
+  if incoming then files = SIO.with_touched(fs, incoming, files) end
+  if not next(files) then return true, files end
+  local name = SIO.backup(fs, T.BACKUPS, tag, files)
+  return name, name and files or nil
+end
+
+function T.read(data, name)
+  local files, err, meta = SIO.read_any(data, name or "save.zip")
+  if not files then return nil, err end
+  return files, nil, meta
+end
+
+function T.apply_pending()
+  if not fs.getInfo(T.PENDING) then return end
+  local data = fs.read(T.PENDING)
+  local files, err = T.read(data or "")
+  if not files then
+    print("[SAVES] pending import refused: " .. tostring(err))
+    fs.remove(T.PENDING)
+    return nil, err
+  end
+  files = SIO.mirror_modded(files)
+  local name, backed = T.backup("before-import", files)
+  if not name then
+    print("[SAVES] pending import kept: backup failed")
+    return nil, "backup"
+  end
+  local n, werr = SIO.apply(fs, files, backed)
+  fs.remove(T.PENDING)
+  print("[SAVES] imported " .. tostring(n) .. " files" .. (werr and (", failed at " .. tostring(werr)) or ""))
+  T.just_imported = n
+  return n, werr
+end
+
+function T.export_data()
+  local files = SIO.collect(fs, "")
+  if not SIO.check(files) then return nil, "empty" end
+  return SIO.zip(SIO.entries(files))
+end
+
+function T.export()
+  local data, err = T.export_data()
+  if not data then return nil, err end
+  fs.createDirectory(T.EXPORTS)
+  local rel = T.EXPORTS .. "/" .. SIO.export_name()
+  if not fs.write(rel, data) then return nil, "write" end
+  return rel, data
+end
+
+function T.list()
+  local out = {}
+  for _, dir in ipairs({T.IMPORTS, T.EXPORTS, T.BACKUPS}) do
+    for _, name in ipairs(fs.getDirectoryItems(dir)) do
+      local rel = dir .. "/" .. name
+      local info = fs.getInfo(rel)
+      if rel ~= T.PENDING and name:lower():match("%.zip$") and info and info.type == "file" then
+        out[#out + 1] = {rel = rel, dir = dir, name = name, time = info.modtime or 0}
+      end
+    end
+  end
+  local rank = {[T.IMPORTS] = 1, [T.EXPORTS] = 2, [T.BACKUPS] = 3}
+  table.sort(out, function(a, b)
+    if rank[a.dir] ~= rank[b.dir] then return rank[a.dir] < rank[b.dir] end
+    if a.time ~= b.time then return a.time > b.time end
+    return a.rel > b.rel
+  end)
+  return out
+end
+
+local function who(e)
+  local base = e.name or ("P" .. e.slot:gsub("^modded", ""))
+  if e.modded then
+    local m = e.slot:match("^modded(%d*)$") or ""
+    return L("Modded") .. (m ~= "" and (" " .. m) or "") .. (e.name and (" " .. e.name) or "")
+  end
+  return base
+end
+
+function T.summary(entry)
+  if entry.info == nil then
+    local files = T.read(fs.read(entry.rel) or "")
+    entry.info = files and SIO.preview(files) or false
+  end
+  if not entry.info then return L("Not a save file") end
+  local parts = {}
+  for _, p in ipairs(entry.info) do
+    parts[#parts + 1] = string.format(L("%s: %d wins"), who(p), p.wins)
+  end
+  return #parts > 0 and table.concat(parts, "   ") or L("Empty save")
+end
+
+local function refresh()
+  if UIK and UIK.refresh then UIK.refresh() end
+end
+
+local function set_status(text, kind)
+  T.status = text and {text = text, kind = kind or "info"} or nil
+  refresh()
+end
+
+local ERR = {
+  not_zip = "This is not a save file. Pick an exported .zip or a Balatro .jkr file.",
+  too_big = "This file is too big to be a save.",
+  bad_zip = "This save file is damaged.",
+  damaged = "This save file is damaged.",
+  no_profile = "There is no profile in this file.",
+  not_found = "Could not read that file.",
+}
+
+function T.err_text(err)
+  return L(ERR[err] or "Could not read that file.")
+end
+
+function T.show_preview(files, meta, name)
+  local p = {files = files, name = name or "", info = SIO.preview(files), dropped = meta and meta.dropped or {}, when = meta and meta.when}
+  T.preview_save = p
+  G.FUNCS.overlay_menu{definition = T.confirm_window(p)}
+  return p
+end
+
+function T.preview_data(data, name)
+  local files, err, meta = T.read(data, name)
+  if not files then
+    set_status(T.err_text(err), "error")
+    return nil, err
+  end
+  return T.show_preview(files, meta, name)
+end
+
+function T.preview_path(path)
+  path = tostring(path or ""):gsub("\\", "/")
+  local base = path:match("([^/]+)$") or path
+  if path:lower():match("%.jkr$") then
+    local root = path:match("^(.*)/[123]/[^/]+$")
+    if root then
+      local files, err = SIO.read_folder_io(root)
+      if not files then
+        set_status(T.err_text(err), "error")
+        return nil, err
+      end
+      return T.show_preview(files, {dropped = err}, root:match("([^/]+)$") or root)
+    end
+  end
+  local data, err = SIO.read_path(path)
+  if not data then
+    set_status(T.err_text(err), "error")
+    return nil, err
+  end
+  return T.preview_data(data, base)
+end
+
+function T.dropped(file)
+  local name = file and file.getFilename and file:getFilename() or ""
+  local low = name:lower()
+  if not (low:match("%.zip$") or low:match("%.jkr$")) then return false end
+  if low:match("%.jkr$") then
+    T.open()
+    T.preview_path(name)
+    return true
+  end
+  local ok = pcall(function() file:open("r") end)
+  local data = ok and file:read() or nil
+  pcall(function() file:close() end)
+  if not data or not T.read(data, name) then return false end
+  T.open()
+  T.preview_data(data, name:gsub("\\", "/"):match("([^/]+)$"))
+  return true
+end
+
+function T.open_folder(dir)
+  fs.createDirectory(dir)
+  love.system.openURL("file://" .. fs.getSaveDirectory() .. "/" .. dir)
+end
+
+local DIR_LABEL = {imports = "Imported", exports = "Exported", backups = "Backup"}
+
+local function row_w()
+  return UIK.portrait() and UIK.row_w(1) or UIK.row_w(2)
+end
+
+local function file_label(e)
+  local kind = L(DIR_LABEL[e.dir] or "Save")
+  if (e.time or 0) > 0 then return kind .. ", " .. os.date("%Y-%m-%d %H:%M", e.time) end
+  return kind .. ": " .. e.name:gsub("%.zip$", "")
+end
+
+local STATUS_COLOUR = {ok = "GREEN", error = "RED", info = "GOLD"}
+
+local function main_page()
+  local w = row_w()
+  local rows = {
+    UIK.action{id = 'st_export', label = L("Export my save"), info = L("All your profiles in one .zip file"), button_label = L("Export"), button = 'save_transfer_export', colour = UIK.C.ok, w = w},
+    UIK.action{id = 'st_import', label = L("Import a save"), info = L("An exported .zip or a Balatro save from Steam"), button_label = L("Import"), button = 'save_transfer_import_file', colour = UIK.C.accent, w = w},
+  }
+  if T.status then
+    local lines = {T.status.text}
+    if UIK.portrait() then
+      local a, b = T.status.text:match("^(.-[%.!?:])%s+(.+)$")
+      if a then lines = {a, b} end
+    end
+    rows[#rows + 1] = UIK.note(lines, {w = w, colour = G.C[STATUS_COLOUR[T.status.kind] or "GOLD"], scale = UIK.touch() and 0.4 or 0.36})
+  end
+  local list = T.list()
+  T._list = list
+  if #list > 0 then
+    rows[#rows + 1] = UIK.header(L("Earlier copies"), {w = w})
+  end
+  for i, e in ipairs(list) do
+    rows[#rows + 1] = UIK.action{id = 'st_file_' .. i, label = file_label(e),
+      info = T.summary(e), button_label = L("Load"), button = 'save_transfer_pick', ref_table = e,
+      colour = UIK.C.ok, disabled = not e.info, w = w, bw = 2.85}
+  end
+  if not phone() then
+    rows[#rows + 1] = UIK.action{id = 'st_open', label = L("Exports folder"), info = L("Your exports and backups stay here"), button_label = L("Open"), button = 'save_transfer_open_exports', colour = UIK.C.accent, w = w}
+  end
+  rows[#rows + 1] = UIK.note({L("Settings and your online key are never in an export.")}, {w = w})
+  return UIK.flow{id = 'st_main', items = rows, cols = 2, fit = #list == 0}
+end
+
+function T.window()
+  return UIK.window{
+    id = 'save_transfer', title = L("SAVE FILES"), compact = #T.list() == 0,
+    back_func = T.back or 'settings',
+    build = main_page,
+  }
+end
+
+function T.open(_, back)
+  if back ~= nil then T.back = back end
+r 13 1381 %20%20 -
+l 86
+  G.FUNCS.overlay_menu{definition = T.window()}
+end
+
+function T.modded_only(p)
+  if type(p.info) ~= "table" or #p.info == 0 then return false end
+  for _, e in ipairs(p.info) do
+    if not e.modded then return false end
+  end
+  return true
+end
+
+function T.confirm_window(p)
+  local w = row_w()
+  return UIK.window{
+    id = 'save_transfer_confirm', title = L("IMPORT THIS SAVE?"), compact = true, w = w + 0.6,
+    back_func = 'save_transfer_main',
+    build = function()
+      local rows = {UIK.value{label = L("File"), value = p.name, w = w, vw = w - 0.4}}
+      for i, e in ipairs(p.info) do
+        if i <= 3 then
+          local run = e.run and string.format(L("Run in progress: Ante %d, round %d"), e.run.ante, e.run.round) or L("No run in progress")
+          rows[#rows + 1] = UIK.value{label = who(e), value = string.format(L("%d wins, %d discovered, %d unlocked"), e.wins, e.discovered, e.unlocked),
+            info = run, w = w, vw = w - 0.4}
+        end
+      end
+      if p.when then
+        rows[#rows + 1] = UIK.value{label = L("Saved on"), value = os.date("%Y-%m-%d %H:%M", p.when), w = w, vw = w - 0.4}
+      end
+      local notes = {L("Replace your save? Yours is backed up first."), L("The game restarts to load it.")}
+      if #p.dropped > 0 then table.insert(notes, 1, string.format(L("%d files are left out: they are not plain save data."), #p.dropped)) end
+      rows[#rows + 1] = UIK.note(notes, {w = w})
+      return UIK.stack(rows, {w = w})
+    end,
+    footer = {UIK.button{label = L("REPLACE MY SAVE"), button = 'save_transfer_load', ref_table = p, colour = UIK.C.ok, w = math.min(w, 5.4)}},
+  }
+end
+
+function T.restart()
+  if MODLOADER and MODLOADER.restart then
+    return MODLOADER.restart()
+  end
+  love.event.quit("restart")
+end
+
+function T.load(p)
+  if not (p and p.files and SIO.check(p.files)) then return false end
+  local data = SIO.zip(SIO.entries(p.files))
+  fs.createDirectory(T.IMPORTS)
+  if not fs.write(T.PENDING, data) or fs.read(T.PENDING) ~= data then
+    fs.remove(T.PENDING)
+    return false
+  end
+  T.restart()
+  return true
+end
+
+G.FUNCS.save_transfer_main = function() T.open() end
+G.FUNCS.save_transfer_import = function() T.open() end
+G.FUNCS.save_transfer_export_tab = function() T.open() end
+G.FUNCS.save_transfer_from_profile = function() T.open(nil, 'profile_select') end
+G.FUNCS.save_transfer_from_settings = function() T.open(nil, 'settings') end
+G.FUNCS.save_transfer_export_from_profile = function() T.open(nil, 'profile_select') end
+G.FUNCS.save_transfer_export_from_settings = function() T.open(nil, 'settings') end
+
+G.FUNCS.save_transfer_pick = function(e)
+  local entry = e and e.config and e.config.ref_table
+  if not entry then return end
+  T.preview_data(fs.read(entry.rel) or "", entry.name)
+end
+
+G.FUNCS.save_transfer_load = function(e)
+  local p = e and e.config and e.config.ref_table
+  if not T.load(p) then
+    T.status = {text = L("Could not write the save. Nothing was changed."), kind = "error"}
+    T.open()
+  end
+end
+
+local function desktop_os()
+  local ok, osn = pcall(love.system.getOS)
+  osn = ok and osn or ""
+  return SIO.dialog_osn(osn) and osn or nil
+end
+
+local function watch(job, done)
+  T.busy = true
+r 1 112 %20%20 -
+l 308
+    blocking = false, blockable = false, no_delete = true, pause_force = true, timer = 'REAL',
+    func = function()
+      local st, path = SIO.dialog_poll(job)
+      if not st then return false end
+      T.busy = nil
+      local ok, err = pcall(done, st, path)
+      if not ok then print("[SAVES] " .. tostring(err)) end
+      return true
+    end,
+  }))
+end
+
+local function export_fallback(name)
+  set_status(string.format(L("Saved in the exports folder: %s"), name), "ok")
+  if not os.getenv("OVERHAUL_NO_OPEN_FOLDER") then pcall(T.open_folder, T.EXPORTS) end
+end
+
+G.FUNCS.save_transfer_export = function()
+  if T.busy then return end
+  local rel, data = T.export()
+  if not rel then
+    T.last_export = nil
+    set_status(data == "empty" and L("Nothing to export yet: play a round first.") or L("Could not write the file."), "error")
+    return
+  end
+  local name = rel:match("([^/]+)$")
+  T.last_export = name
+  local P = picker()
+  if P then
+    local started = P.save(fs.getSaveDirectory() .. "/" .. rel, name, function(res)
+      if res.status == "ok" then
+        set_status(string.format(L("Saved: %s"), res.added[1] or name), "ok")
+      elseif res.status == "cancel" then
+        set_status(L("Cancelled. Nothing was saved."), "info")
+      else
+        set_status(L("Android could not save the file."), "error")
+      end
+    end)
+    set_status(started and L("Choose where to save it.") or L("Update the app to save it on your phone."), started and "info" or "error")
+    return
+  end
+  local osn = desktop_os()
+  local job = osn and SIO.dialog_start(SIO.save_command(osn, L("Export my save"), name))
+  if not job then return export_fallback(name) end
+  set_status(L("Choose where to save it."), "info")
+  watch(job, function(st, path)
+    if st == "ok" then
+      if SIO.write_file(path, data) then
+        set_status(string.format(L("Saved: %s"), path), "ok")
+      else
+        set_status(L("Could not write the file there. Nothing was saved."), "error")
+      end
+    elseif st == "cancel" then
+      set_status(L("Cancelled. Nothing was saved."), "info")
+    else
+      export_fallback(name)
+    end
+  end)
+end
+
+G.FUNCS.save_transfer_import_file = function()
+  if T.busy then return end
+  local P = picker()
+  if P then
+    fs.createDirectory(T.IMPORTS)
+    local started = P.pick("zip", fs.getSaveDirectory() .. "/" .. T.IMPORTS, "zip,jkr", SIO.MAX_TOTAL, function(res)
+      if res.status == "cancel" then
+        set_status(nil)
+      elseif #res.added > 0 or #res.same > 0 then
+        local name = res.added[1] or res.same[1]
+        local rel = T.IMPORTS .. "/" .. name
+        local data = fs.read(rel)
+        set_status(nil)
+        local shown = T.preview_data(data or "", name)
+        if name:lower():match("%.jkr$") or not shown then fs.remove(rel) end
+      elseif #res.big > 0 then
+        set_status(T.err_text("too_big"), "error")
+      elseif #res.wrong > 0 then
+        set_status(T.err_text("not_zip"), "error")
+      else
+        set_status(T.err_text("not_found"), "error")
+      end
+    end)
+    if not started then set_status(L("Update the app to pick files."), "error") end
+    return
+  end
+  local osn = desktop_os()
+  local job = osn and SIO.dialog_start(SIO.pick_command(osn, L("Import a save")))
+  if not job then
+    set_status(L("Drop the save file on the game window to import it."), "info")
+    return
+  end
+  set_status(L("Pick the save in the window that opened."), "info")
+  watch(job, function(st, path)
+    if st == "ok" then
+      set_status(nil)
+      T.preview_path(path)
+    elseif st == "cancel" then
+      set_status(nil)
+    else
+      set_status(L("Drop the save file on the game window to import it."), "info")
+    end
+  end)
+end
+
+G.FUNCS.save_transfer_pick_file = G.FUNCS.save_transfer_import_file
+
+G.FUNCS.save_transfer_open_exports = function() T.open_folder(T.EXPORTS) end
+G.FUNCS.save_transfer_open_imports = function() T.open_folder(T.IMPORTS) end
+
+local function fix_name_row(t)
+  G.E_MANAGER:add_event(Event({blockable = false, blocking = false, func = function()
+    local m = G.OVERLAY_MENU
+    local tc = m and m.get_UIE_by_ID and m:get_UIE_by_ID('tab_contents')
+    local box = tc and tc.config and tc.config.object
+    if box and box.recalculate then box:recalculate() end
+    return true
+  end}))
+  return t
+end
+
+local profile_option = G.UIDEF.profile_option
+function G.UIDEF.profile_option(key)
+  local t = profile_option(key)
+  if t and t.nodes then
+    table.insert(t.nodes, #t.nodes, {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+      UIK.button{label = L("Import save"), button = 'save_transfer_from_profile', colour = G.C.GREEN, w = 2.6, h = 0.6, scale = 0.35, col = true},
+      UIK.button{label = L("Export save"), button = 'save_transfer_export_from_profile', colour = G.C.BLUE, w = 2.6, h = 0.6, scale = 0.35, col = true},
+    }})
+  end
+  return fix_name_row(t)
+end
+
+function T.settings_rows()
+  return {
+    UIK.action{id = 'set_save_import', label = L("Import a save"), info = L("Load a save .zip, a backup is made first"), button_label = L("Open"), button = 'save_transfer_from_settings', colour = UIK.C.accent},
+    UIK.action{id = 'set_save_export', label = L("Export my save"), info = L("Copy your progress to a .zip file"), button_label = L("Open"), button = 'save_transfer_export_from_settings', colour = UIK.C.accent},
+  }
+end
+
+if not T.dropped_hooked then
+  T.dropped_hooked = true
+  local orig = love.filedropped
+  love.filedropped = function(file, ...)
+    local ok, used = pcall(T.dropped, file)
+    if ok and used then return end
+    if orig then return orig(file, ...) end
+  end
+end
+
+local function pid()
+  local ok, ffi = pcall(require, "ffi")
+  if not ok then return 0 end
+  if jit and jit.os == "Windows" then
+    pcall(ffi.cdef, "unsigned long GetCurrentProcessId(void);")
+    local ok2, n = pcall(function() return tonumber(ffi.C.GetCurrentProcessId()) end)
+    return ok2 and n or 0
+  end
+  pcall(ffi.cdef, "int getpid(void);")
+  local ok2, n = pcall(function() return tonumber(ffi.C.getpid()) end)
+  return ok2 and n or 0
+end
+
+function T.lock_beat(force)
+  if phone() then return end
+  local now = os.time()
+  if not force and T.lock_at and now - T.lock_at < 5 then return end
+  T.lock_at = now
+  T.pid = T.pid or pid()
+  fs.write(SIO.LOCK, SIO.lock_text(T.pid, now))
+  if not T.quit_hooked and love.quit then
+    T.quit_hooked = true
+    local quit = love.quit
+    love.quit = function(...)
+      local r = quit(...)
+      if not r then pcall(fs.remove, SIO.LOCK) T.lock_at = math.huge end
+      return r
+    end
+  end
+end
+
+if Game and Game.update and not T.update_hooked then
+  T.update_hooked = true
+  local update = Game.update
+  Game.update = function(self, dt)
+    pcall(T.lock_beat)
+    return update(self, dt)
+  end
+end
+
+T.apply_pending()
+
+if mod_loc_register then
+  mod_loc_register{
+    fr = {
+      ["Not a save file"] = "Pas une sauvegarde",
+      ["Modded"] = "Modé",
+      ["%s: %d wins"] = "%s : %d victoires",
+      ["Empty save"] = "Sauvegarde vide",
+      ["This is not a save file. Pick an exported .zip or a Balatro .jkr file."] = "Ce n'est pas une sauvegarde. Choisissez un .zip exporté ou un fichier .jkr de Balatro.",
+      ["This file is too big to be a save."] = "Ce fichier est trop gros pour être une sauvegarde.",
+      ["This save file is damaged."] = "Cette sauvegarde est abîmée.",
+      ["There is no profile in this file."] = "Il n'y a aucun profil dans ce fichier.",
+      ["Could not read that file."] = "Impossible de lire ce fichier.",
+      ["Imported"] = "Importée",
+      ["Exported"] = "Exportée",
+      ["Backup"] = "Copie",
+      ["Save"] = "Sauvegarde",
+      ["Load"] = "Charger",
+      ["Export my save"] = "Exporter ma sauvegarde",
+      ["All your profiles in one .zip file"] = "Tous vos profils dans un seul fichier .zip",
+      ["Export"] = "Exporter",
+      ["Import a save"] = "Importer une sauvegarde",
+      ["An exported .zip or a Balatro save from Steam"] = "Un .zip exporté ou une sauvegarde Balatro de Steam",
+      ["Import"] = "Importer",
+      ["Earlier copies"] = "Copies précédentes",
+      ["Exports folder"] = "Dossier des exports",
+      ["Your exports and backups stay here"] = "Vos exports et vos copies restent ici",
+      ["Open"] = "Ouvrir",
+      ["Settings and your online key are never in an export."] = "Les réglages et votre clé en ligne ne sont jamais exportés.",
+      ["SAVE FILES"] = "SAUVEGARDES",
+      ["IMPORT THIS SAVE?"] = "IMPORTER CETTE SAUVEGARDE ?",
+      ["File"] = "Fichier",
+      ["Run in progress: Ante %d, round %d"] = "Partie en cours : mise %d, manche %d",
+      ["No run in progress"] = "Aucune partie en cours",
+      ["%d wins, %d discovered, %d unlocked"] = "%d victoires, %d découverts, %d débloqués",
+      ["Saved on"] = "Enregistrée le",
+      ["Replace your save? Yours is backed up first."] = "Remplacer votre sauvegarde ? La vôtre est copiée avant.",
+      ["The game restarts to load it."] = "Le jeu redémarre pour la charger.",
+      ["%d files are left out: they are not plain save data."] = "%d fichiers sont laissés de côté : ce ne sont pas des données de sauvegarde.",
+      ["REPLACE MY SAVE"] = "REMPLACER MA SAUVEGARDE",
+      ["Could not write the save. Nothing was changed."] = "Impossible d'écrire la sauvegarde. Rien n'a changé.",
+      ["Saved in the exports folder: %s"] = "Enregistrée dans le dossier des exports : %s",
+      ["Nothing to export yet: play a round first."] = "Rien à exporter pour l'instant : jouez d'abord une manche.",
+      ["Could not write the file."] = "Impossible d'écrire le fichier.",
+      ["Saved: %s"] = "Enregistrée : %s",
+      ["Cancelled. Nothing was saved."] = "Annulé. Rien n'a été enregistré.",
+      ["Android could not save the file."] = "Android n'a pas pu enregistrer le fichier.",
+      ["Choose where to save it."] = "Choisissez où l'enregistrer.",
+      ["Update the app to save it on your phone."] = "Mettez l'app à jour pour l'enregistrer sur votre téléphone.",
+      ["Could not write the file there. Nothing was saved."] = "Impossible d'écrire le fichier à cet endroit. Rien n'a été enregistré.",
+      ["Update the app to pick files."] = "Mettez l'app à jour pour choisir des fichiers.",
+      ["Drop the save file on the game window to import it."] = "Déposez la sauvegarde sur la fenêtre du jeu pour l'importer.",
+      ["Pick the save in the window that opened."] = "Choisissez la sauvegarde dans la fenêtre qui s'est ouverte.",
+      ["Load a save .zip, a backup is made first"] = "Chargez une sauvegarde, une copie est faite avant",
+      ["Copy your progress to a .zip file"] = "Copiez votre progression dans un .zip",
+      ["Import save"] = "Importer",
+      ["Export save"] = "Exporter",
+    },
+    es = {
+      ["Not a save file"] = "No es una partida",
+      ["Modded"] = "Con mods",
+      ["%s: %d wins"] = "%s: %d victorias",
+      ["Empty save"] = "Partida vacía",
+      ["This is not a save file. Pick an exported .zip or a Balatro .jkr file."] = "No es una partida. Elige un .zip exportado o un archivo .jkr de Balatro.",
+      ["This file is too big to be a save."] = "Este archivo es demasiado grande para ser una partida.",
+      ["This save file is damaged."] = "Esta partida está dañada.",
+      ["There is no profile in this file."] = "No hay ningún perfil en este archivo.",
+      ["Could not read that file."] = "No se pudo leer ese archivo.",
+      ["Imported"] = "Importada",
+      ["Exported"] = "Exportada",
+      ["Backup"] = "Copia",
+      ["Save"] = "Partida",
+      ["Load"] = "Cargar",
+      ["Export my save"] = "Exportar mi partida",
+      ["All your profiles in one .zip file"] = "Todos tus perfiles en un solo archivo .zip",
+      ["Export"] = "Exportar",
+      ["Import a save"] = "Importar una partida",
+      ["An exported .zip or a Balatro save from Steam"] = "Un .zip exportado o una partida de Balatro de Steam",
+      ["Import"] = "Importar",
+      ["Earlier copies"] = "Copias anteriores",
+      ["Exports folder"] = "Carpeta de exportaciones",
+      ["Your exports and backups stay here"] = "Aquí quedan tus exportaciones y copias",
+      ["Open"] = "Abrir",
+      ["Settings and your online key are never in an export."] = "Los ajustes y tu clave en línea nunca se exportan.",
+      ["SAVE FILES"] = "PARTIDAS",
+      ["IMPORT THIS SAVE?"] = "¿IMPORTAR ESTA PARTIDA?",
+      ["File"] = "Archivo",
+      ["Run in progress: Ante %d, round %d"] = "Partida en curso: apuesta %d, ronda %d",
+      ["No run in progress"] = "Ninguna partida en curso",
+      ["%d wins, %d discovered, %d unlocked"] = "%d victorias, %d descubiertos, %d desbloqueados",
+      ["Saved on"] = "Guardada el",
+      ["Replace your save? Yours is backed up first."] = "¿Sustituir tu partida? Antes se hace una copia de la tuya.",
+      ["The game restarts to load it."] = "El juego se reinicia para cargarla.",
+      ["%d files are left out: they are not plain save data."] = "Se omiten %d archivos: no son datos de partida.",
+      ["REPLACE MY SAVE"] = "SUSTITUIR MI PARTIDA",
+      ["Could not write the save. Nothing was changed."] = "No se pudo escribir la partida. No cambió nada.",
+      ["Saved in the exports folder: %s"] = "Guardada en la carpeta de exportaciones: %s",
+      ["Nothing to export yet: play a round first."] = "Todavía no hay nada que exportar: juega una ronda primero.",
+      ["Could not write the file."] = "No se pudo escribir el archivo.",
+      ["Saved: %s"] = "Guardada: %s",
+      ["Cancelled. Nothing was saved."] = "Cancelado. No se guardó nada.",
+      ["Android could not save the file."] = "Android no pudo guardar el archivo.",
+      ["Choose where to save it."] = "Elige dónde guardarla.",
+      ["Update the app to save it on your phone."] = "Actualiza la app para guardarla en tu teléfono.",
+      ["Could not write the file there. Nothing was saved."] = "No se pudo escribir el archivo ahí. No se guardó nada.",
+      ["Update the app to pick files."] = "Actualiza la app para elegir archivos.",
+      ["Drop the save file on the game window to import it."] = "Suelta la partida en la ventana del juego para importarla.",
+      ["Pick the save in the window that opened."] = "Elige la partida en la ventana que se abrió.",
+      ["Load a save .zip, a backup is made first"] = "Carga una partida, antes se hace una copia",
+      ["Copy your progress to a .zip file"] = "Copia tu progreso en un .zip",
+      ["Import save"] = "Importar",
+      ["Export save"] = "Exportar",
+    },
+  }
+end
+
+return T
+end

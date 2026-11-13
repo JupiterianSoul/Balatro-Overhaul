@@ -1,0 +1,13 @@
+{
+  "name": "Overhaul Admin",
+  "short_name": "Overhaul",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#1d2b2e",
+  "theme_color": "#1d2b2e",
+  "icons": [
+    { "src": "/admin/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/admin/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

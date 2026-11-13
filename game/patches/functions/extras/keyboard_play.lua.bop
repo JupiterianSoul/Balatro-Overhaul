@@ -1,0 +1,735 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 511
+local X = Extras
+local KEY = "keyboard_play"
+local M = X.feature(KEY, {})
+local L = function(s) return mod_loc(s) end
+
+M.GROUPS = {
+    {key = "nav", label = "Navigation"},
+    {key = "hand", label = "Hand"},
+    {key = "cards", label = "Jokers and consumables"},
+    {key = "shop", label = "Shop and packs"},
+}
+
+M.ACTIONS = {
+    {id = "nav_up", group = "nav", key = "up", pad = "dpup", label = "Move up"},
+    {id = "nav_down", group = "nav", key = "down", pad = "dpdown", label = "Move down"},
+    {id = "nav_left", group = "nav", key = "left", pad = "dpleft", label = "Move left"},
+    {id = "nav_right", group = "nav", key = "right", pad = "dpright", label = "Move right"},
+    {id = "confirm", group = "nav", key = "space", pad = "a", label = "Press or pick"},
+    {id = "back", group = "nav", key = "backspace", pad = "b", label = "Back"},
+    {id = "tab_prev", group = "nav", key = "q", pad = "leftshoulder", label = "Previous tab"},
+    {id = "tab_next", group = "nav", key = "e", pad = "rightshoulder", label = "Next tab"},
+    {id = "run_info", group = "nav", key = "i", label = "Run Info"},
+    {id = "play", group = "hand", key = "return", label = "Play or go on"},
+    {id = "discard", group = "hand", key = "d", label = "Discard or skip"},
+    {id = "sort_rank", group = "hand", key = "x", label = "Sort by rank"},
+    {id = "sort_suit", group = "hand", key = "c", label = "Sort by suit"},
+    {id = "use", group = "cards", key = "u", label = "Use"},
+    {id = "sell", group = "cards", key = "s", label = "Sell"},
+    {id = "move_left", group = "cards", key = ",", label = "Move card left"},
+    {id = "move_right", group = "cards", key = ".", label = "Move card right"},
+    {id = "buy", group = "shop", key = "b", label = "Buy"},
+    {id = "buy_use", group = "shop", key = "v", label = "Buy and use"},
+    {id = "reroll", group = "shop", key = "t", label = "Reroll"},
+}
+for i = 1, 10 do
+    table.insert(M.ACTIONS, 13 + i, {id = "card" .. i, group = "hand", key = tostring(i % 10), card = i, label = "Card %d", n = i})
+end
+
+M.SCAN = {}
+M.held = {}
+
+function M.normal(sc)
+    if type(sc) ~= "string" then return nil end
+    if sc == "kpenter" then return "return" end
+    if sc:sub(1, 2) == "kp" and sc:match("^kp%d$") then return sc:sub(3) end
+    return sc
+end
+
+M.SETS = {}
+
+local function bind_set()
+    local name = M.active_set and M.active_set()
+    local set = name and M.SETS[name]
+    if set then return set.saved, set.keys end
+    return "keyboard_binds", nil
+end
+M.bind_set = bind_set
+
+function M.default_key(a)
+    local _, keys = bind_set()
+    if keys and keys[a.id] ~= nil then return keys[a.id] or nil end
+    return a.key
+end
+
+function M.binds()
+    local saved = G.SETTINGS and G.SETTINGS[(bind_set())]
+    local out = {}
+    for _, a in ipairs(M.ACTIONS) do
+        local v
+        if type(saved) == "table" then v = saved[a.id] end
+        if v == false then out[a.id] = nil
+        elseif type(v) == "string" then out[a.id] = v
+        else out[a.id] = M.default_key(a) end
+    end
+    return out
+end
+
+function M.refresh()
+    M.by_scan = {}
+    M.by_id = {}
+    local b = M.binds()
+    for _, a in ipairs(M.ACTIONS) do
+        M.by_id[a.id] = a
+        local k = b[a.id]
+        if k and not M.by_scan[k] then M.by_scan[k] = a end
+    end
+    M.bound = b
+end
+
+function M.action_for(sc)
+    if not M.by_scan then M.refresh() end
+    return M.by_scan[M.normal(sc)]
+end
+
+function M.key_name(sc)
+    if not sc then return nil end
+    local ok, k = pcall(love.keyboard.getKeyFromScancode, sc)
+    if not ok or type(k) ~= "string" or k == "" or k == "unknown" then k = sc end
+    local names = {["return"] = "Enter", space = "Space", backspace = "Backspace", up = "Up", down = "Down", left = "kb_left", right = "kb_right",
+        tab = "Tab", escape = "Esc", lshift = "Left Shift", rshift = "Right Shift", lctrl = "Left Ctrl", rctrl = "Right Ctrl", lalt = "Left Alt", ralt = "Right Alt",
+        pageup = "Page Up", pagedown = "Page Down", home = "Home", ["end"] = "End", insert = "Insert", delete = "Delete"}
+    if names[k] then return L(names[k]) end
+    if sc:match("^%d$") then return sc end
+    if #k == 1 then return k:upper() end
+    return k:sub(1, 1):upper() .. k:sub(2)
+end
+
+function M.touch_only()
+    return UIK and UIK.touch and UIK.touch() or false
+end
+
+function M.enabled()
+    return X.on(KEY) and not M.touch_only()
+end
+
+local function playback()
+    local pb = rawget(_G, "bom_playback")
+    return pb and pb.active and pb.active()
+end
+
+function M.can_nav()
+    local c = G.CONTROLLER
+    if not (c and M.enabled()) then return false end
+    if c.text_input_hook or c.screen_keyboard then return false end
+    if playback() then return false end
+    return true
+end
+
+function M.can_act(ctrl)
+    if not M.can_nav() then return false end
+    if ctrl and (ctrl.locks and ctrl.locks.frame) then return false end
+    if ctrl and ctrl.locked and not G.SETTINGS.paused then return false end
+    return true
+end
+
+local function visible(node)
+    return node and not node.REMOVED and node.states and node.states.visible ~= false and (not node.UIBox or node.UIBox.states.visible ~= false)
+end
+
+local function walk(node, names, depth)
+    if type(node) ~= "table" or depth > 40 then return nil end
+    local cfg = node.config
+    if cfg and cfg.button and names[cfg.button] and visible(node) and not node.under_overlay then
+        local want = names[cfg.button]
+        if want == true or want == cfg.id then return node end
+    end
+    for _, ch in ipairs(node.children or {}) do
+        local hit = walk(ch, names, depth + 1)
+        if hit then return hit end
+    end
+    if cfg and type(cfg.object) == "table" and cfg.object.UIRoot then
+        return walk(cfg.object.UIRoot, names, depth + 1)
+    end
+end
+
+local function find_in(boxes, names)
+    for _, box in ipairs(boxes) do
+        if type(box) == "table" and box.UIRoot and not box.REMOVED then
+            local hit = walk(box.UIRoot, names, 0)
+            if hit then return hit end
+        end
+    end
+end
+M.find_in = find_in
+
+local function all_boxes()
+    if G.OVERLAY_MENU then return {G.OVERLAY_MENU} end
+    local list = {}
+    for _, b in pairs(G.I.UIBOX or {}) do
+        if type(b) == "table" and b.UIRoot and not b.REMOVED and b.states and b.states.visible ~= false then list[#list + 1] = b end
+    end
+    return list
+end
+
+local function press(boxes, names)
+    local e = find_in(boxes, names) or (not G.OVERLAY_MENU and find_in(all_boxes(), names))
+    if e then e:click() return true end
+    return false
+end
+
+local function card_boxes(card)
+    local list = {}
+    if card and card.children then
+        for _, ch in pairs(card.children) do
+            if type(ch) == "table" and ch.UIRoot then list[#list + 1] = ch end
+        end
+    end
+    return list
+end
+
+local function focused_card()
+    local f = G.CONTROLLER and G.CONTROLLER.focused and G.CONTROLLER.focused.target
+    if f and type(f) == "table" and f.is and Card and f:is(Card) and not f.REMOVED then return f end
+end
+
+local function target(areas)
+    local p = M.pick_target and M.pick_target(areas)
+    if p then return p end
+    local f = focused_card()
+    for _, a in ipairs(areas) do
+        if a and f and f.area == a then return f end
+    end
+    for _, a in ipairs(areas) do
+        if a and a.highlighted and a.highlighted[1] then return a.highlighted[1] end
+    end
+end
+
+local function find_check(node, funcs, depth)
+    if type(node) ~= "table" or depth > 40 or node.REMOVED then return nil end
+    if node.UIRoot then return find_check(node.UIRoot, funcs, depth + 1) end
+    local cfg = node.config
+    if cfg and cfg.func and funcs[cfg.func] then return node end
+    for _, ch in pairs(node.children or {}) do
+        local hit = find_check(ch, funcs, depth + 1)
+        if hit then return hit end
+    end
+    if cfg and type(cfg.object) == "table" and cfg.object.UIRoot then
+        return find_check(cfg.object.UIRoot, funcs, depth + 1)
+    end
+end
+
+local function press_on_card(areas, funcs)
+    local c = target(areas)
+    if not c then return false end
+    if not c.highlighted and c.area and c.area.highlighted and c.area:can_highlight(c) then c:click() end
+    for _, box in ipairs(card_boxes(c)) do
+        local e = find_check(box, funcs, 0)
+        if e then
+            local f = G.FUNCS[e.config.func]
+            if type(f) == "function" then pcall(f, e) end
+            if e.config.button and not e.disable_button then
+                e:click()
+                return true
+            end
+            return false
+        end
+    end
+    return false
+end
+
+M.USE = {can_use_consumeable = true, select_button_check = true}
+M.SELL = {can_sell_card = true}
+M.BUY = {buy_button_check = true, can_redeem = true, can_open = true}
+M.BUY_USE = {buy_and_use_button_check = true}
+
+local function in_pack()
+    local s, S = G.STATE, G.STATES
+    return s == S.TAROT_PACK or s == S.PLANET_PACK or s == S.SPECTRAL_PACK or s == S.STANDARD_PACK or s == S.BUFFOON_PACK or (S.SMODS_BOOSTER_OPENED and s == S.SMODS_BOOSTER_OPENED)
+end
+M.in_pack = in_pack
+
+local function blind_boxes()
+    local list = {}
+    local o = G.blind_select_opts
+    if o then
+        local cur = G.GAME and G.GAME.blind_on_deck and string.lower(G.GAME.blind_on_deck)
+        if cur and o[cur] then list[1] = o[cur] end
+        for _, k in ipairs({"small", "big", "boss"}) do if o[k] and o[k] ~= list[1] then list[#list + 1] = o[k] end end
+    end
+    if G.blind_select then list[#list + 1] = G.blind_select end
+    if G.blind_prompt_box then list[#list + 1] = G.blind_prompt_box end
+    return list
+end
+
+local function move_card(c, dir)
+    if not (c and c.area and c.area.cards) then return false end
+    local cards = c.area.cards
+    local i
+    for k, v in ipairs(cards) do if v == c then i = k end end
+    local j = i and i + dir
+    if not (j and cards[j]) then return false end
+    cards[i], cards[j] = cards[j], cards[i]
+    c.area:set_ranks()
+    c.area:align_cards()
+    if G.CONTROLLER.HID.controller then G.CONTROLLER:snap_to{node = c}
+    elseif M.after_move then pcall(M.after_move, c) end
+    play_sound("cardSlide1", 0.85 + math.random() * 0.1)
+    return true
+end
+M.move_card = move_card
+
+local function move(dir)
+    local rows = {G.jokers, G.consumeables, G.hand}
+    local c = M.pick_target and M.pick_target(rows)
+    if not c then
+        local f = focused_card()
+        for _, a in ipairs(rows) do
+            if a and f and f.area == a then c = f end
+        end
+    end
+    c = c or target({G.jokers, G.consumeables})
+    if c and c.area == G.hand and G.STATE ~= G.STATES.SELECTING_HAND then return false end
+    return move_card(c, dir)
+end
+
+local function pick(n)
+    if G.STATE == G.STATES.SELECTING_HAND and G.hand and G.hand.cards then
+        local card = G.hand.cards[n]
+        if card then card:click() end
+        return card ~= nil
+    end
+    if in_pack() and G.pack_cards and G.pack_cards.cards then
+        local card = G.pack_cards.cards[n]
+        if not card then return false end
+        if G.pack_cards:can_highlight(card) then card:click()
+        else G.CONTROLLER:snap_to{node = card} end
+        return true
+    end
+    return false
+end
+
+M.RUN = {
+    play = function()
+        if G.OVERLAY_MENU then return false end
+        local s, S = G.STATE, G.STATES
+        if s == S.SELECTING_HAND then return press({G.buttons}, {play_cards_from_highlighted = true}) end
+        if s == S.BLIND_SELECT then return press(blind_boxes(), {select_blind = true, bom_toggle_ready_blind = true}) end
+        if s == S.ROUND_EVAL then return press({G.round_eval}, {cash_out = true}) end
+        if s == S.SHOP then return press({G.shop}, {toggle_shop = true}) end
+        if in_pack() then return press_on_card({G.pack_cards}, M.USE) end
+        return false
+    end,
+    discard = function()
+        if G.OVERLAY_MENU then return false end
+        local s, S = G.STATE, G.STATES
+        if s == S.SELECTING_HAND then return press({G.buttons}, {discard_cards_from_highlighted = true}) end
+        if s == S.BLIND_SELECT then return press(blind_boxes(), {skip_blind = true}) end
+        if in_pack() then return press(all_boxes(), {skip_booster = true}) end
+        return false
+    end,
+    sort_rank = function()
+        if G.OVERLAY_MENU or G.STATE ~= G.STATES.SELECTING_HAND then return false end
+        return press({G.buttons}, {sort_hand_value = true})
+    end,
+    sort_suit = function()
+        if G.OVERLAY_MENU or G.STATE ~= G.STATES.SELECTING_HAND then return false end
+        return press({G.buttons}, {sort_hand_suit = true})
+    end,
+    use = function()
+        if G.OVERLAY_MENU then return false end
+        return press_on_card({G.consumeables, G.pack_cards}, M.USE)
+    end,
+    sell = function()
+        if G.OVERLAY_MENU then return false end
+        return press_on_card({G.jokers, G.consumeables}, M.SELL)
+    end,
+    move_left = function()
+        if G.OVERLAY_MENU then return false end
+        return move(-1)
+    end,
+    move_right = function()
+        if G.OVERLAY_MENU then return false end
+        return move(1)
+    end,
+    buy = function()
+        if G.OVERLAY_MENU or G.STATE ~= G.STATES.SHOP then return false end
+        return press_on_card({G.shop_jokers, G.shop_vouchers, G.shop_booster}, M.BUY)
+    end,
+    buy_use = function()
+        if G.OVERLAY_MENU or G.STATE ~= G.STATES.SHOP then return false end
+        return press_on_card({G.shop_jokers}, M.BUY_USE)
+    end,
+    reroll = function()
+        if G.OVERLAY_MENU then return false end
+        if G.STATE == G.STATES.SHOP then return press({G.shop}, {reroll_shop = true}) end
+        if G.STATE == G.STATES.BLIND_SELECT then return press(blind_boxes(), {reroll_boss = true}) end
+        return false
+    end,
+    run_info = function()
+        if G.OVERLAY_MENU or G.STAGE ~= G.STAGES.RUN or not G.FUNCS.run_info then return false end
+        G.FUNCS.run_info({config = {}})
+        return true
+    end,
+}
+
+function M.handle(key, ctrl)
+    local sc = M.SCAN[key] or key
+    local a = M.action_for(sc)
+    if not a or a.pad or not M.can_act(ctrl) then return false end
+    if a.card then
+        if G.OVERLAY_MENU then return false end
+        return pick(a.card)
+    end
+    local fn = M.RUN[a.id]
+    if fn then return fn() and true or false end
+    return false
+end
+
+local function menu_back()
+    local reg = G.CONTROLLER.button_registry and G.CONTROLLER.button_registry.b
+    local r = reg and reg[1]
+    local t = r and r.node and r.node.T
+    local plain = r and r.node and r.node.config and r.node.config.button == "exit_overlay_menu"
+    return r and r.node and not r.node.REMOVED and not plain and r.menu == (G.OVERLAY_MENU ~= nil) and t and G.ROOM
+        and t.x > -2 and t.x < G.ROOM.T.w + 2 and t.y > -2 and t.y < G.ROOM.T.h + 2 or false
+end
+
+local function jump_up()
+    local f = focused_card()
+    if G.OVERLAY_MENU or not (f and G.hand and f.area == G.hand) then return false end
+    local best, bd
+    for _, area in ipairs({G.jokers, G.consumeables}) do
+        for _, c in ipairs(area and area.cards or {}) do
+            local d = math.abs((c.T.x + c.T.w / 2) - (f.T.x + f.T.w / 2))
+            if not bd or d < bd then best, bd = c, d end
+        end
+    end
+    if not best then return false end
+    M.from_kb = true
+    G.CONTROLLER:set_HID_flags("button", "dpup")
+    M.from_kb = nil
+    G.CONTROLLER:snap_to{node = best}
+    return true
+end
+M.jump_up = jump_up
+
+M.REPLAY = {confirm = "pb_pause", play = "pb_pause", discard = "pb_step_hand", nav_left = "pb_prev_action", nav_right = "pb_next_action", tab_prev = "pb_speed", tab_next = "pb_ff"}
+
+function M.replay_key(sc)
+    if not (playback() and M.enabled()) then return false end
+    local c = G.CONTROLLER
+    if G.OVERLAY_MENU or c.text_input_hook or c.screen_keyboard then return false end
+    local bar = G.PB_BAR
+    local a = M.action_for(sc)
+    local fn = a and M.REPLAY[a.id]
+    if not (fn and bar and not bar.REMOVED) then return false end
+    local e = find_in({bar}, {[fn] = true})
+    if e then e:click() else pcall(play_sound, "cancel") end
+    return true
+end
+
+function M.yields(key)
+    local mg = rawget(_G, "Minigames")
+    return mg and mg.wants_key and mg.wants_key(key) or false
+end
+
+function M.pad_press(sc)
+    local a = M.action_for(sc)
+    if not (a and M.can_nav()) then return false end
+    if a.id == "nav_up" and jump_up() then return true end
+    local pad = a.pad or (a.id == "play" and G.OVERLAY_MENU and "a")
+    if not pad then return false end
+    if pad == "b" and G.OVERLAY_MENU and not menu_back() then
+        pcall(G.CONTROLLER.key_press_update, G.CONTROLLER, "escape")
+        return true
+    end
+    M.held[sc] = pad
+    M.from_kb = true
+    local ok, err = pcall(love.gamepadpressed, G.CONTROLLER.keyboard_controller, pad)
+    M.from_kb = nil
+    if not ok then print("[KeyboardPlay] " .. tostring(err)) end
+    return true
+end
+
+function M.pad_release(sc)
+    local pad = M.held[sc]
+    if not pad then return false end
+    M.held[sc] = nil
+    M.from_kb = true
+    pcall(love.gamepadreleased, G.CONTROLLER.keyboard_controller, pad)
+    M.from_kb = nil
+    return true
+end
+
+function M.on_toggle(v)
+    if not v then
+        for sc in pairs(M.held) do M.pad_release(sc) end
+    end
+end
+
+function M.init()
+    if M._wrapped or not (Controller and Controller.key_press_update) then return end
+    M._wrapped = true
+    M.refresh()
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    G.ESC_BACK_FUNCS.kb_binds_back = true
+    local lkp = love.keypressed
+    if type(lkp) == "function" then
+        love.keypressed = function(key, scancode, isrepeat, ...)
+            if type(key) == "string" then M.SCAN[key] = scancode end
+            if M.capture and scancode and M.capture_key(scancode, isrepeat) then return end
+            if scancode and not isrepeat and M.replay_key(scancode) then return end
+            if scancode and not M.yields(key) and M.pad_press(scancode) then return end
+            M.key_event = true
+            lkp(key, scancode, isrepeat, ...)
+            M.key_event = nil
+        end
+    end
+    local lkr = love.keyreleased
+    if type(lkr) == "function" then
+        love.keyreleased = function(key, scancode, ...)
+            if scancode and M.pad_release(scancode) then return end
+            M.key_event = true
+            lkr(key, scancode, ...)
+            M.key_event = nil
+        end
+    end
+    local orig = Controller.key_press_update
+    Controller.key_press_update = function(self, key, dt)
+        if X.on(KEY) then pcall(M.handle, key, self) end
+        return orig(self, key, dt)
+    end
+    local hid = Controller.set_HID_flags
+    Controller.set_HID_flags = function(self, kind, button)
+        if kind == "mouse" and M.key_event and self.HID.keyboard then return end
+        hid(self, kind, button)
+        if kind == "button" then self.HID.keyboard = M.from_kb or nil
+        elseif kind then self.HID.keyboard = nil end
+    end
+    local pip = G.FUNCS.set_button_pip
+    if type(pip) == "function" then
+r 13 408 %20%20%20%20%20%20%20%20 -
+l 2
+            if G.CONTROLLER and G.CONTROLLER.HID.keyboard then
+                if e.children.button_pip then
+r 13 420 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+r 13 421 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 143
+                end
+                return
+            end
+            return pip(e)
+        end
+    end
+end
+
+M.TABS = {
+    {key = "nav", label = "Navigation"},
+    {key = "hand", label = "Hand"},
+    {key = "cards", label = "Cards"},
+    {key = "shop", label = "Shop"},
+}
+M.ui = {}
+M.KEY_W = 2.6
+M.ROW_H = 0.62
+
+function M.action_label(a)
+    if a.n then return string.format(L(a.label), a.n) end
+    return L(a.label)
+end
+
+local function save_binds()
+    if G and G.save_settings then pcall(function() G:save_settings() end) end
+end
+
+function M.set_bind(id, sc)
+    sc = M.normal(sc)
+    if not (sc and M.by_id and M.by_id[id]) then return nil end
+    local skey = bind_set()
+    local saved = type(G.SETTINGS[skey]) == "table" and G.SETTINGS[skey] or {}
+    G.SETTINGS[skey] = saved
+    M.refresh()
+    local moved
+    for _, a in ipairs(M.ACTIONS) do
+        if a.id ~= id and M.bound[a.id] == sc then
+            saved[a.id] = false
+            moved = a
+        end
+    end
+    saved[id] = sc
+    M.refresh()
+    save_binds()
+    return moved
+end
+
+function M.reset_binds()
+    G.SETTINGS[(bind_set())] = nil
+    M.capture = nil
+    M.refresh()
+    save_binds()
+end
+
+local function page_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "kb_binds" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") ~= nil
+end
+
+local function redraw(focus_id)
+    if not page_open() then return end
+    UIK.refresh()
+    local b = focus_id and G.OVERLAY_MENU:get_UIE_by_ID("kb_bind_" .. focus_id)
+    if b and G.CONTROLLER.HID.controller then G.CONTROLLER:snap_to{node = b} end
+end
+
+function M.capture_key(sc, isrepeat)
+    local id = M.capture
+    if not page_open() then M.capture = nil return false end
+    if isrepeat then return true end
+    M.capture = nil
+    sc = M.normal(sc)
+    if sc == "escape" then
+        M.ui.notice = nil
+    else
+        local moved = M.set_bind(id, sc)
+        M.ui.notice = moved and string.format(L("%s moved from %s"), M.key_name(sc), M.action_label(moved)) or nil
+    end
+    play_sound("button", 1, 0.4)
+    redraw(id)
+    return true
+end
+
+local function bind_row(a, w, lw)
+    local k = M.bound and M.bound[a.id]
+    local cap = M.capture == a.id
+    local text = cap and L("Press a key") or (k and M.key_name(k) or L("Unbound"))
+    local colour = cap and UIK.C.warn or (k and UIK.C.accent or UIK.C.inactive)
+    local h = M.ROW_H
+    local node = {n = G.UIT.R, config = {align = "cm", minw = w, minh = h + 0.1, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "cr", minw = lw, maxw = lw, minh = h, padding = 0}, nodes = {
+            {n = G.UIT.T, config = {text = M.action_label(a), scale = 0.4, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+        }},
+        {n = G.UIT.C, config = {align = "cm", minw = 0.25, minh = h, padding = 0}, nodes = {}},
+        UIK.button{label = text, button = "kb_bind_pick", ref_table = a, colour = colour, w = M.KEY_W, h = h, scale = 0.4, col = true, id = "kb_bind_" .. a.id},
+    }}
+    node.uik_h = h + 0.1
+    return node
+end
+
+local function group_body(group)
+    M.refresh()
+    local list = {}
+    for _, a in ipairs(M.ACTIONS) do if a.group == group then list[#list + 1] = a end end
+    local cw = UIK.col_w(2)
+    local inner = cw - 2 * UIK.PAD
+    local lw = 0
+    for _, a in ipairs(M.ACTIONS) do lw = math.max(lw, UIK.text_w(M.action_label(a), 0.4)) end
+    lw = math.min(lw + 0.1, inner - M.KEY_W - 0.45)
+    local per = math.ceil(#list / 2)
+    local cols = {{}, {}}
+    for i, a in ipairs(list) do table.insert(cols[i <= per and 1 or 2], bind_row(a, inner, lw)) end
+    local note_h = 0.5
+    local line = M.ui.notice or L("Pick an action, then press its new key. Esc cancels.")
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+            UIK.columns(cols, {h = UIK.H - UIK.TOP - note_h, cards = true}),
+            {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = note_h, padding = 0}, nodes = {
+                {n = G.UIT.T, config = {text = line, scale = 0.32, colour = M.ui.notice and UIK.C.title or UIK.C.muted}},
+            }},
+        }},
+    }}
+end
+
+M.group_body = group_body
+
+function M.page()
+    local tabs = {}
+    for _, t in ipairs(M.TABS) do
+        tabs[#tabs + 1] = {key = t.key, label = L(t.label), build = function() return group_body(t.key) end}
+    end
+    return UIK.window{
+        id = "kb_binds",
+        title = L("KEYBOARD KEYS"),
+        tabs = tabs,
+        footer = {{label = L("Reset to defaults"), button = "kb_binds_reset", colour = UIK.C.danger}},
+        back_func = "kb_binds_back",
+    }
+end
+
+G.FUNCS.open_keyboard_binds = function()
+    if not M.enabled() then return end
+    M.capture = nil
+    M.ui.notice = nil
+r 13 1381 %20%20%20%20 -
+l 66
+    G.FUNCS.overlay_menu{definition = M.page()}
+end
+
+G.FUNCS.kb_bind_pick = function(e)
+    local a = e and e.config and e.config.ref_table
+    if not (a and a.id) then return end
+    M.capture = M.capture ~= a.id and a.id or nil
+    M.ui.notice = nil
+    redraw(a.id)
+end
+
+G.FUNCS.kb_binds_reset = function()
+    M.reset_binds()
+    M.ui.notice = L("Every key is back to its default")
+    redraw()
+end
+
+G.FUNCS.kb_binds_back = function(e)
+    M.capture = nil
+    M.ui.notice = nil
+    G.FUNCS.settings(e)
+end
+
+local function register_new(t)
+    local out = {}
+    for lang, entries in pairs(t) do
+        out[lang] = {}
+        local have = MOD_TRANSLATIONS and MOD_TRANSLATIONS[lang] or {}
+        for k, v in pairs(entries) do if have[k] == nil then out[lang][k] = v end end
+    end
+    mod_loc_register(out)
+end
+
+register_new{
+    fr = {["Keyboard play"] = "Jeu au clavier", ["Play a whole run with the keyboard"] = "Toute une partie au clavier",
+        ["Navigation"] = "Navigation", ["Hand"] = "Main", ["Jokers and consumables"] = "Jokers et consommables", ["Shop and packs"] = "Boutique et paquets",
+        ["Move up"] = "Haut", ["Move down"] = "Bas", ["Move left"] = "Gauche", ["Move right"] = "Droite", ["Press or pick"] = "Appuyer ou choisir",
+        ["Back"] = "Retour", ["Previous tab"] = "Onglet précédent", ["Next tab"] = "Onglet suivant", ["Run Info"] = "Infos partie",
+        ["Play or go on"] = "Jouer ou continuer", ["Discard or skip"] = "Défausser ou passer", ["Sort by rank"] = "Trier par valeur", ["Sort by suit"] = "Trier par couleur",
+        ["Card %d"] = "Carte %d", ["Use"] = "Utiliser", ["Sell"] = "Vendre", ["Move card left"] = "Carte à gauche", ["Move card right"] = "Carte à droite",
+        ["Buy"] = "Acheter", ["Buy and use"] = "Acheter et utiliser", ["Reroll"] = "Relancer",
+        ["Enter"] = "Entrée", ["Space"] = "Espace", ["Backspace"] = "Retour arrière", ["Up"] = "Haut", ["Down"] = "Bas", ["Left"] = "Gauche", ["Right"] = "Droite", ["kb_left"] = "Gauche", ["kb_right"] = "Droite",
+        ["Left Shift"] = "Maj gauche", ["Right Shift"] = "Maj droite", ["Left Ctrl"] = "Ctrl gauche", ["Right Ctrl"] = "Ctrl droit", ["Left Alt"] = "Alt", ["Right Alt"] = "Alt Gr",
+        ["Cards"] = "Cartes", ["Shop"] = "Boutique", ["KEYBOARD KEYS"] = "TOUCHES DU CLAVIER", ["Keyboard"] = "Clavier", ["Keyboard keys"] = "Touches du clavier",
+        ["See and change every key"] = "Voir et changer chaque touche", ["Press a key"] = "Appuyez sur une touche", ["Unbound"] = "Aucune",
+        ["Pick an action, then press its new key. Esc cancels."] = "Choisissez une action, puis appuyez sur sa nouvelle touche. Échap annule.",
+        ["%s moved from %s"] = "%s retirée de %s", ["Reset to defaults"] = "Touches par défaut", ["Every key is back to its default"] = "Toutes les touches sont revenues par défaut",
+        ["Page Up"] = "Page préc.", ["Page Down"] = "Page suiv.", ["Home"] = "Début", ["End"] = "Fin", ["Insert"] = "Inser", ["Delete"] = "Suppr"},
+    es = {["Keyboard play"] = "Jugar con teclado", ["Play a whole run with the keyboard"] = "Toda una partida con el teclado",
+        ["Navigation"] = "Navegación", ["Hand"] = "Mano", ["Jokers and consumables"] = "Comodines y consumibles", ["Shop and packs"] = "Tienda y paquetes",
+        ["Move up"] = "Arriba", ["Move down"] = "Abajo", ["Move left"] = "Izquierda", ["Move right"] = "Derecha", ["Press or pick"] = "Pulsar o elegir",
+        ["Back"] = "Volver", ["Previous tab"] = "Pestaña anterior", ["Next tab"] = "Pestaña siguiente", ["Run Info"] = "Info de partida",
+        ["Play or go on"] = "Jugar o seguir", ["Discard or skip"] = "Descartar o saltar", ["Sort by rank"] = "Ordenar por valor", ["Sort by suit"] = "Ordenar por palo",
+        ["Card %d"] = "Carta %d", ["Use"] = "Usar", ["Sell"] = "Vender", ["Move card left"] = "Carta a la izquierda", ["Move card right"] = "Carta a la derecha",
+        ["Buy"] = "Comprar", ["Buy and use"] = "Comprar y usar", ["Reroll"] = "Cambiar",
+        ["Enter"] = "Intro", ["Space"] = "Espacio", ["Backspace"] = "Retroceso", ["Up"] = "Arriba", ["Down"] = "Abajo", ["Left"] = "Izquierda", ["Right"] = "Derecha", ["kb_left"] = "Izq.", ["kb_right"] = "Der.",
+        ["Left Shift"] = "Mayús izq.", ["Right Shift"] = "Mayús der.", ["Left Ctrl"] = "Ctrl izq.", ["Right Ctrl"] = "Ctrl der.", ["Left Alt"] = "Alt", ["Right Alt"] = "Alt Gr",
+        ["Cards"] = "Cartas", ["Shop"] = "Tienda", ["KEYBOARD KEYS"] = "TECLAS DEL TECLADO", ["Keyboard"] = "Teclado", ["Keyboard keys"] = "Teclas del teclado",
+        ["See and change every key"] = "Ver y cambiar cada tecla", ["Press a key"] = "Pulsa una tecla", ["Unbound"] = "Sin tecla",
+        ["Pick an action, then press its new key. Esc cancels."] = "Elige una acción y pulsa su nueva tecla. Esc cancela.",
+        ["%s moved from %s"] = "%s quitada de %s", ["Reset to defaults"] = "Teclas por defecto", ["Every key is back to its default"] = "Todas las teclas vuelven a su valor por defecto",
+        ["Page Up"] = "Re Pág", ["Page Down"] = "Av Pág", ["Home"] = "Inicio", ["End"] = "Fin", ["Insert"] = "Insert", ["Delete"] = "Supr"},
+    ["en-us"] = {["kb_left"] = "Left", ["kb_right"] = "Right"},
+}
+
+return M
+end

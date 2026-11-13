@@ -1,0 +1,303 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 204
+SpeedrunResults = SpeedrunResults or {}
+local RS = SpeedrunResults
+local SR = Speedrun
+
+RS.view = RS.view or {online = '', online_col = {1, 1, 1, 1}}
+
+local function L(s) return mod_loc(s) end
+local function touch() return UIK.touch() end
+local fmt = SR.fmt
+
+local function delta(d)
+  if math.abs(d) < 0.05 then return "0.0" end
+  return (d < 0 and "-" or "+") .. fmt(math.abs(d))
+end
+
+local function set_col(dst, src)
+  dst[1], dst[2], dst[3], dst[4] = src[1], src[2], src[3], src[4] or 1
+end
+
+function RS.snapshot(c)
+  local g = G.GAME
+  local rs = g.round_scores or {}
+  c.hands_n = tonumber(g.hands_played) or 0
+  c.rerolls = rs.times_rerolled and tonumber(rs.times_rerolled.amt) or 0
+  c.money = tonumber(g.dollars) or 0
+end
+
+function RS.arm(c)
+  RS.snapshot(c)
+  RS.cur = c
+  RS.pending = {at = love.timer.getTime(), win = (c.target or 8) >= (tonumber(G.GAME.win_ante) or 8)}
+end
+
+function RS.run_of(c)
+  if not (c and c.id) then return nil end
+  for _, r in ipairs(SR.load().runs) do if r.id == c.id then return r end end
+end
+
+function RS.online_text(c)
+  local r = RS.run_of(c)
+  if not r then return '', G.C.UI.TEXT_INACTIVE end
+  if r.online == 'sent' then
+    if r.online_rank then return L("Online rank") .. " #" .. r.online_rank, G.C.GOLD end
+    return L("Sent online"), G.C.GREEN
+  end
+  if r.online == 'refused' then return L("Not accepted online"), G.C.RED end
+  local SO = rawget(_G, 'SpeedrunOnline')
+  if SO and SO.connected() then return L("Sending online..."), G.C.UI.TEXT_LIGHT end
+  return L("Offline: sent next time you are online"), G.C.UI.TEXT_INACTIVE
+end
+
+function RS.submit()
+  local SO = rawget(_G, 'SpeedrunOnline')
+  if not SO then return end
+  if SO.connected() then
+    pcall(SR.flush)
+    return
+  end
+  local c = rawget(_G, 'bom_core')
+  if c and c.connect and rawget(_G, 'AndroidWS') then
+    pcall(c.connect, function() pcall(SR.flush) end, {silent = true, on_fail = function() end})
+  end
+end
+
+local function cell(text, w, colour, scale, align)
+  return {n = G.UIT.C, config = {align = align or 'cm', minw = w, maxw = w}, nodes = {
+    {n = G.UIT.T, config = {text = tostring(text), scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}},
+  }}
+end
+
+local function line(cells, w, h)
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h, padding = 0}, nodes = cells}
+  node.uik_h = h
+  return node
+end
+
+local function pair(label, value, w, h, colour)
+  local s = RS.row_scale(h)
+  return line({cell(label, w * 0.5, G.C.UI.TEXT_LIGHT, s, 'cl'), cell(value, w * 0.5, colour or G.C.WHITE, s, 'cr')}, w, h)
+end
+
+function RS.row_scale(h)
+  if h >= 0.55 then return touch() and 0.4 or 0.38 end
+  return touch() and 0.32 or 0.3
+end
+
+function RS.split_rows(c, w, h)
+  local cat = SR.cat(c.cat)
+  local target = cat and cat.target or 0
+  local s = RS.row_scale(h)
+  local cw = {w * 0.3, w * 0.36, w * 0.34}
+  local rows = {line({cell(localize('k_ante'), cw[1], G.C.UI.TEXT_INACTIVE, s * 0.9), cell(L("Split"), cw[2], G.C.UI.TEXT_INACTIVE, s * 0.9),
+    cell(L("vs PB"), cw[3], G.C.UI.TEXT_INACTIVE, s * 0.9)}, w, h)}
+  for a = 1, target do
+    local t = c.splits and c.splits[a]
+    local pb = c.pb_splits and c.pb_splits[a]
+    local d, dc = '-', G.C.UI.TEXT_INACTIVE
+    if t and pb then
+      d = delta(t - pb)
+      dc = t - pb <= 0 and G.C.GREEN or G.C.RED
+    end
+    rows[#rows + 1] = line({cell(tostring(a), cw[1], G.C.IMPORTANT, s), cell(t and fmt(t) or '-', cw[2], G.C.WHITE, s), cell(d, cw[3], dc, s)}, w, h)
+  end
+  return rows
+end
+
+function RS.body(c)
+  local t = touch()
+  local cols = 3
+  local w = UIK.col_w(cols)
+  local inner = w - 2 * UIK.PAD
+  local cat = SR.cat(c.cat)
+  local target = cat and cat.target or 0
+  local nrows = math.max(target + 1, 5)
+  local time_h, pb_h, online_h = t and 1.3 or 1.2, t and 0.5 or 0.44, t and 0.46 or 0.4
+  local head_h = t and 0.54 or 0.46
+  local sec_h = UIK.H - time_h - pb_h - online_h - 0.12
+  local function fit(n) return math.max(0.3, math.min(0.7, (sec_h - head_h - UIK.PAD * 2) / n - UIK.PAD)) end
+  local rh, split_h = fit(5), fit(nrows)
+  local pb = c.pb
+  local prev = c.prev_best
+  local pb_line, pb_col
+  if pb then
+    pb_line = prev and (L("New personal best!") .. "  " .. delta(c.t - prev)) or L("New personal best!")
+    pb_col = G.C.GOLD
+  else
+    pb_line = L("Personal best") .. ": " .. (prev and fmt(prev) or '-') .. "  " .. (prev and delta(c.t - prev) or '')
+    pb_col = G.C.RED
+  end
+  local seed = tostring(c.seed or '')
+  if c.seed_type == 'weekly' then seed = seed .. " (" .. L("Weekly") .. ")" end
+  local run_rows = {
+    pair(L("Category"), cat and L(cat.label) or '-', inner, rh),
+    pair(localize('k_deck'), SR.deck_name(c.deck), inner, rh),
+    pair(localize('k_stake'), SR.stake_name(c.stake or 1), inner, rh),
+    pair(L("Seed"), seed, inner, rh),
+  }
+  local stat_rows = {
+    pair(L("Hands played"), tostring(c.hands_n or 0), inner, rh, G.C.BLUE),
+    pair(L("Discards used"), tostring(c.discards or 0), inner, rh, G.C.RED),
+    pair(L("Rerolls"), tostring(c.rerolls or 0), inner, rh, G.C.GREEN),
+    pair(L("Money"), localize('$') .. tostring(c.money or 0), inner, rh, G.C.MONEY),
+    pair(L("Paused"), fmt(c.paused_t or 0), inner, rh, G.C.UI.TEXT_LIGHT),
+  }
+  local function sec(title, rows)
+    return UIK.section(title, rows, {w = w, col = true, h = sec_h})
+  end
+  local big = t and 1.25 or 1.15
+  return {n = G.UIT.ROOT, config = {align = 'tm', colour = G.C.CLEAR, padding = 0}, nodes = {
+    {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, minh = time_h, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {id = 'sr_res_time', align = 'cm', r = 0.12, padding = 0.08, minw = 5.4, minh = time_h - 0.12, colour = G.C.DYN_UI.BOSS_DARK, emboss = 0.05}, nodes = {
+        {n = G.UIT.T, config = {text = fmt(c.t), scale = big, colour = pb and G.C.GOLD or G.C.WHITE, shadow = true, lang = G.LANGUAGES['en-us']}},
+      }},
+    }},
+    {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, minh = pb_h, padding = 0}, nodes = {
+      {n = G.UIT.T, config = {text = pb_line, scale = t and 0.42 or 0.38, colour = pb_col, shadow = true}},
+    }},
+    {n = G.UIT.R, config = {align = 'tm', padding = 0}, nodes = {
+      sec(L("Run"), run_rows),
+      {n = G.UIT.C, config = {minw = UIK.GAP}},
+      sec(L("Splits"), RS.split_rows(c, inner, split_h)),
+      {n = G.UIT.C, config = {minw = UIK.GAP}},
+      sec(L("Stats"), stat_rows),
+    }},
+    {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, minh = online_h, padding = 0}, nodes = {
+      {n = G.UIT.T, config = {ref_table = RS.view, ref_value = 'online', scale = t and 0.32 or 0.3, colour = RS.view.online_col, shadow = true}},
+    }},
+  }}
+end
+
+function RS.foot_w(labels)
+  local t = touch()
+  local w, s = t and 3.0 or 2.85, t and 0.5 or 0.47
+  local tw = 0
+  for _, l in ipairs(labels) do tw = math.max(tw, UIK.text_w(l, s)) end
+  w = math.min(math.max(w, tw + 0.5), (UIK.W - 0.12 * (#labels + 1)) / #labels)
+  return w, s * math.min(1, (w - 0.5) / math.max(tw, 0.01))
+end
+
+function RS.def(c)
+  local run = RS.run_of(c)
+  local can_watch = run and run.sprp and rawget(_G, 'BO_SPREPLAY') and BO_SPREPLAY.exists(run.sprp) or false
+  RS.view.online = ''
+  local labels = {L("Continue the run"), L("New attempt"), L("Watch"), L("Main menu")}
+  local bw, bs = RS.foot_w(labels)
+  return UIK.window{
+    id = 'speedrun_results',
+    title = L("GOAL REACHED"),
+    tabs = {{key = 'res', label = L("Results"), build = function() return RS.body(c) end}},
+    no_back = true,
+    footer = {
+      UIK.button{label = labels[1], button = 'sr_res_continue', colour = UIK.C.ok, id = 'sr_res_continue', w = bw, scale = bs},
+      UIK.button{label = labels[2], button = 'sr_res_again', colour = UIK.C.warn, id = 'sr_res_again', w = bw, scale = bs},
+      UIK.button{label = labels[3], button = 'sr_res_watch', colour = UIK.C.accent, id = 'sr_res_watch', disabled = not can_watch, w = bw, scale = bs},
+      UIK.button{label = labels[4], button = 'sr_res_menu', colour = UIK.C.danger, id = 'sr_res_menu', w = bw, scale = bs},
+    },
+  }
+end
+
+function RS.open(c)
+  c = c or RS.cur
+  RS.pending = nil
+  if not c then return end
+  RS.shown = c
+r 13 1381 %20%20 -
+l 41
+  G.FUNCS.overlay_menu{definition = RS.def(c), config = {no_esc = true}}
+  RS.submit()
+end
+
+function RS.update()
+  if RS.shown and G.OVERLAY_MENU and UIK._win and UIK._win.id == 'speedrun_results' then
+    local text, col = RS.online_text(RS.shown)
+    RS.view.online = text
+    set_col(RS.view.online_col, col)
+  end
+  local p = RS.pending
+  if not p then return end
+  if not (G.STAGE == G.STAGES.RUN and G.GAME and G.GAME.speedrun == RS.cur) then
+    RS.pending = nil
+    return
+  end
+  if G.STATE ~= G.STATES.ROUND_EVAL or G.OVERLAY_MENU or G.screenwipe then return end
+  local wait = p.win and 4 or 0.8
+  if love.timer.getTime() - p.at < wait then return end
+  RS.open()
+end
+
+local _rs_win = create_UIBox_win
+function create_UIBox_win(...)
+  local g = G and G.GAME
+  if RS.pending and RS.pending.win and g and not g.multiplayer and g.speedrun == RS.cur then
+    local c = RS.cur
+    RS.pending = nil
+    RS.shown = c
+    local ok, def = pcall(RS.def, c)
+    if ok and def then
+      G.E_MANAGER:add_event(Event({trigger = 'immediate', blocking = false, blockable = false, func = function() RS.submit() return true end}))
+      return def
+    end
+    print("[Speedrun] results: " .. tostring(def))
+  end
+  return _rs_win(...)
+end
+
+G.FUNCS.sr_res_continue = function()
+  RS.shown = nil
+r 13 1375 %20%20 -
+l 14
+end
+
+G.FUNCS.sr_res_again = function()
+  local c = RS.shown or RS.cur
+  RS.shown = nil
+  if not c then return end
+  SR.start({cat = c.cat, deck = c.deck, stake = c.stake, seed = c.seed_type})
+end
+
+G.FUNCS.sr_res_watch = function()
+  local run = RS.run_of(RS.shown or RS.cur)
+  local SPR = rawget(_G, 'BO_SPREPLAY')
+  if not (run and run.sprp and SPR and SPR.exists(run.sprp)) then return end
+  RS.shown = nil
+r 13 1375 %20%20 -
+l 5
+  if SR.watch then SR.watch(run) else SPR.watch(run.sprp) end
+end
+
+G.FUNCS.sr_res_menu = function()
+  RS.shown = nil
+r 13 1375 %20%20 -
+l 25
+  G.FUNCS.go_to_menu()
+end
+
+mod_loc_register{
+  fr = {
+    ["GOAL REACHED"] = "OBJECTIF ATTEINT", ["Results"] = "Résultats",
+    ["Continue the run"] = "Continuer la partie", ["New attempt"] = "Nouvel essai", ["Watch"] = "Regarder", ["Main menu"] = "Menu principal",
+    ["vs PB"] = "vs record",
+    ["Discards used"] = "Défausses utilisées", ["Rerolls"] = "Relances",
+    ["Online rank"] = "Rang en ligne", ["Sent online"] = "Envoyé en ligne",
+    ["Not accepted online"] = "Refusé en ligne", ["Sending online..."] = "Envoi en ligne...",
+    ["Offline: sent next time you are online"] = "Hors ligne : envoyé à la prochaine connexion",
+  },
+  es = {
+    ["GOAL REACHED"] = "OBJETIVO CUMPLIDO", ["Results"] = "Resultados",
+    ["Continue the run"] = "Seguir la partida", ["New attempt"] = "Nuevo intento", ["Watch"] = "Ver", ["Main menu"] = "Menú principal",
+    ["vs PB"] = "vs marca",
+    ["Discards used"] = "Descartes usados", ["Rerolls"] = "Cambios",
+    ["Online rank"] = "Puesto en línea", ["Sent online"] = "Enviado en línea",
+    ["Not accepted online"] = "Rechazado en línea", ["Sending online..."] = "Enviando en línea...",
+    ["Offline: sent next time you are online"] = "Sin conexión: se enviará la próxima vez",
+  },
+}
+
+return RS
+end

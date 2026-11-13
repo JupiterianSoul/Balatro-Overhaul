@@ -1,0 +1,56 @@
+BOP 2
+eol lf
+final 1
+base 10
+c 4
+s 1
+e 10 5 - - =2,-36,=62
+c 31
+l 1
+
+c 20
+s 1
+l 4
+    local ok, s = pcall(function()
+        return {sound = love.audio.newSource("resources/sounds/"..args.sound_code..'.ogg', should_stream and "stream" or 'static')}
+    end)
+    if not ok or not s then return end
+c 22
+s 1
+l 1
+
+c 1
+s 1
+r 10 82 %20%20%20%20 -
+c 10
+s 1
+r 10 93 %20%20%20%20%20%20%20%20 -
+c 12
+s 1
+l 1
+
+c 31
+s 1
+r 10 138 %20%20%20%20%20%20%20%20 -
+c 15
+s 1
+r 10 154 %20%20%20%20%20%20%20%20 -
+c 1
+s 1
+l 1
+
+c 7
+s 1
+l 1
+
+c 24
+l 1
+        if request.type == 'kill' then return end
+c 1
+s 1
+r 10 190 %20%20%20%20%20%20%20%20 -
+c 3
+s 1
+r 10 194 %20%20%20%20%20%20%20%20 -
+c 13
+end

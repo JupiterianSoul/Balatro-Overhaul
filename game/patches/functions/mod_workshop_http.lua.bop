@@ -1,0 +1,476 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 5
+local math = require("functions.pure_math")
+require("love.filesystem")
+require "love.timer"
+require "love.image"
+require "love.data"
+r 26 1 - -
+l 463
+
+local CHANNEL = ...
+local REQ = love.thread.getChannel(CHANNEL or "workshop_req")
+local RES = love.thread.getChannel("workshop_res")
+local UA = "BalatroOverhaul/1.0 (" .. tostring(love.system.getOS()) .. ")"
+local TUNNEL_PORT = tonumber(os.getenv("OVERHAUL_TUNNEL_PORT") or "") or 44380
+
+local has_https, https = pcall(require, "https")
+if not has_https or (type(https) == "table" and https.overhaul and love.system.getOS() ~= "Windows") then https = nil end
+local has_socket, socket = pcall(require, "socket")
+if not has_socket then socket = nil end
+local json
+do
+    local ok, chunk = pcall(love.filesystem.load, "smods/libs/json/json.lua")
+    if ok and chunk then
+        local ok2, lib = pcall(chunk)
+        if ok2 then json = lib end
+    end
+end
+
+local OS = love.system.getOS()
+local killed = false
+
+local current_cancel
+
+local KILL = love.thread.getChannel("workshop_kill")
+
+local function check_kill()
+    local top = REQ:peek()
+    if type(top) == "table" and top.type == "kill" then killed = true end
+    if KILL:peek() ~= nil then killed = true end
+    return killed or (current_cancel ~= nil and current_cancel:peek() ~= nil)
+end
+
+local function split_url(url)
+    local scheme, host, path = url:match("^(https?)://([^/]+)(.*)$")
+    if not scheme then return nil end
+    if path == "" then path = "/" end
+    return scheme, host, path
+end
+
+local function resolve(base, loc)
+    if loc:match("^https?://") then return loc end
+    local scheme, host = base:match("^(https?)://([^/]+)")
+    if loc:sub(1, 2) == "//" then return scheme .. ":" .. loc end
+    if loc:sub(1, 1) == "/" then return scheme .. "://" .. host .. loc end
+    local dir = base:match("^(.*/)") or (base .. "/")
+    return dir .. loc
+end
+
+local function lower_headers(h)
+    local out = {}
+    for k, v in pairs(h or {}) do out[tostring(k):lower()] = v end
+    return out
+end
+
+local function tunnel_request(url, sink, progress)
+    local scheme, host, path = split_url(url)
+    if not scheme then return nil, "bad url" end
+    local tcp = socket.tcp()
+    tcp:settimeout(8)
+    if scheme == "http" then
+        local h, port = host:match("^([^:]+):?(%d*)$")
+        local ok, err = tcp:connect(h or host, tonumber(port) or 80)
+        if not ok then
+            tcp:close()
+            return nil, "connect:" .. tostring(err)
+        end
+    else
+        local ok, err = tcp:connect("127.0.0.1", TUNNEL_PORT)
+        if not ok then
+            tcp:close()
+            return nil, "no_tunnel:" .. tostring(err)
+        end
+        tcp:send(host .. ":443\n")
+        tcp:settimeout(30)
+        local line, e2 = tcp:receive("*l")
+        if line ~= "OK" then
+            tcp:close()
+            return nil, "tunnel:" .. tostring(line or e2)
+        end
+    end
+    tcp:settimeout(45)
+    local req = "GET " .. path .. " HTTP/1.1\r\nHost: " .. host .. "\r\nUser-Agent: " .. UA ..
+        "\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n"
+    local sent, e3 = tcp:send(req)
+    if not sent then tcp:close(); return nil, "send:" .. tostring(e3) end
+    local status_line, e4 = tcp:receive("*l")
+    if not status_line then tcp:close(); return nil, "recv:" .. tostring(e4) end
+    local code = tonumber(status_line:match("^HTTP/%d%.?%d?%s+(%d+)"))
+    if not code then tcp:close(); return nil, "bad status: " .. status_line:sub(1, 60) end
+    local headers = {}
+    while true do
+        local h, e5 = tcp:receive("*l")
+        if not h then tcp:close(); return nil, "headers:" .. tostring(e5) end
+        if h == "" then break end
+        local k, v = h:match("^([^:]+):%s*(.*)$")
+        if k then headers[k:lower()] = v end
+    end
+    if code >= 300 and code < 400 and headers.location then
+        tcp:close()
+        return code, nil, headers
+    end
+    local ok_body = code >= 200 and code < 300
+    local total = tonumber(headers["content-length"])
+    local got = 0
+    local function emit(chunk)
+        got = got + #chunk
+        if ok_body then sink(chunk) end
+        if progress then progress(got, total) end
+    end
+    local te = (headers["transfer-encoding"] or ""):lower()
+    if te:find("chunked") then
+        while true do
+            local size_line, e6 = tcp:receive("*l")
+            if not size_line then tcp:close(); return nil, "chunk:" .. tostring(e6) end
+            local size = tonumber(size_line:match("^%s*(%x+)"), 16)
+            if not size then tcp:close(); return nil, "bad chunk" end
+            if size == 0 then break end
+            local left = size
+            while left > 0 do
+                if check_kill() then tcp:close(); return nil, "killed" end
+                local part, e7, partial = tcp:receive(math.min(left, 65536))
+                part = part or partial
+                if not part or #part == 0 then tcp:close(); return nil, "body:" .. tostring(e7) end
+                left = left - #part
+                emit(part)
+            end
+            tcp:receive("*l")
+        end
+    elseif total then
+        local left = total
+        while left > 0 do
+            if check_kill() then tcp:close(); return nil, "killed" end
+            local part, e8, partial = tcp:receive(math.min(left, 65536))
+            part = part or partial
+            if not part or #part == 0 then tcp:close(); return nil, "body:" .. tostring(e8) end
+            left = left - #part
+            emit(part)
+        end
+    else
+        while true do
+            if check_kill() then tcp:close(); return nil, "killed" end
+            local part, e9, partial = tcp:receive(65536)
+            part = part or partial
+            if part and #part > 0 then emit(part) end
+            if e9 == "closed" then break end
+            if e9 and e9 ~= "timeout" then tcp:close(); return nil, "body:" .. tostring(e9) end
+            if e9 == "timeout" and (not part or #part == 0) then tcp:close(); return nil, "timeout" end
+        end
+    end
+    tcp:close()
+    return code, nil, headers
+end
+
+local function https_request(url, sink, progress)
+    local code, body, headers = https.request(url, {method = "GET", headers = {["User-Agent"] = UA}})
+    if not code or code == 0 then return nil, "https:" .. tostring(body) end
+    headers = lower_headers(headers)
+    if code >= 300 and code < 400 and headers.location then return code, nil, headers end
+    if code >= 200 and code < 300 and body then
+        sink(body)
+        if progress then progress(#body, #body) end
+    end
+    return code, nil, headers
+end
+
+local function shell_quote(s)
+    return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+local function curl_request(url, sink, progress, dest)
+    local tmp = dest or (love.filesystem.getSaveDirectory() .. "/mods/.workshop/curl_" .. tostring(CHANNEL) .. ".part")
+    local codef = tmp .. ".code"
+    os.remove(tmp)
+    os.remove(codef)
+    local cmd = "curl -fsSL --max-time " .. (dest and 3600 or 600) .. " -A " .. shell_quote(UA) .. " -o " .. shell_quote(tmp) .. " -w '%{http_code}' " .. shell_quote(url)
+        .. " > " .. shell_quote(codef) .. " 2>/dev/null & echo $!"
+    local p = io.popen(cmd)
+    if not p then return nil, "curl unavailable" end
+    local pid = tonumber(p:read("*l") or "")
+    p:close()
+    if not pid then return nil, "curl unavailable" end
+    local last = -1
+    local polls = 0
+    local function finished()
+        local cf = io.open(codef, "rb")
+        local txt = cf and cf:read("*a") or ""
+        if cf then cf:close() end
+        if txt:match("%d%d%d") then return true end
+        local r = os.execute("kill -0 " .. pid .. " 2>/dev/null")
+        return not (r == 0 or r == true)
+    end
+    while true do
+        polls = polls + 1
+        if finished() then break end
+        if check_kill() then
+            os.execute("kill -9 " .. pid .. " 2>/dev/null")
+            love.timer.sleep(0.05)
+            os.remove(tmp)
+            os.remove(codef)
+            return nil, "killed"
+        end
+        if progress then
+            local f = io.open(tmp, "rb")
+            if f then
+                local size = f:seek("end") or 0
+                f:close()
+                if size ~= last then
+                    last = size
+                    progress(size, nil)
+                end
+            end
+        end
+        love.timer.sleep(polls < 20 and 0.01 or 0.1)
+    end
+    local cf = io.open(codef, "rb")
+    local out = cf and cf:read("*a") or ""
+    if cf then cf:close() end
+    os.remove(codef)
+    local code = tonumber(out:match("(%d%d%d)%s*$"))
+    if not code or code == 0 then os.remove(tmp); return nil, "curl failed" end
+    if dest then return code, nil, {} end
+    local f = io.open(tmp, "rb")
+    if f then
+        local data = f:read("*a")
+        f:close()
+        if code >= 200 and code < 300 then
+            sink(data)
+            if progress then progress(#data, #data) end
+        end
+    end
+    os.remove(tmp)
+    return code, nil, {}
+end
+
+local backend_name
+local function pick_backends()
+    local list = {}
+    if https then list[#list + 1] = {"https", https_request} end
+    if socket then list[#list + 1] = {"tunnel", tunnel_request} end
+    if OS ~= "Windows" and OS ~= "Android" and OS ~= "iOS" then list[#list + 1] = {"curl", curl_request} end
+    return list
+end
+local BACKENDS = pick_backends()
+
+local function transient(code)
+    return code == 408 or code == 429 or (code and code >= 500 and code < 600)
+end
+
+local function nap(sec)
+    local t = love.timer.getTime() + sec
+    while love.timer.getTime() < t do
+        if check_kill() then return false end
+        love.timer.sleep(0.05)
+    end
+    return true
+end
+
+local function try_backend(b, url, sink, progress, dest)
+    local current = url
+    local code, err, headers
+    for _ = 1, 8 do
+        code, err, headers = b[2](current, sink, progress, dest)
+        if code and code >= 300 and code < 400 and headers and headers.location then
+            current = resolve(current, headers.location)
+        else
+            break
+        end
+    end
+    return code, err
+end
+
+local ROUNDS = {0, 1, 3}
+
+local function fetch(url, sink, progress, dest, reset)
+    local list = {}
+    if socket and url:sub(1, 7) == "http://" then
+        list[1] = {"direct", tunnel_request}
+    else
+        for _, b in ipairs(BACKENDS) do
+            if b[1] == backend_name then table.insert(list, 1, b) else list[#list + 1] = b end
+        end
+    end
+    if #list == 0 then return nil, "no backend" end
+    local last_code, last_err = nil, "no backend"
+    local tries = 0
+    for _, wait in ipairs(ROUNDS) do
+        if wait > 0 and not nap(wait) then return nil, "killed" end
+        for _, b in ipairs(list) do
+            if check_kill() then return nil, "killed" end
+            tries = tries + 1
+            if tries > 1 and reset then reset() end
+            local code, err = try_backend(b, url, sink, progress, dest)
+            if err == "killed" then return nil, err end
+            if code and not transient(code) then
+                if b[1] ~= "direct" then backend_name = b[1] end
+                return code, nil, b[1]
+            end
+            last_code, last_err = code, err
+        end
+    end
+    if last_code then return last_code, nil, "retry" end
+    return nil, last_err
+end
+
+local function get_text(url)
+    local parts = {}
+    local code, err = fetch(url, function(c) parts[#parts + 1] = c end, nil, nil, function() parts = {} end)
+    if not code then return nil, err end
+    if code < 200 or code >= 300 then return nil, "http " .. code, code end
+    return table.concat(parts), nil, code
+end
+
+local function do_download(job)
+    local path = job.path
+    love.filesystem.createDirectory(path:match("^(.*)/[^/]*$") or "")
+    local file = love.filesystem.newFile(path, "w")
+    if not file then return {ok = false, err = "cannot write " .. path} end
+    local function reset()
+        pcall(file.close, file)
+        file = love.filesystem.newFile(path, "w")
+    end
+    local last = 0
+    local code, err = fetch(job.url, function(c) if file then file:write(c) end end, function(got, total)
+        local t = love.timer.getTime()
+        if t - last > 0.1 then
+            last = t
+            RES:push({id = job.id, type = "progress", got = got, total = total or -1})
+        end
+    end, love.filesystem.getSaveDirectory() .. "/" .. path, reset)
+    if file then file:close() end
+    if not code then love.filesystem.remove(path); return {ok = false, err = err} end
+    if code < 200 or code >= 300 then love.filesystem.remove(path); return {ok = false, err = "http " .. code, code = code} end
+    local info = love.filesystem.getInfo(path)
+    return {ok = true, size = info and info.size or 0}
+end
+
+local function do_thumb(job)
+    local body, err = get_text(job.url)
+    if not body then return {ok = false, err = err} end
+    local ok, img = pcall(function()
+        return love.image.newImageData(love.filesystem.newFileData(body, "thumb.jpg"))
+    end)
+    if not ok or not img then return {ok = false, err = "decode"} end
+    local sw, sh = img:getDimensions()
+    local tw, th = job.w or 320, job.h or 180
+    local want = tw / th
+    local cw, ch = sw, sh
+    if sw / sh > want then cw = math.floor(sh * want) else ch = math.floor(sw / want) end
+    local ox, oy = math.floor((sw - cw) / 2), math.floor((sh - ch) / 2)
+    local out = love.image.newImageData(tw, th)
+    local fx, fy = cw / tw, ch / th
+    local samples = {0.25, 0.75}
+    for y = 0, th - 1 do
+        for x = 0, tw - 1 do
+            local r, g, b = 0, 0, 0
+            for _, sy in ipairs(samples) do
+                for _, sx in ipairs(samples) do
+                    local px = math.min(sw - 1, math.floor(ox + (x + sx) * fx))
+                    local py = math.min(sh - 1, math.floor(oy + (y + sy) * fy))
+                    local pr, pg, pb = img:getPixel(px, py)
+                    r, g, b = r + pr, g + pg, b + pb
+                end
+            end
+            out:setPixel(x, y, r / 4, g / 4, b / 4, 1)
+        end
+    end
+    love.filesystem.createDirectory(job.path:match("^(.*)/[^/]*$") or "")
+    out:encode("png", job.path)
+    return {ok = true}
+end
+
+local function do_refresh(job)
+    if not json then return {ok = false, err = "no json"} end
+    local api = "https://api.github.com/repos/" .. job.repo .. "/git/trees/"
+    local root_txt, err = get_text(api .. job.branch)
+    if not root_txt then return {ok = false, err = err} end
+    local ok, root = pcall(json.decode, root_txt)
+    if not ok or type(root) ~= "table" or type(root.tree) ~= "table" then return {ok = false, err = "bad tree"} end
+    local mods_sha
+    for _, t in ipairs(root.tree) do if t.path == "mods" then mods_sha = t.sha end end
+    if not mods_sha then return {ok = false, err = "no mods dir"} end
+    if mods_sha == job.mods_sha then return {ok = true, same = true, mods_sha = mods_sha} end
+    local tree_txt, err2 = get_text(api .. mods_sha)
+    if not tree_txt then return {ok = false, err = err2} end
+    local ok2, tree = pcall(json.decode, tree_txt)
+    if not ok2 or type(tree) ~= "table" or type(tree.tree) ~= "table" then return {ok = false, err = "bad mods tree"} end
+    local known = job.known or {}
+    local present, changed = {}, {}
+    for _, t in ipairs(tree.tree) do
+        if t.type == "tree" then
+            present[t.path] = true
+            if known[t.path] ~= t.sha then changed[#changed + 1] = {key = t.path, sha = t.sha} end
+        end
+    end
+    local removed = {}
+    for key in pairs(known) do if not present[key] then removed[#removed + 1] = key end end
+    local raw = "https://raw.githubusercontent.com/" .. job.repo .. "/" .. job.branch .. "/mods/"
+    local updates = {}
+    for i, c in ipairs(changed) do
+        if check_kill() then return {ok = false, err = "killed"} end
+        local enc = c.key:gsub("[^%w%-%._~@]", function(ch) return string.format("%%%02X", ch:byte()) end):gsub("@", "%%40")
+        local meta_txt = get_text(raw .. enc .. "/meta.json")
+        local ok3, meta = pcall(json.decode, meta_txt or "")
+        if ok3 and type(meta) == "table" then
+            local desc = get_text(raw .. enc .. "/description.md") or ""
+            local cats = {}
+            for _, cat in ipairs(type(meta.categories) == "table" and meta.categories or {}) do cats[#cats + 1] = tostring(cat) end
+            updates[#updates + 1] = {
+                key = c.key, sha = c.sha,
+                title = tostring(meta.title or c.key),
+                author = tostring(meta.author or c.key:match("^([^@]*)") or ""),
+                version = tostring(meta.version or ""),
+                categories = cats,
+                repo = tostring(meta.repo or ""),
+                url = tostring(meta.downloadURL or ""),
+                smods = meta["requires-steamodded"] == true,
+                talisman = meta["requires-talisman"] == true,
+                folder = type(meta.folderName) == "string" and meta.folderName or nil,
+                desc = desc:sub(1, 6000),
+            }
+        end
+        RES:push({id = job.id, type = "progress", got = i, total = #changed})
+    end
+    return {ok = true, mods_sha = mods_sha, updates = updates, removed = removed}
+end
+
+local HANDLERS = {
+    download = do_download,
+    thumb = do_thumb,
+    refresh = do_refresh,
+    get = function(job)
+        local body, err, code = get_text(job.url)
+        if not body then return {ok = false, err = err, code = code} end
+        return {ok = true, body = body}
+    end,
+}
+
+while true do
+    if check_kill() then return end
+    local job = REQ:demand()
+    if KILL:peek() ~= nil then return end
+    if type(job) == "table" then
+        if job.type == "kill" then return end
+        local handler = HANDLERS[job.type]
+        current_cancel = job.id and love.thread.getChannel("workshop_cancel_" .. tostring(job.id)) or nil
+        local ok, res
+        if current_cancel and current_cancel:peek() ~= nil then
+            ok, res = true, {ok = false, err = "cancelled"}
+        else
+            ok, res = pcall(handler or function() return {ok = false, err = "unknown job"} end, job)
+        end
+        if current_cancel then current_cancel:clear() end
+        current_cancel = nil
+        if killed then return end
+        if not ok then res = {ok = false, err = tostring(res)} end
+        res.id = job.id
+        res.type = "done"
+        res.backend = backend_name
+        RES:push(res)
+    end
+end
+end

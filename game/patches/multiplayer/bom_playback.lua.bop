@@ -1,0 +1,2044 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 393
+local PB = {}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function NOOP() end
+
+PB.SPEEDS = { 1, 2, 4 }
+PB.FF_SPEED = 16
+PB.WATCHDOG_S = 25
+PB.IN_HOLD_S = 3
+PB.IN_STATE_S = 1.5
+PB.STEP_GAP = 0.6
+PB.LIVES_HOLD_S = 20
+PB.PAUSED_S = 8
+PB.LOAD_S = 60
+PB.INFO_IN = {
+    match_state_update = true, set_location = true, enemy_info = true, ante_timer = true, pvp_timer_paused = true,
+    pvp_timer_resumed = true, opponent_deck = true, party_location = true, party_notice = true,
+    opponent_ready_blind = true, opponent_unready_blind = true,
+}
+
+local S = nil
+PB._last = nil
+
+function PB.active() return S ~= nil end
+function PB.state() return S or PB._last end
+function PB.open_pool() return S ~= nil and type(S.start) == "table" and S.start.op ~= nil end
+
+local function RP() return rawget(_G, "bom_replay") end
+local function bmatch() return rawget(_G, "bom_match") end
+
+PB.ACTION_BUTTONS = {
+    play_cards_from_highlighted = true, discard_cards_from_highlighted = true, select_blind = true, skip_blind = true,
+    buy_from_shop = true, sell_card = true, use_card = true, reroll_shop = true, skip_booster = true, cash_out = true,
+    toggle_shop = true, reroll_boss = true, bom_lose_life_button = true, bom_toggle_ready_blind = true,
+    options = true, mps_chat_open_run = true, social_emote_open_run = true,
+}
+
+function PB.blocks_button(name)
+    return S ~= nil and not S.waiting_start and not S.driving and PB.ACTION_BUTTONS[name] == true
+end
+
+local IN_PREFIX = { "spectate_", "social_", "chat_", "notify_", "ranked_", "replay_" }
+local IN_ALLOW = { match_history = true, menu_info = true, name_check = true, pong = true, daily_ruleset = true, room_list = true, spec_board = false }
+
+local function allowed(t, extra)
+    if type(t) ~= "string" then return false end
+    if IN_ALLOW[t] or (extra and extra[t]) then return true end
+    for _, p in ipairs(IN_PREFIX) do
+        if t:sub(1, #p) == p then return true end
+    end
+    return false
+end
+PB.allowed_type = allowed
+
+function PB.filter_in(data)
+    if not S or S.waiting_start or S.injecting or type(data) ~= "table" then return false end
+    return not allowed(data.type)
+end
+
+local OUT_ALLOW = { ping = true, spectate_list = true, spectate_watch = true, spectate_leave = true, social_status = true }
+
+local STUB_GLOBALS = {
+    "save_run", "check_for_unlock", "unlock_card", "unlock_achievement", "discover_card",
+    "set_joker_usage", "set_joker_win", "set_joker_loss", "set_deck_usage", "set_deck_win", "set_deck_loss",
+    "set_voucher_usage", "inc_career_stat", "save_with_action",
+    "progression_on_hand_played", "progression_on_ante_cleared", "progression_on_boss_defeated", "progression_on_run_win",
+    "award_xp", "mp_award_xp", "mp_record_match", "notify_alert", "remove_save", "unlock_notify",
+}
+local RUN_ONLY_GLOBALS = { "set_consumeable_usage", "set_hand_usage", "check_and_set_high_score" }
+local NIL_GLOBALS = { "AchievementManager", "QuestManager" }
+
+local function run_only(fn)
+    return function(...)
+        local key = G.SETTINGS and G.SETTINGS.profile
+        local real = key and G.PROFILES and G.PROFILES[key]
+        local comp = G.SETTINGS and G.SETTINGS.COMP
+        if real then
+            G.PROFILES[key] = setmetatable({ consumeable_usage = {}, hand_usage = {}, high_scores = {}, voucher_usage = {}, joker_usage = {} }, { __index = real })
+        end
+        if comp then G.SETTINGS.COMP = nil end
+        local res = { pcall(fn, ...) }
+        if real then G.PROFILES[key] = real end
+        if comp then G.SETTINGS.COMP = comp end
+        if not res[1] then error(res[2], 0) end
+        return unpack(res, 2)
+    end
+end
+local G_STUBS = { "save_progress", "save_settings", "save_notify" }
+local MODULE_STUBS = {
+    bom_rejoin = { "on_save", "upload_pending", "poll_pack", "on_connection_lost", "begin_reconnect", "store_session", "show_menu_popup" },
+    bom_rewards = { "grant", "award", "on_match_end", "add_xp" },
+}
+
+local function install_guards()
+    local saved = { globals = {}, g = {}, mods = {} }
+    for _, k in ipairs(STUB_GLOBALS) do
+        local v = rawget(_G, k)
+        saved.globals[k] = { v = v }
+        if type(v) == "function" then _G[k] = NOOP end
+    end
+    for _, k in ipairs(RUN_ONLY_GLOBALS) do
+        local v = rawget(_G, k)
+        saved.globals[k] = { v = v }
+        if type(v) == "function" then _G[k] = run_only(v) end
+    end
+    for _, k in ipairs(NIL_GLOBALS) do
+        saved.globals[k] = { v = rawget(_G, k) }
+        _G[k] = nil
+    end
+    for _, k in ipairs(G_STUBS) do
+        saved.g[k] = { v = rawget(G, k) }
+        G[k] = NOOP
+    end
+    for mod, list in pairs(MODULE_STUBS) do
+        local m = rawget(_G, mod)
+        if type(m) == "table" then
+            saved.mods[mod] = {}
+            for _, k in ipairs(list) do
+                if type(m[k]) == "function" then
+                    saved.mods[mod][k] = m[k]
+                    m[k] = NOOP
+                end
+            end
+        end
+    end
+    return saved
+end
+
+local function remove_guards(saved)
+    if not saved then return end
+    for k, s in pairs(saved.globals) do _G[k] = s.v end
+    for k, s in pairs(saved.g) do G[k] = s.v end
+    for mod, list in pairs(saved.mods) do
+        local m = rawget(_G, mod)
+        if type(m) == "table" then
+            for k, fn in pairs(list) do m[k] = fn end
+        end
+    end
+end
+
+local function stream_of(streams, pid)
+    if type(streams) ~= "table" then return nil end
+    return streams[pid] or streams[tostring(pid)]
+end
+
+local function start_entry(entries)
+    for _, e in ipairs(entries) do
+        if e.k == "start" then return e end
+    end
+    return nil
+end
+
+local function find_btn(node, name, depth)
+    depth = depth or 0
+    if type(node) ~= "table" or depth > 40 then return nil end
+    if node.config and node.config.button == name then return node end
+    local root = node.UIRoot
+    if root then
+        local hit = find_btn(root, name, depth + 1)
+        if hit then return hit end
+    end
+    if type(node.children) == "table" then
+        for _, c in pairs(node.children) do
+            local hit = find_btn(c, name, depth + 1)
+            if hit then return hit end
+        end
+    end
+    return nil
+end
+
+local function ensure_order(area, ranks)
+    if not ranks then
+        if not (S and S.full_orders and area and area.cards and #area.cards > 1) then return true end
+        ranks = {}
+        for i = 1, #area.cards do ranks[i] = i end
+    end
+    if not (area and area.cards) then return false end
+    local R = RP()
+    local out = R.apply_ranks(area.cards, ranks, function(c) return tonumber(c.sort_id) or 0 end)
+    if not out then return false end
+    for i, c in ipairs(out) do area.cards[i] = c end
+    if area.set_ranks then pcall(area.set_ranks, area) end
+    if area.align_cards then pcall(area.align_cards, area) end
+    return true
+end
+
+local function highlight(area, idxs)
+    if not (area and area.cards) then return false end
+    area:unhighlight_all()
+    for _, i in ipairs(idxs or {}) do
+        local c = area.cards[i]
+        if not c then return false end
+        area:add_to_highlighted(c, true)
+        if not c.highlighted then return false end
+    end
+    return true
+end
+
+local function screen_order(area, idxs)
+    if type(idxs) ~= "table" then return true end
+    if not (area and area.cards) then return false end
+    local cards, xs = {}, {}
+    for k, i in ipairs(idxs) do
+        local c = area.cards[i]
+        if not (c and c.T and c.highlighted) then return false end
+        cards[k], xs[k] = c, c.T.x
+    end
+    table.sort(xs)
+    for k, c in ipairs(cards) do c.T.x = xs[k] end
+    return true
+end
+PB.screen_order = screen_order
+
+local function pack_state()
+    local st = G.STATE
+    local s = G.STATES
+    return st == s.TAROT_PACK or st == s.PLANET_PACK or st == s.SPECTRAL_PACK or st == s.STANDARD_PACK
+        or st == s.BUFFOON_PACK or (s.SMODS_BOOSTER_OPENED and st == s.SMODS_BOOSTER_OPENED)
+end
+
+local function in_run_state()
+    local s = G.STATES
+    return G.STATE == s.SHOP or G.STATE == s.SELECTING_HAND or G.STATE == s.BLIND_SELECT or pack_state()
+end
+
+local READY = {
+    bs = function() return G.STATE == G.STATES.BLIND_SELECT and G.blind_select ~= nil end,
+    sk = function() return G.STATE == G.STATES.BLIND_SELECT and G.blind_select ~= nil end,
+    rb = function() return G.STATE == G.STATES.BLIND_SELECT and G.blind_select ~= nil end,
+    pl = function() return G.STATE == G.STATES.SELECTING_HAND and G.hand and #G.hand.cards > 0 end,
+    di = function() return G.STATE == G.STATES.SELECTING_HAND and G.hand and #G.hand.cards > 0 end,
+    by = function() return G.STATE == G.STATES.SHOP and G.shop ~= nil end,
+    rr = function() return G.STATE == G.STATES.SHOP and G.shop ~= nil end,
+    ns = function() return G.STATE == G.STATES.SHOP and G.shop ~= nil end,
+    se = in_run_state,
+    us = in_run_state,
+    pk = function() return pack_state() and G.pack_cards ~= nil and #G.pack_cards.cards > 0 end,
+    sp = function() return pack_state() and G.pack_cards ~= nil end,
+    co = function(e)
+        if not (G.STATE == G.STATES.ROUND_EVAL and G.round_eval ~= nil) then return false end
+        return not (e and e.l) or PB.lose_life_btn() ~= nil
+    end,
+    ck = function() return G.STATE == G.STATES.ROUND_EVAL end,
+    hk = function() return G.STATE == G.STATES.SELECTING_HAND and G.hand and #G.hand.cards > 0 end,
+}
+
+local function idle()
+    if G.screenwipe then return false end
+    if G.CONTROLLER and G.CONTROLLER.locks then
+        for k, v in pairs(G.CONTROLLER.locks) do
+            if v and k ~= "frame" and k ~= "frame_set" and k ~= "wipe" then return false end
+        end
+    end
+    if G.E_MANAGER and G.E_MANAGER.queues then
+        for _, q in pairs(G.E_MANAGER.queues) do
+            for _, ev in ipairs(q) do
+                if ev.blocking and not ev.complete then return false end
+            end
+        end
+    end
+    return true
+end
+
+local function ante_now()
+    return G.GAME and G.GAME.round_resets and tonumber(G.GAME.round_resets.ante) or 1
+end
+
+PB.NOTES = {
+    old = { "Recorded with an older version", "It may not play back exactly" },
+    mods = { "Recorded with other mods", "It may not play back exactly" },
+}
+
+local function note_for(e)
+    local R = RP()
+    if type(e) ~= "table" or not R then return nil end
+    if e.k == "start" and (tonumber(e.v) or 1) < (R.EXACT_V or 3) then return "old" end
+    if e.k == "start" and e.gv ~= nil and tostring(e.gv) ~= tostring(rawget(_G, "OVERHAUL_VERSION")) then return "old" end
+    if e.mf ~= nil and R.mods_fp and tostring(e.mf) ~= R.mods_fp() then return "mods" end
+    if e.ff ~= nil and R.forge_fp and tostring(e.ff) ~= tostring(R.forge_fp()) then return "mods" end
+    return nil
+end
+PB.note_for = note_for
+
+local function drift(why)
+    if not S or S.done then return end
+    S.drifted = S.ante or ante_now()
+    S.drift_why = why
+    pcall(function()
+        local st = bmatch() and bmatch().get_state() or {}
+        local name = "?"
+        for k, v in pairs(G.STATES) do if v == G.STATE then name = k end end
+        S.drift_info = (S.ck_detail and (S.ck_detail .. " ") or "") .. string.format("state=%s eval=%s loss=%s end_pvp=%s pvp_loss=%s hands=%s", name, tostring(G.round_eval ~= nil),
+            tostring(G.GAME.mp_blind_loss_pending), tostring(st.end_pvp), tostring(st.pvp_loss_pending), tostring(G.GAME.current_round.hands_left))
+    end)
+    S.done = true
+    local note = S.note and PB.NOTES[S.note]
+    PB.set_text(note and L(note[1]) or string.format(L("Drifted at Ante %d"), S.drifted))
+    PB.restore_speed()
+    PB.build_bar()
+end
+
+local function card_at(code, i)
+    local area = RP().area_of(code)
+    return area and area.cards and area.cards[i] or nil, area
+end
+
+local DO = {}
+PB.DO = DO
+
+local function orders(e)
+    if not ensure_order(G.jokers, e.jo) then return "jokers" end
+    if not ensure_order(G.consumeables, e.ca) then return "consumables" end
+end
+
+DO.bs = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    local on_deck = G.GAME.blind_on_deck
+    local key = on_deck and G.GAME.round_resets.blind_choices and G.GAME.round_resets.blind_choices[on_deck]
+    if e.b and key and e.b ~= key then return "blind" end
+    local box = G.blind_select_opts and on_deck and G.blind_select_opts[string.lower(on_deck)]
+    local btn = box and find_btn(box, "select_blind")
+    local hud = rawget(_G, "bom_pvp_hud")
+    local was = hud and hud._pvp_blind_starting
+    if hud then hud._pvp_blind_starting = true end
+    local ok, err = pcall(G.FUNCS.select_blind, btn or { config = { ref_table = G.P_BLINDS[key or e.b] }, UIBox = box })
+    if hud then hud._pvp_blind_starting = was end
+    if not ok then error(err, 0) end
+end
+
+DO.sk = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    local on_deck = G.GAME.blind_on_deck
+    local box = G.blind_select_opts and on_deck and G.blind_select_opts[string.lower(on_deck)]
+    local btn = box and find_btn(box, "skip_blind")
+    if not btn then return "skip" end
+    G.FUNCS.skip_blind(btn)
+end
+
+DO.rb = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    G.FUNCS.reroll_boss(find_btn(G.blind_select, "reroll_boss") or { config = {} })
+end
+
+local function play_or_discard(e, fn)
+    local bad = orders(e)
+    if bad then return bad end
+    if not ensure_order(G.hand, e.o) then return "hand" end
+    if not highlight(G.hand, e.c) then return "cards" end
+    if not screen_order(G.hand, e.x) then return "cards" end
+    fn()
+end
+
+DO.pl = function(e) return play_or_discard(e, function() G.FUNCS.play_cards_from_highlighted() end) end
+DO.di = function(e) return play_or_discard(e, function() G.FUNCS.discard_cards_from_highlighted(nil, false) end) end
+
+DO.by = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    local card = card_at(e.w, e.i)
+    if not card then return "buy" end
+    if e.w == "sb" or e.w == "sv" then
+        G.FUNCS.use_card({ config = { ref_table = card } })
+        return
+    end
+    G.FUNCS.buy_from_shop({ config = { ref_table = card, id = e.u and "buy_and_use" or nil } })
+end
+
+DO.se = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    local card = card_at(e.w, e.i)
+    if not card then return "sell" end
+    G.FUNCS.sell_card({ config = { ref_table = card } })
+end
+
+DO.rr = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    G.FUNCS.reroll_shop(find_btn(G.shop, "reroll_shop") or { config = {} })
+end
+
+local function use(e, code)
+    local bad = orders(e)
+    if bad then return bad end
+    local targets = type(e.ht) == "table" and e.ht or (type(e.t) == "table" and e.t or nil)
+    if targets or e.o then
+        if not ensure_order(G.hand, e.o) then return "hand" end
+        if not highlight(G.hand, targets) then return "targets" end
+        if not screen_order(G.hand, e.x) then return "targets" end
+    elseif G.hand and G.hand.unhighlight_all then
+r 2 582 %20%20%20%20%20%20%20%20 -
+l 459
+    end
+    if e.tj and not highlight(G.jokers, e.tj) then return "targets" end
+    local card = card_at(code, e.i)
+    if not card then return "use" end
+    G.FUNCS.use_card({ config = { ref_table = card } })
+end
+
+DO.us = function(e) return use(e, "c") end
+DO.pk = function(e) return use(e, "p") end
+DO.sp = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    G.FUNCS.skip_booster({ config = {} })
+end
+
+local function lose_life_btn()
+    if not G.round_eval then return nil end
+    local hit = find_btn(G.round_eval, "bom_lose_life_button")
+    if hit then return hit end
+    for _, box in ipairs(G.I and G.I.UIBOX or {}) do
+        if not box.REMOVED then
+            hit = find_btn(box, "bom_lose_life_button")
+            if hit then return hit end
+        end
+    end
+    return nil
+end
+PB.lose_life_btn = lose_life_btn
+
+local function lose_life_due()
+    return G.STATE == G.STATES.ROUND_EVAL and G.round_eval ~= nil and G.GAME and G.GAME.mp_blind_loss_pending and lose_life_btn() ~= nil
+end
+
+DO.co = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    local life = lose_life_btn()
+    if (e.l or G.GAME.mp_blind_loss_pending) and life and G.FUNCS.bom_lose_life_button then
+        G.FUNCS.bom_lose_life_button(life)
+        return
+    end
+    if e.l then return "lose_life" end
+    G.FUNCS.cash_out(find_btn(G.round_eval, "cash_out") or { config = {} })
+end
+
+local function eval_orders(e)
+    ensure_order(G.jokers, e.jo)
+    ensure_order(G.hand, e.o)
+end
+
+function PB.eval_index(entries, from, done)
+    for j = from, #entries do
+        local x = entries[j]
+        if x.k == "eo" then
+            if not done[j] then return j end
+        elseif x.k ~= "in" and x.k ~= "ck" and x.k ~= "rn" then
+            return nil
+        end
+    end
+    return nil
+end
+
+function PB.before_eval()
+    if not (S and S.eval_wait and S.eo_done) then return end
+    S.eval_wait = nil
+    local j = PB.eval_index(S.entries, S.i, S.eo_done)
+    if not j then return end
+    S.eo_done[j] = true
+    eval_orders(S.entries[j])
+end
+
+local LIFE_SKIP = { co = true, ck = true, hk = true, rn = true, ["in"] = true, ["end"] = true, rj = true, start = true, rs = true, rl = true, eo = true }
+PB.LIFE_SKIP = LIFE_SKIP
+
+DO.ns = function(e)
+    local bad = orders(e)
+    if bad then return bad end
+    G.FUNCS.toggle_shop(find_btn(G.shop, "toggle_shop") or { config = {} })
+end
+
+local function note_resync(fixed)
+    local line = string.format("hand=%d i=%d ante=%s fix=%s", S.hk_n or 0, S.i, tostring(ante_now()), table.concat(fixed, ","))
+    S.resyncs = S.resyncs or {}
+    if #S.resyncs < 40 then S.resyncs[#S.resyncs + 1] = line end
+    S.resync_n = (S.resync_n or 0) + 1
+    S.first_diff = S.first_diff or line
+    pcall(mp_log.info, "REPLAY", "resync %s", line)
+end
+
+DO.hk = function(e)
+    S.hk_n = (S.hk_n or 0) + 1
+    local exp = S.hk_exp or { hl = {}, ja = {} }
+    S.hk_exp = exp
+    for k, v in pairs(type(e.hl) == "table" and e.hl or {}) do exp.hl[k] = v end
+    for k, v in pairs(type(e.ja) == "table" and e.ja or {}) do exp.ja[k] = v end
+    exp.rg = exp.rg or {}
+    for _, k in ipairs(type(e.rx) == "table" and e.rx or {}) do exp.rg[k] = nil end
+    for k, v in pairs(type(e.rg) == "table" and e.rg or {}) do exp.rg[k] = v end
+    local fixed = RP().resync(e, exp)
+    if #fixed == 0 then return end
+    note_resync(fixed)
+end
+
+DO.rn = NOOP
+
+function PB.recorded_pick(seed_s)
+    if not (S and S.entries) then return nil end
+    S.rn_map = S.rn_map or {}
+    S.rn_scan = S.rn_scan or 1
+    while S.rn_scan <= #S.entries do
+        local e = S.entries[S.rn_scan]
+        if type(e) == "table" and e.k == "rn" and type(e.r) == "table" then
+            for _, x in ipairs(e.r) do
+                if type(x) == "table" and x[1] ~= nil and x[2] ~= nil then S.rn_map[tostring(x[1])] = tostring(x[2]) end
+            end
+        end
+        S.rn_scan = S.rn_scan + 1
+    end
+    return S.rn_map[seed_s]
+end
+
+function PB.note_pick(want)
+    if not S then return end
+    S.pick_n = (S.pick_n or 0) + 1
+    if (S.pick_n or 0) <= 20 then pcall(mp_log.info, "REPLAY", "recorded pick %s i=%s", tostring(want), tostring(S.i)) end
+end
+
+DO.ck = function(e)
+    local cur = RP().snapshot()
+    local f = RP().compare(e, cur)
+    if f == "a" or f == "r" then
+        S.ck_detail = f .. "=" .. tostring(e[f]) .. "/" .. tostring(cur[f])
+        return "checksum_" .. f
+    end
+    if f then
+        local fixed = {}
+        if tonumber(e.m) and tostring(e.m) ~= tostring(cur.m) then
+            G.GAME.dollars = tonumber(e.m)
+            fixed[#fixed + 1] = "ck_m"
+        end
+        if e.s ~= nil and tostring(e.s) ~= tostring(cur.s) and tonumber(e.s) and type(G.GAME.chips) == "number" then
+            G.GAME.chips = tonumber(e.s)
+            fixed[#fixed + 1] = "ck_s"
+        end
+        for _, k in ipairs({ "h", "j", "d" }) do
+            if e[k] ~= nil and cur[k] ~= nil and tostring(e[k]) ~= tostring(cur[k]) then fixed[#fixed + 1] = "ck_" .. k .. "!" end
+        end
+        note_resync(fixed)
+    end
+    S.ante = tonumber(e.a) or S.ante
+end
+
+local function rebase(e)
+    if tonumber(e.g) then S.ge0 = RP().ge - tonumber(e.g) end
+    if tonumber(e.ev) then S.ev0 = RP().evs - tonumber(e.ev) end
+end
+
+DO.rj = function(e)
+    rebase(e)
+    if type(e.ck) == "table" then
+        local f = RP().compare(e.ck, RP().snapshot())
+        if f then return "rejoin_" .. f end
+    end
+end
+
+local function is_start_blind(e)
+    return e ~= nil and e.k == "in" and type(e.m) == "table" and e.m.type == "start_blind"
+end
+
+local function starts_blind(e)
+    if not is_start_blind(e) then return false end
+    return e.s == nil or e.s == G.STATES.BLIND_SELECT
+end
+
+local function start_ready()
+    if G.STATE ~= G.STATES.BLIND_SELECT then return true end
+    return (G.blind_select ~= nil) ~= ((G.GAME and G.GAME.facing_blind) and true or false)
+end
+
+DO["in"] = function(e)
+    if type(e.m) ~= "table" or not bom_events then return end
+    local facing = G.GAME and G.GAME.facing_blind
+    local ok, m = pcall(function() return bom_core.json.decode(bom_core.json.encode(e.m)) end)
+    S.injecting = true
+    pcall(bom_events.dispatch, ok and m or e.m)
+    S.injecting = false
+    if starts_blind(e) then S.blind_started = (not facing and G.GAME and G.GAME.facing_blind) and true or nil end
+end
+
+DO["end"] = function() S.finished_stream = true end
+
+local function keep_match_fields()
+    pcall(function()
+        local st = bmatch().get_state()
+        st.match_id = S.id
+        st.server_player_id = S.pid
+        st.ranked = S.header.ranked and true or nil
+        st.roster = S.header.players
+    end)
+end
+
+DO.rs = function(e)
+    local d = e.m
+    local Rj = rawget(_G, "bom_rejoin")
+    if type(d) ~= "table" or d.big or not (Rj and Rj.restore_run) then return "rejoin" end
+    S.note = S.note or note_for(e)
+    rebase(e)
+    S.restore_wait = true
+    Rj.restore_run(d)
+    keep_match_fields()
+end
+
+DO.rl = function(e)
+    local Rj = rawget(_G, "bom_rejoin")
+    if type(e.m) ~= "table" or not (Rj and Rj.resync_live) then return end
+    rebase(e)
+    Rj.resync_live(e.m)
+    keep_match_fields()
+end
+
+local function dispatch(e)
+    local fn = DO[e.k]
+    if not fn then return nil end
+    S.driving = true
+    local ok, res = pcall(fn, e)
+    S.driving = false
+    if not ok then
+        S.ck_detail = "err=" .. tostring(res):sub(1, 300)
+        return "error_" .. tostring(e.k)
+    end
+    if e.a and (e.k == "bs" or e.k == "sk") then S.ante = tonumber(e.a) or S.ante end
+    return res
+end
+
+function PB.set_text(t)
+    if S then S.ui.text = t end
+end
+
+local function title_text()
+    if not S then return "" end
+    return S.mode == "live" and L("LIVE") or L("REPLAY")
+end
+
+function PB.version_note()
+    if not S or S.mode == "live" or S.script then return nil end
+    local st = type(S.start) == "table" and S.start or nil
+    if not st then return nil end
+    local cur = rawget(_G, "OVERHAUL_VERSION")
+    if st.gv == nil then return L("Older version") end
+    if cur ~= nil and tostring(st.gv) ~= tostring(cur) then
+        if type(st.gn) == "string" and st.gn ~= "" then return string.format(L("Version %s"), st.gn) end
+        return L("Older version")
+    end
+    return nil
+end
+
+local function name_text()
+    if not S then return "" end
+    for _, p in ipairs(S.header.players or {}) do
+        if tonumber(p.pid) == S.pid then return tostring(p.name or "") end
+    end
+    return ""
+end
+
+local function seat_entries(pid)
+    if S.mode == "live" then return S.live[pid] and S.live[pid].entries or {} end
+    return RP().clean(stream_of(S.streams, pid))
+end
+
+function PB.seat_names()
+    if not S then return {} end
+    local out, pids = {}, {}
+    for _, p in ipairs(S.header.players or {}) do
+        local pid = type(p) == "table" and tonumber(p.pid)
+        if pid and not out[pid] then
+            out[pid] = { cur = p.name ~= nil and tostring(p.name) or nil, rec = type(p.rec) == "string" and p.rec or nil }
+            pids[#pids + 1] = pid
+        end
+    end
+    local entries = {}
+    for _, pid in ipairs(pids) do
+        entries[pid] = seat_entries(pid)
+        local st = start_entry(entries[pid])
+        if st and type(st.nm) == "string" and st.nm ~= "" then out[pid].rec = st.nm end
+    end
+    if #pids == 2 then
+        for i, pid in ipairs(pids) do
+            local n = out[pid]
+            if not (n.rec and n.rec ~= n.cur) then
+                for _, e in ipairs(entries[pids[3 - i]]) do
+                    if type(e) == "table" and e.k == "sw" and type(e.from) == "string" and e.from ~= "" then n.rec = n.rec or e.from break end
+                end
+            end
+        end
+    end
+    for _, n in pairs(out) do n.rec = n.rec or n.cur end
+    return out
+end
+
+function PB.shown_name(name)
+    if not S or name == nil then return name end
+    local names = PB.seat_names()
+    local mine = names[S.pid]
+    if mine and (mine.rec == name or mine.cur == name) then return mine.cur or name end
+    for _, n in pairs(names) do
+        if n.rec == name or n.cur == name then return n.cur or name end
+    end
+    return name
+end
+
+function PB.is_me(name)
+    if not S or name == nil then return false end
+    local mine = PB.seat_names()[S.pid]
+    return mine ~= nil and (mine.rec == name or mine.cur == name)
+end
+
+local function hold_pattern()
+    local f = L("You now hold %s's run")
+    local a, b = f:find("%s", 1, true)
+    if not a then return nil end
+    local esc = function(t) return (t:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")) end
+    return "^" .. esc(f:sub(1, a - 1)) .. "(.+)" .. esc(f:sub(b + 1)) .. "$"
+end
+
+function PB.swap_text(text)
+    if not (S and G.GAME and type(text) == "string") then return text end
+    local own = L("Your own run is back")
+    local pat = hold_pattern()
+    if text ~= own and not (pat and text:match(pat)) then return text end
+    local owner = G.GAME.bom_sw_owner
+    if owner == nil and text ~= own then owner = text:match(pat) end
+    if owner == nil then return text end
+    if PB.is_me(owner) then return own end
+    return string.format(L("You now hold %s's run"), tostring(PB.shown_name(owner)))
+end
+
+PB.BANNER_H = 1.5
+
+function PB.banner_dy()
+    local bar, ra = G.PB_BAR, G.ROOM_ATTACH
+    if not (S and bar and bar.T and ra and ra.T and UIK and UIK.portrait and UIK.portrait()) then return nil end
+    local cy = ra.T.y + ra.T.h / 2
+    if cy - 0.6 + PB.BANNER_H / 2 < bar.T.y then return nil end
+    return bar.T.y - 0.15 - PB.BANNER_H / 2 - cy
+end
+
+function PB.hook_swap()
+    local W = package.loaded["functions.modes.swap_mode"]
+    if PB._swap_wrapped or type(W) ~= "table" or type(W.banner) ~= "function" then return end
+    PB._swap_wrapped = true
+    W.banner_dy = function()
+        local ok, dy = pcall(PB.banner_dy)
+        return ok and dy or nil
+    end
+    local banner = W.banner
+    W.banner = function(text, ...)
+        if S then
+            local ok, t = pcall(PB.swap_text, text)
+            if ok then text = t end
+        end
+        return banner(text, ...)
+    end
+end
+
+local function base_text()
+    if not S then return "" end
+    local speed = S.ff and ">>" or ("x" .. tostring(PB.SPEEDS[S.speed_i] or 1))
+    if S.paused and not S.ff_to and not S.step_to then speed = L("Paused") end
+    return L("Ante") .. " " .. tostring(S.ante or ante_now()) .. "  " .. speed
+end
+
+function PB.apply_speed()
+    if not S then return end
+    S.base_speed = S.base_speed or G.SETTINGS.GAMESPEED or 1
+    local mult = S.ff and PB.FF_SPEED or (PB.SPEEDS[S.speed_i] or 1)
+    G.SETTINGS.GAMESPEED = S.base_speed * mult
+end
+
+function PB.restore_speed()
+    if S and S.base_speed then G.SETTINGS.GAMESPEED = S.base_speed end
+end
+
+local function apply_boot(m, boot)
+    if type(boot) ~= "table" then return end
+    local sett = m.get_settings and m.get_settings()
+    if type(boot.set) == "table" and type(sett) == "table" then
+        for k in pairs(sett) do sett[k] = nil end
+        for k, v in pairs(boot.set) do sett[k] = v end
+    end
+    pcall(function()
+        local st = m.get_state()
+        st.is_host = boot.host == true
+        if boot.mode then st.mode = boot.mode end
+    end)
+end
+
+local function setup_party(boot)
+    local P = rawget(_G, "bom_party")
+    if not (P and P.S) then return end
+    local party = type(boot) == "table" and boot.party or nil
+    if not party and S.header.kind ~= "party" then return end
+    S.party = true
+    P.S.flag = true
+    P.S.me = tonumber(party and party.me) or S.pid
+    P.S.room = type(party and party.room) == "table" and party.room or { kind = S.header.mode, players = S.header.players }
+    P.S.code = P.S.room.code
+    P.S.ps, P.S.result = nil, nil
+    local PR = rawget(_G, "bom_party_run")
+    if PR and PR.on_message then pcall(PR.on_message, { type = "match_start", party = true }) end
+end
+
+function PB.apply_tag_needs(start)
+    if (tonumber(start and start.v) or 1) < 4 or not (G and G.P_CENTERS) then return nil end
+    local miss = {}
+    for _, k in ipairs(type(start.nd) == "table" and start.nd or {}) do miss[k] = true end
+    local saved = {}
+    for _, list in ipairs({ G.P_CENTER_POOLS and G.P_CENTER_POOLS.Tag or {}, G.P_TAGS or {} }) do
+        for _, t in pairs(list) do
+            local r = type(t) == "table" and t.requires or nil
+            local c = type(r) == "string" and G.P_CENTERS[r] or nil
+            if c and saved[r] == nil then
+                saved[r] = c.discovered and true or false
+                c.discovered = not miss[r]
+            end
+        end
+    end
+    return saved
+end
+
+function PB.restore_tag_needs(saved)
+    for k, v in pairs(saved or {}) do
+        local c = G and G.P_CENTERS and G.P_CENTERS[k]
+        if c then c.discovered = v end
+    end
+end
+
+local function clear_waiting()
+    pcall(function()
+        local mg = rawget(_G, "Minigames")
+        if mg and mg.end_wait then mg.end_wait() end
+    end)
+    pcall(function() if bom_ui and bom_ui.hide_pvp_waiting then bom_ui.hide_pvp_waiting() end end)
+end
+
+local function launch()
+    local h = S.header
+    clear_waiting()
+    local start = S.start or {}
+    local seed = start.seed or (type(h.seeds) == "table" and h.seeds[1]) or "REPLAY"
+    S.ante, S.loading, S.load_t = 1, true, 0
+    S.i, S.wait, S.watch = 1, 0, 0
+    S.eo_done, S.eval_wait = {}, nil
+    S.hk_n, S.hk_exp = 0, nil
+    S.note = not S.script and note_for(S.start) or nil
+    S.full_orders = (tonumber(S.start and S.start.v) or 1) >= 2
+    PB.restore_tag_needs(S.tag_saved)
+    S.tag_saved = nil
+    pcall(function() S.tag_saved = PB.apply_tag_needs(S.start) end)
+    pcall(function()
+r 13 1825 %20%20%20%20%20%20%20%20 -
+l 293
+    end)
+    if start.deck_name and get_deck_from_name then
+        pcall(function() G.GAME.viewed_back = Back(get_deck_from_name(start.deck_name)) end)
+    end
+    if h.kind == "local" or not (bmatch() and bom_room and bom_room.do_mp_start_run) then
+        G.FUNCS.start_run(nil, { seed = seed, stake = tonumber(start.stake) or 1, mp_stake = start.mp_stake })
+        return
+    end
+    local m = bmatch()
+    pcall(m.reset)
+    pcall(function() m.get_state().phase = m.PHASE.LOBBY end)
+    local RS = rawget(_G, "bom_rulesets")
+    if type(h.ruleset) == "table" and (h.ranked or h.ruleset.locked) and RS and RS.apply_server then
+        pcall(RS.apply_server, h.ruleset, h.ranked and "ranked" or "daily")
+    elseif type(h.settings) == "table" and m.on_settings_received then
+        pcall(m.on_settings_received, h.settings)
+    end
+    apply_boot(m, start.boot)
+    setup_party(start.boot)
+    pcall(function()
+        local st = m.get_state()
+        st.server_player_id = S.pid
+        if type(start.boot) ~= "table" then st.is_host = S.pid == 0 end
+        st.match_id = S.id
+        st.ranked = h.ranked and true or nil
+        st.roster = h.players
+        for _, p in ipairs(h.players or {}) do
+            if tonumber(p.pid) == S.pid then st.my_name = p.name else st.opp_name, st.opp_bot = p.name, p.is_bot end
+        end
+    end)
+    pcall(m.start_match, seed)
+    local orig_deck = m.get_my_deck
+    local sett = m.get_settings and m.get_settings() or {}
+    if start.deck_name then m.get_my_deck = function() return start.deck_name end end
+    if type(start.boot) ~= "table" then
+        if tonumber(start.stake) then sett.stake = tonumber(start.stake) end
+        if start.mp_stake then sett.mp_stake = start.mp_stake end
+    end
+    local ok, err = pcall(bom_room.do_mp_start_run, seed, "replay")
+    m.get_my_deck = orig_deck
+    if not ok then
+        drift("start " .. tostring(err))
+        return
+    end
+    G.E_MANAGER:add_event(Event({ trigger = "immediate", no_delete = true, func = function()
+        local rw = rawget(_G, "bom_reworks")
+        if rw and rw.apply and type(h.ruleset) == "table" and type(h.ruleset.reworks) == "table" then pcall(rw.apply, h.ruleset.reworks) end
+        return true
+    end }))
+end
+
+local function entries_for(pid)
+    if S.mode == "live" then
+        S.live[pid] = S.live[pid] or { seq = 0, pending = {}, entries = {} }
+        return S.live[pid].entries
+    end
+    return RP().clean(stream_of(S.streams, pid))
+end
+
+function PB.start(o)
+    if S then PB.stop(true) end
+    local R = RP()
+    if not R or type(o) ~= "table" then return false end
+    S = {
+        mode = o.mode or "replay", id = o.id, header = o.header or {}, streams = o.streams or {},
+        pid = o.pid or 0, speed_i = 1, ff = false, paused = false, driving = false, ui = { text = "" },
+        see_jokers = o.see_jokers ~= false, live = {}, script = o.script, max_ante = o.max_ante,
+    }
+    if S.mode == "live" then
+        for k, st in pairs(o.streams or {}) do
+            local pid = tonumber(k)
+            if pid then
+                S.live[pid] = { seq = tonumber(o.seqs and (o.seqs[k] or o.seqs[pid])) or 0, pending = {}, entries = R.clean(st) }
+            end
+        end
+    end
+    S.entries = S.script and {} or entries_for(S.pid)
+    S.start = S.script and (o.start or {}) or start_entry(S.entries)
+    if not S.start and S.mode ~= "live" then
+        S = nil
+        R.popup(L("No replay for this match"))
+        return false
+    end
+    if S.start then S.guards = install_guards() end
+    pcall(PB.guard_input)
+    pcall(PB.hook_swap)
+    S.base_speed = G.SETTINGS.GAMESPEED
+    clear_waiting()
+    if S.mode == "live" then S.ff_to = #S.entries end
+    if not S.start then
+        S.waiting_start = true
+        PB.set_text(L("Waiting for the match to start..."))
+        PB.build_bar()
+        return true
+    end
+    S.launch_wait, S.loading = true, true
+    return true
+end
+
+function PB.restart(pid, ante)
+    if not S then return end
+    S.pid = pid or S.pid
+    S.entries = entries_for(S.pid)
+    S.start = start_entry(S.entries) or S.start
+    S.done, S.drifted, S.finished_stream = nil, nil, nil
+    S.step_to, S.back_to = nil, nil
+    S.ff_to = ante and ante > 1 and RP().index_of_ante(S.entries, ante) or nil
+    if S.mode == "live" and not S.ff_to then S.ff_to = #S.entries end
+    PB.remove_bar()
+    launch()
+end
+
+function PB.feed(pid, seq, entries)
+    if not (S and S.mode == "live") then return end
+    pid = tonumber(pid)
+    if not pid then return end
+    S.live[pid] = S.live[pid] or { seq = 0, pending = {}, entries = {} }
+    RP().merge_live(S.live[pid], seq, entries)
+    if S.waiting_start and pid == S.pid then
+        S.start = start_entry(S.entries)
+        if S.start then
+            S.waiting_start = nil
+            S.guards = S.guards or install_guards()
+            launch()
+        end
+    end
+end
+
+function PB.live_ended()
+    if not S then return end
+    S.live_over = true
+end
+
+function PB.stop(quiet)
+    if not S then return end
+    local was = S
+    PB.remove_bar()
+    G.PB_END = nil
+    if was.end_menu and G.OVERLAY_MENU == was.end_menu then pcall(G.FUNCS.exit_overlay_menu) end
+    PB.restore_speed()
+    pcall(PB.restore_tag_needs, was.tag_saved)
+    remove_guards(was.guards)
+    clear_waiting()
+    PB._last = { done = was.done, drifted = was.drifted, drift_why = was.drift_why, drift_info = was.drift_info, i = was.i, n = #(was.entries or {}), mode = was.mode, pid = was.pid, id = was.id }
+    S = nil
+    pcall(function()
+        local rw = rawget(_G, "bom_reworks")
+        if rw and rw.clear then rw.clear() end
+    end)
+    pcall(function()
+        local RS = rawget(_G, "bom_rulesets")
+        if RS and RS.clear then RS.clear() end
+    end)
+    pcall(function() if bom_ui and bom_ui.destroy_match_hud then bom_ui.destroy_match_hud() end end)
+    if was.party then
+        pcall(function()
+            local P = rawget(_G, "bom_party")
+            if P and P.clear then P.clear() end
+        end)
+    end
+    if G.GAME then G.GAME.multiplayer = nil end
+    pcall(function()
+        local m = bmatch()
+        if not (m and m.reset) then return end
+        local rs = rawget(_G, "remove_save")
+        if type(rs) == "function" then _G.remove_save = NOOP end
+        pcall(m.reset)
+        _G.remove_save = rs
+    end)
+    if was.mode == "live" and not quiet and bom_core and bom_core.send then
+        pcall(bom_core.send, { type = "spectate_leave" })
+    end
+    if bom_core and bom_core.send and was.mode == "live" then pcall(bom_core.send, { type = "social_status", where = "menu" }) end
+end
+
+function PB.leave()
+    if not S then return end
+    PB.stop(false)
+    PB.back_to_mp = true
+    if G.FUNCS.go_to_menu then G.FUNCS.go_to_menu({ config = {} }) end
+end
+
+local INSTANT = { ck = true, hk = true, rn = true, start = true, ["end"] = true, rj = true, ["in"] = true, eo = true }
+
+local function info_in(e)
+    return e ~= nil and e.k == "in" and type(e.m) == "table" and PB.INFO_IN[e.m.type] == true
+end
+
+local function score_reached(cur, want)
+    if cur == want then return true end
+    local a, b = tonumber(cur), tonumber(want)
+    return a ~= nil and b ~= nil and a == a and b == b and a >= b
+end
+
+local function in_sync(e)
+    if e.s ~= nil and G.STATE ~= e.s and not (S.seen and S.seen[e.s]) then return false end
+    if tonumber(e.g) and S.ge0 and RP().ge - S.ge0 < tonumber(e.g) then return false end
+    if tonumber(e.ev) and S.ev0 and RP().evs - S.ev0 < tonumber(e.ev) then return false end
+    if not G.GAME then return true end
+    if e.sc ~= nil and not score_reached(RP().score_str(G.GAME.chips), e.sc) then return false end
+    if e.dl ~= nil and math.floor((tonumber(G.GAME.dollars) or 0) + 0.5) ~= e.dl then return false end
+    return true
+end
+
+local function hold_in(dt)
+    if idle() then S.state_hold = (S.state_hold or 0) + dt else S.busy_hold = (S.busy_hold or 0) + dt end
+    return (S.state_hold or 0) < PB.IN_STATE_S and (S.busy_hold or 0) < PB.WATCHDOG_S
+end
+
+local function lives_early(e)
+    if not (e and e.k == "in" and e.s == nil and type(e.m) == "table" and tonumber(e.m.myLives)) then return false end
+    local m = bmatch()
+    local st = m and m.get_state and m.get_state() or {}
+    local cur = tonumber(st.my_lives) or tonumber(G.GAME and G.GAME.mp_lives)
+    if not cur or tonumber(e.m.myLives) >= cur or e.m.phase == "finished" then return false end
+    return not (st.pvp_loss_pending or (G.GAME and G.GAME.mp_blind_loss_pending))
+end
+
+local function actions_left()
+    for j = S.i, #S.entries do
+        local x = S.entries[j]
+        if x.k ~= "in" and x.k ~= "ck" and x.k ~= "hk" and x.k ~= "rn" and x.k ~= "end" and x.k ~= "start" and x.k ~= "eo" then return true end
+    end
+    return false
+end
+
+local function gap_before(e)
+    if S.ff or not e or INSTANT[e.k] then return 0 end
+    return PB.STEP_GAP / (PB.SPEEDS[S.speed_i] or 1)
+end
+
+local function next_script_entry()
+    local R = RP()
+    if S.max_ante and ante_now() > S.max_ante then return nil end
+    local st = G.STATE
+    local s = G.STATES
+    if st == s.GAME_OVER then return nil end
+    if st == s.BLIND_SELECT and G.blind_select then
+        local od = G.GAME.blind_on_deck
+        return { k = "bs", b = od and G.GAME.round_resets.blind_choices[od], a = ante_now() }
+    elseif st == s.SELECTING_HAND and G.hand and #G.hand.cards > 0 then
+        local c = {}
+        for i = 1, math.min(5, #G.hand.cards) do c[i] = i end
+        return { k = "pl", c = c }
+    elseif st == s.ROUND_EVAL and G.round_eval then
+        return { k = "co" }
+    elseif st == s.SHOP and G.shop then
+        return { k = "ns" }
+    elseif pack_state() and G.pack_cards then
+        return { k = "sp" }
+    end
+    return false
+end
+
+local function hide_jokers()
+    if S.see_jokers or S.mode ~= "live" or not (G.jokers and G.jokers.cards) then return end
+    for _, c in ipairs(G.jokers.cards) do
+        if c.facing ~= "back" then c.facing, c.sprite_facing = "back", "back" end
+    end
+end
+
+function PB.holding()
+    return S ~= nil and S.paused and not S.ff_to and not S.step_to
+end
+
+function PB.update(dt)
+    if not S then
+        if PB.back_to_mp and G and G.STATE == G.STATES.MENU and not G.screenwipe then
+            local back = PB.back_to
+            if back and PB._last and back.id == PB._last.id then
+                if not G.MAIN_MENU_UI then return end
+                PB.back_to_mp, PB.back_to = nil, nil
+                pcall(back.fn)
+                return
+            end
+            PB.back_to_mp, PB.back_to = nil, nil
+            pcall(function()
+                local M = rawget(_G, "mpm_menu") or (MP and MP.menu)
+                if M and M.enter then M.enter() end
+            end)
+        end
+        return
+    end
+    dt = dt or 0
+    if S.waiting_start then
+        if S.live_over then
+            S.waiting_start, S.done = nil, true
+            PB.set_text(L("The match is over"))
+            PB.build_bar()
+        end
+        return
+    end
+    if S.launch_wait then
+r 13 3063 %20%20%20%20%20%20%20%20 -
+l 887
+        S.launch_wait = nil
+        launch()
+        return
+    end
+    if S.restore_wait then
+        if G.STAGE == G.STAGES.RUN and G.GAME and not G.screenwipe and idle() and (in_run_state() or (G.STATE == G.STATES.ROUND_EVAL and G.round_eval)) then
+            S.restore_wait = nil
+            S.watch = 0
+            PB.apply_speed()
+            PB.build_bar()
+        end
+        return
+    end
+    if S.loading then
+        S.load_t = (S.load_t or 0) + dt
+        if S.load_t > PB.LOAD_S and not G.screenwipe then
+            S.loading, S.load_t = false, 0
+            drift("stuck_load")
+            return
+        end
+        if G.STAGE == G.STAGES.RUN and G.GAME and G.STATE == G.STATES.BLIND_SELECT and G.blind_select and idle() then
+            S.loading, S.load_t = false, 0
+            S.ge0, S.ev0 = RP().ge, RP().evs
+            PB.apply_speed()
+            PB.build_bar()
+            if S.script and RP()._test then RP()._test.begin_entry() end
+        end
+        return
+    end
+    hide_jokers()
+    if PB.bar_stale() and (S.bar_fix_t or 0) <= 0 then
+        S.bar_fix_t = 0.5
+        PB.build_bar()
+    end
+    S.bar_fix_t = math.max(0, (S.bar_fix_t or 0) - (dt or 0))
+    PB.end_tick()
+    if S.viewer_menu and G.OVERLAY_MENU ~= S.viewer_menu then S.viewer_menu = nil end
+    if G.SETTINGS.paused and not S.done and not S.paused and not S.script and not S.viewer_menu then
+        S.paused_t = (S.paused_t or 0) + dt
+        if S.paused_t > PB.PAUSED_S then
+            if actions_left() then
+                drift("paused")
+            else
+                S.done = true
+                PB.set_text(S.mode == "live" and L("The match is over") or L("Replay finished"))
+                PB.restore_speed()
+                PB.build_bar()
+            end
+        end
+    else
+        S.paused_t = 0
+    end
+    if S.done or PB.holding() or G.SETTINGS.paused then
+        if S.ui then S.ui.text = S.done and S.ui.text or base_text() end
+        return
+    end
+    S.ui.text = base_text()
+    for _ = 1, 40 do
+        if not PB.step(dt) or not S or S.done or PB.holding() then break end
+        dt = 0
+    end
+end
+
+function PB.step(dt)
+    S.seen = S.seen or {}
+    if G.STATE ~= nil then S.seen[G.STATE] = true end
+    local e = S.entries[S.i]
+    if not e and S.script then
+        local nxt = next_script_entry()
+        if nxt == nil then
+            S.done = true
+            PB.set_text(L("Replay finished"))
+            PB.build_bar()
+            return false
+        end
+        if nxt == false then return false end
+        if idle() then S.entries[#S.entries + 1] = nxt end
+        e = S.entries[S.i]
+        if not e then return false end
+    end
+    if not e then
+        if S.mode == "live" and not S.live_over and not S.finished_stream then
+            if S.ff then S.ff = false; PB.apply_speed() end
+            return false
+        end
+        S.done = true
+        PB.set_text(S.mode == "live" and L("The match is over") or L("Replay finished"))
+        PB.restore_speed()
+        PB.build_bar()
+        return false
+    end
+    local want_ff = (S.ff_to ~= nil and S.i < S.ff_to) or false
+    if S.mode == "live" and S.ff_to and S.i >= #S.entries - 1 then want_ff = false end
+    if want_ff ~= (S.ff_fwd or false) then
+        S.ff_fwd = want_ff
+        S.ff = want_ff or S.ff_user or false
+        PB.apply_speed()
+        PB.build_bar()
+    end
+    if not want_ff and S.ff_to then
+        S.ff_to = nil
+        if S.paused then return false end
+    end
+    if S.step_to and S.i >= S.step_to then
+        S.step_to, S.step_kind = nil, nil
+        PB.build_bar()
+        if S.paused then return false end
+    end
+    if e.k == "rn" then
+        S.i = S.i + 1
+        S.wait = gap_before(S.entries[S.i])
+        return true
+    end
+    if e.k == "eo" then
+        if not S.eo_done[S.i] and S.eval_wait then
+            S.eo_done[S.i], S.eval_wait = true, nil
+            eval_orders(e)
+        end
+        S.i = S.i + 1
+        S.wait = gap_before(S.entries[S.i])
+        return true
+    end
+    if e.k == "bs" and S.blind_started and idle() and G.STATE ~= G.STATES.BLIND_SELECT then
+        S.blind_started = nil
+        S.ante = tonumber(e.a) or S.ante
+        S.watch = 0
+        S.i = S.i + 1
+        S.wait = gap_before(S.entries[S.i])
+        return false
+    end
+    if not LIFE_SKIP[e.k] and idle() and lose_life_due() then
+        S.driving = true
+        local ok = pcall(G.FUNCS.bom_lose_life_button, lose_life_btn())
+        S.driving = false
+        if not ok then drift("lose_life") end
+        S.watch = 0
+        return false
+    end
+    if lives_early(e) and (S.lives_wait or 0) < PB.LIVES_HOLD_S then
+        S.lives_wait = (S.lives_wait or 0) + dt
+        return false
+    end
+    local synced = e.k == "in" and e.s ~= nil and in_sync(e)
+    local counted = e.k == "in" and tonumber(e.g) ~= nil
+    if e.k == "in" and e.s ~= nil and not synced and (counted or not starts_blind(e)) and hold_in(dt) then
+        return false
+    end
+    if is_start_blind(e) and not start_ready() then
+        S.watch = S.watch + dt
+        if S.watch > PB.WATCHDOG_S then drift("stuck_in") end
+        return false
+    end
+    if e.k == "in" and e.s ~= nil and (synced or counted or not starts_blind(e)) then
+        S.in_hold = 0
+        S.blind_started = nil
+    elseif info_in(e) then
+        S.blind_started = nil
+    elseif (e.k ~= "in" or starts_blind(e)) and e.k ~= "start" and e.k ~= "end" then
+        if not idle() then
+            S.watch = S.watch + dt
+            if S.watch > PB.WATCHDOG_S then drift("busy_" .. e.k) end
+            return false
+        end
+        S.wait = (S.wait or 0) - dt
+        if S.wait > 0 and not S.ff then return false end
+        local ready = starts_blind(e) and READY.bs or READY[e.k]
+        if ready and not ready(e) then
+            S.watch = S.watch + dt
+            if S.watch > PB.WATCHDOG_S then drift("stuck_" .. e.k) end
+            return false
+        end
+    elseif e.k == "in" then
+        if not idle() and (S.in_hold or 0) < PB.IN_HOLD_S then
+            S.in_hold = (S.in_hold or 0) + dt
+            return false
+        end
+        S.in_hold = 0
+        S.blind_started = nil
+    end
+    local res = dispatch(e)
+    if res then drift(res) return false end
+    S.watch, S.lives_wait, S.state_hold, S.busy_hold = 0, 0, 0, 0
+    if RP().ACTION_KINDS[e.k] then
+        S.seen = { [G.STATE or -1] = true }
+        S.eval_wait = e.k == "pl" or nil
+    end
+    S.i = S.i + 1
+    S.wait = gap_before(S.entries[S.i])
+    local nxt = S.entries[S.i]
+    if nxt ~= nil and nxt.k == "in" and nxt.s ~= nil then return in_sync(nxt) end
+    return info_in(nxt) or (nxt ~= nil and (nxt.k == "start" or nxt.k == "end"))
+end
+
+function PB.toggle_pause()
+    if not S or S.done then return end
+    S.paused = not S.paused
+    if not S.paused then S.step_to, S.back_to = nil, nil end
+    PB.build_bar()
+end
+
+local function action_after(from, kind)
+    local A = RP().ACTION_KINDS
+    for j = math.max(1, from), #S.entries do
+        local e = S.entries[j]
+        if type(e) == "table" and (kind and e.k == kind or not kind and A[e.k]) then return j end
+    end
+end
+
+local function action_before(to)
+    local A = RP().ACTION_KINDS
+    for j = math.min(to - 1, #S.entries), 1, -1 do
+        local e = S.entries[j]
+        if type(e) == "table" and A[e.k] then return j end
+    end
+end
+
+function PB.step_target(dir, kind)
+    if not S or S.done or S.script or not S.entries then return nil end
+    local back = S.back_to ~= nil and S.ff_to == S.back_to
+    local base = back and S.back_to or S.step_to or S.i or 1
+    if dir > 0 then
+        local j = action_after(base, kind)
+        return j and j + 1, back
+    end
+    return action_before(base), back
+end
+
+function PB.step_action(dir, kind)
+    local to, back = PB.step_target(dir, kind)
+    if not to then
+        pcall(play_sound, "cancel")
+        return false
+    end
+    S.paused = true
+    if dir > 0 and back then
+        S.ff_to, S.back_to = to, nil
+    elseif dir > 0 then
+        S.ff_to, S.back_to, S.step_to, S.step_kind = nil, nil, to, kind
+    else
+        if not (S.loading or S.launch_wait) then PB.restart(S.pid) end
+        S.step_to, S.back_to, S.ff_to = nil, to, to
+    end
+    PB.build_bar()
+    return true
+end
+
+function PB.cycle_speed()
+    if not S then return end
+    S.ff_user = false
+    S.ff = S.ff_fwd or false
+    S.speed_i = (S.speed_i % #PB.SPEEDS) + 1
+    PB.apply_speed()
+    PB.build_bar()
+end
+
+function PB.toggle_ff()
+    if not S then return end
+    S.ff_user = not S.ff_user
+    S.ff = S.ff_user or S.ff_fwd or false
+    PB.apply_speed()
+    PB.build_bar()
+end
+
+function PB.jump(delta)
+    if not S or S.script then return end
+    local cur = S.ante or ante_now()
+    local target = math.max(1, cur + delta)
+    if target == cur and delta ~= 0 then return end
+    if target > cur then
+        local idx = RP().index_of_ante(S.entries, target)
+        if idx then S.ff_to, S.step_to, S.back_to = idx, nil, nil end
+        return
+    end
+    PB.restart(S.pid, target)
+end
+
+function PB.switch_player()
+    if not S or S.script then return end
+    local pids = {}
+    if S.mode == "live" then
+        for pid, st in pairs(S.live) do
+            if start_entry(st.entries) then pids[#pids + 1] = pid end
+        end
+        table.sort(pids)
+    else
+        pids = RP().pids(S.streams)
+    end
+    if #pids < 2 then return end
+    local nxt = pids[1]
+    for i, p in ipairs(pids) do
+        if p == S.pid then nxt = pids[i % #pids + 1] end
+    end
+    PB.restart(nxt, S.ante or ante_now())
+end
+
+function PB.can_switch()
+    if not S or S.script then return false end
+    if S.mode == "live" then
+        local n = 0
+        for _, st in pairs(S.live) do if start_entry(st.entries) then n = n + 1 end end
+        return n > 1
+    end
+    return #RP().pids(S.streams) > 1
+end
+
+function PB.remove_bar()
+    if G.PB_BAR then
+        pcall(function() G.PB_BAR:remove() end)
+        G.PB_BAR = nil
+    end
+end
+
+local BTN_PAD = 0.04
+PB.SIDE_MIN_W = 2.1
+PB.SIDE_MAX_W = 3.0
+PB.GAP_W = 2.7
+PB.END_DELAY = 1.2
+PB.END_MAX_WAIT = 6
+
+local function port_now()
+    return (UIK and UIK.portrait and UIK.portrait()) and true or false
+end
+
+local function touch_now()
+    return (UIK and UIK.touch and UIK.touch()) and true or false
+end
+
+local function live_T(a)
+    return type(a) == "table" and not a.REMOVED and a.T or nil
+end
+
+local function screen_rect()
+    local s = (G.TILESIZE or 20) * (G.TILESCALE or 1)
+    local R = G.ROOM_ORIG or (G.ROOM and G.ROOM.T) or { x = 0, y = 0 }
+    local W, H = love.graphics.getDimensions()
+    return -R.x, -R.y, W / s - R.x, H / s - R.y
+end
+
+function PB.slot()
+    local c, d, j = live_T(G.consumeables), live_T(G.deck), live_T(G.jokers)
+    if not (c and d) then return nil end
+    local sx0, sy0, sx1, sy1 = screen_rect()
+    if port_now() then
+        local P = rawget(_G, "PORTRAIT")
+        local top = j and (j.y + j.h + 0.1) or (c.y - 0.1)
+        local bottom = (P and P.stage_top and P.stage_top() or (c.y + c.h + 0.45)) - 0.1
+        local x0, x1 = c.x + c.w + 0.08, d.x - 0.08
+        return { kind = "shelf", x = x0, y = top, w = x1 - x0, h = bottom - top }
+    end
+    local x0, x1 = math.max(c.x + c.w, d.x + d.w) + 0.1, sx1 - 0.15
+    if x1 - x0 >= PB.SIDE_MIN_W then
+        local top = math.max(sy0 + 0.15, j and j.y or c.y)
+        local w = math.min(x1 - x0, PB.SIDE_MAX_W)
+        return { kind = "side", x = x0 + (x1 - x0 - w) / 2, y = top, w = w, h = sy1 - 0.15 - top }
+    end
+    local w = math.min(PB.GAP_W, c.w)
+    local top = c.y + c.h + 0.42
+    return { kind = "gap", x = c.x + c.w - w, y = top, w = w, h = d.y - 0.1 - top }
+end
+
+local function slot_key(slot)
+    if not slot then return "none" end
+    local function r(v) return math.floor(v * 20 + 0.5) end
+    return string.format("%s:%d:%d:%d:%d", slot.kind, r(slot.x), r(slot.y), r(slot.w), r(slot.h))
+end
+
+local function speedrun_view()
+    local W, SRm = rawget(_G, "SpeedrunWatch"), rawget(_G, "Speedrun")
+    if S and not S.script and W and W.cur and SRm and type(SRm.view) == "table" then return SRm.view end
+end
+
+local function sizes(slot)
+    local touch, port = touch_now(), port_now()
+    local kind = slot and slot.kind or (port and "shelf" or "gap")
+    local w = slot and slot.w or (port and 3.2 or 2.6)
+    local scale = touch and 0.38 or 0.34
+    if not touch and kind == "side" then scale = 0.36 end
+    local cpad = kind == "shelf" and 0.05 or 0.08
+    return {
+        kind = kind, port = kind == "shelf", touch = touch, w = w - 2 * cpad, cpad = cpad, pad = kind == "shelf" and 0.03 or BTN_PAD, avail = slot and slot.h or 5,
+        scale = scale, line = scale * 1.1, h = touch and 1.0 or 0.6, hmin = touch and 0.62 or 0.46, side = kind == "gap" and 0.55 or 0.42,
+    }
+end
+PB.sizes = function() return sizes(PB.slot()) end
+
+local function btn(label, func, colour, w, z, disabled)
+    return { n = G.UIT.C, config = { align = "cm", padding = z.pad or BTN_PAD }, nodes = {
+        UIK.button{ label = label, button = func, colour = colour, w = w, h = z.h, scale = z.scale, disabled = disabled, id = func },
+    } }
+end
+
+local function text_row(z, node, minh)
+    return { n = G.UIT.R, config = { align = "cm", minw = z.w, maxw = z.w, minh = minh or z.line }, nodes = { node } }
+end
+
+local function text_w(t, scale)
+    local f = G.LANG and G.LANG.font
+    if not (f and f.FONT and G.TILESIZE) then return #t * 0.12 * scale end
+    return f.FONT:getWidth(t) * (f.squish or 1) * scale * (f.FONTSCALE or 0.1) / G.TILESIZE
+end
+
+local function wrap(text, scale, maxw)
+    local lines, cur = {}, ""
+    for word in tostring(text):gmatch("%S+") do
+        local try = cur == "" and word or (cur .. " " .. word)
+        if cur ~= "" and text_w(try, scale) > maxw then
+            lines[#lines + 1] = cur
+            cur = word
+        else
+            cur = try
+        end
+    end
+    if cur ~= "" then lines[#lines + 1] = cur end
+    return lines
+end
+PB.wrap = wrap
+
+local function natural(z, list)
+    local ws, sum = {}, 0
+    for i, b in ipairs(list) do
+        ws[i] = math.max(z.side, text_w(b[1], z.scale) + 0.18)
+        sum = sum + ws[i]
+    end
+    return ws, sum, z.w - #list * 2 * (z.pad or BTN_PAD)
+end
+
+local function split_rows(z, rows)
+    if z.kind == "shelf" then return rows end
+    local out = {}
+    for _, list in ipairs(rows) do
+        local _, sum, avail = natural(z, list)
+        if #list > 1 and sum > avail * (z.kind == "side" and 1.0 or 1.1) then
+            for _, b in ipairs(list) do out[#out + 1] = { b } end
+        else
+            out[#out + 1] = list
+        end
+    end
+    return out
+end
+
+local function button_row(z, list)
+    local n = #list
+    local ws, sum, avail = natural(z, list)
+    local k = sum > avail and avail / sum or 1
+    local extra = k < 1 and 0 or (avail - sum) / n
+    local zz = k < 1 and setmetatable({ scale = z.scale * math.max(k, 0.8) }, { __index = z }) or z
+    local nodes = {}
+    for i, b in ipairs(list) do nodes[i] = btn(b[1], b[2], b[3], ws[i] * k + extra, zz, b[4]) end
+    return { n = G.UIT.R, config = { align = "cm" }, nodes = nodes }
+end
+
+local function fit_line(t, scale, maxw)
+    t = tostring(t or "")
+    if text_w(t, scale) <= maxw then return t end
+    while #t > 0 and text_w(t .. "...", scale) > maxw do
+        t = t:gsub("[%z\1-\127\194-\244][\128-\191]*$", "")
+    end
+    return t .. "..."
+end
+PB.fit_line = fit_line
+
+local function T(text, scale, colour, extra)
+    local cfg = { text = text, scale = scale, colour = colour, shadow = true }
+    for k, v in pairs(extra or {}) do cfg[k] = v end
+    return { n = G.UIT.T, config = cfg }
+end
+
+local function timer_rows(z, v)
+    local en = G.LANGUAGES and G.LANGUAGES["en-us"]
+    local big = z.scale * 1.55
+    local time = { n = G.UIT.T, config = { ref_table = v, ref_value = "time", scale = big, colour = v.col, shadow = true, lang = en } }
+    local line = { n = G.UIT.T, config = { ref_table = v, ref_value = "line", scale = z.scale, colour = v.line_col, shadow = true } }
+    local inner = {
+        { n = G.UIT.R, config = { align = "cm", minh = big * 1.05 }, nodes = { time } },
+        { n = G.UIT.R, config = { align = "cm", minh = z.line, maxw = z.w - 0.2 }, nodes = { line } },
+    }
+    local h = big * 1.05 + z.line + 0.1
+    return { n = G.UIT.R, config = { align = "cm", padding = 0.04 }, nodes = {
+        { n = G.UIT.C, config = { id = "sr_hud_box", align = "cm", padding = 0.03, minw = z.w, colour = G.C.DYN_UI.BOSS_DARK, r = 0.1 }, nodes = inner },
+    } }, h + 0.08
+end
+
+function PB.bar_buttons(z)
+    local blue, red, gold = G.C.BLUE, G.C.RED, G.C.GOLD
+    if S and S.done then
+        if S.mode == "live" or S.script then return { { { L("Leave"), "pb_leave", red } } } end
+        local again, leave = { S.drifted and L("Restart") or L("Watch again"), "pb_again", blue }, { L("Leave"), "pb_leave", red }
+        if z.port then return { { again, leave } } end
+        return { { again }, { leave } }
+    end
+    if not S or S.script then return { { { L("Leave"), "pb_leave", red } } } end
+    local pause = { S.paused and L("Play") or L("Pause"), "pb_pause", blue }
+    local prev, nxt = { "<", "pb_prev_action", blue }, { ">", "pb_next_action", blue }
+    local speed, ff = { "x" .. tostring(PB.SPEEDS[S.speed_i] or 1), "pb_speed", blue }, { ">>", "pb_ff", S.ff_user and gold or blue }
+    local leave = { L("Leave"), "pb_leave", red }
+    local switch = PB.can_switch() and { L("Switch"), "pb_switch", G.C.ORANGE } or nil
+    local extras = PB.bar_extras and PB.bar_extras(S) or {}
+    if z.port then
+        local r2 = {}
+        for _, b in ipairs(extras) do r2[#r2 + 1] = b end
+        local rows = { { prev, pause, nxt, speed, ff }, r2 }
+        if switch or #extras > 1 then
+            rows[3] = switch and { switch, leave } or { leave }
+        else
+            r2[#r2 + 1] = leave
+        end
+        return rows
+    end
+    local rows = { { prev, pause, nxt } }
+    if #extras > 0 then rows[#rows + 1] = extras end
+    if z.kind == "side" then
+        rows[#rows + 1] = { speed, ff }
+        rows[#rows + 1] = switch and { switch, leave } or { leave }
+    else
+        rows[#rows + 1] = { speed, ff, leave }
+        if switch then rows[#rows + 1] = { switch } end
+    end
+    return rows
+end
+
+function PB.bar_definition(slot)
+    local z = sizes(slot)
+    local rows, used = {}, 0.16
+    local function add(r, h) rows[#rows + 1] = r used = used + h end
+    local title, ver, name = title_text(), PB.version_note(), name_text()
+    local status = { n = G.UIT.T, config = { ref_table = S and S.ui or { text = "" }, ref_value = "text", scale = z.scale, colour = S and S.drifted and G.C.RED or G.C.UI.TEXT_LIGHT, shadow = true } }
+    local note = S and S.drifted and S.note and PB.NOTES[S.note]
+    local view = speedrun_view()
+    local btn_rows = split_rows(z, PB.bar_buttons(z))
+    if z.kind ~= "side" then
+        local head = title .. "  "
+        local room = z.w - 0.12 - text_w(head, z.scale)
+        add(text_row(z, { n = G.UIT.C, config = { align = "cm" }, nodes = { T(head, z.scale, G.C.GOLD), T(fit_line(name, z.scale, room), z.scale, G.C.UI.TEXT_LIGHT) } }), z.line)
+        if ver and text_w(ver, z.scale) <= z.w - 0.12 and z.avail - used - 2 * z.line > #btn_rows * (z.hmin + 2 * z.pad) + (view and 1.2 or 0) then
+            add(text_row(z, T(ver, z.scale, G.C.ORANGE)), z.line)
+        end
+    else
+        add(text_row(z, T(title, z.scale, G.C.GOLD)), z.line)
+        if ver then add(text_row(z, T(fit_line(ver, z.scale, z.w - 0.12), z.scale, G.C.ORANGE)), z.line) end
+        add(text_row(z, T(fit_line(name, z.scale, z.w - 0.12), z.scale, G.C.UI.TEXT_LIGHT)), z.line)
+    end
+    if note then
+        for _, part in ipairs(note) do
+            for _, line in ipairs(wrap(L(part), z.scale, z.w - 0.12)) do add(text_row(z, T(line, z.scale, G.C.RED)), z.line) end
+        end
+    elseif not (z.kind ~= "side" and view and S and not S.done) then
+        add(text_row(z, status), z.line)
+    end
+    if view then
+        local r, h = timer_rows(z, view)
+        add(r, h)
+    end
+    used = used - 0.16 + 2 * z.cpad
+    local per = (z.avail - used) / #btn_rows - 2 * z.pad - 0.01
+    z.h = math.max(z.hmin, math.min(z.h, per))
+    for _, list in ipairs(btn_rows) do rows[#rows + 1] = button_row(z, list) end
+    return { n = G.UIT.ROOT, config = { align = "cm", colour = G.C.CLEAR, padding = 0 }, nodes = {
+        { n = G.UIT.R, config = { align = "cm", colour = { 0, 0, 0, 0.72 }, r = 0.12, padding = z.cpad, emboss = 0.04 }, nodes = {
+            { n = G.UIT.C, config = { align = "cm" }, nodes = rows },
+        } },
+    } }
+end
+
+local function viewing()
+    return S ~= nil and not S.driving and not S.waiting_start
+end
+
+function PB.guard_input()
+    if Controller and Controller.L_cursor_press and not PB._press_wrapped then
+        PB._press_wrapped = true
+        local press = Controller.L_cursor_press
+        Controller.L_cursor_press = function(self, ...)
+            local res = press(self, ...)
+            local t = self.cursor_down and self.cursor_down.target
+            if viewing() and t and t ~= G.ROOM and Card and type(t.is) == "function" and t:is(Card) then self.cursor_down.target = G.ROOM end
+            return res
+        end
+    end
+    if Controller and Controller.queue_R_cursor_press and not PB._rclick_wrapped then
+        PB._rclick_wrapped = true
+        local rclick = Controller.queue_R_cursor_press
+        Controller.queue_R_cursor_press = function(self, ...)
+            if viewing() then return end
+            return rclick(self, ...)
+        end
+    end
+    local DS = rawget(_G, "DRAG_SELECT")
+    if type(DS) == "table" and type(DS.update) == "function" and not PB._ds_wrapped then
+        PB._ds_wrapped = true
+        local up = DS.update
+        DS.update = function(...)
+            if viewing() then
+                if (DS.pending or DS.active) and DS.reset then pcall(DS.reset) end
+                return
+            end
+            return up(...)
+        end
+    end
+end
+
+local function place_bar(box, slot)
+    local ra = live_T(G.ROOM_ATTACH)
+    if not (slot and ra and box.T) then return false end
+    local x = slot.x + math.max(0, (slot.w - box.T.w) / 2)
+    local y = slot.y
+    if slot.kind == "shelf" then y = slot.y + math.max(0, (slot.h - box.T.h) / 2) end
+    return pcall(function() box:set_alignment({ type = "tli", offset = { x = x - ra.x, y = y - ra.y } }) end)
+end
+
+function PB.build_bar()
+    if not S or S.loading then return end
+    PB.remove_bar()
+    if G.MOD_FLOATING_BUTTON and type(rawget(_G, "remove_floating_mod_button")) == "function" then pcall(remove_floating_mod_button) end
+    local slot = PB.slot()
+    local ok, box = pcall(function()
+        if slot then
+            return UIBox{ definition = PB.bar_definition(slot), config = { align = "tli", offset = { x = 0, y = 0 }, major = G.ROOM_ATTACH, bond = "Weak" } }
+        end
+        local major = G.consumeables or G.ROOM_ATTACH
+        local below = G.consumeables and G.consumeables.T and (G.consumeables.T.h + 0.45) or 0.7
+        return UIBox{ definition = PB.bar_definition(nil), config = { align = "tri", offset = { x = 0, y = below }, major = major, bond = "Weak" } }
+    end)
+    if not (ok and box) then return end
+    G.PB_BAR = box
+    box.pb_key, box.pb_port = slot_key(slot), port_now()
+    box.pb_timer = speedrun_view() ~= nil
+    box.pb_placed = slot ~= nil and place_bar(box, slot)
+end
+
+function PB.bar_stale()
+    local b = G.PB_BAR
+    if not b then return false end
+    if b.REMOVED then return true end
+    if b.pb_port ~= port_now() or b.pb_timer ~= (speedrun_view() ~= nil) then return true end
+    return b.pb_key ~= slot_key(PB.slot())
+end
+
+local function ending_text()
+    if not S then return "" end
+    if S.drifted then return string.format(L("Stopped at Ante %d"), tonumber(S.drifted) or ante_now()) end
+    local g = G.GAME or {}
+    if g.won then return L("Run won") end
+    if G.STATE == G.STATES.GAME_OVER then return string.format(L("Game over at Ante %d"), ante_now()) end
+    return string.format(L("Ended at Ante %d, round %d"), ante_now(), tonumber(g.round) or 1)
+end
+
+function PB.end_info()
+    if not S then return nil end
+    local info = { name = name_text(), result = ending_text(), good = false, bad = S.drifted ~= nil or G.STATE == G.STATES.GAME_OVER }
+    info.good = not info.bad and G.GAME and G.GAME.won and true or false
+    local SRm, W = rawget(_G, "Speedrun"), rawget(_G, "SpeedrunWatch")
+    local fmt = SRm and SRm.fmt or function(t) return string.format("%.1f", t) end
+    local w = W and W.cur
+    if w and w.c and not S.drifted then
+        local cat = SRm.cat and SRm.cat(w.c.cat)
+        if w.c.done then
+            info.result = string.format(L("Goal reached: %s"), cat and L(cat.label) or "")
+            info.good, info.bad = true, false
+        end
+        info.time_label = L("Final time")
+        info.time = fmt(w.c.done and (w.final or w.c.t) or w.c.t)
+        return info
+    end
+    if not (type(S.header) == "table" and S.header.kind == "local") then return info end
+    local last = 0
+    for i = #(S.entries or {}), math.max(1, #(S.entries or {}) - 40), -1 do
+        local t = type(S.entries[i]) == "table" and tonumber(S.entries[i].t)
+        if t and t > last then last = t end
+    end
+    if last > 0 then
+        info.time_label = L("Run time")
+        info.time = fmt(last / 1000)
+    end
+    return info
+end
+
+function PB.end_definition()
+    local info = PB.end_info() or {}
+    local touch, port = touch_now(), port_now()
+    local s = touch and 1.12 or 1
+    local wide = port and 5.4 or 7
+    local title = S and S.drifted and L("Replay stopped") or L("Replay finished")
+    local rows = {
+        { n = G.UIT.R, config = { align = "cm", padding = 0.06 }, nodes = { T(title, math.min(0.9 * s, (wide * s - 0.3) / math.max(text_w(title, 1), 0.1)), S and S.drifted and G.C.RED or G.C.GOLD, { id = "pb_end_title" }) } },
+    }
+    if info.name and info.name ~= "" then
+        rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.03 }, nodes = { T(fit_line(info.name, 0.5 * s, wide), 0.5 * s, G.C.UI.TEXT_LIGHT) } }
+    end
+    rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.05 }, nodes = { T(info.result or "", math.min(0.55 * s, (wide * s - 0.3) / math.max(text_w(info.result or "", 1), 0.1)), info.good and G.C.GREEN or info.bad and G.C.RED or G.C.UI.TEXT_LIGHT) } }
+    if info.time then
+        rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.1, r = 0.1, colour = G.C.DYN_UI.BOSS_DARK, minw = (wide - 2.4) * s }, nodes = {
+            { n = G.UIT.C, config = { align = "cm" }, nodes = {
+                { n = G.UIT.R, config = { align = "cm" }, nodes = { T(info.time_label or "", 0.45 * s, G.C.UI.TEXT_LIGHT) } },
+                { n = G.UIT.R, config = { align = "cm" }, nodes = { T(info.time, 1.0 * s, info.good and G.C.GREEN or G.C.GOLD, { lang = G.LANGUAGES and G.LANGUAGES["en-us"] }) } },
+            } },
+        } }
+    end
+    local note = S and S.drifted and S.note and PB.NOTES[S.note]
+    for _, part in ipairs(note or {}) do
+        rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm" }, nodes = { T(L(part), 0.42 * s, G.C.RED) } }
+    end
+    local bw, bh = (port and 2.6 or 3.2) * s, touch and 1.0 or 0.8
+    rows[#rows + 1] = { n = G.UIT.R, config = { align = "cm", padding = 0.12 }, nodes = {
+        { n = G.UIT.C, config = { align = "cm", padding = 0.06 }, nodes = { UIK.button{ label = S and S.drifted and L("Restart") or L("Watch again"), button = "pb_again", colour = G.C.BLUE, w = bw, h = bh, scale = 0.5 * s, id = "pb_again" } } },
+        { n = G.UIT.C, config = { align = "cm", padding = 0.06 }, nodes = { UIK.button{ label = L("Leave"), button = "pb_leave", colour = G.C.RED, w = bw, h = bh, scale = 0.5 * s, id = "pb_end_leave" } } },
+    } }
+    return create_UIBox_generic_options({ no_back = true, contents = { { n = G.UIT.R, config = { align = "cm", padding = 0.15, minw = wide * s }, nodes = { { n = G.UIT.C, config = { align = "cm" }, nodes = rows } } } } })
+end
+
+function PB.show_end()
+    if not S or S.end_menu then return end
+    local ok, def = pcall(PB.end_definition)
+    if not ok then return end
+    G.FUNCS.overlay_menu({ definition = def, config = { no_esc = false } })
+    S.end_menu, S.end_port = G.OVERLAY_MENU, port_now()
+    G.PB_END = G.OVERLAY_MENU
+end
+
+function PB.end_tick()
+    if S and S.end_menu and G.OVERLAY_MENU == S.end_menu and S.end_port ~= port_now() then
+        pcall(G.FUNCS.exit_overlay_menu)
+        S.end_menu = nil
+        PB.show_end()
+        return
+    end
+    if not S or not S.done or S.mode == "live" or S.script or S.end_menu or S.end_closed then return end
+    local dt = love.timer.getDelta()
+    S.end_wait = (S.end_wait or 0) + dt
+    if G.screenwipe or (G.OVERLAY_MENU and G.OVERLAY_MENU ~= S.end_menu) then return end
+    if idle() then S.end_t = (S.end_t or 0) + dt end
+    if (S.end_t or 0) >= PB.END_DELAY or S.end_wait >= PB.END_MAX_WAIT then PB.show_end() end
+end
+
+function PB.again()
+    if not S then return end
+    local menu = S.end_menu
+    S.end_menu, S.end_t, S.end_wait, S.end_closed = nil, nil, nil, nil
+    G.PB_END = nil
+    if menu and G.OVERLAY_MENU == menu then pcall(G.FUNCS.exit_overlay_menu) end
+    PB.restart(S.pid, 1)
+end
+
+PB.is_replay_running = PB.active
+
+function PB.init()
+    pcall(PB.guard_input)
+    pcall(PB.hook_swap)
+    G.FUNCS.pb_pause = function() PB.toggle_pause() end
+    G.FUNCS.pb_speed = function() PB.cycle_speed() end
+    G.FUNCS.pb_ff = function() PB.toggle_ff() end
+    G.FUNCS.pb_prev_ante = function() PB.jump(-1) end
+    G.FUNCS.pb_next_ante = function() PB.jump(1) end
+    G.FUNCS.pb_prev_action = function() PB.step_action(-1) end
+    G.FUNCS.pb_next_action = function() PB.step_action(1) end
+    G.FUNCS.pb_switch = function() PB.switch_player() end
+    G.FUNCS.pb_leave = function()
+        if S and S.end_menu and G.OVERLAY_MENU == S.end_menu then pcall(G.FUNCS.exit_overlay_menu) end
+        PB.leave()
+    end
+    G.FUNCS.pb_restart = function() PB.again() end
+    G.FUNCS.pb_again = function() PB.again() end
+    if Card and Card.click and not PB._click_wrapped then
+        PB._click_wrapped = true
+        local click = Card.click
+        Card.click = function(self, ...)
+            if S and not S.driving and not S.waiting_start then return end
+            return click(self, ...)
+        end
+        local can_drag = Card.can_drag or Node.can_drag
+        Card.can_drag = function(self, ...)
+            if S and not S.driving and not S.waiting_start then return nil end
+            return can_drag(self, ...)
+        end
+    end
+    if UIElement and UIElement.click and not PB._ui_wrapped then
+        PB._ui_wrapped = true
+        local uiclick = UIElement.click
+        UIElement.click = function(self, ...)
+            if self.config and PB.blocks_button(self.config.button) then return end
+            if not S or S.driving then return uiclick(self, ...) end
+            local before = G.OVERLAY_MENU
+            uiclick(self, ...)
+            if S and G.OVERLAY_MENU and G.OVERLAY_MENU ~= before then S.viewer_menu = G.OVERLAY_MENU end
+        end
+    end
+    for _, name in ipairs({ "run_info", "deck_info" }) do
+        local f = G.FUNCS[name]
+        if type(f) == "function" and not PB["_" .. name .. "_wrapped"] then
+            PB["_" .. name .. "_wrapped"] = true
+            G.FUNCS[name] = function(...)
+                f(...)
+                if S and not S.driving and G.OVERLAY_MENU then S.viewer_menu = G.OVERLAY_MENU end
+            end
+        end
+    end
+    if Controller and Controller.get_cursor_collision and not PB._collide_wrapped then
+        PB._collide_wrapped = true
+        local collide = Controller.get_cursor_collision
+        Controller.get_cursor_collision = function(self, ...)
+            local r = collide(self, ...)
+            local bar, list = G.PB_BAR, self.collision_list
+            if bar and list and list[2] and list[1].UIBox ~= bar then
+                local front, rest = {}, {}
+                for _, v in ipairs(list) do
+                    if v.UIBox == bar then front[#front + 1] = v else rest[#rest + 1] = v end
+                end
+                if front[1] then
+                    for i, v in ipairs(front) do list[i] = v end
+                    for i, v in ipairs(rest) do list[#front + i] = v end
+                end
+            end
+            return r
+        end
+    end
+    if G.FUNCS.options and not PB._options_wrapped then
+        PB._options_wrapped = true
+        local options = G.FUNCS.options
+        G.FUNCS.options = function(...)
+            if S and not S.driving then return end
+            return options(...)
+        end
+    end
+    if G.FUNCS.go_to_menu and not PB._menu_wrapped then
+        PB._menu_wrapped = true
+        local go = G.FUNCS.go_to_menu
+        G.FUNCS.go_to_menu = function(...)
+            if S then PB.stop(false) end
+            return go(...)
+        end
+    end
+    if G.FUNCS.start_run and not PB._start_wrapped then
+        PB._start_wrapped = true
+        local start_run = G.FUNCS.start_run
+        G.FUNCS.start_run = function(...)
+            if S and S.waiting_start then PB.stop(false) end
+            return start_run(...)
+        end
+    end
+    if bom_core and bom_core.send and not PB._send_wrapped then
+        PB._send_wrapped = true
+        local send = bom_core.send
+        bom_core.send = function(data, opts)
+            if S and not S.waiting_start and type(data) == "table" and not OUT_ALLOW[data.type] and not allowed(data.type) then return true end
+            return send(data, opts)
+        end
+    end
+end
+
+local function register_strings_1()
+    mod_loc_register{
+        fr = {
+            ["This replay drifted at Ante %d"] = "Ce replay a divergé à la mise initiale %d",
+            ["Drifted at Ante %d"] = "Divergé à la mise initiale %d",
+            ["LIVE"] = "EN DIRECT", ["REPLAY"] = "REPLAY", ["Paused"] = "En pause", ["Ante"] = "Mise",
+            ["Play"] = "Lecture", ["Pause"] = "Pause", ["Switch"] = "Changer", ["Leave"] = "Quitter", ["Restart"] = "Relancer",
+            ["Replay finished"] = "Replay terminé", ["The match is over"] = "Le match est terminé",
+            ["Watch again"] = "Revoir", ["Replay stopped"] = "Replay interrompu", ["Stopped at Ante %d"] = "Arrêté à la mise initiale %d",
+            ["Run won"] = "Partie gagnée", ["Game over at Ante %d"] = "Perdu à la mise initiale %d", ["Ended at Ante %d, round %d"] = "Fin à la mise initiale %d, manche %d",
+            ["Goal reached: %s"] = "Objectif atteint : %s", ["Final time"] = "Temps final",
+            ["Waiting for the match to start..."] = "En attente du début du match...",
+            ["Recorded with an older version"] = "Enregistré avec une ancienne version", ["Older version"] = "Ancienne version", ["Version %s"] = "Version %s",
+            ["Recorded with other mods"] = "Enregistré avec d'autres mods",
+            ["It may not play back exactly"] = "Il peut différer du match",
+        },
+        es = {
+            ["This replay drifted at Ante %d"] = "Esta repetición se desvió en la apuesta inicial %d",
+            ["Drifted at Ante %d"] = "Desviada en la apuesta inicial %d",
+            ["LIVE"] = "EN DIRECTO", ["REPLAY"] = "REPETICIÓN", ["Paused"] = "En pausa", ["Ante"] = "Apuesta",
+            ["Play"] = "Reproducir", ["Pause"] = "Pausa", ["Switch"] = "Cambiar", ["Leave"] = "Salir", ["Restart"] = "Reiniciar",
+            ["Replay finished"] = "Repetición terminada", ["The match is over"] = "La partida terminó",
+            ["Watch again"] = "Ver otra vez", ["Replay stopped"] = "Repetición detenida", ["Stopped at Ante %d"] = "Detenida en la apuesta inicial %d",
+            ["Run won"] = "Partida ganada", ["Game over at Ante %d"] = "Derrota en la apuesta inicial %d", ["Ended at Ante %d, round %d"] = "Fin en la apuesta inicial %d, ronda %d",
+            ["Goal reached: %s"] = "Objetivo cumplido: %s", ["Final time"] = "Tiempo final",
+            ["Waiting for the match to start..."] = "Esperando a que empiece la partida...",
+            ["Recorded with an older version"] = "Grabada con una versión anterior", ["Older version"] = "Versión anterior", ["Version %s"] = "Versión %s",
+            ["Recorded with other mods"] = "Grabada con otros mods",
+            ["It may not play back exactly"] = "Puede diferir de la partida",
+        },
+    }
+end
+
+function PB.register_strings()
+    if not mod_loc_register then return end
+    register_strings_1()
+end
+
+return PB
+end

@@ -1,0 +1,47 @@
+BOP 2
+eol lf
+final 0
+base 57
+s 1
+e 57 1 - - =38,-2,=39
+c 14
+l 4
+
+extern MY_HIGHP_OR_MEDIUMP number filter_type;
+extern MY_HIGHP_OR_MEDIUMP number filter_intensity;
+extern MY_HIGHP_OR_MEDIUMP number rainbow_speed;
+c 80
+s 4
+l 1
+    if (noise_fac > 0.0000001) {
+r 57 96 %20%20%20%20%20%20%20%20 -
+r 57 97 %20%20%20%20%20%20%20%20 -
+r 57 98 %20%20%20%20%20%20%20%20 -
+r 57 99 %20%20%20%20%20%20%20%20 -
+l 1
+    }
+c 32
+s 1
+l 20
+    MY_HIGHP_OR_MEDIUMP vec4 result = (final_col*(1. -1.*bloom) + bloom*col)*mask;
+    
+    if (filter_type > 1.5 && filter_type < 2.5) {
+        MY_HIGHP_OR_MEDIUMP float grey = dot(result.rgb, vec3(0.299, 0.587, 0.114));
+        MY_HIGHP_OR_MEDIUMP vec3 sepia = vec3(grey * 1.2, grey * 1.0, grey * 0.8);
+        result.rgb = mix(result.rgb, sepia, filter_intensity);
+    } else if (filter_type > 2.5 && filter_type < 3.5) {
+        MY_HIGHP_OR_MEDIUMP float grey = dot(result.rgb, vec3(0.299, 0.587, 0.114));
+        result.rgb = mix(result.rgb, vec3(grey), filter_intensity);
+    } else if (filter_type > 3.5 && filter_type < 4.5) {
+        MY_HIGHP_OR_MEDIUMP float t = time * rainbow_speed * 0.5;
+        MY_HIGHP_OR_MEDIUMP vec3 rainbow = vec3(
+            (sin(t) + 1.0) * 0.5,
+            (sin(t + 2.094) + 1.0) * 0.5,
+            (sin(t + 4.189) + 1.0) * 0.5
+        );
+        result.rgb = mix(result.rgb, result.rgb * (0.5 + rainbow * 0.5), filter_intensity);
+    }
+    
+    return result;
+c 22
+end

@@ -1,0 +1,772 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 245
+BOT = BOT or {}
+local U = {}
+BOT.ui = U
+
+local function L(s)
+    if mod_loc then return mod_loc(s) end
+    return s
+end
+
+local SPEEDS = {{"Slow", 1.5}, {"Normal", 0.6}, {"Fast", 0.2}, {"Instant", 0}}
+U.PAGES = {{"ai", "AI"}, {"game", "Game"}, {"options", "Options"}, {"stats", "Stats"}}
+
+local function index_of(list, v, f)
+    for i, x in ipairs(list) do
+        if (f and f(x) or x) == v then return i end
+    end
+    return 1
+end
+
+local function col(node)
+    return {n = G.UIT.C, config = {align = "cm", padding = 0.02}, nodes = {node}}
+end
+
+function U.box_w()
+    return (rawget(_G, "PORTRAIT") and PORTRAIT.on()) and 8.4 or 12
+end
+
+local function text_row(text, scale, colour)
+    scale = math.max(scale or 0.32, 0.36)
+    local w = U.box_w() - 0.5
+    local lines, cur = {}, ""
+    for word in tostring(text or ""):gmatch("%S+") do
+        local try = cur == "" and word or (cur .. " " .. word)
+        if cur ~= "" and UIK and UIK.text_w and UIK.text_w(try, scale) > w then
+            lines[#lines + 1] = cur
+            cur = word
+        else
+            cur = try
+        end
+    end
+    lines[#lines + 1] = cur
+    local rows = {}
+    for i, l in ipairs(lines) do
+        rows[i] = {n = G.UIT.R, config = {align = "cm", padding = 0.01}, nodes = {
+            {n = G.UIT.T, config = {text = l, scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}},
+        }}
+    end
+    if #rows == 1 then rows[1].config.padding = 0.03 return rows[1] end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = rows}}}
+end
+U.text_row = text_row
+
+local function masked(key)
+    if not key then return L("none") end
+    if #key <= 8 then return string.rep("*", #key) end
+    return key:sub(1, 6) .. "..." .. key:sub(-4)
+end
+
+local function short(s, n)
+    s = tostring(s or "")
+    if #s > n then return s:sub(1, n - 2) .. ".." end
+    return s
+end
+U.short = short
+
+local function cap(s)
+    s = tostring(s or "")
+    return s:sub(1, 1):upper() .. s:sub(2)
+end
+
+local function button(label, func, colour, w, h, scale)
+    return UIBox_button({label = {label}, button = func, minw = w or 1.8, minh = h or 0.6, scale = scale or 0.36, colour = colour, col = true})
+end
+
+function U.page_key()
+    local pg = U.page or 1
+    if type(pg) == "number" then pg = (U.PAGES[pg] or U.PAGES[1])[1] end
+    for _, p in ipairs(U.PAGES) do
+        if p[1] == pg then return pg end
+    end
+    return "ai"
+end
+
+function U.brain_label()
+    local cfg = BOT.config
+    local v = cfg.values or cfg.load()
+    local p = cfg.provider(v.provider)
+    local R = BOT.difficulty and BOT.difficulty.results and BOT.difficulty.results()
+    local ver = R and R.version
+    return short(L(p.label) .. ((p.key == "w14" and ver) and (" " .. ver) or ""), 40)
+end
+
+function U.ai_rows()
+    local cfg = BOT.config
+    local v = cfg.values or cfg.load()
+    local provs, labels = cfg.PROVIDERS, {}
+    for i, p in ipairs(provs) do labels[i] = L(p.label) end
+    local p = cfg.provider(v.provider)
+    local rows = {}
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+        create_option_cycle({label = L("Bot"), options = labels, current_option = index_of(provs, v.provider, function(x) return x.key end),
+            opt_callback = "bot_set_provider", w = 4.5, scale = 0.75, colour = G.C.RED}),
+    }}
+    local desc = {
+        w14 = {"Our trained bot. Plays fair: sees only what you see, one try per seed.", "A hand solver plays the cards, a neural net and rollouts pick shops, packs and skips."},
+        seer = {"Reads the seed: knows every future draw, shop and pack.", "It cheats on purpose, so its games are kept apart from Fair's."},
+    }
+    for i, line in ipairs(desc[p.key] or {}) do
+        rows[#rows + 1] = text_row(L(line), i == 1 and 0.3 or 0.28, i == 1 and G.C.UI.TEXT_LIGHT or G.C.UI.TEXT_INACTIVE)
+    end
+    rows[#rows + 1] = text_row(L("Starts its own vanilla run (no mods, no challenge). Thinks in the background."), 0.28, G.C.UI.TEXT_INACTIVE)
+    local budgets = BOT.sim and BOT.sim.BUDGETS or {"fast", "normal", "deep"}
+    local blabels = {}
+    for i, b in ipairs(budgets) do blabels[i] = L(cap(b)) end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {
+        col(create_option_cycle({label = L("Thinking time"), options = blabels, current_option = index_of(budgets, v.sim_budget or "normal"),
+            opt_callback = "bot_set_sim_budget", w = 2.4, scale = 0.7, colour = G.C.PURPLE})),
+    }}
+    rows[#rows + 1] = text_row(L("Normal is the version measured in the Stats tab. Fast thinks less, Deep thinks more."), 0.26, G.C.UI.TEXT_INACTIVE)
+    return rows
+end
+
+function U.options_rows()
+    local cfg = BOT.config
+    local v = cfg.values or cfg.load()
+    local p = cfg.provider(v.provider)
+    local rows = {}
+    local speed_labels = {}
+    for i, s in ipairs(SPEEDS) do speed_labels[i] = L(s[1]) end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+        col(create_option_cycle({label = L("Speed"), options = speed_labels, current_option = index_of(SPEEDS, v.delay, function(x) return x[2] end),
+            opt_callback = "bot_set_speed", w = 2, scale = 0.7, colour = G.C.ORANGE})),
+        col(create_option_cycle({label = L("Mode"), options = {L("Auto"), L("Step")}, current_option = v.mode == "step" and 2 or 1,
+            opt_callback = "bot_set_mode", w = 2, scale = 0.7, colour = G.C.ORANGE})),
+    }}
+    local rl = L("Show reasoning")
+    local rw = math.max(2.6, (ui_text_width and ui_text_width(rl, 0.38) or 0) + 0.2)
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", padding = 0.02, minw = math.max(3.6, rw + 1)}, nodes = {
+            create_toggle({label = rl, ref_table = v, ref_value = "show_reasoning", callback = G.FUNCS.bot_save_settings, w = rw, label_scale = 0.38, scale = 0.9}),
+        }},
+    }}
+    return rows
+end
+
+function U.page_rows()
+    local key = U.page_key()
+    local f = ({ai = U.ai_rows, game = U.game_rows, options = U.options_rows, versus = U.versus_rows, stats = U.stats_rows})[key]
+    local rows = f and f() or {}
+    if #rows == 0 then rows[1] = text_row(L("Nothing here yet"), 0.3, G.C.UI.TEXT_INACTIVE) end
+    return rows
+end
+
+function U.page_buttons()
+    local key = U.page_key()
+    local nodes = {}
+    local bw = U.box_w() < 12 and 1.95 or 2.2
+    for _, p in ipairs(U.PAGES) do
+        nodes[#nodes + 1] = button(L(p[2]), "bot_settings_page_" .. p[1], key == p[1] and G.C.RED or G.C.L_BLACK, bw, 0.7, 0.42)
+    end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = nodes}
+end
+
+local function page_box(minh)
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", r = 0.1, colour = G.C.BLACK, padding = 0.08, minw = U.box_w(), minh = minh or 5.5}, nodes = U.page_rows()},
+    }}
+end
+
+local function big_button(label, func, colour, w)
+    return {n = G.UIT.C, config = {align = "cm", padding = 0.1, minh = 0.8, minw = w, r = 0.1, hover = true, colour = colour, button = func, shadow = true}, nodes = {
+        {n = G.UIT.T, config = {text = label, scale = 0.45, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+    }}
+end
+
+function U.start_buttons()
+    local in_run = G.STAGE == G.STAGES.RUN and G.GAME
+    local over = in_run and (G.STATE == G.STATES.GAME_OVER or (G.GAME.won and not G.GAME.bot_endless))
+    local nodes = {}
+    if in_run and U.solo and not over then
+        nodes[#nodes + 1] = big_button(L("Stop Bot-latro"), "bot_panel_stop", G.C.RED, 5.9)
+        nodes[#nodes + 1] = {n = G.UIT.B, config = {w = 0.15, h = 0.1}}
+        nodes[#nodes + 1] = big_button(L("New Bot-latro run"), "botlatro_start", G.C.BLUE, 5.9)
+    elseif in_run and not over then
+        nodes[#nodes + 1] = big_button(L("Bot-latro plays this run"), "bot_take_over", G.C.GREEN, 5.9)
+        nodes[#nodes + 1] = {n = G.UIT.B, config = {w = 0.15, h = 0.1}}
+        nodes[#nodes + 1] = big_button(L("New Bot-latro run"), "botlatro_start", G.C.BLUE, 5.9)
+    else
+        nodes[#nodes + 1] = big_button(L("START A BOT-LATRO RUN"), "botlatro_start", G.C.BLUE, 12)
+    end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = nodes}
+end
+
+function U.tab_definition()
+    local cfg = BOT.config
+    local v = cfg.values or cfg.load()
+    local diff = BOT.difficulty and BOT.difficulty.level() or v.difficulty
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, minw = 12.2, minh = 7}, nodes = {
+        {n = G.UIT.R, config = {id = "botlatro_tab", align = "cm", padding = 0.04}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", padding = 0.08, r = 0.1, colour = G.C.BLACK, minw = 12}, nodes = {
+                {n = G.UIT.C, config = {align = "cl", minw = 5.9}, nodes = {
+                    {n = G.UIT.R, config = {align = "cl"}, nodes = {
+                        {n = G.UIT.T, config = {text = L("BOT-LATRO"), scale = 0.55, colour = G.C.GOLD, shadow = true}},
+                    }},
+                    {n = G.UIT.R, config = {align = "cl"}, nodes = {
+                        {n = G.UIT.T, config = {text = L("Watch an AI play Balatro"), scale = 0.28, colour = G.C.UI.TEXT_INACTIVE}},
+                    }},
+                }},
+                {n = G.UIT.C, config = {align = "cr", minw = 5.9}, nodes = {
+                    {n = G.UIT.R, config = {align = "cr"}, nodes = {
+                        {n = G.UIT.T, config = {text = U.brain_label(), scale = 0.28, colour = G.C.UI.TEXT_INACTIVE}},
+                    }},
+                    {n = G.UIT.R, config = {align = "cr"}, nodes = {
+                        {n = G.UIT.T, config = {text = L(cap(diff)) .. ", " .. L(cap(v.sim_budget or "normal")), scale = 0.42, colour = G.C.ORANGE, shadow = true}},
+                    }},
+                }},
+            }},
+        }},
+        U.page_buttons(),
+        page_box(5.5),
+        U.start_buttons(),
+    }}
+end
+
+G.UIDEF.botlatro_tab = function()
+    if not BOT.config.values then BOT.config.load() end
+    return U.tab_definition()
+end
+
+function U.settings_definition()
+    local rows = {
+        text_row(L("BOT-LATRO"), 0.5, G.C.GOLD),
+        U.page_buttons(),
+        page_box(5.5),
+    }
+    return create_UIBox_generic_options({back_func = "bot_close_settings", contents = rows})
+end
+
+function U.open_settings()
+    if not BOT.config.values then BOT.config.load() end
+    U.open = true
+    G.FUNCS.overlay_menu({definition = U.settings_definition()})
+end
+
+function U.refresh_now()
+r 13 1360 %20%20%20%20 -
+l 42
+    local tab = G.OVERLAY_MENU:get_UIE_by_ID("botlatro_tab")
+    local tc = tab and G.OVERLAY_MENU:get_UIE_by_ID("tab_contents")
+    if tc and tc.config.object then
+        tc.config.object:remove()
+        tc.config.object = UIBox({definition = U.tab_definition(), config = {offset = {x = 0, y = 0}, parent = tc, type = "cm"}})
+        tc.UIBox:recalculate()
+    elseif U.open then
+        G.FUNCS.overlay_menu({definition = U.settings_definition()})
+    end
+end
+
+function U.refresh_settings()
+    if not G.E_MANAGER then return U.refresh_now() end
+    if U.refresh_queued then return end
+    U.refresh_queued = true
+    G.E_MANAGER:add_event(Event({trigger = "immediate", blockable = false, blocking = false, no_delete = true, func = function()
+        U.refresh_queued = false
+        U.refresh_now()
+        return true
+    end}))
+end
+
+for _, p in ipairs(U.PAGES) do
+    local key = p[1]
+    G.FUNCS["bot_settings_page_" .. key] = function()
+        U.page = key
+        U.refresh_settings()
+    end
+end
+
+G.FUNCS.bot_open_settings = function()
+    U.open_settings()
+end
+
+G.FUNCS.botlatro_open_tab = function()
+    U.select_tab = true
+    G.FUNCS.setup_run({config = {}})
+end
+
+G.FUNCS.bot_close_settings = function()
+    U.open = false
+    BOT.config.save()
+r 13 1375 %20%20%20%20 -
+l 282
+end
+
+G.FUNCS.bot_save_settings = function()
+    BOT.config.save()
+end
+
+G.FUNCS.bot_set_sim_budget = function(args)
+    local list = BOT.sim and BOT.sim.BUDGETS or {"fast", "normal", "deep"}
+    BOT.config.set("sim_budget", list[args.to_key] or "normal")
+end
+
+G.FUNCS.bot_set_provider = function(args)
+    local p = BOT.config.PROVIDERS[args.to_key]
+    if not p then return end
+    BOT.config.set("provider", p.key)
+    U.status = nil
+    U.refresh_settings()
+end
+
+G.FUNCS.bot_set_speed = function(args)
+    local s = SPEEDS[args.to_key]
+    if s then
+        BOT.config.set("delay", s[2])
+        BOT.settings.delay = s[2]
+    end
+end
+
+G.FUNCS.bot_set_mode = function(args)
+    local m = args.to_key == 2 and "step" or "auto"
+    BOT.config.set("mode", m)
+    BOT.settings.mode = m
+end
+
+local PANEL_LINES = 9
+local LINE_CHARS = 31
+local P = {lines = {}, title = "", status = "", action = "", stats = "", pause_label = "", mode_label = "", speed_label = ""}
+U.panel = P
+for i = 1, PANEL_LINES do P.lines[i] = "" end
+
+local function wrap(text, width, max_lines)
+    local out = {}
+    for para in tostring(text or ""):gmatch("[^\n]+") do
+        local line = ""
+        for word in para:gmatch("%S+") do
+            if #word > width then word = word:sub(1, width) end
+            if line == "" then
+                line = word
+            elseif #line + 1 + #word <= width then
+                line = line .. " " .. word
+            else
+                out[#out + 1] = line
+                line = word
+            end
+            if #out >= max_lines then return out end
+        end
+        if line ~= "" then out[#out + 1] = line end
+        if #out >= max_lines then return out end
+    end
+    return out
+end
+U.wrap = wrap
+
+local function speed_name()
+    local d = BOT.settings.delay or 0.6
+    for _, s in ipairs(SPEEDS) do
+        if math.abs(s[2] - d) < 0.01 then return L(s[1]) end
+    end
+    return string.format("%.1fs", d)
+end
+
+function U.set_reasoning(text)
+    local lines = wrap(text, LINE_CHARS, PANEL_LINES)
+    for i = 1, PANEL_LINES do P.lines[i] = lines[i] or "" end
+end
+
+function U.panel_tick()
+    local cfg = BOT.config
+    local v = cfg.values or cfg.load()
+    local p = cfg.provider(v.provider)
+    P.title = short(U.brain_label(), 34)
+    local phase = BOT_BRIDGE and BOT_BRIDGE.phase() or "?"
+    if U.ended then
+        P.status = U.ended == "win" and L("Won the run") or L("Run over")
+    elseif BOT.thinking_since then
+        P.status = string.format("%s %ds", L("Thinking..."), math.floor(love.timer.getTime() - BOT.thinking_since))
+    elseif not BOT.active then
+        P.status = L("Stopped")
+    elseif BOT.paused then
+        P.status = L("Paused")
+    elseif BOT.pending then
+        P.status = L("About to act")
+    elseif v.mode == "step" then
+        P.status = L("Step mode: press Step")
+    else
+        P.status = L("Phase") .. ": " .. L(phase)
+    end
+    local st = BOT.stats or {}
+    P.stats = string.format("%s %d  %s %d", L("Actions"), st.actions or 0, L("Best ante"), st.best_ante or 0)
+    P.pause_label = BOT.paused and L("Resume") or L("Pause")
+    P.mode_label = (BOT.settings.mode == "step") and L("Step mode") or L("Auto")
+    P.speed_label = speed_name()
+end
+
+local function on_note(kind, text)
+    if kind == "act" or kind == "plan" then
+        local action, reason = tostring(text):match("^(.-) | (.*)$")
+        P.action = short(action or text, 31)
+        local show = BOT.config.get("show_reasoning")
+        local body = reason or ""
+        if show and BOT.last_thinking and BOT.last_thinking ~= "" then
+            body = body .. "\n" .. BOT.last_thinking
+        end
+        if kind == "act" then BOT.last_thinking = nil end
+        if kind == "plan" or not P.planned then U.set_reasoning(body) end
+        P.planned = kind == "plan"
+    elseif kind == "refused" or kind == "error" or kind == "fallback" or kind == "retry" or kind == "pause" then
+        P.action = short(L(kind) .. ": " .. tostring(text), 40)
+        if kind ~= "retry" then P.planned = false end
+    end
+    if U.prev_note then pcall(U.prev_note, kind, text) end
+end
+
+local function txt(ref, scale, colour)
+    return {n = G.UIT.T, config = {ref_table = P, ref_value = ref, scale = scale or 0.3, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}}
+end
+
+local function pbutton(label_ref, label, func, colour, w)
+    local t = label_ref and txt(label_ref, 0.3, G.C.UI.TEXT_LIGHT) or {n = G.UIT.T, config = {text = label, scale = 0.3, colour = G.C.UI.TEXT_LIGHT, shadow = true}}
+    return {n = G.UIT.C, config = {align = "cm", padding = 0.03}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", minw = w or 1, minh = 0.52, r = 0.08, colour = colour, hover = true, shadow = true, button = func}, nodes = {t}},
+    }}
+end
+
+function U.panel_definition()
+    local reasoning = {}
+    for i = 1, PANEL_LINES do
+        reasoning[#reasoning + 1] = {n = G.UIT.R, config = {align = "cl", minh = 0.24}, nodes = {
+            {n = G.UIT.T, config = {ref_table = P.lines, ref_value = i, scale = 0.26, colour = G.C.UI.TEXT_LIGHT}},
+        }}
+    end
+    local controls
+    if U.ended then
+        controls = {
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                pbutton(nil, L("Play again"), "bot_play_again", G.C.GREEN, 1.5),
+                pbutton(nil, L("Menu"), "bot_panel_menu", G.C.RED, 1.5),
+            }},
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                U.ended == "win" and pbutton(nil, L("Endless"), "bot_panel_endless", G.C.ORANGE, 1.5) or nil,
+                pbutton(nil, L("Settings"), "bot_open_settings", G.C.L_BLACK, 1.5),
+            }},
+        }
+    else
+        controls = {
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                pbutton("pause_label", nil, "bot_panel_pause", G.C.BLUE, 0.95),
+                pbutton(nil, L("Step"), "bot_panel_step", G.C.GREEN, 0.85),
+                pbutton("mode_label", nil, "bot_panel_mode", G.C.ORANGE, 0.95),
+            }},
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {
+                pbutton("speed_label", nil, "bot_panel_speed", G.C.PURPLE, 0.95),
+                pbutton(nil, L("Settings"), "bot_open_settings", G.C.L_BLACK, 0.95),
+                pbutton(nil, L("Stop"), "bot_panel_stop", G.C.RED, 0.85),
+            }},
+        }
+    end
+    local body = {
+        {n = G.UIT.R, config = {align = "cm"}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minw = 2.6}, nodes = {
+                {n = G.UIT.T, config = {text = L("Bot-latro"), scale = 0.4, colour = G.C.GOLD, shadow = true}},
+            }},
+            pbutton(nil, "-", "bot_panel_collapse", G.C.L_BLACK, 0.5),
+        }},
+        {n = G.UIT.R, config = {align = "cm", minh = 0.28}, nodes = {txt("title", 0.27, G.C.UI.TEXT_INACTIVE)}},
+        {n = G.UIT.R, config = {align = "cm", minh = 0.3}, nodes = {txt("status", 0.3, G.C.GREEN)}},
+        {n = G.UIT.R, config = {align = "cm", r = 0.08, colour = G.C.L_BLACK, padding = 0.05, minw = 3.25, minh = PANEL_LINES * 0.24 + 0.1}, nodes = {
+            {n = G.UIT.C, config = {align = "tl", minw = 3.15}, nodes = reasoning},
+        }},
+        {n = G.UIT.R, config = {align = "cm", minh = 0.32}, nodes = {txt("action", 0.28, G.C.GOLD)}},
+        {n = G.UIT.R, config = {align = "cm", minh = 0.28}, nodes = {txt("stats", 0.26, G.C.UI.TEXT_LIGHT)}},
+    }
+    for _, r in ipairs(controls) do body[#body + 1] = r end
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0.02}, nodes = {
+        {n = G.UIT.C, config = {id = "botlatro_panel", align = "cm", r = 0.12, colour = G.C.BLACK, emboss = 0.05, padding = 0.06, minw = 3.4}, nodes = body},
+    }}
+end
+
+function U.mini_definition()
+    return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+        {n = G.UIT.C, config = {id = "botlatro_panel", align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.05}, nodes = {
+            pbutton(nil, L("Bot-latro") .. " +", "bot_panel_collapse", G.C.PURPLE, 1.4),
+            {n = G.UIT.C, config = {align = "cm", minw = 1.6}, nodes = {txt("status", 0.26, G.C.GREEN)}},
+        }},
+    }}
+end
+
+function U.panel_alive()
+    return U.panel_box ~= nil and not U.panel_box.REMOVED
+end
+
+function U.show_panel()
+    U.panel_tick()
+    if U.panel_box and U.panel_box.REMOVED then U.panel_box = nil end
+    if U.panel_box then return end
+    local ok, box = pcall(UIBox, {definition = U.collapsed and U.mini_definition() or U.panel_definition(), config = {align = "cri", offset = {x = -0.7, y = -0.5}, major = G.ROOM_ATTACH, bond = "Weak"}})
+    if ok and box then
+        U.panel_box = box
+        box.attention_text = true
+        box.states.drag.can = true
+    end
+end
+
+function U.hide_panel()
+    if U.panel_box then
+        if not U.panel_box.REMOVED then pcall(U.panel_box.remove, U.panel_box) end
+        U.panel_box = nil
+    end
+end
+
+function U.rebuild_panel()
+    U.hide_panel()
+    if U.solo and G.STAGE == G.STAGES.RUN then U.show_panel() end
+end
+
+local function hook_start_run()
+    if not G.FUNCS.start_run or G.FUNCS.start_run == U.start_run_hook then return end
+    local base = G.FUNCS.start_run
+    U.start_run_hook = function(e, args)
+        local by_bot = U.launching or (BOT_BRIDGE and BOT_BRIDGE.acting) or (BOT.versus and BOT.versus.on)
+        if U.solo and not by_bot then U.stop_all() end
+        return base(e, args)
+    end
+    G.FUNCS.start_run = U.start_run_hook
+end
+
+function U.stop_all()
+    BOT.stop()
+    if BOT.sim then BOT.sim.stop() end
+    U.solo = false
+    U.ended = nil
+    U.hide_panel()
+end
+
+function U.start_solo()
+    local cfg = BOT.config
+    local v = cfg.values or cfg.load()
+    hook_start_run()
+    if U.prev_note == nil and BOT.on_note ~= on_note then U.prev_note = BOT.on_note or false end
+    local opts = {brain = BOT.brain_for(v.provider), delay = v.delay, mode = v.mode, text = v.card_text, preview = true}
+    if BOT.difficulty then opts = BOT.difficulty.prepare(opts) end
+    BOT.start(opts)
+    if BOT.difficulty then BOT.difficulty.after_start() end
+    if BOT.sim and BOT.sim.KINDS[opts.brain] then BOT.state_filter = nil end
+    BOT.on_note = on_note
+    BOT.on_run_end = function(phase, state)
+        BOT.paused = true
+        U.ended = phase == "win" and "win" or "loss"
+        P.action = short((phase == "win" and L("Won the run") or L("Run over")) .. ", " .. L("ante") .. " " .. tostring(state.run and state.run.ante), 31)
+        if BOT.difficulty then
+            local ok, e = pcall(BOT.difficulty.record, phase, state)
+            if ok and e then
+                local lines = BOT.difficulty.summary_lines(e)
+                for i = 1, PANEL_LINES do P.lines[i] = lines[i] or "" end
+                P.planned = true
+            end
+        end
+        U.rebuild_panel()
+        return true
+    end
+    BOT.on_stop = function() U.panel_tick() end
+    U.set_reasoning(L("Bot-latro is getting ready."))
+    P.action = ""
+    P.planned = false
+    U.ended = nil
+    U.solo = true
+    U.seen_run = G.STAGE == G.STAGES.RUN
+    U.rebuild_panel()
+end
+
+function U.launch_run()
+    local v = BOT.config.values or BOT.config.load()
+    U.open = false
+r 13 1825 %20%20%20%20 -
+l 31
+    if BOT_BRIDGE then
+        BOT_BRIDGE.win_seen = nil
+        if G.STAGE == G.STAGES.RUN and G.GAME then BOT_BRIDGE.leaving_game = G.GAME end
+    end
+    U.start_solo()
+    if BOT.sim then BOT.sim.mark_launch() end
+    local back = G.P_CENTERS[v.deck] or G.P_CENTERS.b_red
+    U.launching = true
+    local ok, err = pcall(G.FUNCS.start_run, nil, {stake = v.stake or 1, seed = (v.seed ~= "" and v.seed or nil), back = back})
+    U.launching = false
+    if not ok then
+        BOT.note("error", tostring(err))
+        U.stop_all()
+    end
+end
+
+local function run_is_over()
+    return G.STAGE ~= G.STAGES.RUN or not G.GAME or G.STATE == G.STATES.GAME_OVER or (G.GAME.won and G.OVERLAY_MENU and BOT_BRIDGE and not BOT_BRIDGE.win_seen)
+end
+
+G.FUNCS.botlatro_start = function()
+    U.launch_run()
+end
+
+G.FUNCS.bot_play_again = function()
+    U.launch_run()
+end
+
+G.FUNCS.bot_take_over = function()
+    if run_is_over() then return U.launch_run() end
+    U.open = false
+r 13 1825 %20%20%20%20 -
+l 69
+    U.start_solo()
+end
+
+G.FUNCS.bot_watch = function()
+    if run_is_over() then return U.launch_run() end
+    G.FUNCS.bot_take_over()
+end
+
+G.FUNCS.bot_panel_pause = function()
+    if not BOT.active then
+        G.FUNCS.bot_take_over()
+        return
+    end
+    BOT.paused = not BOT.paused
+end
+
+G.FUNCS.bot_panel_step = function()
+    if not BOT.active then G.FUNCS.bot_take_over() end
+    if BOT.paused then BOT.paused = false BOT.settings.mode = "step" end
+    BOT.step_requested = true
+end
+
+G.FUNCS.bot_panel_mode = function()
+    local m = BOT.settings.mode == "step" and "auto" or "step"
+    BOT.settings.mode = m
+    BOT.config.set("mode", m)
+end
+
+G.FUNCS.bot_panel_speed = function()
+    local d = BOT.settings.delay or 0.6
+    local idx = 1
+    for i, s in ipairs(SPEEDS) do if math.abs(s[2] - d) < 0.01 then idx = i end end
+    local nxt = SPEEDS[idx % #SPEEDS + 1]
+    BOT.settings.delay = nxt[2]
+    BOT.config.set("delay", nxt[2])
+end
+
+G.FUNCS.bot_panel_collapse = function()
+    U.collapsed = not U.collapsed
+    if G.E_MANAGER then
+        G.E_MANAGER:add_event(Event({trigger = "immediate", blockable = false, blocking = false, func = function()
+            U.rebuild_panel()
+            return true
+        end}))
+    end
+end
+
+G.FUNCS.bot_panel_endless = function()
+    U.ended = nil
+    if G.GAME then G.GAME.bot_endless = true end
+    BOT.paused = false
+    U.rebuild_panel()
+end
+
+G.FUNCS.bot_panel_menu = function()
+    U.stop_all()
+    G.FUNCS.go_to_menu()
+end
+
+G.FUNCS.bot_panel_stop = function()
+    U.open = false
+    if G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("botlatro_tab") then G.FUNCS.exit_overlay_menu() end
+    U.stop_all()
+end
+
+function U.update(dt)
+    if not U.solo then return end
+    if G.STAGE == G.STAGES.RUN and G.STATE ~= G.STATES.MENU then
+        U.seen_run = true
+r 23 214 %20%20%20%20%20%20%20%20 -
+l 87
+            U.hide_panel()
+        else
+            U.show_panel()
+            U.panel_tick()
+        end
+    else
+        U.hide_panel()
+        if G.STATE == G.STATES.MENU and U.seen_run then U.stop_all() end
+    end
+end
+
+local function again_node(win)
+    if win then
+        return UIBox_button({id = "botlatro_again", button = "bot_play_again", label = {L("Bot-latro: play again")}, colour = G.C.GREEN, minw = 2.5, maxw = 2.5, minh = 1, focus_args = {nav = "wide"}})
+    end
+    return {n = G.UIT.R, config = {id = "botlatro_again", align = "cm", minw = 5, padding = 0.1, r = 0.1, hover = true, colour = G.C.GREEN, button = "bot_play_again", shadow = true, focus_args = {nav = "wide"}}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0, no_fill = true, maxw = 4.8}, nodes = {
+            {n = G.UIT.T, config = {text = L("Bot-latro: play again"), scale = 0.5, colour = G.C.UI.TEXT_LIGHT}},
+        }},
+    }}
+end
+
+local function add_play_again(def)
+    if not (U.solo and type(def) == "table") then return def end
+    local function walk(node, depth)
+        if type(node) ~= "table" or type(node.nodes) ~= "table" or depth > 30 then return false end
+        local n = table.maxn(node.nodes)
+        for i = 1, n do
+            local ch = node.nodes[i]
+            if type(ch) == "table" then
+                local lose = ch.config and ch.config.id == "from_game_over"
+                local inner = type(ch.nodes) == "table" and ch.nodes[1]
+                local win = type(inner) == "table" and inner.config and inner.config.id == "from_game_won"
+                if lose or win then
+                    local out = {}
+                    for j = 1, n do
+                        if j == i then
+                            out[#out + 1] = again_node(win)
+                            if win then out[#out + 1] = {n = G.UIT.R, config = {align = "cm", minh = 0.2, minw = 0.1}, nodes = {}} end
+                        end
+                        if node.nodes[j] ~= nil then out[#out + 1] = node.nodes[j] end
+                    end
+                    node.nodes = out
+                    return true
+                end
+                if walk(ch, depth + 1) then return true end
+            end
+        end
+        return false
+    end
+    walk(def, 0)
+    return def
+end
+U.add_play_again = add_play_again
+
+if create_UIBox_game_over and not U.game_over_hooked then
+    U.game_over_hooked = true
+    local base = create_UIBox_game_over
+    create_UIBox_game_over = function(...)
+        return add_play_again(base(...))
+    end
+end
+
+if create_UIBox_win and not U.win_hooked then
+    U.win_hooked = true
+    local base = create_UIBox_win
+    create_UIBox_win = function(...)
+        return add_play_again(base(...))
+    end
+end
+
+if mod_loc_register then
+    mod_loc_register({
+        fr = {
+            ["AI plays every move"] = "L'IA joue chaque coup",
+            ["The model picks every card. Slow and costly."] = "Le modele choisit chaque carte. Lent et cher.",
+            ["The model shops and plans, the hand optimizer plays the cards."] = "Le modele achete et planifie, l'optimiseur joue les cartes.",
+            ["Cached"] = "En cache",
+        },
+        es = {
+            ["AI plays every move"] = "La IA juega cada jugada",
+            ["The model picks every card. Slow and costly."] = "El modelo elige cada carta. Lento y caro.",
+            ["The model shops and plans, the hand optimizer plays the cards."] = "El modelo compra y planifica, el optimizador juega las cartas.",
+            ["Cached"] = "En cache",
+        },
+    })
+end
+end

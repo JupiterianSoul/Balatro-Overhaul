@@ -1,0 +1,131 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 98
+BOT = BOT or {}
+local S = {}
+BOT.config = S
+
+S.DEFAULTS = {
+    provider = "w14",
+    delay = 0.6,
+    mode = "auto",
+    show_reasoning = true,
+    show_legal = false,
+    timeout = 120,
+    retries = 1,
+    fallback = "w14",
+    card_text = true,
+    difficulty = "normal",
+    personality = "careful",
+    custom_personality = "",
+    deck = "b_red",
+    stake = 1,
+    seed = "",
+    handicaps = {},
+    sim_budget = "normal",
+    ai_every_move = false,
+}
+
+S.PROVIDERS = {
+    {key = "w14", label = "Fair", kind = "sim"},
+    {key = "seer", label = "Seer (cheats)", kind = "sim"},
+}
+
+function S.provider(key)
+    for _, p in ipairs(S.PROVIDERS) do
+        if p.key == key then return p end
+    end
+    return S.PROVIDERS[1]
+end
+
+local function serialize(v, indent)
+    indent = indent or ""
+    local t = type(v)
+    if t == "string" then return string.format("%q", v) end
+    if t == "number" or t == "boolean" then return tostring(v) end
+    if t ~= "table" then return "nil" end
+    local keys = {}
+    for k in pairs(v) do keys[#keys + 1] = k end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local out = {"{\n"}
+    for _, k in ipairs(keys) do
+        local ks = type(k) == "number" and ("[" .. k .. "]") or ("[" .. string.format("%q", tostring(k)) .. "]")
+        out[#out + 1] = indent .. "  " .. ks .. " = " .. serialize(v[k], indent .. "  ") .. ",\n"
+    end
+    out[#out + 1] = indent .. "}"
+    return table.concat(out)
+end
+S.serialize = serialize
+
+local function read_table(path)
+    if not love.filesystem.getInfo(path) then return nil end
+    local src = love.filesystem.read(path)
+    if not src then return nil end
+    local fn = loadstring(src)
+    if not fn then return nil end
+    setfenv(fn, {})
+    local ok, t = pcall(fn)
+    if ok and type(t) == "table" then return t end
+    return nil
+end
+
+local function read_abs(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local src = f:read("*a")
+    f:close()
+    local fn = src and loadstring(src)
+    if not fn then return nil end
+    setfenv(fn, {})
+    local ok, t = pcall(fn)
+    if ok and type(t) == "table" then return t end
+    return nil
+end
+
+local function write_table(path, t)
+    love.filesystem.createDirectory("bot")
+    return love.filesystem.write(path, "return " .. serialize(t) .. "\n")
+end
+
+function S.load()
+    local ext = os.getenv("BOT_CONFIG_DIR")
+    local t = read_table("bot/settings.lua") or (ext and read_abs(ext .. "/settings.lua")) or {}
+    local out = {}
+    for k, v in pairs(S.DEFAULTS) do
+        if type(v) == "table" then
+            out[k] = {}
+            for k2, v2 in pairs(v) do out[k][k2] = v2 end
+        else
+            out[k] = v
+        end
+    end
+r 11 131 %20%20%20%20 -
+l 25
+        if S.DEFAULTS[k] ~= nil and type(v) == type(S.DEFAULTS[k]) then out[k] = v end
+    end
+    local known = false
+    for _, p in ipairs(S.PROVIDERS) do known = known or p.key == out.provider end
+    if not known then out.provider = S.DEFAULTS.provider end
+    S.values = out
+    return out
+end
+
+function S.save()
+    if not S.values then return end
+    write_table("bot/settings.lua", S.values)
+end
+
+function S.get(k)
+    if not S.values then S.load() end
+    return S.values[k]
+end
+
+function S.set(k, v)
+    if not S.values then S.load() end
+    S.values[k] = v
+    S.save()
+end
+
+end

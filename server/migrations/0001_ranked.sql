@@ -1,0 +1,63 @@
+CREATE TABLE IF NOT EXISTS players (
+  pkey TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  rp INTEGER NOT NULL DEFAULT 0,
+  rank INTEGER NOT NULL DEFAULT 0,
+  peak_rp INTEGER NOT NULL DEFAULT 0,
+  best_rank INTEGER NOT NULL DEFAULT -1,
+  season TEXT NOT NULL DEFAULT '',
+  xp INTEGER NOT NULL DEFAULT 0,
+  level INTEGER NOT NULL DEFAULT 1,
+  packs INTEGER NOT NULL DEFAULT 0,
+  streak INTEGER NOT NULL DEFAULT 0,
+  recovery TEXT NOT NULL UNIQUE,
+  created INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  matches INTEGER NOT NULL DEFAULT 0,
+  wins INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS players_board ON players (season, rp DESC);
+
+CREATE TABLE IF NOT EXISTS seasons (
+  id TEXT PRIMARY KEY,
+  starts INTEGER NOT NULL,
+  ends INTEGER NOT NULL,
+  name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS matches (
+  id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  season TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS match_players (
+  match_id TEXT NOT NULL,
+  pkey TEXT NOT NULL,
+  placement INTEGER NOT NULL,
+  players INTEGER NOT NULL,
+  result TEXT NOT NULL,
+  ante INTEGER NOT NULL,
+  score INTEGER NOT NULL,
+  rp_delta INTEGER NOT NULL,
+  xp INTEGER NOT NULL,
+  bot_factor REAL NOT NULL,
+  PRIMARY KEY (match_id, pkey)
+);
+CREATE INDEX IF NOT EXISTS match_players_pkey ON match_players (pkey);
+
+CREATE TABLE IF NOT EXISTS unlocks (
+  pkey TEXT NOT NULL,
+  item TEXT NOT NULL,
+  source TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (pkey, item)
+);
+
+CREATE TABLE IF NOT EXISTS equipped (
+  pkey TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  item TEXT NOT NULL,
+  PRIMARY KEY (pkey, slot)
+);

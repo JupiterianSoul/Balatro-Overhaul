@@ -1,0 +1,532 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 30
+local Store = require("functions/forge/forge_store")
+local FJ = require("functions/forge/forge_joker")
+
+local UI = {}
+
+UI.PER_PAGE = 4
+UI.state = UI.state or {from = nil, page = 1, pending_delete = nil}
+UI.tabs_extra = UI.tabs_extra or {}
+
+local function touch() return UIK.touch() end
+local function col_w() return UIK.portrait() and 3.85 or touch() and 3.4 or 3.3 end
+local function small_h() return touch() and 0.82 or 0.62 end
+local function small_scale() return touch() and 0.44 or 0.4 end
+
+local function fit_scale(label, w, scale)
+  local lw = UIK.text_w(label, scale)
+  if lw > w - 0.25 then return scale * (w - 0.25) / lw end
+  return scale
+end
+
+function UI.card_node(c, o)
+  o = o or {}
+  local center = c and FJ.center_of(c.id)
+  local s = o.scale or 1
+  local w, h = G.CARD_W * s, G.CARD_H * s
+  if not center then return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h}, nodes = {}} end
+  local area = CardArea(G.ROOM.T.x, G.ROOM.T.y, w, h, {card_limit = 1, type = "title", highlight_limit = 0, collection = true})
+  local card = Card(area.T.x, area.T.y, w, h, nil, center)
+  card.forge_preview = true
+  if o.still then
+r 9 1460 %20%20%20%20 -
+r 6 220 %20%20%20%20 -
+l 239
+  end
+  area:emplace(card)
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = {{n = G.UIT.O, config = {object = area}}}}
+end
+
+local function name_line(c, w)
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = touch() and 0.5 or 0.45, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", maxw = w - 0.1}, nodes = {UIK.text(c.name, {scale = touch() and 0.44 or 0.4, colour = c.enabled and UIK.C.text or UIK.C.muted})}},
+  }}
+end
+
+local function small_button(label, func, id, colour, w)
+  return UIK.button{label = label, button = func, ref_table = {id = id}, colour = colour, w = w, h = small_h(), scale = fit_scale(label, w, small_scale()), col = true}
+end
+
+function UI.item_node(c, o)
+  o = o or {}
+  local s = o.scale or 1
+  local w, h = G.CARD_W * s, G.CARD_H * s
+  local Cat = require("functions/forge/forge_catalog")
+  local k = Cat.kind(c.kind)
+  local a = c.art or {}
+  local spr
+  if a.file and love.filesystem.getInfo(a.file) then
+    local ok, data = pcall(love.image.newImageData, a.file)
+    if ok and data and data:getWidth() == 71 and data:getHeight() == 95 then
+      local atlas = FJ.atlas_from_data("forge_" .. c.id, data)
+      if atlas then spr = Sprite(0, 0, w, h, atlas, {x = 0, y = 0}) end
+    end
+  end
+  if not spr and a.atlas and G.ANIMATION_ATLAS[a.atlas] then
+    spr = AnimatedSprite(0, 0, 1.1 * s * 1.3, 1.1 * s * 1.3, G.ANIMATION_ATLAS[a.atlas], {x = a.x or 0, y = a.y or 0})
+  elseif not spr and a.atlas and G.ASSET_ATLAS[a.atlas] then
+    local small = k.shape == "tag" or k.shape == "stake"
+    spr = Sprite(0, 0, small and 0.9 * s * 1.3 or w, small and 0.9 * s * 1.3 or h, G.ASSET_ATLAS[a.atlas], {x = a.x or 0, y = a.y or 0})
+  end
+  local B = rawget(_G, "ForgeBuilder")
+  if not spr and B and B.sprite then spr = B.sprite(c.kind, k.sample, s) end
+  if not spr then return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h}, nodes = {}} end
+  spr.states.drag.can = false
+  spr.states.collide.can = false
+  return {n = G.UIT.R, config = {align = "cm", minw = w, minh = h, padding = 0}, nodes = {{n = G.UIT.O, config = {object = spr}}}}
+end
+
+function UI.any_node(c, o)
+  if c and c.kind and c.kind ~= "joker" then return UI.item_node(c, o) end
+  return UI.card_node(c, o)
+end
+
+function UI.filtered()
+  local k = UI.state.kind
+  if k == nil or k == "all" then
+    local out = {}
+    for _, c in ipairs(Store.all()) do out[#out + 1] = c end
+    for _, c in ipairs(Store.items()) do out[#out + 1] = c end
+    return out
+  end
+  return Store.of_kind(k)
+end
+
+local function creation_column(c)
+  local w = col_w()
+  local half = (w - 0.12) / 2
+  local dw, xw = (w - 0.12) * 0.58, (w - 0.12) * 0.42
+  local box = {on = c.enabled}
+  return {n = G.UIT.C, config = {align = "tm", minw = w, padding = 0.04}, nodes = {
+    UI.any_node(c, {scale = UIK.portrait() and 0.95 or touch() and 0.86 or 1}),
+    name_line(c, w),
+    UIK.toggle{label = mod_loc("Use in runs"), ref_table = box, ref_value = "on", w = w, callback = function(v) UI.set_enabled(c.id, v) end},
+    {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.03}, nodes = {small_button(mod_loc("Edit"), "forge_edit", c.id, UIK.C.accent, w)}},
+    {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.03}, nodes = {
+      small_button(mod_loc("Duplicate"), "forge_duplicate", c.id, UIK.C.ok, dw),
+      {n = G.UIT.C, config = {minw = 0.12}, nodes = {}},
+      small_button(mod_loc("Delete"), "forge_delete", c.id, UIK.C.danger, xw),
+    }},
+  }}
+end
+
+function UI.set_enabled(id, on)
+  if Store.get(id) then
+    Store.set_enabled(id, on)
+    FJ.refresh(id)
+  else
+    local c = Store.get_item(id)
+    if c then c.enabled = on and true or false; Store.save_items() end
+    local K = rawget(_G, "ForgeKinds")
+    if K and K.refresh then pcall(K.refresh, id) end
+  end
+  play_sound("generic1", on and 1.1 or 0.9, 0.5)
+  UIK.refresh()
+end
+
+local function wrap_lines(list, w, scale)
+  local out = {}
+  for _, str in ipairs(type(list) == "table" and list or {list}) do
+    local cur = ""
+    for word in tostring(str):gmatch("%S+") do
+      local try = cur == "" and word or (cur .. " " .. word)
+      if cur ~= "" and UIK.text_w(try, scale) > w then
+        out[#out + 1] = cur
+        cur = word
+      else
+        cur = try
+      end
+    end
+    if cur ~= "" then out[#out + 1] = cur end
+  end
+  return out
+end
+
+local function empty_body()
+  local port = UIK.portrait()
+  local lines = {mod_loc("Make jokers, tarots, decks, blinds and more,"), mod_loc("with their own rules and art, and play them in your runs.")}
+  local ns = touch() and (port and 0.5 or 0.42) or 0.31
+  if port then lines = wrap_lines({table.concat(lines, " ")}, UIK.W - 0.8, ns) end
+  return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - 0.4, padding = 0.1}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", padding = 0.1}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {UIK.text(mod_loc("Nothing made yet"), {scale = port and 0.8 or 0.6, colour = UIK.C.title})}},
+      UIK.note(lines, {w = math.min(9, UIK.W - 0.4), scale = touch() and ns or nil}),
+      {n = G.UIT.R, config = {align = "cm", padding = 0.2}, nodes = {UIK.button{label = mod_loc("MAKE SOMETHING"), button = "forge_new", colour = UIK.C.ok, w = port and 6 or 4, h = port and 1.2 or nil, scale = port and 0.6 or nil}}},
+    }},
+  }}
+end
+
+local function kind_filter()
+  local Cat = require("functions/forge/forge_catalog")
+  local values, labels, cur = {"all"}, {string.format("%s (%d)", mod_loc("Everything"), Store.count())}, 1
+  for _, k in ipairs(Cat.KINDS) do
+    local n = Store.count(k.id)
+    if n > 0 or UI.state.kind == k.id then
+      values[#values + 1] = k.id
+      labels[#labels + 1] = string.format("%s (%d)", mod_loc(k.plural), n)
+      if UI.state.kind == k.id then cur = #values end
+    end
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, padding = 0.02}, nodes = {
+    UIK.cycle{options = labels, current = cur, w = touch() and 5.4 or 5, cw = touch() and 5.2 or 4.8, no_pips = true, callback = function(i)
+      UI.state.kind = values[i]
+      UI.state.page = 1
+      UIK.refresh()
+    end},
+  }}
+end
+
+function UI.my_tab()
+  if Store.count() == 0 then return empty_body() end
+  local list = UI.filtered()
+  local pages = math.max(1, math.ceil(#list / UI.PER_PAGE))
+  UI.state.page = math.min(math.max(1, UI.state.page or 1), pages)
+  local first = (UI.state.page - 1) * UI.PER_PAGE
+  local cols = {}
+  for i = first + 1, math.min(first + UI.PER_PAGE, #list) do
+    if #cols > 0 then cols[#cols + 1] = {n = G.UIT.C, config = {minw = 0.2}, nodes = {}} end
+    cols[#cols + 1] = creation_column(list[i])
+  end
+  local grid = {{n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = cols}}
+  if UIK.portrait() then
+    grid = {}
+    for i = 1, #cols, 4 do
+      if i > 1 then grid[#grid + 1] = {n = G.UIT.R, config = {minh = 0.3}, nodes = {}} end
+      grid[#grid + 1] = {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {cols[i], cols[i + 1], cols[i + 2]}}
+    end
+  end
+  local nodes = {kind_filter()}
+  for _, r in ipairs(grid) do nodes[#nodes + 1] = r end
+  if pages > 1 then
+    nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", minw = UIK.W, padding = 0.05}, nodes = {
+      UIK.pager{prev = "forge_page", next = "forge_page", prev_ref = {d = -1}, next_ref = {d = 1}, text = string.format(mod_loc("Page %d of %d"), UI.state.page, pages), w = UIK.W},
+    }}
+  end
+  return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = nodes}}}
+end
+
+function UI.placeholder(title, lines)
+  return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - 0.4, padding = 0.1}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", padding = 0.1}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {UIK.text(title, {scale = 0.55, colour = UIK.C.title})}},
+      UIK.note(lines, {w = 9}),
+    }},
+  }}
+end
+
+function UI.builder_tab()
+  local B = rawget(_G, "ForgeBuilder")
+  if B and B.tab then return B.tab() end
+  return UI.placeholder(mod_loc("Builder"), {mod_loc("Rules, name, rarity and cost of a joker.")})
+end
+
+function UI.pixel_tab()
+  local P = rawget(_G, "ForgePixelUI")
+  UI.tabs_extra.pixel = P and P.footer or nil
+  if P and P.tab then return P.tab() end
+  return UI.placeholder(mod_loc("Pixel editor"), {mod_loc("Draw or touch up a joker's art.")})
+end
+
+function UI.tabs()
+  local tabs = {
+    {key = "my", label = mod_loc("Creations"), build = UI.my_tab},
+    {key = "builder", label = mod_loc("Builder"), build = UI.builder_tab},
+    {key = "pixel", label = mod_loc("Pixel editor"), build = UI.pixel_tab},
+  }
+  return tabs
+end
+
+function UI.footer(tab)
+  local extra = UI.tabs_extra[tab]
+  if extra then
+    local ok, r = pcall(extra)
+    if ok and type(r) == "table" then return r end
+  end
+  if tab == "my" and Store.count() > 0 then
+    return {UIK.button{label = mod_loc("MAKE SOMETHING"), button = "forge_new", colour = UIK.C.ok}, UIK.button{label = mod_loc("EXPORT A MOD"), button = "forge_export_open", colour = UIK.C.warn, id = "forge_export_open"}}
+  end
+  return nil
+end
+
+function UI.footer_def(tab)
+  local list = UI.footer(tab) or {}
+  local nodes = {}
+  local per = (UIK.portrait() and #list > 2) and 2 or #list
+  local rows, cur = {}, nodes
+  for i, b in ipairs(list) do
+    if per < #list and (i - 1) % per == 0 then
+      cur = {}
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = cur}
+    elseif i > 1 then
+      cur[#cur + 1] = {n = G.UIT.C, config = {minw = 0.24}, nodes = {}}
+    end
+    if b.n == G.UIT.R then b.n = G.UIT.C end
+    cur[#cur + 1] = b
+  end
+  if #rows > 0 then nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = rows}} end
+  return {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, minh = touch() and 0.9 or 0.78, padding = 0}, nodes = nodes}
+end
+
+function UI.refresh_footer()
+  local win = UIK._win
+  if not (win and win.id == "forge" and G.OVERLAY_MENU) then return end
+  local e = G.OVERLAY_MENU:get_UIE_by_ID("forge_footer")
+r 13 1300 %20%20 -
+l 24
+  if e.config.object then e.config.object:remove() end
+  e.config.object = UIBox{definition = UI.footer_def(win._cur), config = {offset = {x = 0, y = 0}, parent = e, type = "cm"}}
+  G.OVERLAY_MENU:recalculate()
+end
+
+function UI.definition(tab)
+  local tabs = UI.tabs()
+  local cur = tab or UIK._last_tab.forge
+  local found = false
+  for _, t in ipairs(tabs) do if t.key == cur then found = true end end
+  if not found then cur = "my" end
+  return UIK.window{
+    id = "forge",
+    title = mod_loc("THE FORGE"),
+    tabs = tabs,
+    tab = cur,
+    back_func = "forge_back",
+    back_inline = 'land',
+    footer = function() return {{n = G.UIT.O, config = {id = "forge_footer", object = UIBox{definition = UI.footer_def(UIK._last_tab.forge or cur), config = {offset = {x = 0, y = 0}}}}}} end,
+  }
+end
+
+function UI.open(tab, from)
+  if from then UI.state.from = from end
+r 13 1381 %20%20 -
+l 117
+  local ok, err = pcall(function()
+    G.FUNCS.overlay_menu{definition = UI.definition(tab)}
+  end)
+  if not ok then print("[FORGE] could not open: " .. tostring(err)) end
+end
+
+function UI.reopen(tab)
+  UI.open(tab or (UIK._last_tab and UIK._last_tab.forge) or "my")
+end
+
+local function front_buttons(w)
+  local list = {
+    {label = mod_loc("Creations"), tab = "my", colour = UIK.C.accent},
+    {label = mod_loc("Builder"), tab = "builder", colour = UIK.C.ok},
+    {label = mod_loc("Pixel editor"), tab = "pixel", colour = UIK.C.purple},
+  }
+  local gap = 0.2
+  local bw = math.min(touch() and 3.0 or 2.85, (w - 0.4 - gap * (#list - 1)) / #list)
+  local nodes = {}
+  for i, b in ipairs(list) do
+    if i > 1 then nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = gap}, nodes = {}} end
+    nodes[#nodes + 1] = UIK.button{label = b.label, button = "forge_from_mods", ref_table = {tab = b.tab}, colour = b.colour, w = bw, scale = fit_scale(b.label, bw, touch() and 0.5 or 0.47), col = true, id = "forge_front_" .. b.tab}
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.1}, nodes = nodes}
+end
+
+function UI.mods_tab()
+  local W = rawget(_G, "ModWorkshop")
+  if W and W.layout then pcall(W.layout) end
+  local w = (W and W.TAB_W) or 11.6
+  local h = W and W.TAB_H or nil
+  local list = Store.all()
+  local shown = math.min(#list, 5)
+  local cards = {}
+  for i = 1, shown do
+    if i > 1 then cards[#cards + 1] = {n = G.UIT.C, config = {minw = 0.15}, nodes = {}} end
+    cards[#cards + 1] = {n = G.UIT.C, config = {align = "cm"}, nodes = {UI.card_node(list[i])}}
+  end
+  local middle
+  if shown > 0 then
+    middle = {n = G.UIT.R, config = {align = "cm", minw = w, minh = G.CARD_H + 0.3, padding = 0.05}, nodes = cards}
+  else
+    middle = {n = G.UIT.R, config = {align = "cm", minw = w, minh = G.CARD_H + 0.3, padding = 0.05}, nodes = {
+      {n = G.UIT.C, config = {align = "cm"}, nodes = {UIK.note({mod_loc("No jokers yet")}, {w = 6, scale = 0.4})}},
+    }}
+  end
+  local count = #list == 1 and mod_loc("1 joker") or string.format(mod_loc("%d jokers"), #list)
+  return {n = G.UIT.ROOT, config = {align = "tm", colour = G.C.CLEAR, minw = w, minh = h}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.1}, nodes = {UIK.text(mod_loc("THE FORGE"), {scale = 0.6, colour = UIK.C.title})}},
+    UIK.note({mod_loc("Make jokers, tarots, decks, blinds and more,"), mod_loc("with their own rules and art, and play them in your runs.")}, {w = w}),
+    {n = G.UIT.R, config = {align = "cm", minw = w, minh = 0.15}, nodes = {}},
+    middle,
+    {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.02}, nodes = {UIK.text(#list > 0 and count or "", {scale = 0.36, colour = UIK.C.muted, shadow = false})}},
+    front_buttons(w),
+  }}
+end
+
+if not UI.tab_hooked and G.FUNCS.uik_tab then
+  UI.tab_hooked = true
+  local orig_tab = G.FUNCS.uik_tab
+  G.FUNCS.uik_tab = function(e)
+    orig_tab(e)
+    if UIK._win and UIK._win.id == "forge" then UI.refresh_footer() end
+  end
+  local orig_open = UIK.open_tab
+  UIK.open_tab = function(key)
+    orig_open(key)
+    if UIK._win and UIK._win.id == "forge" then UI.refresh_footer() end
+  end
+end
+
+G.FUNCS.open_joker_forge = function(e)
+  UI.state.page = 1
+  UI.open("my", "tavern")
+end
+
+G.FUNCS.forge_from_mods = function(e)
+  local tab = e and e.config and e.config.ref_table and e.config.ref_table.tab or "my"
+  UI.open(tab, "mods")
+end
+
+function UI.back_inside()
+  local win = UIK._win
+  if not (win and win.id == "forge") then return false end
+  local cur = win._cur
+  local B = rawget(_G, "ForgeBuilder")
+  if cur == "builder" and B then
+    for _, f in ipairs({B.back_step, B.back_page}) do
+      if f then
+        local ok, used = pcall(f)
+        if ok and used then return true end
+      end
+    end
+  end
+  if cur == "pixel" then
+    local PX = rawget(_G, "ForgePixelUI")
+    local t = PX and PX.state and PX.state.target
+    if t and t.kind == "draft" and B and B.state and B.state.draft then
+      UI.reopen("builder")
+      return true
+    end
+  end
+  if cur and cur ~= "my" then
+    UI.reopen("my")
+    return true
+  end
+  return false
+end
+
+G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+for _, f in ipairs({"forge_back", "forge_delete_cancel", "forge_mods_delete_cancel", "forge_export_back", "forge_done_back", "forge_online_back", "forge_online_report_back", "forge_px_back", "forge_px_import_back"}) do G.ESC_BACK_FUNCS[f] = true end
+
+G.FUNCS.forge_back = function(e)
+  local B = rawget(_G, "ForgeBuilder")
+  local pad = G.CONTROLLER and G.CONTROLLER.HID and G.CONTROLLER.HID.controller
+  local hook = G.CONTROLLER and G.CONTROLLER.text_input_hook
+  if pad and hook and not hook.REMOVED and not (B and B.state and B.state.typing) then
+r 24 1015 %20%20%20%20 -
+l 12
+    return
+  end
+  if UI.back_inside() then return end
+  if B and B.on_leave then pcall(B.on_leave) end
+  local from = UI.state.from
+  if from == "mods" and G.FUNCS.mods_button then
+    G.MODS_MENU = G.MODS_MENU or {page = 1, icons = {}}
+    G.MODS_MENU.tab = "forge"
+    G.FUNCS.mods_button()
+  elseif from == "tavern" and G.FUNCS.open_tavern_hub then
+    G.FUNCS.open_tavern_hub()
+  else
+r 13 1375 %20%20%20%20 -
+l 93
+  end
+end
+
+G.FUNCS.forge_page = function(e)
+  local d = e and e.config and e.config.ref_table and e.config.ref_table.d or 1
+  local pages = math.max(1, math.ceil(#UI.filtered() / UI.PER_PAGE))
+  UI.state.page = ((UI.state.page or 1) - 1 + d) % pages + 1
+  UIK.refresh()
+end
+
+G.FUNCS.forge_new = function(e)
+  local B = rawget(_G, "ForgeBuilder")
+  if B and B.start_new then pcall(B.start_new) end
+  UI.reopen("builder")
+end
+
+G.FUNCS.forge_edit = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  local B = rawget(_G, "ForgeBuilder")
+  if id and B and B.edit then pcall(B.edit, id) end
+  UI.reopen("builder")
+end
+
+G.FUNCS.forge_duplicate = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  if not id then return end
+  local d
+  if Store.get(id) then
+    d = Store.duplicate(id, mod_loc("copy"))
+    if d then FJ.register_all() end
+  else
+    local c = Store.get_item(id)
+    if c then
+      local x = Store.copy(c)
+      x.id = Store.new_id()
+      x.created = os.time()
+      x.name = (tostring(c.name) .. " " .. mod_loc("copy")):sub(1, Store.MAX_NAME)
+      if x.art and x.art.file then x.art = nil end
+      d = Store.put_item(x)
+    end
+  end
+  if d then
+    local list = UI.filtered()
+    for i, c in ipairs(list) do if c.id == d.id then UI.state.page = math.ceil(i / UI.PER_PAGE) end end
+    play_sound("card1", 1.1, 0.6)
+  end
+  UIK.refresh()
+end
+
+G.FUNCS.forge_delete = function(e)
+  local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+  local c = id and Store.find(id)
+  if not c then return end
+  UI.state.pending_delete = id
+  G.FUNCS.overlay_menu{definition = UIK.window{
+    id = "forge_delete",
+    compact = true,
+    w = 7,
+    keep_w = true,
+    title = c.kind and c.kind ~= "joker" and mod_loc("DELETE IT?") or mod_loc("DELETE THIS JOKER?"),
+    tabs = {{key = "a", label = "", build = function()
+      return UIK.stack({
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {UI.any_node(c, {still = true})}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {UIK.text(c.name, {scale = 0.45})}},
+        UIK.note({mod_loc("It leaves the collection and the shop for good.")}, {w = 6.6}),
+      }, {w = 6.6})
+    end}},
+    back_func = "forge_delete_cancel",
+    back_inline = true,
+    footer = {UIK.button{label = mod_loc("DELETE"), button = "forge_delete_confirm", colour = UIK.C.danger}},
+  }}
+end
+
+G.FUNCS.forge_delete_confirm = function(e)
+  local id = UI.state.pending_delete
+  UI.state.pending_delete = nil
+  if id and Store.delete(id) then
+    FJ.register_all()
+    play_sound("crumple1", 1, 0.6)
+  elseif id and Store.delete_item(id) then
+    local K = rawget(_G, "ForgeKinds")
+    if K and K.refresh then pcall(K.refresh, id) end
+    play_sound("crumple1", 1, 0.6)
+  end
+  UI.reopen("my")
+end
+
+G.FUNCS.forge_delete_cancel = function(e)
+  UI.state.pending_delete = nil
+  UI.reopen("my")
+end
+
+return UI
+end

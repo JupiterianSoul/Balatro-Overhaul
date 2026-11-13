@@ -1,0 +1,1068 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 197
+ReleaseInfo = ReleaseInfo or {}
+local RI = ReleaseInfo
+local L = function(s) return mod_loc(s) end
+
+RI.CHANGELOG_FILE = "CHANGELOG.md"
+
+local function touch() return UIK.touch() end
+local function body_scale() return touch() and (UIK.portrait() and 0.33 or 0.355) or 0.32 end
+
+function RI.lang()
+  local lang = G and G.SETTINGS and G.SETTINGS.language or "en-us"
+  if lang == "fr" then return "fr" end
+  if lang == "es_ES" or lang == "es_419" then return "es" end
+  return "en"
+end
+
+function RI.wrap(str, w, scale)
+  local lines, cur = {}, ""
+  for word in tostring(str or ""):gmatch("%S+") do
+    local try = cur == "" and word or (cur .. " " .. word)
+    if cur ~= "" and UIK.text_w(try, scale) > w then
+      lines[#lines + 1] = cur
+      cur = word
+    else
+      cur = try
+    end
+  end
+  if cur ~= "" then lines[#lines + 1] = cur end
+  return lines
+end
+
+local function split_icon(text)
+  local key, rest = text:match("^{([%w_]+)}%s*(.*)$")
+  if key then return rest, key end
+  return text, nil
+end
+
+function RI.parse_changelog(text)
+  local out, entry, lang, last = {}, nil, nil, nil
+  for raw in (tostring(text or "") .. "\n"):gmatch("([^\n]*)\n") do
+    local l = raw:gsub("\r$", "")
+    local head = l:match("^##%s+([^#].*)$")
+    local sub, title = l:match("^###%s+(%a%a)%s*(.-)%s*$")
+    local item = l:match("^%s*%-%s+(.+)$")
+    local hl = l:match("^%s*%+%s+(.+)$")
+    if head then
+      local version, date = head:match("^(.-)%s*|%s*(.-)%s*$")
+      entry = {version = version or head, date = date or "", titles = {}, items = {}, highlights = {}}
+      out[#out + 1] = entry
+      lang, last = nil, nil
+    elseif entry and sub then
+      lang = sub:lower()
+      if title and title ~= "" then entry.titles[lang] = title end
+      entry.items[lang] = entry.items[lang] or {}
+      entry.highlights[lang] = entry.highlights[lang] or {}
+      last = nil
+    elseif entry and lang and hl then
+      local t, icon = split_icon(hl)
+      local name, body = t:match("^%[(.-)%]%s*(.*)$")
+      if name then t = body end
+      last = {text = t, icon = icon, title = name}
+      local list = entry.highlights[lang]
+      list[#list + 1] = last
+    elseif entry and lang and item then
+      local list = entry.items[lang]
+      list[#list + 1] = item
+      last = nil
+    elseif entry and lang and l:match("^%s+%S") then
+      local more = l:gsub("^%s+", "")
+      if last then
+        last.text = last.text .. " " .. more
+      else
+        local list = entry.items[lang]
+        if #list > 0 then list[#list] = list[#list] .. " " .. more end
+      end
+    end
+  end
+  return out
+end
+
+function RI.entry_text(e, lang)
+  lang = lang or RI.lang()
+  local function pick(t) return (t[lang] and next(t[lang]) and t[lang]) or t.en or {} end
+  return e.titles[lang] or e.titles.en, pick(e.highlights), pick(e.items)
+end
+
+function RI.changelog()
+  if RI._changelog then return RI._changelog end
+  local ok, text = pcall(love.filesystem.read, RI.CHANGELOG_FILE)
+  RI._changelog = RI.parse_changelog(ok and text or "")
+  return RI._changelog
+end
+
+local function col_inner(cols)
+  return UIK.col_w(cols) - 2 * UIK.PAD - 0.2
+end
+
+local function cols_n()
+  return UIK.portrait() and 1 or 2
+end
+
+local function para(items, str, colour)
+  local w = col_inner(cols_n())
+  local lines = RI.wrap(str, w, body_scale())
+  local chunk = touch() and 5 or 7
+  for i = 1, #lines, chunk do
+    local part = {}
+    for j = i, math.min(i + chunk - 1, #lines) do part[#part + 1] = lines[j] end
+    items[#items + 1] = UIK.note(part, {w = w + 0.2, scale = body_scale(), colour = colour or UIK.C.text})
+  end
+end
+
+local function head(items, str, colour)
+  items[#items + 1] = UIK.header(str, {w = col_inner(cols_n()) + 0.2, colour = colour})
+end
+
+local function t_node(str, scale, colour, shadow)
+  return {n = G.UIT.T, config = {text = str, scale = scale, colour = colour, shadow = shadow}}
+end
+
+local function head_pair(items, name, extra)
+  local w = col_inner(cols_n()) + 0.2
+  local h = touch() and 0.66 or 0.58
+  local hs = touch() and 0.5 or 0.45
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'cm', maxw = w - 0.1, padding = 0}, nodes = {
+      t_node(name, hs, UIK.C.title, true),
+      t_node("  " .. extra, body_scale(), UIK.C.muted, false),
+    }},
+  }}
+  node.uik_h = h
+  node.uik_header = true
+  items[#items + 1] = node
+end
+
+local function bullet_node(str, w)
+  local sc = body_scale()
+  local dash = "- "
+  local indent = UIK.text_w(dash, sc)
+  local lines = RI.wrap(str, w - indent, sc)
+  local lh = sc * 1.05 + 0.04
+  local rows = {}
+  for i, l in ipairs(lines) do
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cl', minw = w, minh = lh, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = 'cl', minw = indent, minh = lh, padding = 0}, nodes = i == 1 and {t_node(dash, sc, UIK.C.title, false)} or {}},
+      t_node(l, sc, UIK.C.text, false),
+    }}
+  end
+  local h = #rows * lh + 0.08
+  local node = {n = G.UIT.C, config = {align = 'tl', minw = w, minh = h, padding = 0}, nodes = {
+    {n = G.UIT.R, config = {align = 'cl', padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'cl', padding = 0}, nodes = rows}}},
+  }}
+  node.uik_h = h
+  return node
+end
+
+function RI.version_name()
+  return tostring(rawget(_G, "OVERHAUL_NAME") or rawget(_G, "OVERHAUL_VERSION") or "?")
+end
+
+function RI.build()
+  local b = rawget(_G, "OVERHAUL_VERSION")
+  return b ~= nil and tostring(b) or nil
+end
+
+local function version_text()
+  local b = rawget(_G, "OVERHAUL_NAME") and RI.build()
+  return string.format(L("Version %s"), RI.version_name() .. (b and (" b" .. b) or ""))
+end
+RI.version_text = version_text
+
+RI.RAINBOW = RI.RAINBOW or {0.95, 0.35, 0.35, 1}
+
+local function hsv(h, s, v)
+  local i = math.floor(h * 6)
+  local f = h * 6 - i
+  local p, q, t = v * (1 - s), v * (1 - f * s), v * (1 - (1 - f) * s)
+  i = i % 6
+  if i == 0 then return v, t, p elseif i == 1 then return q, v, p elseif i == 2 then return p, v, t
+  elseif i == 3 then return p, q, v elseif i == 4 then return t, p, v end
+  return v, p, q
+end
+
+G.FUNCS.ri_rainbow = function(e)
+  local t = G.TIMERS and G.TIMERS.REAL or 0
+  if RI._rb_t ~= t then
+    RI._rb_t = t
+    RI.RAINBOW[1], RI.RAINBOW[2], RI.RAINBOW[3] = hsv((t * 0.12) % 1, 0.62, 0.92)
+  end
+  e.config.colour = RI.RAINBOW
+end
+
+function RI.card_node(key, w)
+  local center = G.P_CENTERS[key] or G.P_CENTERS.j_joker
+  local h = w * G.CARD_H / G.CARD_W
+  local area = CardArea(0, 0, w, h, {card_limit = 1, type = 'title', highlight_limit = 0, card_w = w})
+  local card = Card(0, 0, w, h, G.P_CARDS.empty, center, {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true})
+r 6 220 %20%20 -
+r 6 219 %20%20 -
+l 317
+  area:emplace(card)
+  return {n = G.UIT.O, config = {object = area}}
+end
+
+RI.ABOUT = {
+  {"Balatro Overhaul", {"A free fan mod for Balatro: online multiplayer, new modes, quests, The Casino, the Forge and a lot of quality of life."}, true},
+  {"Unofficial", {"Balatro Overhaul is an unofficial fan mod. It is not made, endorsed or supported by LocalThunk or Playstack.",
+    "Balatro, its name, logo, art, music and code belong to LocalThunk and Playstack."}},
+  {"Your own copy", {"You need your own copy of Balatro. The Overhaul ships none of the game's files: it patches the copy you own, on your device.",
+    "The Overhaul is free. Never pay anyone for it. Buy Balatro to support the people who made it."}},
+  {"Other people's work", {"Workshop mods are made by other people and download from their own pages. Music you add to the Jukebox stays on your device."}},
+}
+
+RI.LICENCES = {
+  {"Balatro", "By LocalThunk, published by Playstack. Not included: the Overhaul patches your own copy.", "All rights reserved"},
+  {"LÖVE 11.5", "Game engine by the LÖVE Development Team. Its libraries (SDL2, LuaJIT, LuaSocket, OpenAL Soft, FreeType and more) are listed in license.txt.", "zlib licence"},
+  {"Steamodded", "Modding framework by the Steamodded team, shipped with its source and modified for the Overhaul. The changes are listed in OVERHAUL_CHANGES.md next to it.", "GNU GPL 3.0"},
+  {"nativefs", "File access library by megagrump, used by Steamodded.", "MIT licence"},
+  {"Balatro Mod Index", "The Workshop's list of mods, by Efe and its contributors.", "MIT licence"},
+  {"Lovely Injector", "The Overhaul reads mods made for Lovely, by ethangreen-dev. The Overhaul's loader is its own code.", "MIT licence"},
+  {"Balatro-DeckCreator", "The Deck Creator is ported from Balatro-DeckCreator by adambennett.", "GNU GPL 3.0"},
+  {"Cryptid", "Some of the Deck Creator's random-value logic follows Cryptid, by MathIsFun_ and the Cryptid team.", "GNU GPL 3.0"},
+  {"Balatro Multiplayer", "Based on Balatro Multiplayer by Virtualized and the BMP team: the multiplayer in this mod builds on their work. Thank you.", "GNU GPL 3.0"},
+  {"Fonts", "m6x11plus by Daniel Linssen, Noto Sans and Go Noto (SIL Open Font Licence). They come from your copy of Balatro.", "From your copy"},
+  {"Music and sounds", "Balatro's soundtrack by LouisF and its sounds come from your copy of Balatro. The public release ships no one else's music.", "From your copy"},
+  {"Balatro Overhaul", "Code, art and texts made for this mod. Free software: you may use, study, change and share it under the GPL, keeping the credits.", "GNU GPL 3.0"},
+}
+
+RI.PRIVACY = {
+  {"Online account", {"Playing online creates an account on the Overhaul server: your player name, a random key kept on this device, friends, match results, ranked points and replays."}},
+  {"Chat and reports", {"Chat messages go through the server and a word filter. Reports from players are kept so they can be checked."}},
+  {"Crash reports", {"Send crash reports is on unless you turn it off (Settings > Account).", "A crash sends the error, the game version, your system and graphics card, where you were in the game, your last clicks, the end of the log and your mod list.", "It also sends a random number for this install, to count players. Your name and folders are removed first."}},
+  {"AI bots", {"If you let Bot-latro use an online AI service with your own key, it sends the run's state to that service. Your key stays on this device."}},
+  {"What we never do", {"No ads, no tracking, nothing is sold. The server is run by the Overhaul's developer, not by LocalThunk or Playstack."}},
+  {"Your data", {"To have your account and its data deleted, ask on the Overhaul's GitHub page. Online play with chat is meant for players aged 13 and over."}},
+}
+
+RI.ABOUT_CARDS = {
+  {"j_joker", "What it is", {"A free fan mod for Balatro: online multiplayer, new modes, quests, achievements, The Casino, the Forge and lots of quality of life."}},
+  {"c_soul", "Unofficial", {"An unofficial fan mod, not made, endorsed or supported by LocalThunk or Playstack, who own Balatro, its name, art, music and code."}},
+  {"b_red", "Your own copy", {"You need your own copy of Balatro: the Overhaul ships none of its files. It is free, so never pay for it. Buy Balatro to support its makers."}},
+  {"c_jupiter", "Other people's work", {"Workshop mods belong to their makers and download from their own pages. Music you add to the Jukebox stays on your device."}},
+}
+
+local function text_rows(lines, w, sc, colour, align)
+  local lh = sc * 1.05 + 0.05
+  local rows = {}
+  for _, l in ipairs(lines) do
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = align or 'cl', minw = w, minh = lh, padding = 0}, nodes = {t_node(l, sc, colour or UIK.C.text, false)}}
+  end
+  return rows, #rows * lh
+end
+
+local function info_card(o, w, h)
+  local sc = touch() and (UIK.portrait() and 0.33 or 0.405) or 0.31
+  local icon_w = touch() and 0.5 or 0.45
+  local inner = w - 2 * 0.15
+  local lines = {}
+  for i, ptext in ipairs(o[3]) do
+    if i > 1 then lines[#lines + 1] = "" end
+    for _, l in ipairs(RI.wrap(L(ptext), inner, sc)) do lines[#lines + 1] = l end
+  end
+  local rows = text_rows(lines, inner, sc, UIK.C.text)
+  local title_w = inner - icon_w - 0.2
+  return {n = G.UIT.C, config = {align = 'tm', minw = w, minh = h, r = 0.12, padding = 0.15, colour = UIK.C.section}, nodes = {
+    {n = G.UIT.R, config = {align = 'cl', minw = inner, padding = 0}, nodes = {
+      RI.card_node(o[1], icon_w),
+      {n = G.UIT.B, config = {w = 0.2, h = 0.1}},
+      {n = G.UIT.C, config = {align = 'cl', minw = title_w, padding = 0}, nodes = {t_node(L(o[2]), touch() and 0.5 or 0.46, UIK.C.title, true)}},
+    }},
+    {n = G.UIT.R, config = {align = 'cm', minh = 0.12}, nodes = {}},
+    {n = G.UIT.R, config = {align = 'tl', minw = inner, padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'tl', padding = 0}, nodes = rows}}},
+  }}
+end
+
+local function hero(w, h, side)
+  local bw = touch() and 3.4 or 3.2
+  local bh = touch() and 0.8 or 0.66
+  local cw = touch() and 1.7 or (side and 1.6 or 1.9)
+  local text = {
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.04}, nodes = {{n = G.UIT.C, config = {align = 'cm', maxw = (side and w - 2.4 or w) - 0.4, padding = 0}, nodes = {t_node("Balatro Overhaul", touch() and 0.62 or 0.6, UIK.C.title, true)}}}},
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.03}, nodes = {t_node(version_text(), (touch() and not side) and 0.41 or body_scale(), UIK.C.muted, false)}},
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.03}, nodes = {t_node(L("Made by Jupiterian Soul"), (touch() and not side) and 0.41 or body_scale(), UIK.C.text, false)}},
+    {n = G.UIT.R, config = {align = 'cm', minh = 0.15}, nodes = {}},
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = {UIK.button{label = L("Credits"), button = 'about_credits', colour = UIK.C.accent, w = bw, h = bh, col = true}}},
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.05}, nodes = {UIK.button{label = L("Support on Ko-fi"), button = 'about_patreon', w = bw, h = bh, col = true, func = 'ri_rainbow'}}},
+  }
+  local card = {n = G.UIT.C, config = {align = 'cm', padding = 0.05}, nodes = {RI.card_node('j_hologram', cw)}}
+  local body = {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = text}
+  local nodes
+  if side then
+    nodes = {{n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {card, {n = G.UIT.C, config = {minw = 0.3}, nodes = {}}, body}}}
+  else
+    nodes = {{n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {card}}, {n = G.UIT.R, config = {align = 'cm', minh = 0.1}, nodes = {}}, {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {body}}}
+  end
+  return {n = side and G.UIT.R or G.UIT.C, config = {align = 'cm', minw = w, minh = h, r = 0.12, padding = 0.1, colour = UIK.C.section}, nodes = nodes}
+end
+
+function RI.about_tab()
+  local avail = UIK.H - UIK.TOP - 0.05
+  local gap = UIK.GAP
+  if UIK.portrait() then
+    local hh = 4.1
+    local ch = (avail - hh - 4 * gap) / 4
+    local rows = {hero(UIK.W, hh, true)}
+    for _, o in ipairs(RI.ABOUT_CARDS) do
+      rows[#rows + 1] = {n = G.UIT.R, config = {minh = gap}, nodes = {}}
+      rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {info_card(o, UIK.W, ch)}}
+    end
+    return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = rows}}}
+  end
+  local hw = touch() and 4.4 or 4.3
+  local rw = UIK.W - hw - gap
+  local cw = (rw - gap) / 2
+  local ch = (avail - gap) / 2
+  local grid = {}
+  for r = 0, 1 do
+    if r > 0 then grid[#grid + 1] = {n = G.UIT.R, config = {minh = gap}, nodes = {}} end
+    grid[#grid + 1] = {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+      info_card(RI.ABOUT_CARDS[r * 2 + 1], cw, ch),
+      {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+      info_card(RI.ABOUT_CARDS[r * 2 + 2], cw, ch),
+    }}
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+    hero(hw, avail),
+    {n = G.UIT.C, config = {minw = gap}, nodes = {}},
+    {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = grid},
+  }}
+end
+
+function RI.licences_tab()
+  local items = {}
+  for _, e in ipairs(RI.LICENCES) do
+    head_pair(items, L(e[1]), L(e[3]))
+    para(items, L(e[2]))
+  end
+  return UIK.flow{id = 'about_licences', items = items, cols = cols_n()}
+end
+
+function RI.privacy_tab()
+  local items = {}
+  for _, s in ipairs(RI.PRIVACY) do
+    head(items, L(s[1]))
+    for _, p in ipairs(s[2]) do para(items, L(p)) end
+  end
+  return UIK.flow{id = 'about_privacy', items = items, cols = cols_n()}
+end
+
+local MONTHS = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+
+function RI.date_text(d)
+  local y, m, day = tostring(d or ""):match("^(%d+)-(%d+)-(%d+)$")
+  if not y then return tostring(d or "") end
+  return tonumber(day) .. " " .. L(MONTHS[tonumber(m)] or m) .. " " .. y
+end
+
+function RI.version_label(e)
+  local v = e.version
+  local test = v:match("^[Tt]est%s+([%d%.]+)$")
+  if test then return string.format(L("Test build %s"), test) end
+  if v:match("^[%d%.]+$") then v = string.format(L("Version %s"), v) end
+  return v
+end
+
+local function news_parts(h, w, sc)
+  local p = {pad = 0.12, ts = touch() and 0.44 or 0.4}
+  p.inner = w - 2 * p.pad
+  p.icon_w = h.icon and (touch() and 0.62 or 0.56) or 0
+  p.tw = p.inner - (h.icon and p.icon_w + 0.2 or 0)
+  p.title_h = h.title and (p.ts * 1.1 + 0.06) or 0
+  p.lines = RI.wrap(h.text, p.tw, sc)
+  local th = p.title_h + #p.lines * (sc * 1.05 + 0.05)
+  p.h = math.max(th, p.icon_w * G.CARD_H / G.CARD_W) + 2 * p.pad
+  return p
+end
+
+function RI.news_h(h, w, sc)
+  return news_parts(h, w, sc).h
+end
+
+function RI.news_card(h, w, sc, hh)
+  local p = news_parts(h, w, sc)
+  hh = math.max(hh or 0, p.h)
+  local rows = {}
+  if h.title then
+    rows[1] = {n = G.UIT.R, config = {align = 'cl', minw = p.tw, minh = p.title_h, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = 'cl', maxw = p.tw, padding = 0}, nodes = {t_node(h.title, p.ts, UIK.C.title, true)}},
+    }}
+  end
+  for _, r in ipairs((text_rows(p.lines, p.tw, sc, UIK.C.text))) do rows[#rows + 1] = r end
+  local nodes = {}
+  if h.icon then
+    nodes[1] = RI.card_node(h.icon, p.icon_w)
+    nodes[2] = {n = G.UIT.B, config = {w = 0.2, h = 0.1}}
+  end
+  nodes[#nodes + 1] = {n = G.UIT.C, config = {align = 'tl', minw = p.tw, padding = 0}, nodes = rows}
+  local node = {n = G.UIT.C, config = {align = 'tm', minw = w, minh = hh, r = 0.12, padding = p.pad, colour = UIK.C.section}, nodes = {
+    {n = G.UIT.R, config = {align = 'tl', minw = p.inner, padding = 0}, nodes = nodes},
+  }}
+  node.uik_h = hh
+  return node
+end
+
+function RI.pair_row(nodes, w, gap, vgap)
+  local h = 0
+  local list = {}
+  for i, n in ipairs(nodes) do
+    if i > 1 then list[#list + 1] = {n = G.UIT.C, config = {minw = gap, padding = 0}, nodes = {}} end
+    list[#list + 1] = n
+    h = math.max(h, n.uik_h or 0)
+  end
+  vgap = vgap or gap
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h + vgap, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = {{n = G.UIT.R, config = {align = 'tm', padding = 0}, nodes = list}}},
+  }}
+  node.uik_h = h + vgap
+  return node
+end
+
+local function news_rows(highs, w, per, gap, sc, vgap)
+  local cw = (w - gap * (per - 1)) / per
+  local out = {}
+  for i = 1, #highs, per do
+    local group = {}
+    for j = i, math.min(i + per - 1, #highs) do group[#group + 1] = highs[j] end
+    local hh = 0
+    for _, h in ipairs(group) do hh = math.max(hh, RI.news_h(h, cw, sc)) end
+    local cards = {}
+    for k, h in ipairs(group) do cards[k] = RI.news_card(h, cw, sc, hh) end
+    out[#out + 1] = RI.pair_row(cards, w, gap, vgap)
+  end
+  return out
+end
+RI.news_rows = news_rows
+
+function RI.cl_index()
+  local list = RI.changelog()
+  RI._cl_idx = math.max(1, math.min(RI._cl_idx or 1, math.max(#list, 1)))
+  return RI._cl_idx, list
+end
+
+G.FUNCS.ri_cl_step = function(e)
+  local r = e and e.config and e.config.ref_table
+  local idx, list = RI.cl_index()
+  RI._cl_idx = math.max(1, math.min(#list, idx + ((r and r.d) or 0)))
+  UIK._pages.about_changelog = 1
+  UIK.refresh()
+end
+
+function RI.changelog_tab()
+  local idx, list = RI.cl_index()
+  local e = list[idx]
+  if not e then
+    local items = {}
+    para(items, L("No changelog in this build."), UIK.C.muted)
+    return UIK.flow{id = 'about_changelog', items = items, cols = cols_n()}
+  end
+  local title, highs, rest = RI.entry_text(e)
+  local label = RI.version_label(e)
+  if e.date ~= "" then label = label .. "  |  " .. RI.date_text(e.date) end
+  local bar = UIK.pager{prev = 'ri_cl_step', next = 'ri_cl_step', prev_ref = {key = 'cl', d = 1}, next_ref = {key = 'cl', d = -1},
+    text = label, text_w = UIK.portrait() and 4.6 or 7.5, prev_disabled = idx >= #list, next_disabled = idx <= 1, w = UIK.W}
+  local per = cols_n()
+  local fw = UIK.W - 2 * UIK.PAD
+  local gap = UIK.GAP
+  local sc = body_scale()
+  local items = {}
+  for _, r in ipairs(news_rows(highs, fw, per, gap, sc, gap - 2 * UIK.PAD + 0.02)) do items[#items + 1] = r end
+  if #rest > 0 then
+    if #highs > 0 then items[#items + 1] = UIK.header(L("Also in this version"), {w = fw, colour = UIK.C.muted}) end
+    local bw = (fw - gap * (per - 1)) / per
+    for i = 1, #rest, per do
+      local group = {}
+      for j = i, math.min(i + per - 1, #rest) do group[#group + 1] = bullet_node(rest[j], bw) end
+      items[#items + 1] = RI.pair_row(group, fw, gap, 0)
+    end
+  end
+  if title then
+    local tw = UIK.portrait() and 4.3 or 7.3
+    local ts = touch() and 0.46 or 0.44
+    local th = ts * 1.1 + 0.04 + body_scale() * 1.1
+    bar.nodes[2].nodes = {{n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = {
+      {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'cm', maxw = tw - 0.2, padding = 0}, nodes = {t_node(title, ts, UIK.C.title, true)}}}},
+      {n = G.UIT.R, config = {align = 'cm', minh = 0.04, padding = 0}, nodes = {}},
+      {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'cm', maxw = tw - 0.2, padding = 0}, nodes = {t_node(label, body_scale(), UIK.C.muted, false)}}}},
+    }}}
+    bar.uik_h = math.max(bar.uik_h, th + 0.16)
+  end
+  local head_nodes = {bar}
+  local keep = UIK.H
+  UIK.H = UIK.H - bar.uik_h
+  local ok, flow = pcall(UIK.flow, {id = 'about_changelog', items = items, cols = 1})
+  UIK.H = keep
+  if not ok then error(flow) end
+  head_nodes[#head_nodes + 1] = flow
+  return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = head_nodes},
+  }}
+end
+
+function RI.window(tab)
+  return UIK.window{
+    id = 'about',
+    title = L("ABOUT"),
+    tab = tab,
+    back_func = 'about_back',
+    tabs = {
+      {key = 'about', label = L("About"), build = RI.about_tab},
+      {key = 'changelog', label = L("Changelog"), build = RI.changelog_tab},
+      {key = 'licences', label = L("Licences"), build = RI.licences_tab},
+      {key = 'privacy', label = L("Privacy"), build = RI.privacy_tab},
+    },
+  }
+end
+
+function RI.open(tab, from)
+r 13 1381 %20%20 -
+l 34
+  if from ~= nil then RI.from = from end
+  G.FUNCS.overlay_menu{definition = RI.window(tab)}
+end
+
+RI.PATREON_URL = "https://ko-fi.com/jupiteriansoull"
+
+function RI.patreon_tab()
+  local w = 9.6
+  local sc = 0.4
+  local lines = {}
+  for i, ptext in ipairs({L("The Overhaul is free and will stay free. Ko-fi is only for those who want to support me and help pay for the online server."),
+      L("Thank you, it means a lot.")}) do
+    if i > 1 then lines[#lines + 1] = "" end
+    for _, l in ipairs(RI.wrap(ptext, w - 0.6, sc)) do lines[#lines + 1] = l end
+  end
+  local rows = text_rows(lines, w - 0.6, sc, G.C.UI.TEXT_LIGHT, 'cm')
+  return {n = G.UIT.ROOT, config = {align = "cm", padding = 0.2, colour = G.C.BLACK, r = 0.1, emboss = 0.05, minh = 6, minw = 10}, nodes = {
+    {n = G.UIT.R, config = {align = "cm", padding = 0.25, outline_colour = G.C.JOKER_GREY, r = 0.1, outline = 1, minw = w}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", padding = 0.05}, nodes = {t_node(L("Support the Overhaul"), 0.6, G.C.GOLD, true)}},
+      {n = G.UIT.R, config = {align = "cm", minh = 0.15}, nodes = {}},
+      {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = rows}}},
+      {n = G.UIT.R, config = {align = "cm", minh = 0.3}, nodes = {}},
+      {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        UIK.button{label = L("Open my Ko-fi"), button = 'open_patreon', colour = {1, 0.26, 0.3, 1}, w = 4.2, h = touch() and 0.95 or 0.85, scale = 0.5, col = true},
+      }},
+    }},
+  }}
+end
+
+G.FUNCS.open_patreon = function(e)
+  love.system.openURL(RI.PATREON_URL)
+end
+
+local function open_credits(tab)
+r 13 1381 %20%20 -
+l 202
+  G.FUNCS.overlay_menu{definition = G.UIDEF.credits({back = 'credits_back_about', tab = tab})}
+end
+
+G.FUNCS.about_credits = function(e) open_credits() end
+G.FUNCS.about_patreon = function(e) open_credits('patreon') end
+G.FUNCS.credits_back_about = function(e) RI.open('about') end
+
+RI.DISCORD_URL = "https://discord.gg/uu4pu8NySP"
+RI.GITHUB_URL = "https://github.com/JupiterianSoul/Balatro-Overhaul"
+RI.DISCORD_COLOUR = {0.35, 0.4, 0.95, 1}
+RI.GITHUB_COLOUR = {0.24, 0.27, 0.31, 1}
+
+function RI.open_link(url)
+  if type(url) ~= "string" or not url:match("^https://[%w%-%.]+%.[%a]+/[^%s]*$") then return false end
+  local ok, res = pcall(love.system.openURL, url)
+  return ok and res ~= false
+end
+
+G.FUNCS.open_discord = function(e) RI.open_link(RI.DISCORD_URL) end
+G.FUNCS.open_github = function(e) RI.open_link(RI.GITHUB_URL) end
+
+local function vnum(s)
+  s = tostring(s or "")
+  return s:match("^%s*(%d+[%d%.]*%d)") or s:match("^%s*(%d+)") or s
+end
+RI.vnum = vnum
+
+function RI.whats_new_key()
+  return vnum(RI.version_name())
+end
+
+function RI.news_entry(key)
+  key = key or RI.whats_new_key()
+  for _, e in ipairs(RI.changelog()) do
+    if vnum(e.version) == key then return e end
+  end
+  return nil
+end
+
+function RI.news_groups(e, lang)
+  local _, highs, rest = RI.entry_text(e, lang)
+  local groups, by = {}, {}
+  local function add(title, text)
+    local g = by[title]
+    if not g then
+      g = {title = title, lines = {}}
+      by[title] = g
+      groups[#groups + 1] = g
+    end
+    g.lines[#g.lines + 1] = text
+  end
+  for _, h in ipairs(highs) do add(h.title or L("What's new"), h.text) end
+  for _, it in ipairs(rest) do add(L("Also in this version"), it) end
+  return groups
+end
+
+function RI.whats_new_due(S)
+  S = S or (G and G.SETTINGS)
+  if not S then return false end
+  local key = RI.whats_new_key()
+  if key == "" or key == "?" or S.whats_new_seen == key then return false end
+  return RI.news_entry(key) ~= nil
+end
+
+local function name_prompt_pending()
+  local PN = rawget(_G, "PlayerName")
+  if not (PN and PN.is_default and PN.current) then return false end
+  if PN.state and G.OVERLAY_MENU then return true end
+  local ML = rawget(_G, "MODLOADER")
+  if ML and ML.modded then return false end
+  if os.getenv("NO_NAME_PROMPT") == "1" then return false end
+  local ok, def = pcall(function() return PN.is_default(PN.current()) end)
+  return ok and def and true or false
+end
+
+function RI.whats_new_ready()
+  if not (G.STAGES and G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI) then return false end
+  if G.OVERLAY_MENU or G.OVERLAY_TUTORIAL then return false end
+  local S = G.SETTINGS
+  if not S or not S.language_chosen or S.showcase_after_restart then return false end
+  if name_prompt_pending() then return false end
+  local mpm = rawget(_G, "mpm_menu")
+  if mpm and mpm.active then return false end
+  if G.MP_ERROR_OVERLAY then return false end
+  local B = rawget(_G, "bom_browse")
+  if B and B.resume_busy and B.resume_busy() then return false end
+  local M = rawget(_G, "bom_match")
+  if M and M.get_phase and M.PHASE and M.get_phase() ~= M.PHASE.NONE then return false end
+  return true
+end
+
+local function body_scale_wn() return touch() and 0.34 or 0.32 end
+
+local function wn_bullet(str, w)
+  local sc = body_scale_wn()
+  local dash = "- "
+  local indent = UIK.text_w(dash, sc)
+  local lines = RI.wrap(str, w - indent, sc)
+  local lh = sc * 1.05 + 0.05
+  local rows = {}
+  for i, l in ipairs(lines) do
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cl', minw = w, minh = lh, padding = 0}, nodes = {
+      {n = G.UIT.C, config = {align = 'cl', minw = indent, minh = lh, padding = 0}, nodes = i == 1 and {t_node(dash, sc, UIK.C.title, false)} or {}},
+      t_node(l, sc, UIK.C.text, false),
+    }}
+  end
+  local h = #rows * lh + 0.1
+  local node = {n = G.UIT.R, config = {align = 'cm', minw = w, minh = h, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'cl', minw = w, padding = 0}, nodes = rows},
+  }}
+  node.uik_h = h
+  return node
+end
+
+function RI.whats_new_body(e)
+  local port = UIK.portrait()
+  local cols = port and 1 or 2
+  local title = RI.entry_text(e)
+  local label = RI.version_label(e)
+  if e.date ~= "" then label = label .. "  |  " .. RI.date_text(e.date) end
+  local tw = UIK.W - 0.4
+  local ts = touch() and 0.5 or 0.46
+  local top = {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, padding = 0.04}, nodes = {{n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = {
+    title and {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'cm', maxw = tw, padding = 0}, nodes = {t_node(title, ts, UIK.C.text, true)}}}} or nil,
+    {n = G.UIT.R, config = {align = 'cm', padding = 0.02}, nodes = {{n = G.UIT.C, config = {align = 'cm', maxw = tw, padding = 0}, nodes = {t_node(label, body_scale(), UIK.C.muted, false)}}}},
+  }}}}
+  local top_h = (title and ts * 1.1 or 0) + body_scale() * 1.1 + 0.2
+  local bw = UIK.col_w(cols) - 2 * UIK.PAD - 0.2
+  local items = {}
+  for _, g in ipairs(RI.news_groups(e)) do
+    items[#items + 1] = UIK.header(g.title, {w = bw + 0.2})
+    for _, line in ipairs(g.lines) do items[#items + 1] = wn_bullet(line, bw) end
+  end
+  local pager_h = (touch() and 0.82 or 0.66) + 0.12
+  local cap = UIK.H - UIK.TOP - top_h - pager_h - 0.1
+  local columns, cur, used = {}, {}, 0
+  for i, it in ipairs(items) do
+    local h = it.uik_h or 0.5
+    local nxt = items[i + 1]
+    local need = h + ((it.uik_header and nxt) and (nxt.uik_h or 0) or 0)
+    if #cur > 0 and used + need > cap then
+      columns[#columns + 1] = cur
+      cur, used = {}, 0
+    end
+    cur[#cur + 1] = it
+    used = used + h
+  end
+  if #cur > 0 then columns[#columns + 1] = cur end
+  local n = math.max(1, math.ceil(#columns / cols))
+  local idx = math.max(1, math.min(UIK._pages.whats_new or 1, n))
+  UIK._pages.whats_new = idx
+  RI._wn_pages = n
+  local row = {}
+  for c = 1, cols do
+    local list = {}
+    for _, it in ipairs(columns[(idx - 1) * cols + c] or {}) do
+      list[#list + 1] = {n = G.UIT.R, config = {align = 'cm', minw = bw + 0.2, padding = 0}, nodes = {it}}
+    end
+    if c > 1 then row[#row + 1] = {n = G.UIT.B, config = {w = UIK.GAP, h = 0.1}} end
+    row[#row + 1] = {n = G.UIT.C, config = {align = 'tm', minw = UIK.col_w(cols), minh = cap, padding = UIK.PAD}, nodes = list}
+  end
+  local body = {top, {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = row}}
+  if n > 1 then
+    body[#body + 1] = UIK.pager{prev = 'uik_page', next = 'uik_page', prev_ref = {id = 'whats_new', d = -1, n = n}, next_ref = {id = 'whats_new', d = 1, n = n},
+      text = string.format(mod_loc("Page %d of %d"), idx, n), w = UIK.W}
+  end
+  return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = body},
+  }}
+end
+
+function RI.link_buttons(o)
+  o = o or {}
+  local h = o.h or (touch() and 0.9 or 0.78)
+  local sc = o.scale or (touch() and 0.5 or 0.47)
+  local w = o.w or math.max(touch() and 3.4 or 3.2, UIK.text_w(L("Join the Discord"), sc) + 0.8)
+  return {
+    UIK.button{id = o.prefix and (o.prefix .. '_discord') or nil, label = L("Join the Discord"), button = 'open_discord', colour = RI.DISCORD_COLOUR, w = w, h = h, scale = sc, col = true},
+    UIK.button{id = o.prefix and (o.prefix .. '_github') or nil, label = L("GitHub"), button = 'open_github', colour = RI.GITHUB_COLOUR, w = w, h = h, scale = sc, col = true},
+  }
+end
+
+function RI.whats_new_def(e)
+  e = e or RI._wn_entry or RI.news_entry() or RI.changelog()[1]
+  RI._wn_entry = e
+  return UIK.window{
+    id = 'whats_new',
+    title = L("WHAT'S NEW"),
+    back_func = 'whats_new_close',
+    back_label = L("Close"),
+    back_inline = 'land',
+    build = function() return RI.whats_new_body(e) end,
+    footer = RI.link_buttons{prefix = 'wn'},
+  }
+end
+
+function RI.open_whats_new(from)
+  local e = RI.news_entry() or RI.changelog()[1]
+  if not e then return false end
+  RI._wn_entry = e
+  RI._wn_from = from
+  UIK._pages.whats_new = 1
+r 13 1381 %20%20 -
+l 303
+  G.FUNCS.overlay_menu{definition = RI.whats_new_def(e)}
+  return true
+end
+
+G.FUNCS.whats_new_close = function(e)
+  local from = RI._wn_from
+  RI._wn_from = nil
+  if from == 'settings' and G.FUNCS.settings then return G.FUNCS.settings(e, true) end
+  G.FUNCS.exit_overlay_menu(e)
+end
+G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+G.ESC_BACK_FUNCS.whats_new_close = true
+
+G.FUNCS.open_whats_new = function(e)
+  RI.open_whats_new('settings')
+end
+
+function RI.whats_new_show()
+  local key = RI.whats_new_key()
+  if not RI.open_whats_new('auto') then return false end
+  G.SETTINGS.whats_new_seen = key
+  pcall(function() G:save_settings() end)
+  print("[whats_new] shown " .. tostring(key))
+  return true
+end
+
+function RI.whats_new_watch()
+  RI._wn_token = (RI._wn_token or 0) + 1
+  local token = RI._wn_token
+  if not RI.whats_new_due() then return end
+  local since
+  G.E_MANAGER:add_event(Event({blockable = false, blocking = false, no_delete = true, func = function()
+    if RI._wn_token ~= token or not RI.whats_new_due() then return true end
+    if not (G.STAGES and G.STAGE == G.STAGES.MAIN_MENU) then return true end
+    if not RI.whats_new_ready() then since = nil return false end
+    local now = love.timer.getTime()
+    since = since or now
+    if now - since < 1.2 then return false end
+    RI.whats_new_show()
+    return true
+  end}))
+end
+
+function RI.links_def()
+  local t = touch()
+  local sc = UIK.portrait() and (t and 0.52 or 0.44) or (t and 0.4 or 0.36)
+  local h = sc * 1.6
+  local w = math.max(UIK.text_w(L("Discord"), sc), UIK.text_w(L("GitHub"), sc)) + sc * 1.6
+  return {n = G.UIT.ROOT, config = {align = 'cr', colour = G.C.CLEAR, func = 'ri_links_check', padding = 0}, nodes = {
+    {n = G.UIT.R, config = {align = 'cr', padding = 0}, nodes = {
+      UIK.button{id = 'menu_discord', label = L("Discord"), button = 'open_discord', colour = RI.DISCORD_COLOUR, w = w, h = h, scale = sc, col = true},
+    }},
+    {n = G.UIT.R, config = {align = 'cr', minh = 0.14}, nodes = {}},
+    {n = G.UIT.R, config = {align = 'cr', padding = 0}, nodes = {
+      UIK.button{id = 'menu_github', label = L("GitHub"), button = 'open_github', colour = RI.GITHUB_COLOUR, w = w, h = h, scale = sc, col = true},
+    }},
+  }}
+end
+
+function RI.links_remove()
+  if RI.links then RI.links:remove() RI.links = nil end
+end
+
+G.FUNCS.ri_links_check = function(e)
+  if G.STAGE ~= G.STAGES.MAIN_MENU or not G.MAIN_MENU_UI then RI.links_remove() return end
+  local p = RI.links
+  if p and p.states then
+    local show = not (G.OVERLAY_MENU or G.OVERLAY_TUTORIAL)
+    local w, h = love.graphics.getDimensions()
+    local port = UIK.portrait()
+    if show and RI._links_port ~= nil and RI._links_port ~= port then
+      RI._links_port = nil
+      G.E_MANAGER:add_event(Event({blockable = false, blocking = false, func = function() RI.links_show() return true end}))
+      return
+    end
+    local vb = CORNER_LABELS and CORNER_LABELS.version_rect
+    local mt = G.MAIN_MENU_UI.T
+    local vk = string.format('%.2f,%.2f,%.3f,%.2f,%.2f,%.2f', G.ROOM.T.x, G.ROOM.T.y, G.TILESCALE, mt.x, mt.y, mt.w)
+    if vb then vk = vk .. string.format(',%.1f,%.1f,%.1f', vb.x + vb.w, vb.y, vb.h) end
+    if p.states.visible ~= show or RI._links_wh ~= w * 100000 + h or RI._links_vk ~= vk or (p.role and p.role.major ~= G.MAIN_MENU_UI and p.role.major ~= G.ROOM_ATTACH) then
+      p.states.visible = show
+      RI._links_wh = w * 100000 + h
+      RI._links_vk = vk
+      if show then RI.links_place() end
+    end
+  end
+end
+
+RI.LINKS_GAP_PX = 10
+RI.LINKS_INK_R = 0.08
+
+function RI.links_place()
+  local p, m = RI.links, G.MAIN_MENU_UI
+  if not (p and p.T and m and m.T) then return end
+  RI._links_port = UIK.portrait()
+  do
+    local u = G.TILESCALE * G.TILESIZE
+    local vb = CORNER_LABELS and CORNER_LABELS.version_rect
+    local sw = love.graphics.getWidth()
+    local right = vb and (vb.x + vb.w) or (sw - 10)
+    local top = vb and (vb.y + vb.h + RI.LINKS_GAP_PX) or 60
+    local x = right / u - G.ROOM.T.x - p.T.w - G.ROOM_ATTACH.T.x + RI.LINKS_INK_R
+    local y = top / u - G.ROOM.T.y - G.ROOM_ATTACH.T.y
+    p:set_alignment({major = G.ROOM_ATTACH, type = 'tli', bond = 'Strong', offset = {x = x, y = y}})
+  end
+  p:align_to_major()
+  p:hard_set_T(p.T.x, p.T.y, p.T.w, p.T.h)
+  p:hard_set_VT()
+  p:recalculate()
+end
+
+function RI.links_show()
+  RI.links_remove()
+  if not (G.STAGE == G.STAGES.MAIN_MENU and G.ROOM_ATTACH) then return end
+  RI.links = UIBox{definition = RI.links_def(), config = {align = 'cm', offset = {x = 0, y = 0}, major = G.ROOM_ATTACH, bond = 'Weak'}}
+  RI.links_place()
+end
+
+function RI.settings_rows()
+  return {
+    UIK.action{id = 'set_whats_new', label = L("What's New"), info = L("What the last update changed"), button_label = L("Open"), button = 'open_whats_new', colour = UIK.C.accent},
+    UIK.action{id = 'set_discord', label = L("Discord"), info = L("Join the community and hear about updates first"), button_label = L("Join"), button = 'open_discord', colour = RI.DISCORD_COLOUR},
+    UIK.action{id = 'set_github', label = L("GitHub"), info = L("Source code, downloads and bug reports"), button_label = L("Open"), button = 'open_github', colour = RI.GITHUB_COLOUR},
+  }
+end
+
+local main_menu_ui = set_main_menu_UI
+function set_main_menu_UI(...)
+  main_menu_ui(...)
+  pcall(RI.links_show)
+  pcall(RI.whats_new_watch)
+end
+
+G.FUNCS.open_about = function(e) RI.open('about', false) end
+G.FUNCS.open_about_licences = function(e) RI.open('licences') end
+G.FUNCS.open_about_privacy = function(e) RI.open('privacy') end
+G.FUNCS.open_changelog = function(e) RI.open('changelog', false) end
+G.FUNCS.about_back = function(e)
+  if RI.from == 'menu' then
+    RI.from = nil
+    return G.FUNCS.exit_overlay_menu(e)
+  end
+  if G.FUNCS.settings then G.FUNCS.settings(e, true) else G.FUNCS.exit_overlay_menu(e) end
+end
+G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+G.ESC_BACK_FUNCS.about_back = true
+
+mod_loc_register{
+  fr = {
+    ["ABOUT"] = "À PROPOS", ["About"] = "À propos", ["Licences"] = "Licences", ["Privacy"] = "Confidentialité", ["Changelog"] = "Nouveautés",
+    ["Version %s"] = "Version %s",
+    ["No changelog in this build."] = "Pas de journal des nouveautés dans cette version.",
+    ["A free fan mod for Balatro: online multiplayer, new modes, quests, The Casino, the Forge and a lot of quality of life."] = "Un mod de fan gratuit pour Balatro : multijoueur en ligne, nouveaux modes, quêtes, le Casino, la Forge et beaucoup de confort de jeu.",
+    ["Unofficial"] = "Non officiel",
+    ["Balatro Overhaul is an unofficial fan mod. It is not made, endorsed or supported by LocalThunk or Playstack."] = "Balatro Overhaul est un mod de fan non officiel. Il n'est ni créé, ni approuvé, ni soutenu par LocalThunk ou Playstack.",
+    ["Balatro, its name, logo, art, music and code belong to LocalThunk and Playstack."] = "Balatro, son nom, son logo, ses images, sa musique et son code appartiennent à LocalThunk et Playstack.",
+    ["Your own copy"] = "Votre propre copie",
+    ["You need your own copy of Balatro. The Overhaul ships none of the game's files: it patches the copy you own, on your device."] = "Il vous faut votre propre copie de Balatro. L'Overhaul ne contient aucun fichier du jeu : il modifie la copie que vous possédez, sur votre appareil.",
+    ["The Overhaul is free. Never pay anyone for it. Buy Balatro to support the people who made it."] = "L'Overhaul est gratuit. Ne payez jamais personne pour l'avoir. Achetez Balatro pour soutenir ceux qui l'ont créé.",
+    ["Other people's work"] = "Le travail des autres",
+    ["Workshop mods are made by other people and download from their own pages. Music you add to the Jukebox stays on your device."] = "Les mods du Workshop sont faits par d'autres personnes et se téléchargent depuis leurs propres pages. La musique ajoutée au Jukebox reste sur votre appareil.",
+    ["By LocalThunk, published by Playstack. Not included: the Overhaul patches your own copy."] = "Par LocalThunk, édité par Playstack. Non inclus : l'Overhaul modifie votre propre copie.",
+    ["All rights reserved"] = "Tous droits réservés",
+    ["Game engine by the LÖVE Development Team. Its libraries (SDL2, LuaJIT, LuaSocket, OpenAL Soft, FreeType and more) are listed in license.txt."] = "Moteur de jeu de la LÖVE Development Team. Ses bibliothèques (SDL2, LuaJIT, LuaSocket, OpenAL Soft, FreeType et d'autres) sont listées dans license.txt.",
+    ["zlib licence"] = "Licence zlib",
+    ["Modding framework by the Steamodded team, shipped with its source and modified for the Overhaul. The changes are listed in OVERHAUL_CHANGES.md next to it."] = "Outil de modding de l'équipe Steamodded, fourni avec son code source, modifié pour l'Overhaul, changements listés dans OVERHAUL_CHANGES.md.",
+    ["GNU GPL 3.0"] = "GNU GPL 3.0",
+    ["File access library by megagrump, used by Steamodded."] = "Bibliothèque d'accès aux fichiers de megagrump, utilisée par Steamodded.",
+    ["MIT licence"] = "Licence MIT",
+    ["The Workshop's list of mods, by Efe and its contributors."] = "La liste des mods du Workshop, par Efe et ses contributeurs.",
+    ["The Overhaul reads mods made for Lovely, by ethangreen-dev. The Overhaul's loader is its own code."] = "L'Overhaul lit les mods faits pour Lovely, de ethangreen-dev. Le chargeur de l'Overhaul est son propre code.",
+    ["Based on Balatro Multiplayer by Virtualized and the BMP team: the multiplayer in this mod builds on their work. Thank you."] = "Basé sur Balatro Multiplayer de Virtualized et de l'équipe BMP : le multijoueur de ce mod repose sur leur travail. Merci.",
+    ["Fonts"] = "Polices",
+    ["m6x11plus by Daniel Linssen, Noto Sans and Go Noto (SIL Open Font Licence). They come from your copy of Balatro."] = "m6x11plus de Daniel Linssen, Noto Sans et Go Noto (licence SIL Open Font). Elles viennent de votre copie de Balatro.",
+    ["The Deck Creator is ported from Balatro-DeckCreator by adambennett."] = "Le Créateur de decks est porté depuis Balatro-DeckCreator, d'adambennett.",
+    ["Some of the Deck Creator's random-value logic follows Cryptid, by MathIsFun_ and the Cryptid team."] = "Une partie de la logique de valeurs aléatoires du Créateur de decks suit Cryptid, de MathIsFun_ et de l'équipe Cryptid.",
+    ["Music and sounds"] = "Musique et sons",
+    ["Balatro's soundtrack by LouisF and its sounds come from your copy of Balatro. The public release ships no one else's music."] = "La bande originale de Balatro par LouisF et ses sons viennent de votre copie de Balatro. La version publique ne contient la musique de personne d'autre.",
+    ["From your copy"] = "Depuis votre copie",
+    ["Code, art and texts made for this mod. Free software: you may use, study, change and share it under the GPL, keeping the credits."] = "Code, images et textes faits pour ce mod. Logiciel libre : vous pouvez l'utiliser, l'étudier, le modifier et le partager sous la GPL, en gardant les crédits.",
+    ["Free to download and play"] = "Gratuit à télécharger et à jouer",
+    ["Online account"] = "Compte en ligne",
+    ["Playing online creates an account on the Overhaul server: your player name, a random key kept on this device, friends, match results, ranked points and replays."] = "Jouer en ligne crée un compte sur le serveur de l'Overhaul : votre pseudo, une clé aléatoire gardée sur cet appareil, vos amis, vos résultats, vos points classés et vos replays.",
+    ["Chat and reports"] = "Chat et signalements",
+    ["Chat messages go through the server and a word filter. Reports from players are kept so they can be checked."] = "Les messages du chat passent par le serveur et un filtre de mots. Les signalements des joueurs sont gardés pour être vérifiés.",
+    ["Crash reports"] = "Rapports de plantage",
+    ["Send crash reports is on unless you turn it off (Settings > Account)."] = "Envoyer les rapports de plantage est activé sauf si vous le coupez (Paramètres > Compte).",
+    ["A crash sends the error, the game version, your system and graphics card, where you were in the game, your last clicks, the end of the log and your mod list."] = "Un plantage envoie l'erreur, la version du jeu, votre système et votre carte graphique, où vous en étiez dans le jeu, vos derniers clics, la fin du journal et votre liste de mods.",
+    ["It also sends a random number for this install, to count players. Your name and folders are removed first."] = "Il envoie aussi un numéro tiré au hasard pour cette installation, pour compter les joueurs. Votre nom et vos dossiers sont retirés avant l'envoi.",
+    ["AI bots"] = "Bots IA",
+    ["If you let Bot-latro use an online AI service with your own key, it sends the run's state to that service. Your key stays on this device."] = "Si vous laissez Bot-latro utiliser un service d'IA en ligne avec votre propre clé, il envoie l'état de la partie à ce service. Votre clé reste sur cet appareil.",
+    ["What we never do"] = "Ce qu'on ne fait jamais",
+    ["No ads, no tracking, nothing is sold. The server is run by the Overhaul's developer, not by LocalThunk or Playstack."] = "Pas de pub, pas de pistage, rien n'est vendu. Le serveur est géré par le développeur de l'Overhaul, pas par LocalThunk ni Playstack.",
+    ["Your data"] = "Vos données",
+    ["To have your account and its data deleted, ask on the Overhaul's GitHub page. Online play with chat is meant for players aged 13 and over."] = "Pour faire supprimer votre compte et ses données, demandez-le sur la page GitHub de l'Overhaul. Le jeu en ligne avec chat est prévu pour les joueurs de 13 ans et plus.",
+    ["About the Overhaul"] = "À propos de l'Overhaul",
+    ["Disclaimer, licences and privacy"] = "Avertissement, licences et confidentialité",
+    ["What changed in each version"] = "Ce qui a changé à chaque version",
+  },
+  es = {
+    ["ABOUT"] = "ACERCA DE", ["About"] = "Acerca de", ["Licences"] = "Licencias", ["Privacy"] = "Privacidad", ["Changelog"] = "Novedades",
+    ["Version %s"] = "Versión %s",
+    ["No changelog in this build."] = "Esta versión no trae registro de novedades.",
+    ["A free fan mod for Balatro: online multiplayer, new modes, quests, The Casino, the Forge and a lot of quality of life."] = "Un mod gratuito hecho por fans para Balatro: multijugador en línea, modos nuevos, misiones, el Casino, la Forja y muchas mejoras de comodidad.",
+    ["Unofficial"] = "No oficial",
+    ["Balatro Overhaul is an unofficial fan mod. It is not made, endorsed or supported by LocalThunk or Playstack."] = "Balatro Overhaul es un mod no oficial hecho por fans. No está hecho, aprobado ni respaldado por LocalThunk ni Playstack.",
+    ["Balatro, its name, logo, art, music and code belong to LocalThunk and Playstack."] = "Balatro, su nombre, logo, arte, música y código pertenecen a LocalThunk y Playstack.",
+    ["Your own copy"] = "Tu propia copia",
+    ["You need your own copy of Balatro. The Overhaul ships none of the game's files: it patches the copy you own, on your device."] = "Necesitas tu propia copia de Balatro. El Overhaul no incluye ningún archivo del juego: modifica la copia que tienes, en tu dispositivo.",
+    ["The Overhaul is free. Never pay anyone for it. Buy Balatro to support the people who made it."] = "El Overhaul es gratis. Nunca le pagues a nadie por él. Compra Balatro para apoyar a quienes lo hicieron.",
+    ["Other people's work"] = "El trabajo de otros",
+    ["Workshop mods are made by other people and download from their own pages. Music you add to the Jukebox stays on your device."] = "Los mods del Workshop los hacen otras personas y se descargan desde sus propias páginas. La música que añades a la Jukebox se queda en tu dispositivo.",
+    ["By LocalThunk, published by Playstack. Not included: the Overhaul patches your own copy."] = "De LocalThunk, publicado por Playstack. No incluido: el Overhaul modifica tu propia copia.",
+    ["All rights reserved"] = "Todos los derechos reservados",
+    ["Game engine by the LÖVE Development Team. Its libraries (SDL2, LuaJIT, LuaSocket, OpenAL Soft, FreeType and more) are listed in license.txt."] = "Motor de juego del LÖVE Development Team. Sus bibliotecas (SDL2, LuaJIT, LuaSocket, OpenAL Soft, FreeType y más) están en license.txt.",
+    ["zlib licence"] = "Licencia zlib",
+    ["Modding framework by the Steamodded team, shipped with its source and modified for the Overhaul. The changes are listed in OVERHAUL_CHANGES.md next to it."] = "Herramienta de modding del equipo de Steamodded, incluida con su código fuente, modificado para el Overhaul, cambios en OVERHAUL_CHANGES.md.",
+    ["GNU GPL 3.0"] = "GNU GPL 3.0",
+    ["File access library by megagrump, used by Steamodded."] = "Biblioteca de acceso a archivos de megagrump, usada por Steamodded.",
+    ["MIT licence"] = "Licencia MIT",
+    ["The Workshop's list of mods, by Efe and its contributors."] = "La lista de mods del Workshop, de Efe y sus colaboradores.",
+    ["The Overhaul reads mods made for Lovely, by ethangreen-dev. The Overhaul's loader is its own code."] = "El Overhaul lee mods hechos para Lovely, de ethangreen-dev. El cargador del Overhaul es código propio.",
+    ["Based on Balatro Multiplayer by Virtualized and the BMP team: the multiplayer in this mod builds on their work. Thank you."] = "Basado en Balatro Multiplayer de Virtualized y el equipo de BMP: el multijugador de este mod se apoya en su trabajo. Gracias.",
+    ["Fonts"] = "Fuentes",
+    ["m6x11plus by Daniel Linssen, Noto Sans and Go Noto (SIL Open Font Licence). They come from your copy of Balatro."] = "m6x11plus de Daniel Linssen, Noto Sans y Go Noto (licencia SIL Open Font). Vienen de tu copia de Balatro.",
+    ["The Deck Creator is ported from Balatro-DeckCreator by adambennett."] = "El Creador de mazos está portado de Balatro-DeckCreator, de adambennett.",
+    ["Some of the Deck Creator's random-value logic follows Cryptid, by MathIsFun_ and the Cryptid team."] = "Parte de la lógica de valores aleatorios del Creador de mazos sigue a Cryptid, de MathIsFun_ y el equipo de Cryptid.",
+    ["Music and sounds"] = "Música y sonidos",
+    ["Balatro's soundtrack by LouisF and its sounds come from your copy of Balatro. The public release ships no one else's music."] = "La banda sonora de Balatro de LouisF y sus sonidos vienen de tu copia de Balatro. La versión pública no incluye música de nadie más.",
+    ["From your copy"] = "De tu copia",
+    ["Code, art and texts made for this mod. Free software: you may use, study, change and share it under the GPL, keeping the credits."] = "Código, arte y textos hechos para este mod. Software libre: puedes usarlo, estudiarlo, modificarlo y compartirlo bajo la GPL, manteniendo los créditos.",
+    ["Free to download and play"] = "Gratis para descargar y jugar",
+    ["Online account"] = "Cuenta en línea",
+    ["Playing online creates an account on the Overhaul server: your player name, a random key kept on this device, friends, match results, ranked points and replays."] = "Jugar en línea crea una cuenta en el servidor del Overhaul: tu nombre, una clave aleatoria guardada en este dispositivo, amigos, resultados, puntos de clasificatoria y repeticiones.",
+    ["Chat and reports"] = "Chat y reportes",
+    ["Chat messages go through the server and a word filter. Reports from players are kept so they can be checked."] = "Los mensajes del chat pasan por el servidor y un filtro de palabras. Los reportes de jugadores se guardan para poder revisarlos.",
+    ["Crash reports"] = "Informes de errores",
+    ["Send crash reports is on unless you turn it off (Settings > Account)."] = "Enviar informes de errores está activado salvo que lo desactives (Configuración > Cuenta).",
+    ["A crash sends the error, the game version, your system and graphics card, where you were in the game, your last clicks, the end of the log and your mod list."] = "Un cierre inesperado envía el error, la versión del juego, tu sistema y tarjeta gráfica, dónde estabas en el juego, tus últimos clics, el final del registro y tu lista de mods.",
+    ["It also sends a random number for this install, to count players. Your name and folders are removed first."] = "También envía un número al azar para esta instalación, para contar jugadores. Tu nombre y tus carpetas se quitan antes del envío.",
+    ["AI bots"] = "Bots de IA",
+    ["If you let Bot-latro use an online AI service with your own key, it sends the run's state to that service. Your key stays on this device."] = "Si dejas que Bot-latro use un servicio de IA en línea con tu propia clave, envía el estado de la partida a ese servicio. Tu clave se queda en este dispositivo.",
+    ["What we never do"] = "Lo que nunca hacemos",
+    ["No ads, no tracking, nothing is sold. The server is run by the Overhaul's developer, not by LocalThunk or Playstack."] = "Sin anuncios, sin rastreo, no se vende nada. El servidor lo gestiona el desarrollador del Overhaul, no LocalThunk ni Playstack.",
+    ["Your data"] = "Tus datos",
+    ["To have your account and its data deleted, ask on the Overhaul's GitHub page. Online play with chat is meant for players aged 13 and over."] = "Para borrar tu cuenta y sus datos, pídelo en la página de GitHub del Overhaul. El juego en línea con chat es para jugadores de 13 años o más.",
+    ["About the Overhaul"] = "Acerca del Overhaul",
+    ["Disclaimer, licences and privacy"] = "Aviso, licencias y privacidad",
+    ["What changed in each version"] = "Qué cambió en cada versión",
+  },
+}
+
+
+mod_loc_register{
+  fr = {
+    ["A free fan mod for Balatro: online multiplayer, new modes, quests, achievements, The Casino, the Forge and lots of quality of life."] = "Un mod de fan gratuit pour Balatro : multijoueur en ligne, nouveaux modes, quêtes, succès, le Casino, la Forge et plein de confort de jeu.",
+    ["An unofficial fan mod, not made, endorsed or supported by LocalThunk or Playstack, who own Balatro, its name, art, music and code."] = "Un mod de fan non officiel, ni créé, ni approuvé, ni soutenu par LocalThunk ou Playstack, à qui appartiennent Balatro, son nom, ses images, sa musique et son code.",
+    ["You need your own copy of Balatro: the Overhaul ships none of its files. It is free, so never pay for it. Buy Balatro to support its makers."] = "Il vous faut votre propre copie de Balatro : l'Overhaul n'en contient aucun fichier. Il est gratuit, ne payez jamais pour l'avoir. Achetez Balatro pour soutenir ses créateurs.",
+    ["Workshop mods belong to their makers and download from their own pages. Music you add to the Jukebox stays on your device."] = "Les mods du Workshop appartiennent à leurs auteurs et se téléchargent depuis leurs pages. La musique ajoutée au Jukebox reste sur votre appareil.",
+    ["Build %s"] = "Build %s", ["Test build %s"] = "Version de test %s",
+    ["Made by Jupiterian Soul"] = "Créé par Jupiterian Soul",
+    ["Credits"] = "Crédits", ["Support on Ko-fi"] = "Soutenir sur Ko-fi",
+    ["What it is"] = "C'est quoi ?",
+    ["Jan"] = "janv.", ["Feb"] = "févr.", ["Mar"] = "mars", ["Apr"] = "avr.", ["May"] = "mai", ["Jun"] = "juin",
+    ["Jul"] = "juil.", ["Aug"] = "août", ["Sep"] = "sept.", ["Oct"] = "oct.", ["Nov"] = "nov.", ["Dec"] = "déc.",
+    ["Also in this version"] = "Et aussi dans cette version",
+    ["Support the Overhaul"] = "Soutenir l'Overhaul",
+    ["The Overhaul is free and will stay free. Ko-fi is only for those who want to support me and help pay for the online server."] = "L'Overhaul est gratuit et le restera. Ko-fi, c'est seulement pour ceux qui veulent me soutenir et m'aider à payer le serveur en ligne.",
+    ["Thank you, it means a lot."] = "Merci, ça compte beaucoup pour moi.",
+    ["Open my Ko-fi"] = "Ouvrir mon Ko-fi",
+    ["WHAT'S NEW"] = "QUOI DE NEUF", ["Close"] = "Fermer", ["Full patch notes"] = "Notes de version complètes",
+    ["What's new"] = "Nouveautés", ["What's New"] = "Quoi de neuf", ["Join the Discord"] = "Rejoindre le Discord", ["Discord"] = "Discord", ["GitHub"] = "GitHub",
+    ["What the last update changed"] = "Ce que la dernière mise à jour a changé", ["Join"] = "Rejoindre", ["Open"] = "Ouvrir",
+    ["Join the community and hear about updates first"] = "Rejoignez la communauté et soyez informé des mises à jour en premier",
+    ["Source code, downloads and bug reports"] = "Code source, téléchargements et signalement de bugs",
+    ["Special thanks"] = "Remerciements",
+  },
+  es = {
+    ["A free fan mod for Balatro: online multiplayer, new modes, quests, achievements, The Casino, the Forge and lots of quality of life."] = "Un mod gratuito hecho por fans para Balatro: multijugador en línea, modos nuevos, misiones, logros, el Casino, la Forja y muchas mejoras de comodidad.",
+    ["An unofficial fan mod, not made, endorsed or supported by LocalThunk or Playstack, who own Balatro, its name, art, music and code."] = "Un mod no oficial hecho por fans, no creado, aprobado ni respaldado por LocalThunk ni Playstack, dueños de Balatro, su nombre, arte, música y código.",
+    ["You need your own copy of Balatro: the Overhaul ships none of its files. It is free, so never pay for it. Buy Balatro to support its makers."] = "Necesitas tu propia copia de Balatro: el Overhaul no incluye ninguno de sus archivos. Es gratis, nunca pagues por él. Compra Balatro para apoyar a sus creadores.",
+    ["Workshop mods belong to their makers and download from their own pages. Music you add to the Jukebox stays on your device."] = "Los mods del Workshop son de sus autores y se descargan desde sus propias páginas. La música que añades a la Jukebox se queda en tu dispositivo.",
+    ["Build %s"] = "Build %s", ["Test build %s"] = "Versión de prueba %s",
+    ["Made by Jupiterian Soul"] = "Hecho por Jupiterian Soul",
+    ["Credits"] = "Créditos", ["Support on Ko-fi"] = "Apoyar en Ko-fi",
+    ["What it is"] = "Qué es",
+    ["Jan"] = "ene.", ["Feb"] = "feb.", ["Mar"] = "mar.", ["Apr"] = "abr.", ["May"] = "may.", ["Jun"] = "jun.",
+    ["Jul"] = "jul.", ["Aug"] = "ago.", ["Sep"] = "sept.", ["Oct"] = "oct.", ["Nov"] = "nov.", ["Dec"] = "dic.",
+    ["Also in this version"] = "También en esta versión",
+    ["Support the Overhaul"] = "Apoya el Overhaul",
+    ["The Overhaul is free and will stay free. Ko-fi is only for those who want to support me and help pay for the online server."] = "El Overhaul es gratis y lo seguirá siendo. Ko-fi es solo para quien quiera apoyarme y ayudar a pagar el servidor en línea.",
+    ["Thank you, it means a lot."] = "Gracias, significa mucho para mí.",
+    ["Open my Ko-fi"] = "Abrir mi Ko-fi",
+    ["WHAT'S NEW"] = "NOVEDADES", ["Close"] = "Cerrar", ["Full patch notes"] = "Notas completas",
+    ["What's new"] = "Novedades", ["What's New"] = "Novedades", ["Join the Discord"] = "Únete al Discord", ["Discord"] = "Discord", ["GitHub"] = "GitHub",
+    ["What the last update changed"] = "Lo que cambió la última actualización", ["Join"] = "Unirse", ["Open"] = "Abrir",
+    ["Join the community and hear about updates first"] = "Únete a la comunidad y entérate antes que nadie de las actualizaciones",
+    ["Source code, downloads and bug reports"] = "Código fuente, descargas y reporte de errores",
+    ["Special thanks"] = "Agradecimientos especiales",
+  },
+}
+
+return RI
+end

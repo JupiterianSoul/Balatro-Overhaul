@@ -1,0 +1,20 @@
+{
+  "name": "balatro-overhaul-server",
+  "version": "2.0.0",
+  "private": true,
+  "module": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "test": "bun test",
+    "lint": "eslint src eslint.config.js",
+    "validate": "npm run lint && bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "eslint": "^10.2.0",
+    "globals": "^17.4.0",
+    "typescript": "^5",
+    "typescript-eslint": "^8.72.0"
+  }
+}

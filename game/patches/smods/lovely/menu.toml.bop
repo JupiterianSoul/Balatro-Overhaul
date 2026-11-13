@@ -1,0 +1,60 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 34
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -5
+
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+pattern = '''self.ASSET_ATLAS[self.asset_atli[i].name].image = love.graphics.newImage(self.asset_atli[i].path, {mipmaps = true, dpiscale = self.SETTINGS.GRAPHICS.texture_scaling})'''
+position = 'after'
+payload = '''
+local mipmap_level = SMODS.config.graphics_mipmap_level_options[SMODS.config.graphics_mipmap_level]
+if mipmap_level and mipmap_level > 0 then
+    self.ASSET_ATLAS[self.asset_atli[i].name].image:setMipmapFilter('linear', mipmap_level)
+end'''
+match_indent = true
+
+
+[[patches]]
+[patches.pattern]
+target = 'functions/UI_definitions.lua'
+pattern = '''callback = function(i) G.FUNCS.change_filter_type{to_key = i} settings_save() UIK.refresh() end},'''
+position = 'after'
+payload = '''
+UIK.cycle{id = 'set_mipmap', label = localize('b_graphics_mipmap_level'), options = SMODS.config.graphics_mipmap_level_options, current = SMODS.config.graphics_mipmap_level, callback = function(i) G.FUNCS.SMODS_change_mipmap{to_key = i} end},'''
+match_indent = true
+
+# Fix menu cards not being removed when locked cards exist and `remove_original` is active
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+match_indent = true
+position = 'after'
+pattern = '''
+r 9 1653 - -
+l 12
+'''
+payload = '''
+replace_card = G.title_top.cards[1]
+'''
+
+# Fix crash when menu card has been completely removed
+[[patches]]
+[patches.pattern]
+target = 'game.lua'
+match_indent = true
+position = 'at'
+pattern = '''
+r 9 1640 - -
+l 4
+'''
+payload = '''
+if G.title_top.cards[1] and G.P_CENTERS.j_blueprint.unlocked then
+'''
+end

@@ -1,0 +1,209 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 56
+TITLE_TAGLINE_TEXT = "Overhaul Edition"
+
+local function rainbow(c, h)
+    h = (h % 1)*6
+    local i = math.floor(h)
+    local f = h - i
+    local s, v = 0.6, 1
+    local p, q, t = v*(1 - s), v*(1 - s*f), v*(1 - s*(1 - f))
+    local r, g, b
+    if i == 0 then r, g, b = v, t, p
+    elseif i == 1 then r, g, b = q, v, p
+    elseif i == 2 then r, g, b = p, v, t
+    elseif i == 3 then r, g, b = p, q, v
+    elseif i == 4 then r, g, b = t, p, v
+    else r, g, b = v, p, q end
+    c[1], c[2], c[3], c[4] = r, g, b, 1
+end
+
+function title_tagline_text()
+    local mpm = rawget(_G, "mpm_menu")
+    if mpm and mpm.active and mpm.tagline_text then return mpm.tagline_text() end
+    return TITLE_TAGLINE_TEXT
+end
+
+function title_tagline_attach(change_context)
+    local logo = G.SPLASH_LOGO
+    if not logo or not DynaText then return end
+    if logo.children.overhaul_tagline then logo.children.overhaul_tagline:remove() end
+    local tagline = title_tagline_text()
+    local colours = {}
+    for k = 1, #tagline do
+        colours[k] = {1, 1, 1, 1}
+        rainbow(colours[k], k/#tagline)
+    end
+    local text = DynaText({
+        string = {tagline},
+        colours = colours,
+        shadow = true,
+        scale = 0.55,
+        pop_in = change_context == 'splash' and 3.4 or change_context == 'game' and 2.6 or change_context == 'swap' and 0 or 1,
+        pop_in_rate = 4,
+        silent = true,
+        float = true,
+    })
+    text.T.r = -0.1
+    local draw = text.draw
+    text.draw = function(self)
+        local sway = G.SETTINGS.reduced_motion and 0 or 0.03*math.sin(1.3*G.TIMERS.REAL)
+        self.T.r = -0.1 + sway
+        local shift = G.SETTINGS.reduced_motion and 0 or 0.35*G.TIMERS.REAL
+        for k, c in ipairs(colours) do rainbow(c, shift - k/#colours) end
+        local port = PORTRAIT and PORTRAIT.on and PORTRAIT.on() or false
+        if self.title_port ~= port and self.alignment and self.alignment.offset then
+            self.title_port = port
+            self.alignment.offset.x = port and 0 or 0.27*logo.T.w
+            self.alignment.offset.y = port and (0.5*logo.T.h + 0.2) or 0.25*logo.T.h
+r 5 52 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 60
+        end
+        if port then self.T.r = sway*0.5 end
+        draw(self)
+    end
+    text:set_alignment({
+        major = logo,
+        type = 'cm',
+        bond = 'Strong',
+        offset = {x = 0.27*logo.T.w, y = 0.25*logo.T.h},
+    })
+    logo.children.overhaul_tagline = text
+end
+
+local TITLE_CARD_EDITIONS = {'foil', 'holo', 'polychrome', 'negative'}
+local TITLE_CARD_ENHANCEMENTS = {'m_bonus', 'm_mult', 'm_wild', 'm_glass', 'm_steel', 'm_gold', 'm_lucky'}
+local title_card_last
+
+function title_card_style(card)
+    if not card or not card.base or not card.base.value then return end
+    local enhancement, edition
+    repeat
+        enhancement = TITLE_CARD_ENHANCEMENTS[math.random(#TITLE_CARD_ENHANCEMENTS)]
+        edition = TITLE_CARD_EDITIONS[math.random(#TITLE_CARD_EDITIONS)]
+    until title_card_last ~= enhancement..edition
+    title_card_last = enhancement..edition
+    local center = G.P_CENTERS[enhancement]
+    if center then card:set_ability(center, true) end
+    card:set_edition({[edition] = true}, true, true)
+end
+
+local function title_mp()
+    local mpm = rawget(_G, "mpm_menu")
+    return type(mpm) == "table" and mpm.is_active and mpm.is_active() or false
+end
+
+local function title_editions(n)
+    local pool = {}
+    for i, e in ipairs(TITLE_CARD_EDITIONS) do pool[i] = e end
+    local out = {}
+    for i = 1, n do
+        local k = math.random(#pool)
+        out[i] = table.remove(pool, k)
+    end
+    return out
+end
+
+local function title_fan_align(area)
+    if area.title_fan_wrapped then return end
+    area.title_fan_wrapped = true
+    local base = area.align_cards
+    area.align_cards = function(self, ...)
+        base(self, ...)
+        if #self.cards ~= 2 then return end
+        table.sort(self.cards, function(a, b) return (a.title_slot or 0) < (b.title_slot or 0) end)
+        local motion = G.SETTINGS.reduced_motion and 0 or 1
+        local cx, cy = self.T.x + self.T.w/2, self.T.y + self.T.h/2
+        local fan = {
+            {dx = -0.24, dy = 0, r = -0.12},
+            {dx = 0.24, dy = 0, r = 0.12},
+        }
+r 6 215 %20%20%20%20%20%20%20%20 -
+l 15
+            local f = fan[k]
+            if not card.states.drag.is and f then
+                card.T.r = f.r + motion*0.02*math.sin(2*G.TIMERS.REAL + k)
+                card.T.x = cx - card.T.w/2 + f.dx*card.T.w + card.shadow_parrallax.x/30
+                card.T.y = cy - card.T.h/2 + f.dy*card.T.h + motion*0.03*math.sin(0.666*G.TIMERS.REAL + k)
+            end
+        end
+    end
+end
+
+local function title_new_card(area, center, front, edition)
+    local w, h = area.title_card_w, area.title_card_h
+    local card = Card(area.T.x, area.T.y, w, h, front, center, {bypass_discovery_center = true, bypass_discovery_ui = true})
+    card.no_ui = true
+    card.ambient_tilt = 0.0
+r 6 219 %20%20%20%20 -
+l 66
+    if edition then card:set_edition({[edition] = true}, true, true) end
+    return card
+end
+
+local function title_order(area)
+    for i, c in ipairs(area.cards) do
+        c.title_slot = c.title_slot or i
+    end
+    table.sort(area.cards, function(a, b) return a.title_slot < b.title_slot end)
+end
+
+function title_fan_setup(area, ace, change_context)
+    if not area or not ace then return end
+    area.config.card_limit = 2
+    area.title_card_w, area.title_card_h = ace.T.w, ace.T.h
+    title_fan_align(area)
+    ace.title_slot = 1
+    area.title_mode = "sp"
+    local holo = title_new_card(area, G.P_CENTERS.j_hologram, nil, title_editions(1)[1])
+    holo.title_slot = 2
+    holo.states.visible = false
+    area:emplace(holo)
+    title_order(area)
+    G.E_MANAGER:add_event(Event({trigger = 'after', delay = change_context == 'splash' and 0.6 or change_context == 'game' and 1.8 or 0.25,
+        blockable = false, blocking = false, func = function()
+            holo.states.visible = true
+            holo:start_materialize({G.C.WHITE, G.C.WHITE}, true, 1.2)
+            return true
+        end}))
+    if title_mp() then title_fan_mode(true) end
+end
+
+function title_fan_mode(mp)
+    local area = G.title_top
+    if not area or not area.title_card_w or G.STAGE ~= G.STAGES.MAIN_MENU then return end
+    local want = mp and "mp" or "sp"
+    if area.title_mode == want then return end
+    area.title_mode = want
+    for i = #area.cards, 1, -1 do
+        local c = area.cards[i]
+        area:remove_card(c)
+        c:start_dissolve({G.C.WHITE, G.C.WHITE}, true, 0.6)
+    end
+    local cards
+    if mp then
+        local eds = title_editions(2)
+        cards = {title_new_card(area, G.P_CENTERS.j_hologram, nil, eds[1]), title_new_card(area, G.P_CENTERS.j_hologram, nil, eds[2])}
+    else
+        local ace = title_new_card(area, G.P_CENTERS.c_base, G.P_CARDS.S_A)
+        pcall(title_card_style, ace)
+        cards = {ace, title_new_card(area, G.P_CENTERS.j_hologram, nil, title_editions(1)[1])}
+    end
+    for i, c in ipairs(cards) do
+        c.title_slot = i
+        c.states.visible = false
+        area:emplace(c)
+    end
+    title_order(area)
+    G.E_MANAGER:add_event(Event({trigger = 'after', delay = 0.3, blockable = false, blocking = false, pause_force = true, timer = "REAL", func = function()
+        for _, c in ipairs(cards) do
+            c.states.visible = true
+            c:start_materialize({G.C.WHITE, G.C.WHITE}, true, 0.8)
+        end
+        return true
+    end}))
+end
+end

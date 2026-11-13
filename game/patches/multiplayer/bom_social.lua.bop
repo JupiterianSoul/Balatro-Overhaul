@@ -1,0 +1,410 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 153
+local B = {}
+
+local MPS = require("multiplayer.mps_state")
+local MPS_F = require("multiplayer.mps_friends")
+local MPS_N = require("multiplayer.mps_notify")
+local MPS_C = require("multiplayer.mps_chat")
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+
+local POLL_SECS = 15
+local INVITE_SECS = 120
+local BUBBLE_SECS = 3
+local MAX_BUBBLES = 4
+local HELLO_RETRY_SECS = 30
+
+B.S = {
+    code = nil, friends = {}, requests = {}, sent = {}, note = nil, note_bad = false,
+    input = {code = ""}, page = 1, from = "mp", hello = false, poll = 0, invite = nil, bubbles = {},
+}
+local S = B.S
+
+local REASON_TEXT = {
+    bad_code = "Player not found.", not_found = "Player not found.", self = "That is you.",
+    already = "You are already friends.", already_sent = "Request already sent.", full = "Your friends list is full.",
+    their_list_full = "Their friends list is full.", slow_down = "Too fast, try again in a moment.",
+    offline = "Friend is offline.", busy = "Friend is in a match.", no_room = "Open a lobby first.",
+    not_friend = "Not on your friends list.", no_key = "Could not connect.",
+}
+
+local function profile_name()
+    local p = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    return p and p.name or nil
+end
+
+local function connected()
+    return bom_core and bom_core.is_connected and bom_core.is_connected()
+end
+
+local function window_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "social" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body")
+end
+
+local function send(msg)
+    if not connected() then
+        S.note, S.note_bad = L("Could not connect."), true
+        return false
+    end
+    return bom_core.send(msg)
+end
+
+local function refresh()
+    if not window_open() then return end
+    MPS_F.refresh()
+end
+
+local function say_hello()
+    S.hello = true
+    bom_core.send({type = "social_hello", pkey = bom_core.player_key(), name = profile_name(), hidden = G.SETTINGS and G.SETTINGS.social_hidden == true})
+end
+
+local function ensure_connected()
+    if connected() then
+        if not S.hello then say_hello() end
+        return
+    end
+    bom_core.connect(function() say_hello() end, {silent = true, on_fail = function()
+        S.note, S.note_bad = L("Could not connect."), true
+        refresh()
+    end})
+end
+
+local function txt(str, scale, colour)
+    return {n = G.UIT.T, config = {text = tostring(str), scale = scale, colour = colour or G.C.WHITE, shadow = true}}
+end
+
+function B.open(from, tab)
+    S.from = from or "mp"
+    S.note = nil
+    S.poll = 0
+    MPS_F.open(tab)
+    ensure_connected()
+    if connected() and S.hello then send({type = "social_list"}) end
+end
+
+B.ensure_online = function() ensure_connected() end
+
+function B.bell_count()
+    return tonumber(MPS.S.notify.unread) or 0
+end
+
+local function back_to_origin()
+    if S.from == "lobby" and bom_ui and bom_ui.show_lobby then return bom_ui.show_lobby() end
+    if S.from == "party" and bom_party and bom_party.show_lobby then return bom_party.show_lobby() end
+    if S.from == "run" then
+        local again = S.run_back
+        S.run_back = nil
+        if again then return again() end
+        return G.FUNCS.exit_overlay_menu()
+    end
+    local menu = rawget(_G, "mpm_menu")
+    if menu and menu.active and G.OVERLAY_MENU then return G.FUNCS.exit_overlay_menu() end
+    G.FUNCS.open_multiplayer_menu()
+end
+B.back_to_origin = function() back_to_origin() end
+
+local function open_emotes(from)
+    S.from = from
+    if bom_emotes and bom_emotes.open_picker then
+        bom_emotes.open_picker({back = "social_back", after = back_to_origin})
+    end
+end
+
+local function remove_bubble(entry)
+    pcall(function() entry.box:remove() end)
+end
+
+local function layout_bubbles()
+    for i, entry in ipairs(S.bubbles) do
+        entry.box.alignment.offset.y = 0.4 + (i - 1) * 1.05
+        entry.box:align_to_major()
+    end
+end
+
+function B.show_bubble(name, label)
+    if not (G and G.ROOM_ATTACH) then return end
+    if #S.bubbles >= MAX_BUBBLES then
+        remove_bubble(table.remove(S.bubbles, 1))
+    end
+    local inner = {
+        {n = G.UIT.R, config = {align = "cm"}, nodes = {
+            {n = G.UIT.T, config = {text = tostring(name ~= "" and name or L("Player")), scale = 0.3, colour = G.C.ORANGE}},
+        }},
+        {n = G.UIT.R, config = {align = "cm"}, nodes = {
+            {n = G.UIT.T, config = {text = label, scale = 0.42, colour = G.C.BLACK}},
+        }},
+    }
+    local box = UIBox{
+        definition = {n = G.UIT.ROOT, config = {align = "cm", minh = 0.8, r = 0.2, padding = 0.05, colour = G.C.JOKER_GREY, shadow = true}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minh = 0.7, minw = 2.4, r = 0.16, padding = 0.08, colour = G.C.WHITE}, nodes = inner},
+        }},
+        config = {align = "tm", offset = {x = 0, y = 0.4}, major = G.ROOM_ATTACH, instance_type = "ALERT"},
+    }
+    box.states.collide.can = false
+    S.bubbles[#S.bubbles + 1] = {box = box, until_t = love.timer.getTime() + BUBBLE_SECS}
+    layout_bubbles()
+    if play_sound then pcall(play_sound, "card1", 1.2, 0.5) end
+end
+
+local function show_invite()
+    local inv = S.invite
+    S.invite_open = inv
+    S.invite = nil
+    local msg = L("{name} invites you to their lobby."):gsub("{name}", function() return tostring(inv.name ~= "" and inv.name or inv.from or "?") end)
+r 13 1381 %20%20%20%20 -
+l 171
+    G.FUNCS.overlay_menu{definition = create_UIBox_generic_options({back_func = "social_invite_later", no_back = true, contents = {
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {txt(L("LOBBY INVITE"), 0.6, G.C.GOLD)}},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {
+            {n = G.UIT.T, config = {text = msg, scale = 0.42, colour = G.C.UI.TEXT_LIGHT, shadow = true, maxw = 9}},
+        }},
+        {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {
+            UIBox_button({button = "social_invite_join", label = {L("Join")}, colour = G.C.GREEN, minw = 3, minh = 0.9, scale = 0.45, col = true}),
+            {n = G.UIT.C, config = {align = "cm", minw = 0.25}, nodes = {}},
+            UIBox_button({button = "social_invite_later", label = {L("Later")}, colour = G.C.RED, minw = 3, minh = 0.9, scale = 0.45, col = true}),
+        }},
+    }})}
+end
+
+local function can_show_invite()
+    if not (G and G.STAGES and G.STAGE == G.STAGES.MAIN_MENU) then return false end
+    return not (bom_match and bom_match.get_phase and bom_match.get_phase() ~= bom_match.PHASE.NONE)
+end
+
+local function apply_list(d)
+    S.friends = type(d.friends) == "table" and d.friends or {}
+    S.requests = type(d.requests) == "table" and d.requests or {}
+    S.sent = type(d.sent) == "table" and d.sent or {}
+end
+
+function B.on_message(d)
+    local t = d.type
+    local so, st = rawget(_G, "social_online"), rawget(_G, "social_toasts")
+    if t == "social_me" and so and so.on_hello then pcall(so.on_hello) end
+    if st and st.on_message then pcall(st.on_message, d) end
+    if t == "social_me" then
+        S.code = d.code
+        MPS.on_hello()
+    elseif t == "social_list" then
+        apply_list(d)
+    elseif t == "social_result" then
+        if d.ok then
+            S.note_bad = false
+            if d.action == "social_add" then
+                S.input.code = ""
+                S.note = L("Request sent.")
+            elseif d.action == "social_invite" then
+                S.note = L("Invite sent.")
+            else
+                S.note = nil
+            end
+        else
+            S.note_bad = true
+            if d.action == "social_hello" then
+                S.hello = false
+                S.hello_at = love.timer.getTime() + HELLO_RETRY_SECS
+            end
+            if d.reason == "offline" and d.action ~= "social_invite" then
+                S.note = L("Could not connect.")
+            else
+                S.note = L(REASON_TEXT[d.reason] or "Could not connect.")
+            end
+        end
+    elseif t == "social_invite" then
+        if type(d.room) == "string" then
+            local inv = {name = tostring(d.name or ""), from = d.from, room = d.room, party = d.party == true, until_t = love.timer.getTime() + INVITE_SECS}
+            if not (st and st.invite and st.invite(inv)) then S.invite = inv end
+        end
+    elseif t == "social_emote" then
+        if bom_emotes and bom_emotes.on_message then bom_emotes.on_message(d) end
+        return
+    end
+    MPS.on_social(d)
+end
+
+local function in_match_run()
+    if bom_playback and bom_playback.active() then return false end
+    return G and G.STAGES and G.STAGE == G.STAGES.RUN and bom_match and bom_match.is_in_match and bom_match.is_in_match()
+end
+
+local function update_match_button()
+    local want = in_match_run()
+    if S.match_button and S.match_button.REMOVED then S.match_button = nil end
+    if want and not S.match_button then
+        S.match_button = UIBox{
+            definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR}, nodes = {
+                UIBox_button({button = "social_emote_open_run", label = {L("Emote")}, colour = G.C.BLUE,
+                    minw = 1.5, minh = UIK and UIK.touch() and 0.8 or 0.6, scale = UIK and UIK.touch() and 0.4 or 0.34}),
+            }},
+            config = {align = "cri", offset = {x = -0.15, y = -0.4}, major = G.ROOM_ATTACH},
+        }
+    elseif not want and S.match_button then
+        pcall(function() S.match_button:remove() end)
+        S.match_button = nil
+    end
+end
+
+function B.update()
+    local now = love.timer.getTime()
+    if not connected() then
+        S.hello = false
+    elseif not S.hello and now >= (S.hello_at or 0) then
+        say_hello()
+    end
+    if connected() and window_open() and now >= S.poll then
+        S.poll = now + POLL_SECS
+        if S.hello then send({type = "social_list"}) end
+    end
+    for i = #S.bubbles, 1, -1 do
+        if now >= S.bubbles[i].until_t then
+            remove_bubble(table.remove(S.bubbles, i))
+            layout_bubbles()
+        end
+    end
+    if S.invite then
+        if now >= S.invite.until_t then
+            S.invite = nil
+        elseif can_show_invite() then
+            show_invite()
+        end
+    end
+    update_match_button()
+    local so, st = rawget(_G, "social_online"), rawget(_G, "social_toasts")
+    local sm = rawget(_G, "social_mg")
+    local sx = rawget(_G, "social_more")
+    if sx and sx.update then pcall(sx.update) end
+    if so and so.update then pcall(so.update) end
+    if st and st.update then pcall(st.update) end
+    if sm and sm.update then pcall(sm.update) end
+    MPS.tick()
+    MPS_F.tick()
+    MPS_C.tick()
+end
+
+function B.lobby_buttons(scale, from, grid)
+    if grid then
+        return {
+            UIBox_button({label = {L("Friends")}, button = from == "party" and "social_open_party" or "social_open_lobby",
+                minw = grid.w, minh = grid.h, maxw = grid.w - 0.3, colour = G.C.GREEN, scale = grid.scale, col = true}),
+            UIBox_button({label = {L("Emote")}, button = from == "party" and "social_emote_open_party" or "social_emote_open_lobby",
+                minw = grid.w, minh = grid.h, maxw = grid.w - 0.3, colour = G.C.BLUE, scale = grid.scale, col = true}),
+            MPS_C.live_button(UIBox_button({label = {L("Chat")}, button = from == "party" and "mps_chat_open_party" or "mps_chat_open_lobby",
+                minw = grid.w, minh = grid.h, maxw = grid.w - 0.3, colour = G.C.ORANGE, scale = grid.scale, col = true})),
+        }
+    end
+    return {
+        {n = G.UIT.C, config = {minw = 0.2}},
+        UIBox_button({label = {L("Friends")}, button = from == "party" and "social_open_party" or "social_open_lobby",
+            minw = 2.4*scale, minh = 0.7*scale, colour = G.C.GREEN, scale = 0.45*scale, col = true}),
+        {n = G.UIT.C, config = {minw = 0.2}},
+        UIBox_button({label = {L("Emote")}, button = from == "party" and "social_emote_open_party" or "social_emote_open_lobby",
+            minw = 2.4*scale, minh = 0.7*scale, colour = G.C.BLUE, scale = 0.45*scale, col = true}),
+        {n = G.UIT.C, config = {minw = 0.2}},
+        MPS_C.live_button(UIBox_button({label = {L("Chat")}, button = from == "party" and "mps_chat_open_party" or "mps_chat_open_lobby",
+            minw = 2.4*scale, minh = 0.7*scale, colour = G.C.ORANGE, scale = 0.45*scale, col = true})),
+    }
+end
+
+function B.lobby_button_count() return 3 end
+
+function B.chat_button(from, w)
+    return MPS_C.live_button(UIK.button{label = L("Chat"), button = from == "party" and "mps_chat_open_party" or "mps_chat_open_lobby",
+        colour = G.C.ORANGE, w = w or 2, id = from == "party" and "party_chat" or "lobby_chat"})
+end
+
+local function register_funcs()
+    G.FUNCS.mp_open_friends = function() B.open("mp") end
+    G.FUNCS.mps_open_friends = function() B.open("mp") end
+    G.FUNCS.mps_open_inbox = function() MPS_N.open("mp") end
+    rawset(_G, "mps_on_menu", function(active) MPS.on_menu(active) end)
+    G.FUNCS.social_open_lobby = function() B.open("lobby") end
+    G.FUNCS.social_open_party = function() B.open("party") end
+    G.FUNCS.social_emote_open_lobby = function() open_emotes("lobby") end
+    G.FUNCS.social_emote_open_party = function() open_emotes("party") end
+    G.FUNCS.social_emote_open_run = function()
+        if bom_emotes and bom_emotes.picker_open and bom_emotes.picker_open() then return end
+        S.run_back = nil
+r 23 214 %20%20%20%20%20%20%20%20 -
+l 12
+            if bom_spectate and bom_spectate.is_open and bom_spectate.is_open() then
+                S.run_back = function() bom_spectate.reopen() end
+            elseif bom_party and bom_party._st_box and bom_party._st_box == G.OVERLAY_MENU and G.FUNCS.party_standings then
+                S.run_back = function() G.FUNCS.party_standings() end
+            end
+        end
+        open_emotes("run")
+    end
+    G.FUNCS.social_back = function() back_to_origin() end
+    G.FUNCS.social_invite_join = function()
+        local inv = S.invite_open
+        S.invite_open = nil
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 6
+        if not inv then return end
+        if bom_ui and bom_ui.show_connecting_screen then bom_ui.show_connecting_screen() end
+        bom_room.join(inv.room, {})
+    end
+    G.FUNCS.social_invite_later = function()
+        S.invite_open = nil
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 54
+    end
+end
+
+function B.init()
+    register_funcs()
+    for _, m in ipairs({"functions/social/online", "functions/social/toasts", "functions/social/mg_scores", "functions/social/chat_emotes", "functions/social/recent", "functions/social/card", "functions/social/more", "functions/social/dm_cards", "functions/social/party", "functions/social/gifts", "functions/social/bot_lines"}) do
+        local ok, mod = pcall(require, m)
+        if ok and type(mod) == "table" and mod.init then pcall(mod.init) end
+    end
+    MPS.init()
+    MPS_F.init()
+    MPS_N.init()
+    MPS_C.init()
+    mod_loc_register{
+        fr = {
+            ["FRIENDS"] = "AMIS", ["Friends"] = "Amis", ["Requests"] = "Demandes", ["Add friend"] = "Ajouter", ["Add"] = "Ajouter",
+            ["Your friends, their status and invites to your lobby"] = "Vos amis, leur statut et les invitations",
+            ["Online"] = "En ligne", ["Offline"] = "Hors ligne", ["In lobby"] = "En salon", ["In match"] = "En match",
+            ["Invite"] = "Inviter", ["Remove"] = "Retirer", ["Accept"] = "Accepter", ["Decline"] = "Refuser", ["Waiting"] = "En attente",
+            ["Your player code"] = "Votre code joueur", ["Add a friend with their code"] = "Ajoutez un ami avec son code",
+            ["No friends yet. Share your code or add theirs."] = "Pas encore d'amis. Partagez votre code ou ajoutez le leur.",
+            ["No requests."] = "Aucune demande.", ["Request sent."] = "Demande envoyée.", ["Invite sent."] = "Invitation envoyée.",
+            ["Code copied."] = "Code copié.", ["Could not connect."] = "Connexion impossible.",
+            ["That code is not valid."] = "Ce code n'est pas valide.", ["No player has that code."] = "Aucun joueur n'a ce code.",
+            ["That is your own code."] = "C'est votre propre code.", ["You are already friends."] = "Vous êtes déjà amis.",
+            ["Request already sent."] = "Demande déjà envoyée.", ["Your friends list is full."] = "Votre liste d'amis est pleine.",
+            ["Their friends list is full."] = "Sa liste d'amis est pleine.", ["Too fast, try again in a moment."] = "Trop rapide, réessayez dans un instant.",
+            ["Friend is offline."] = "Cet ami est hors ligne.", ["Friend is in a match."] = "Cet ami est en match.",
+            ["Open a lobby first."] = "Ouvrez d'abord un salon.", ["Not on your friends list."] = "Pas dans votre liste d'amis.",
+            ["LOBBY INVITE"] = "INVITATION", ["{name} invites you to their lobby."] = "{name} vous invite dans son salon.",
+            ["Join"] = "Rejoindre", ["Later"] = "Plus tard", ["EMOTE"] = "ÉMOTE", ["Emote"] = "Émote", ["Player"] = "Joueur",
+        },
+        es = {
+            ["FRIENDS"] = "AMIGOS", ["Friends"] = "Amigos", ["Requests"] = "Solicitudes", ["Add friend"] = "Añadir", ["Add"] = "Añadir",
+            ["Your friends, their status and invites to your lobby"] = "Tus amigos, su estado e invitaciones",
+            ["Online"] = "En línea", ["Offline"] = "Desconectado", ["In lobby"] = "En sala", ["In match"] = "En partida",
+            ["Invite"] = "Invitar", ["Remove"] = "Quitar", ["Accept"] = "Aceptar", ["Decline"] = "Rechazar", ["Waiting"] = "Pendiente",
+            ["Your player code"] = "Tu código de jugador", ["Add a friend with their code"] = "Añade a un amigo con su código",
+            ["No friends yet. Share your code or add theirs."] = "Aún no tienes amigos. Comparte tu código o añade el suyo.",
+            ["No requests."] = "Sin solicitudes.", ["Request sent."] = "Solicitud enviada.", ["Invite sent."] = "Invitación enviada.",
+            ["Code copied."] = "Código copiado.", ["Could not connect."] = "No se pudo conectar.",
+            ["That code is not valid."] = "Ese código no es válido.", ["No player has that code."] = "Ningún jugador tiene ese código.",
+            ["That is your own code."] = "Ese es tu propio código.", ["You are already friends."] = "Ya sois amigos.",
+            ["Request already sent."] = "Solicitud ya enviada.", ["Your friends list is full."] = "Tu lista de amigos está llena.",
+            ["Their friends list is full."] = "Su lista de amigos está llena.", ["Too fast, try again in a moment."] = "Demasiado rápido, inténtalo en un momento.",
+            ["Friend is offline."] = "Tu amigo está desconectado.", ["Friend is in a match."] = "Tu amigo está en partida.",
+            ["Open a lobby first."] = "Abre primero una sala.", ["Not on your friends list."] = "No está en tu lista de amigos.",
+            ["LOBBY INVITE"] = "INVITACIÓN", ["{name} invites you to their lobby."] = "{name} te invita a su sala.",
+            ["Join"] = "Unirse", ["Later"] = "Más tarde", ["EMOTE"] = "EMOTE", ["Emote"] = "Emote", ["Player"] = "Jugador",
+        },
+    }
+end
+
+return B
+end

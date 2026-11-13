@@ -1,0 +1,462 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 362
+local P = {}
+
+P.name = P.name or {value = "", status = "", state = nil}
+P.hist = P.hist or {items = nil, status = nil, page = 1}
+
+local function L(s) return mod_loc and mod_loc(s) or s end
+local function touch() return UIK and UIK.touch and UIK.touch() end
+local function kit() return rawget(_G, "bom_kit") end
+local function RU() return rawget(_G, "bom_ranked_ui") end
+local function S() return bom_ranked and bom_ranked.S or {} end
+local function menu() return rawget(_G, "mpm_menu") end
+
+local function trim(s)
+    return (tostring(s or ""):gsub("%c", ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function profile_name()
+    local prof = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    return prof and prof.name or ""
+end
+
+local function refresh()
+    if UIK and UIK._win and UIK._win.id == "mpm_profile" and G.OVERLAY_MENU and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") then UIK.refresh() end
+end
+P.refresh = refresh
+
+local function txt(s, scale, colour)
+    return {n = G.UIT.T, config = {text = tostring(s), scale = scale, colour = colour or G.C.WHITE, shadow = true}}
+end
+
+local function row(nodes, o)
+    o = o or {}
+    return {n = G.UIT.R, config = {align = o.align or "cm", minw = o.w, minh = o.h, padding = o.padding or 0.02}, nodes = nodes}
+end
+
+local function col(nodes, o)
+    o = o or {}
+    return {n = G.UIT.C, config = {align = o.align or "cm", minw = o.w, minh = o.h, padding = o.padding or 0, colour = o.colour, r = o.r}, nodes = nodes}
+end
+
+local function kv(k, v, w, vc)
+    return row({col({txt(k, 0.38, G.C.UI.TEXT_LIGHT)}, {align = "cl", w = w * 0.55}), col({txt(v, 0.38, vc or G.C.WHITE)}, {align = "cr", w = w * 0.45})}, {w = w, h = 0.44})
+end
+
+local function fmt_int(n)
+    local s = tostring(math.floor(tonumber(n) or 0))
+    local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (out:gsub("^,", ""))
+end
+
+local function smooth_bar(w, h, frac, colour)
+    frac = math.max(0, math.min(1, tonumber(frac) or 0))
+    local fill = frac > 0 and {n = G.UIT.C, config = {minw = math.max(h, w * frac), minh = h, r = h / 2, colour = colour}} or nil
+    return {n = G.UIT.R, config = {align = "cl", minw = w, minh = h, r = h / 2, colour = {0, 0, 0, 0.35}}, nodes = {fill}}
+end
+
+local function next_title(level)
+    if type(get_rank) ~= "function" then return nil end
+    local cur = get_rank(level)
+    for l = level + 1, level + 120 do
+        local r = get_rank(l)
+        if r and cur and r.name ~= cur.name then return r, l end
+    end
+    return nil
+end
+
+local function tab_progression()
+    local d = type(get_mp_progression_display) == "function" and get_mp_progression_display() or nil
+    d = d or {level = 1, xp = 0, xp_needed = 1000, xp_percent = 0, total_xp = 0, matches = 0, wins = 0}
+    local t = touch()
+    local cw = UIK.col_w(2) - 0.3
+    local inner = cw - 0.6
+    local ch = t and 4.9 or 4.6
+    local level = tonumber(d.level) or 1
+    local title = d.rank or {}
+    local tc = G.C[title.color or "WHITE"] or G.C.WHITE
+    local need = math.max(1, tonumber(d.xp_needed) or 1)
+    local xp = math.min(need, tonumber(d.xp) or 0)
+    local left = UIK.section(L("Level"), {
+        row({txt(tostring(level), t and 1.5 or 1.4, G.C.GOLD)}, {w = inner, h = t and 1.6 or 1.5}),
+        row({txt(L(title.name or "Novice"), t and 0.55 or 0.5, tc)}, {w = inner, h = 0.6}),
+        row({smooth_bar(inner, t and 0.36 or 0.32, xp / need, G.C.BLUE)}, {w = inner, padding = 0.1}),
+        row({txt(fmt_int(xp) .. " / " .. fmt_int(need) .. " " .. L("XP"), 0.38, G.C.WHITE)}, {w = inner, h = 0.45}),
+        row({txt(fmt_int(need - xp) .. " " .. L("XP to level") .. " " .. tostring(level + 1), 0.38, G.C.UI.TEXT_LIGHT)}, {w = inner, h = 0.46}),
+    }, {w = cw, h = ch})
+    local prof = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    local coins = prof and prof.progression and prof.progression.balacoin or 0
+    local nt, nl = next_title(level)
+    local right = UIK.section(L("Totals"), {
+        kv(L("Total XP"), fmt_int(d.total_xp), inner, G.C.BLUE),
+        kv(L("Matches"), fmt_int(d.matches), inner),
+        kv(L("Wins"), fmt_int(d.wins), inner),
+        kv(L("Balacoin"), fmt_int(coins), inner, G.C.GOLD),
+        kv(L("Next title"), nt and (L(nt.name) .. ", " .. L("level") .. " " .. tostring(nl)) or "-", inner, nt and (G.C[nt.color or "WHITE"] or G.C.WHITE) or nil),
+        row({}, {w = inner, h = 0.3}),
+        UIK.note({L("Play hands, clear antes and win matches"), L("online to earn XP. Ranked has its own level.")}, {w = inner, scale = 0.38, colour = G.C.UI.TEXT_LIGHT}),
+    }, {w = cw, h = ch})
+    return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - UIK.TOP, padding = 0}, nodes = {UIK.columns({{left}, {right}}, {h = ch})}}
+end
+
+local function tab_cosmetics()
+    local U = RU()
+    if not U then return row({}) end
+    return U.tab_cosmetics()
+end
+
+local NAME_REASONS = {
+    default = "Pick your own name",
+    taken = "That name is already used by another online player.",
+    too_long = "That name is too long.",
+    empty = "Type a name first.",
+    bad_chars = "That name has characters we can't show.",
+    bad_name = "This name is not allowed",
+    offline = "Could not reach the server.",
+}
+
+local function tab_name()
+    local S_ = S()
+    local items = {
+        UIK.header(L("Your name")),
+        UIK.value{label = L("Current name"), value = profile_name() ~= "" and profile_name() or "-"},
+        UIK.input{label = L("New name"), ref_table = P.name, ref_value = "value", max_length = 16, prompt = L("Enter a name"), extended_corpus = true},
+        UIK.action{label = P.name.status ~= "" and P.name.status or L("The server checks that nobody online uses it"),
+            button_label = L("SAVE NAME"), button = "mpm_name_save", colour = G.C.GREEN, disabled = P.name.state == "checking"},
+        UIK.header(L("Recovery code")),
+        UIK.value{label = L("Your code"), value = S_.recovery or L("Hidden")},
+        UIK.action{label = L("Keep it safe, it restores your rank"), button_label = S_.recovery and L("HIDE") or L("SHOW CODE"), button = "mp_ranked_toggle_code", colour = G.C.BLUE},
+        UIK.header(L("Restore a rank")),
+        UIK.input{label = L("Code from your old device"), ref_table = S_.restore or {}, ref_value = "code", max_length = 14, prompt = "XXXX-XXXX-XXXX", all_caps = true},
+        UIK.action{label = S_.error == "bad_code" and L("That code was not found.") or (S_.restored and (L("Restored") .. ": " .. tostring(S_.restored.name)) or L("This device takes over that rank")),
+            button_label = L("RESTORE"), button = "mp_ranked_restore", colour = G.C.ORANGE},
+    }
+    local flow = UIK.flow{id = "mpm_prof_name", items = items, cols = 2}
+    return {n = G.UIT.R, config = {align = "tm", minw = UIK.W, padding = 0, id = "mp_ranked_body"}, nodes = {flow}}
+end
+
+function P.save_name()
+    local name = trim(P.name.value)
+    if name == "" then P.name.status = L(NAME_REASONS.empty); return refresh() end
+    local PN = rawget(_G, "PlayerName")
+    if PN and PN.is_default and PN.is_default(name) then P.name.status = L(NAME_REASONS.default); return refresh() end
+    P.name.state = "checking"
+    P.name.pending = name
+    P.name.status = L("Checking the name...")
+    refresh()
+    local token = {}
+    P.name.token = token
+    if G.E_MANAGER and Event then
+        G.E_MANAGER:add_event(Event({trigger = "after", delay = 8, timer = "REAL", pause_force = true, blocking = false, blockable = false, func = function()
+            if P.name.token == token and P.name.state == "checking" then
+                P.name.state = nil
+                P.name.status = L(NAME_REASONS.offline)
+                refresh()
+            end
+            return true
+        end}))
+    end
+    local m = menu()
+    m.with_connection(function()
+        bom_core.send({type = "name_check", name = name, pkey = bom_core.player_key()})
+    end, function()
+        P.name.state = nil
+        P.name.status = L(NAME_REASONS.offline)
+        refresh()
+    end)
+end
+
+function P.on_name_check(d)
+    if type(d) ~= "table" or P.name.state ~= "checking" then return end
+    P.name.state = nil
+    if not d.ok then
+        P.name.status = L(NAME_REASONS[d.reason] or "That name can't be used.")
+        return refresh()
+    end
+    local name = type(d.name) == "string" and d.name ~= "" and d.name or P.name.pending
+    local prof = G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    if prof and name then
+        prof.name = name
+        local PN = rawget(_G, "PlayerName")
+        if PN and PN.remember then PN.remember(name) end
+        G:save_settings()
+        G:save_progress()
+        if G.FILE_HANDLER then G.FILE_HANDLER.force = true end
+    end
+    P.name.value = ""
+    P.name.status = L("Name saved") .. ": " .. tostring(name)
+    pcall(function() bom_ranked.send({type = "ranked_profile", name = name}) end)
+    refresh()
+end
+
+local function replay_fn()
+    local RP = rawget(_G, "bom_replay")
+    return RP and type(RP.watch) == "function" and RP.watch or nil
+end
+
+function P.request_history()
+    P.hist.status = "loading"
+    local m = menu()
+    m.with_connection(function()
+        bom_core.send({type = "match_history", limit = 50, pkey = bom_core.player_key()})
+    end, function()
+        P.hist.status = "offline"
+        refresh()
+    end)
+end
+
+P.HIDDEN_FILE = "mp_hidden_replays.json"
+
+local function hidden_ids()
+    if P.hidden then return P.hidden end
+    P.hidden = {}
+    pcall(function()
+        local raw = love.filesystem.getInfo(P.HIDDEN_FILE) and love.filesystem.read(P.HIDDEN_FILE)
+        local list = raw and bom_core.json.decode(raw)
+        for _, id in ipairs(type(list) == "table" and list or {}) do
+            if type(id) == "string" then P.hidden[id] = true end
+        end
+    end)
+    return P.hidden
+end
+
+local function save_hidden()
+    local list = {}
+    for id in pairs(hidden_ids()) do list[#list + 1] = id end
+    table.sort(list)
+    while #list > 200 do table.remove(list, 1) end
+    pcall(function() love.filesystem.write(P.HIDDEN_FILE, bom_core.json.encode(list)) end)
+end
+
+function P.finished(m)
+    return type(m) == "table" and (m.result == "win" or m.result == "lose" or m.result == "draw" or tonumber(m.placement) ~= nil)
+end
+
+function P.on_history(d)
+    if type(d) ~= "table" then return end
+    local hidden = hidden_ids()
+    local items = {}
+    for _, m in ipairs(type(d.items) == "table" and d.items or {}) do
+        if P.finished(m) and not (m.id and hidden[m.id]) then items[#items + 1] = m end
+    end
+    P.hist.items = items
+    P.hist.confirm = nil
+    P.hist.status = "ok"
+    refresh()
+end
+
+function P.delete(id)
+    if type(id) ~= "string" or id == "" then return end
+    hidden_ids()[id] = true
+    save_hidden()
+    local items = {}
+    for _, m in ipairs(P.hist.items or {}) do
+        if m.id ~= id then items[#items + 1] = m end
+    end
+    P.hist.items = items
+    P.hist.confirm = nil
+    pcall(function()
+        if bom_core and bom_core.is_connected and bom_core.is_connected() then
+            bom_core.send({type = "replay_hide", id = id, pkey = bom_core.player_key and bom_core.player_key() or nil})
+        end
+    end)
+    refresh()
+end
+
+local STATUS_TEXT = {held = "On hold", apply = "In review", void = "In review", applied = "Reviewed", voided = "Voided"}
+
+local function others(m)
+    local me = trim(profile_name()):lower()
+    local names = {}
+    for _, p in ipairs(type(m.players) == "table" and m.players or {}) do
+        local n = type(p) == "table" and p.name or p
+        if type(n) == "string" and trim(n):lower() ~= me then names[#names + 1] = n end
+    end
+    return #names > 0 and table.concat(names, ", ") or "-"
+end
+
+local function history_row(i, m, w, watch)
+    local K = kit()
+    local d = K.dims()
+    local U = RU()
+    local res = m.result == "win" and "win" or (m.result == "draw" and "draw" or "lose")
+    local rc = res == "win" and G.C.GREEN or (res == "draw" and G.C.UI.BACKGROUND_INACTIVE or G.C.RED)
+    local delta = tonumber(m.rp_delta)
+    local at = tonumber(m.at)
+    local date = at and os.date("%Y-%m-%d", math.floor(at > 1e11 and at / 1000 or at)) or "-"
+    local mode = L((U.MODE_NAMES and U.MODE_NAMES[m.mode]) or (bom_browse and bom_browse.mode_name and bom_browse.mode_name(m.mode)) or tostring(m.mode or "?"))
+    if m.ranked then mode = mode .. " (" .. L("Ranked") .. ")" end
+    local dw, mw, rw, pw, sw = 1.9, 2.5, 1.3, 1.4, 1.4
+    local bw = watch and 1.6 or 0
+    local xw = 1.6
+    local cells = 7 + (watch and 1 or 0)
+    local ow = math.max(1.5, w - dw - mw - rw - pw - sw - bw - xw - (cells - 1) * d.gap - 0.12)
+    local ms, msc = K.fit(mode, mw - 0.1, d.small)
+    local os_, osc = K.fit(L("vs") .. " " .. others(m), ow - 0.1, d.small)
+    local status = STATUS_TEXT[m.status]
+    local place = tonumber(m.placement)
+    local res_text = L(res == "win" and "WIN" or (res == "draw" and "DRAW" or "LOSS"))
+    if place and #(type(m.players) == "table" and m.players or {}) > 2 then res_text = "#" .. tostring(place) end
+    local list = {
+        K.cell({K.text(date, {scale = d.small, colour = UIK.C.muted})}, {w = dw}),
+        K.cell({K.text(ms, {scale = msc})}, {w = mw}),
+        K.cell({K.text(os_, {scale = osc})}, {w = ow}),
+        K.pill(res_text, {w = rw, colour = rc}),
+        K.pill(delta and (U.signed(delta) .. " " .. L("RP")) or "-", {w = pw, colour = K.colour("status"), text_colour = delta and (delta > 0 and G.C.GREEN or (delta < 0 and G.C.RED or G.C.WHITE)) or UIK.C.muted}),
+        K.cell({K.text(status and L(status) or " ", {scale = d.small, colour = G.C.ORANGE})}, {w = sw}),
+    }
+    if watch then
+        list[#list + 1] = m.has_replay and m.id and K.cell({UIK.button{label = L("WATCH"), button = "mpm_watch_replay", ref_table = {id = m.id}, colour = G.C.BLUE, w = bw, h = d.row_h, scale = d.small, col = true}}, {w = bw})
+            or K.cell({}, {w = bw})
+    end
+    local sure = m.id and P.hist.confirm == m.id
+    list[#list + 1] = m.id and K.cell({UIK.button{label = sure and L("SURE?") or L("DELETE"), button = "mpm_delete_replay", ref_table = {id = m.id}, colour = sure and G.C.RED or G.C.UI.BACKGROUND_INACTIVE, w = xw, h = d.row_h, scale = d.small, col = true}}, {w = xw})
+        or K.cell({}, {w = xw})
+    return K.row(list, {w = w, id = "mpm_hist_" .. i})
+end
+
+local function tab_history()
+    local U = RU()
+    if not U then return row({}) end
+    if not P.hist.items then
+        if P.hist.status ~= "loading" and P.hist.status ~= "offline" then P.request_history() end
+        if P.hist.status == "offline" then
+            return {n = G.UIT.R, config = {align = "cm", minw = UIK.W, minh = UIK.H - UIK.TOP}, nodes = {txt(L("Could not reach the server."), 0.42, G.C.RED)}}
+        end
+        return U.waiting_body()
+    end
+    local p = S().profile or {}
+    local K = kit()
+    local w = UIK.W - 0.6
+    local matches, wins = tonumber(p.matches) or 0, tonumber(p.wins) or 0
+    local rate = matches > 0 and (tostring(math.floor(wins / matches * 100 + 0.5)) .. "%") or "-"
+    local stat_w = (w - 4 * 0.16) / 5
+    local function stat(label, value)
+        return col({row({txt(value, 0.42, G.C.WHITE)}), row({txt(label, 0.36, G.C.UI.TEXT_LIGHT)}, {maxw = stat_w - 0.1})}, {w = stat_w, h = 0.9, colour = {0, 0, 0, 0.15}, r = 0.1})
+    end
+    local stats = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        stat(L("Matches"), tostring(matches)), {n = G.UIT.C, config = {minw = 0.16}},
+        stat(L("Wins"), tostring(wins)), {n = G.UIT.C, config = {minw = 0.16}},
+        stat(L("Win rate"), rate), {n = G.UIT.C, config = {minw = 0.16}},
+        stat(L("Streak"), tostring(p.streak or 0)), {n = G.UIT.C, config = {minw = 0.16}},
+        stat(L("Season peak"), bom_ranked.rank_name(p.peakRank or 0)),
+    }}
+    local per = touch() and 5 or 7
+    local items = P.hist.items
+    local pages = math.max(1, math.ceil(#items / per))
+    P.hist.page = math.max(1, math.min(pages, P.hist.page or 1))
+    local first = (P.hist.page - 1) * per
+    local watch = replay_fn() ~= nil
+    local nodes = {stats, {n = G.UIT.R, config = {minh = 0.12}}}
+    for i = first + 1, math.min(#items, first + per) do
+        nodes[#nodes + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {history_row(i, items[i], w, watch)}}
+    end
+    if #items == 0 then nodes[#nodes + 1] = row({txt(L("Play a multiplayer match to start your history."), 0.36, G.C.UI.TEXT_LIGHT)}, {h = 1.2}) end
+    local body = {row({col(nodes, {align = "tm"})}, {align = "tm", h = UIK.H - UIK.TOP - (touch() and 1.0 or 0.85)})}
+    if pages > 1 then
+        body[#body + 1] = UIK.pager{prev = "mpm_hist_prev", next = "mpm_hist_next", text = tostring(P.hist.page) .. " / " .. tostring(pages),
+            prev_disabled = P.hist.page <= 1, next_disabled = P.hist.page >= pages}
+    end
+    return U.body_wrap({n = G.UIT.C, config = {align = "tm"}, nodes = body})
+end
+
+function P.open(tab)
+r 13 1381 %20%20%20%20 -
+l 20
+    P.hist.items = nil
+    P.hist.status = nil
+    G.FUNCS.overlay_menu{definition = UIK.window{zoom = false, id = "mpm_profile", title = L("PROFILE"), tab = tab,
+        tabs = {
+            {key = "progression", label = L("Progression"), build = tab_progression},
+            {key = "showcase", label = L("Showcase"), build = function() local SC = rawget(_G, "BO_SHOWCASE") return SC and SC.build_tab() or row({}) end},
+            {key = "cosmetics", label = L("Cosmetics"), build = tab_cosmetics},
+            {key = "name", label = L("Name"), build = tab_name},
+            {key = "history", label = L("History"), build = tab_history},
+        },
+        back_func = "mpm_profile_back"}}
+    if bom_ranked and bom_ranked.request_profile then bom_ranked.request_profile() end
+end
+
+function P.init()
+    G.FUNCS.mpm_profile_back = function()
+        P.name.state = nil
+        local m = menu()
+        if m and m.active then return G.FUNCS.exit_overlay_menu() end
+        if G.FUNCS.open_multiplayer_menu then return G.FUNCS.open_multiplayer_menu() end
+r 13 1375 %20%20%20%20%20%20%20%20 -
+l 70
+    end
+    G.FUNCS.mpm_name_save = function() P.save_name() end
+    G.FUNCS.mpm_hist_prev = function() P.hist.page = (P.hist.page or 1) - 1; P.hist.confirm = nil; UIK.refresh() end
+    G.FUNCS.mpm_hist_next = function() P.hist.page = (P.hist.page or 1) + 1; P.hist.confirm = nil; UIK.refresh() end
+    G.FUNCS.mpm_delete_replay = function(e)
+        local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+        if not id then return end
+        if P.hist.confirm == id then return P.delete(id) end
+        P.hist.confirm = id
+        UIK.refresh()
+    end
+    G.FUNCS.mpm_watch_replay = function(e)
+        local id = e and e.config and e.config.ref_table and e.config.ref_table.id
+        local watch = replay_fn()
+        if id and watch then watch(id) end
+    end
+    if bom_events and bom_events.register then
+        bom_events.register("name_check", function(d) P.on_name_check(d); return true end)
+        bom_events.register("match_history", function(d) P.on_history(d); return true end)
+        bom_events.register("replay_hidden", function() return true end)
+    end
+    if mod_loc_register then
+        mod_loc_register{
+            fr = {["PROFILE"] = "PROFIL", ["Ranked"] = "Classé", ["Progression"] = "Progression", ["Cosmetics"] = "Cosmétiques", ["Name"] = "Nom", ["History"] = "Historique",
+                ["Season"] = "Saison", ["Time left"] = "Temps restant", ["Rank points"] = "Points de rang", ["Next"] = "Suivant", ["Season peak"] = "Pic de la saison",
+                ["Matches"] = "Matchs", ["Level"] = "Niveau", ["Experience"] = "Expérience", ["XP"] = "XP", ["Ranked Packs"] = "Paquets classés", ["Packs to open"] = "Paquets à ouvrir",
+                ["Every match gives XP. Each level gives a Ranked Pack."] = "Chaque match donne de l'XP. Chaque niveau donne un paquet classé.",
+                ["Packs hold cosmetics for your loadout."] = "Les paquets contiennent des cosmétiques.", ["OPEN PACK"] = "OUVRIR",
+                ["Your name"] = "Votre nom", ["Current name"] = "Nom actuel", ["New name"] = "Nouveau nom", ["Enter a name"] = "Entrez un nom", ["SAVE NAME"] = "ENREGISTRER",
+                ["The server checks that nobody online uses it"] = "Le serveur vérifie que personne en ligne ne l'utilise", ["Checking the name..."] = "Vérification du nom...",
+                ["Name saved"] = "Nom enregistré", ["Pick your own name"] = "Choisissez votre nom", ["That name is too long."] = "Ce nom est trop long.",
+                ["Type a name first."] = "Écrivez d'abord un nom.", ["That name has characters we can't show."] = "Ce nom contient des caractères non affichables.",
+                ["That name can't be used."] = "Ce nom ne peut pas être utilisé.", ["That name is already used by another online player."] = "Ce nom est déjà utilisé par un autre joueur en ligne.",
+                ["Recovery code"] = "Code de récupération", ["Your code"] = "Votre code", ["Hidden"] = "Caché", ["Keep it safe, it restores your rank"] = "Gardez-le bien, il restaure votre rang",
+                ["HIDE"] = "CACHER", ["SHOW CODE"] = "VOIR LE CODE", ["Restore a rank"] = "Restaurer un rang", ["Code from your old device"] = "Code de votre ancien appareil",
+                ["That code was not found."] = "Code introuvable.", ["Restored"] = "Restauré", ["This device takes over that rank"] = "Cet appareil reprend ce rang", ["RESTORE"] = "RESTAURER",
+                ["Wins"] = "Victoires", ["Win rate"] = "Taux de victoire", ["Streak"] = "Série", ["vs"] = "contre", ["WATCH"] = "REVOIR", ["DELETE"] = "SUPPRIMER", ["SURE?"] = "SÛR ?",
+                ["On hold"] = "En attente", ["In review"] = "En examen", ["Reviewed"] = "Examiné", ["Voided"] = "Annulé",
+                ["Play a multiplayer match to start your history."] = "Jouez un match multijoueur pour lancer votre historique.", ["Could not reach the server."] = "Serveur injoignable.",
+                ["Totals"] = "Totaux", ["Total XP"] = "XP totale", ["Runs won"] = "Parties gagnées", ["Balacoin"] = "Balacoin", ["Next title"] = "Titre suivant", ["level"] = "niveau",
+                ["XP to level"] = "XP avant le niveau", ["Play hands, clear antes, beat bosses"] = "Jouez des mains, passez des mises, battez des boss",
+                ["and win runs to earn XP, solo or online."] = "et gagnez des parties pour l'XP, en solo ou en ligne.",
+                ["Play hands, clear antes and win matches"] = "Jouez des mains, passez des mises, gagnez des matchs",
+                ["online to earn XP. Ranked has its own level."] = "en ligne pour l'XP. Le classé a son propre niveau."},
+            es = {["PROFILE"] = "PERFIL", ["Ranked"] = "Clasificatoria", ["Progression"] = "Progresión", ["Cosmetics"] = "Cosméticos", ["Name"] = "Nombre", ["History"] = "Historial",
+                ["Season"] = "Temporada", ["Time left"] = "Tiempo restante", ["Rank points"] = "Puntos de rango", ["Next"] = "Siguiente", ["Season peak"] = "Máximo de la temporada",
+                ["Matches"] = "Partidas", ["Level"] = "Nivel", ["Experience"] = "Experiencia", ["XP"] = "XP", ["Ranked Packs"] = "Paquetes clasificatorios", ["Packs to open"] = "Paquetes por abrir",
+                ["Every match gives XP. Each level gives a Ranked Pack."] = "Cada partida da XP. Cada nivel da un paquete clasificatorio.",
+                ["Packs hold cosmetics for your loadout."] = "Los paquetes traen cosméticos.", ["OPEN PACK"] = "ABRIR",
+                ["Your name"] = "Tu nombre", ["Current name"] = "Nombre actual", ["New name"] = "Nuevo nombre", ["Enter a name"] = "Escribe un nombre", ["SAVE NAME"] = "GUARDAR",
+                ["The server checks that nobody online uses it"] = "El servidor comprueba que nadie en línea lo use", ["Checking the name..."] = "Comprobando el nombre...",
+                ["Name saved"] = "Nombre guardado", ["Pick your own name"] = "Elige tu propio nombre", ["That name is too long."] = "Ese nombre es demasiado largo.",
+                ["Type a name first."] = "Primero escribe un nombre.", ["That name has characters we can't show."] = "Ese nombre tiene caracteres que no se pueden mostrar.",
+                ["That name can't be used."] = "Ese nombre no se puede usar.", ["That name is already used by another online player."] = "Ese nombre ya lo usa otro jugador en línea.",
+                ["Recovery code"] = "Código de recuperación", ["Your code"] = "Tu código", ["Hidden"] = "Oculto", ["Keep it safe, it restores your rank"] = "Guárdalo, restaura tu rango",
+                ["HIDE"] = "OCULTAR", ["SHOW CODE"] = "VER CÓDIGO", ["Restore a rank"] = "Restaurar un rango", ["Code from your old device"] = "Código de tu dispositivo anterior",
+                ["That code was not found."] = "No se encontró ese código.", ["Restored"] = "Restaurado", ["This device takes over that rank"] = "Este dispositivo toma ese rango", ["RESTORE"] = "RESTAURAR",
+                ["Wins"] = "Victorias", ["Win rate"] = "Porcentaje de victorias", ["Streak"] = "Racha", ["vs"] = "contra", ["WATCH"] = "VER", ["DELETE"] = "BORRAR", ["SURE?"] = "¿SEGURO?",
+                ["On hold"] = "En espera", ["In review"] = "En revisión", ["Reviewed"] = "Revisado", ["Voided"] = "Anulado",
+                ["Play a multiplayer match to start your history."] = "Juega una partida multijugador para empezar tu historial.", ["Could not reach the server."] = "No se pudo conectar.",
+                ["Totals"] = "Totales", ["Total XP"] = "XP total", ["Runs won"] = "Partidas ganadas", ["Balacoin"] = "Balacoin", ["Next title"] = "Título siguiente", ["level"] = "nivel",
+                ["XP to level"] = "XP para el nivel", ["Play hands, clear antes, beat bosses"] = "Juega manos, supera apuestas iniciales, vence jefes",
+                ["and win runs to earn XP, solo or online."] = "y gana partidas para ganar XP, solo o en línea.",
+                ["Play hands, clear antes and win matches"] = "Juega manos, supera apuestas iniciales y gana partidas",
+                ["online to earn XP. Ranked has its own level."] = "en línea para ganar XP. La clasificatoria tiene su nivel."},
+        }
+    end
+end
+
+return P
+end

@@ -1,0 +1,160 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 143
+local ORDER = {'Spades', 'Hearts', 'Clubs', 'Diamonds'}
+local SC = {suit = 'Spades', cols = 12}
+
+local function palette_index(key)
+    for i, p in ipairs(SUIT_PALETTES) do
+        if p.key == key then return i end
+    end
+end
+
+local function colour_by_hex(hex)
+    for _, c in ipairs(SUIT_COLOURS) do
+        if c.hex == hex then return c end
+    end
+end
+
+local function save()
+    if G.save_settings then G:save_settings() end
+end
+
+local function touch()
+    return UIK and UIK.touch and UIK.touch()
+end
+
+function suit_palette_deck_row()
+    local names = {}
+    for i, p in ipairs(SUIT_PALETTES) do names[i] = mod_loc(p.name) end
+    local cur = palette_index(suit_palette_key()) or 1
+    local h = touch() and 0.9 or 0.8
+    local label = {n = G.UIT.R, config = {align = 'cm', padding = touch() and 0.02 or 0.07}, nodes = {
+        {n = G.UIT.T, config = {text = mod_loc("Suit Colours"), scale = 0.36, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+    }}
+    local cycle = {n = G.UIT.C, config = {align = 'cm', padding = 0}, nodes = {
+        create_option_cycle({options = names, current_option = cur, opt_callback = 'suit_palette_deck_cycle', w = 2.9, h = h, colour = G.C.RED, no_pips = true, focus_args = {nav = 'wide'}}),
+    }}
+    local button = {n = G.UIT.C, config = {align = 'cm', padding = 0.1}, nodes = {
+        UIBox_button({label = {mod_loc("Custom Colours")}, button = 'suit_custom_colours', minw = 2.4, minh = h, scale = 0.4, colour = G.C.BLUE, col = true}),
+    }}
+    return {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+        label,
+        {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {cycle, button}},
+    }}
+end
+
+G.FUNCS.suit_palette_deck_cycle = function(args)
+    suit_palette_set(args.to_key)
+    save()
+end
+
+local function preview(suit, w, s)
+    local area = CardArea(G.ROOM.T.x + 0.2 * G.ROOM.T.w / 2, G.ROOM.T.h, w, G.CARD_H * s,
+        {card_limit = 2, type = 'title', highlight_limit = 0, collection = true})
+    for _, v in ipairs({'A', 'K'}) do
+        local card = Card(0, 0, G.CARD_W * s, G.CARD_H * s, G.P_CARDS[suit:sub(1, 1) .. '_' .. v], G.P_CENTERS.c_base)
+        card.no_ui = true
+        area:emplace(card)
+    end
+    return area
+end
+
+local function suit_col(suit, cw, chosen)
+    local c = colour_by_hex(chosen[suit])
+    local on = SC.suit == suit
+    local s = UIK.portrait() and 0.85 or (touch() and 0.6 or 0.62)
+    return {n = G.UIT.C, config = {align = 'tm', minw = cw, padding = 0.04}, nodes = {
+        {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+            {n = G.UIT.O, config = {object = preview(suit, cw - 0.4, s)}},
+        }},
+        {n = G.UIT.R, config = {align = 'cm', padding = 0}, nodes = {
+            {n = G.UIT.C, config = {align = 'cm', padding = 0.06, r = 0.14, colour = on and G.C.GOLD or G.C.CLEAR}, nodes = {
+                UIBox_button({label = {localize(suit, 'suits_plural'), c and mod_loc(c.name) or ''}, button = 'suit_colour_suit', ref_table = {suit = suit},
+                    minw = cw - 0.5, minh = touch() and 0.95 or 0.8, scale = touch() and 0.38 or 0.34, colour = HEX(chosen[suit]), col = true, id = 'suit_colour_' .. suit}),
+            }},
+        }},
+    }}
+end
+
+local function swatch(c, size, on)
+    return {n = G.UIT.C, config = {align = 'cm', minw = size, minh = size, r = 0.1, colour = HEX(c.hex), hover = true, shadow = true, button = 'suit_colour_pick', ref_table = {key = c.key}, id = 'suit_swatch_' .. c.key}, nodes = {
+        on and {n = G.UIT.B, config = {w = size * 0.34, h = size * 0.34, r = size * 0.17, colour = G.C.WHITE}} or nil,
+    }}
+end
+
+local function build()
+    local chosen = suit_palette_colours('custom')
+    local gap = 0.2
+    local per = UIK.portrait() and 2 or 4
+    local cw = (UIK.W - gap * (per - 1)) / per
+    local cols, line = {}, {}
+    for i, suit in ipairs(ORDER) do
+        line[#line + 1] = suit_col(suit, cw, chosen)
+        if i % per ~= 0 and i < #ORDER then line[#line + 1] = {n = G.UIT.C, config = {minw = gap}, nodes = {}} end
+        if i % per == 0 or i == #ORDER then
+            if #cols > 0 then cols[#cols + 1] = {n = G.UIT.R, config = {minh = 0.12, padding = 0}, nodes = {}} end
+            cols[#cols + 1] = {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = line}
+            line = {}
+        end
+    end
+    local size = UIK.portrait() and 1.15 or (touch() and 1.0 or 0.92)
+    local pad = touch() and 0.07 or 0.06
+    local rows, cur = {}, {}
+    local mine = chosen[SC.suit]
+    for _, c in ipairs(SUIT_COLOURS) do
+        cur[#cur + 1] = swatch(c, size, c.hex == mine)
+        if #cur >= (UIK.portrait() and SC.cols / 2 or SC.cols) then
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = pad}, nodes = cur}
+            cur = {}
+        end
+    end
+    if #cur > 0 then rows[#rows + 1] = {n = G.UIT.R, config = {align = 'cm', padding = pad}, nodes = cur} end
+    return {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = 'tm', minw = UIK.W, padding = 0}, nodes = {{n = G.UIT.C, config = {align = 'tm', padding = 0}, nodes = cols}}},
+            {n = G.UIT.R, config = {minh = touch() and 0.1 or 0.16, padding = 0}, nodes = {}},
+            {n = G.UIT.R, config = {align = 'cm', minw = UIK.W, padding = 0}, nodes = {
+                {n = G.UIT.C, config = {align = 'cm', padding = 0.06, r = 0.12, colour = UIK.C.section}, nodes = rows},
+            }},
+        }},
+    }}
+end
+
+G.FUNCS.suit_colour_suit = function(e)
+    local suit = e and e.config and e.config.ref_table and e.config.ref_table.suit
+    if not suit or suit == SC.suit then return end
+    SC.suit = suit
+    UIK.refresh()
+end
+
+G.FUNCS.suit_colour_pick = function(e)
+    local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+    if not key then return end
+    G.SETTINGS.suit_palette_custom = G.SETTINGS.suit_palette_custom or {}
+    G.SETTINGS.suit_palette_custom[SC.suit] = key
+    G.SETTINGS.suit_palette = 'custom'
+    suit_palette_apply(true)
+    save()
+    UIK.refresh()
+end
+
+G.FUNCS.suit_custom_colours = function()
+    if suit_palette_key() ~= 'custom' then
+        suit_palette_set(palette_index('custom'))
+        save()
+    end
+r 13 1381 %20%20%20%20 -
+l 9
+    G.FUNCS.overlay_menu{definition = UIK.window{id = 'suit_colours', title = mod_loc("CUSTOM COLOURS"), build = build, back_func = 'customize_deck'}}
+end
+
+if mod_loc_register then
+    mod_loc_register{
+        fr = {["Custom Colours"] = "Couleurs perso", ["CUSTOM COLOURS"] = "COULEURS PERSONNALISÉES"},
+        es = {["Custom Colours"] = "Colores propios", ["CUSTOM COLOURS"] = "COLORES PERSONALIZADOS"},
+    }
+end
+end

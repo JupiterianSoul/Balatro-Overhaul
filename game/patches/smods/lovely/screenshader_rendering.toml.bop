@@ -1,0 +1,85 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 11
+[manifest]
+version = "1.0.0"
+dump_lua = true
+priority = -5
+
+[[patches]]
+[patches.pattern]
+target = "game.lua"
+pattern = '''
+if G.AA_CANVAS then 
+    love.graphics.push()
+r 9 2964 %20%20%20%20%20%20%20%20 -
+r 9 2965 %20%20%20%20%20%20%20%20 -
+l 34
+    love.graphics.pop()
+end
+'''
+position = "before"
+payload = '''
+local last_canvas = self.CANVAS
+G.SHADER_CANVAS_A = G.SHADER_CANVAS_A or SMODS.create_canvas()
+G.SHADER_CANVAS_B = G.SHADER_CANVAS_B or SMODS.create_canvas()
+for index, key in ipairs(SMODS.ScreenShader.obj_buffer) do
+    local shader = SMODS.ScreenShaders[key]
+	if (shader.should_apply and shader:should_apply()) or (not shader.should_apply) then
+        --hypothetically less table accesses
+        local shader_object = G.SHADERS[shader.shader]
+		assert(shader_object, "Shader " .. shader.key .. " not found in G.SHADERS")
+
+        -- effectively swaps between A and B
+        local current_canvas = (last_canvas == G.SHADER_CANVAS_A) and G.SHADER_CANVAS_B or G.SHADER_CANVAS_A
+
+        if shader.send_vars then
+            local vars = shader:send_vars()
+            for k,v in pairs(vars) do
+                shader_object:send(k, unpack( (type(v) == "table" and v.array) and v.array or {v} ))
+            end
+
+        end
+		
+		love.graphics.setCanvas(current_canvas)
+        shader:draw(shader_object, last_canvas)
+
+        last_canvas = current_canvas
+	end
+end
+-- I don't like having this out here but id rather not run it when i don't have to
+-- also less setcanvas and setshader means it should run a smidge faster
+r 11 112 - -
+r 3 4413 - -
+l 3
+if last_canvas then
+    love.graphics.clear{0,0,0,1}
+    love.graphics.push()
+r 9 2964 %20%20%20%20 -
+l 13
+    love.graphics.draw(last_canvas, 0, 0)
+    love.graphics.pop()
+    -- Draw everything we just did to the main canvas (what the player actually sees)
+end
+'''
+match_indent = true
+
+
+
+[[patches]]
+[patches.pattern]
+target = "main.lua"
+pattern = '''
+r 19 386 - -
+r 19 387 - -
+l 7
+'''
+position = "after"
+payload = '''
+G.SHADER_CANVAS_A = SMODS.create_canvas()
+G.SHADER_CANVAS_B = SMODS.create_canvas()
+'''
+match_indent = true
+end

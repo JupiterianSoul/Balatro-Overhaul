@@ -1,0 +1,259 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 247
+HUD_SCALE = HUD_SCALE or {}
+local H = HUD_SCALE
+
+H.MARGIN = 0.2
+H.PORTRAIT_MAX_H = 0.36
+H.KEYS = {'minw', 'minh', 'maxw', 'maxh', 'padding', 'r', 'w', 'h', 'emboss'}
+
+function H.k()
+  return G.HUD_SCALE or 1
+end
+
+local function is_a(o, cls)
+  return type(o) == 'table' and type(o.is) == 'function' and cls and o:is(cls)
+end
+
+local function scale_obj(c, o, k)
+  if is_a(o, UIBox) then return end
+  if is_a(o, DynaText) then
+    o.scale = o.scale * k
+    if o.config.maxw then o.config.maxw = o.config.maxw * k end
+    o.text_offset = {x = o.font.TEXT_OFFSET.x * o.scale + (o.config.x_offset or 0), y = o.font.TEXT_OFFSET.y * o.scale + (o.config.y_offset or 0)}
+    o:update_text(true)
+    c.hud_last = o.scale
+  elseif is_a(o, Blind) then
+    o:change_dim(o.T.w * k, o.T.h * k)
+  elseif type(o) == 'table' and type(o.T) == 'table' and o.T.w then
+    o.T.w, o.T.h = o.T.w * k, o.T.h * k
+    if o.VT then o.VT.w, o.VT.h = o.T.w, o.T.h end
+  end
+end
+
+function H.scale_def(n, k, d)
+  d = d or 0
+  if type(n) ~= 'table' or d > 40 then return end
+  local c = n.config
+  if type(c) == 'table' and not c.hud_k then
+    c.hud_k = k
+    for _, key in ipairs(H.KEYS) do
+      if type(c[key]) == 'number' then c[key] = c[key] * k end
+    end
+    if n.n == G.UIT.T and type(c.scale) == 'number' then
+      c.scale = c.scale * k
+      c.hud_last = c.scale
+    end
+    if n.n == G.UIT.O and type(c.object) == 'table' then scale_obj(c, c.object, k) end
+  end
+  for i = 1, table.maxn(n.nodes or {}) do H.scale_def(n.nodes[i], k, d + 1) end
+end
+
+local function wrap_def(name)
+  local raw = _G[name]
+  if type(raw) ~= 'function' then return end
+  _G[name] = function(...)
+    local t = raw(...)
+    local k = H.k()
+    if type(t) == 'table' then
+      t.config = t.config or {}
+      t.config.hud_scale = k
+      if k > 1.001 then H.scale_def(t, k) end
+    end
+    return t
+  end
+end
+
+wrap_def('create_UIBox_HUD')
+wrap_def('create_UIBox_HUD_blind')
+
+local function wrap_func(name, field, recalc)
+  local raw = G.FUNCS[name]
+  if type(raw) ~= 'function' then return end
+  G.FUNCS[name] = function(e, ...)
+    local r = raw(e, ...)
+    local c = e and e.config
+    local k = c and c.hud_k
+    if not k or k == 1 then return r end
+    if field == 'object' then
+      local o = c.object
+      if is_a(o, DynaText) and o.scale ~= c.hud_last then
+        o.scale = o.scale * k
+        c.hud_last = o.scale
+        o:update_text()
+      end
+    elseif type(c.scale) == 'number' and c.scale ~= c.hud_last then
+      c.scale = c.scale * k
+      c.hud_last = c.scale
+      if recalc and c.scale > 0 and e.UIBox then e.UIBox:recalculate(true) end
+    end
+    return r
+  end
+end
+
+function H.wrap_funcs()
+  if H.wrapped then return end
+  H.wrapped = true
+  for _, n in ipairs({'hand_chip_UI_set', 'hand_mult_UI_set', 'hand_chip_total_UI_set', 'hand_text_UI_set'}) do wrap_func(n, 'object') end
+  for _, n in ipairs({'chip_UI_set', 'blind_chip_UI_scale', 'HUD_blind_debuff_prefix'}) do wrap_func(n, 'scale') end
+  wrap_func('HUD_blind_debuff', 'scale', true)
+end
+
+H.wrap_funcs()
+
+local function content(box)
+  local root = box and box.UIRoot
+  if not root then return nil end
+  local function find(n, d)
+    if not n or d > 4 then return nil end
+    if n.config and n.config.minh and n.config.minh >= 20 then return n end
+    for _, ch in ipairs(n.children or {}) do
+      local f = find(ch, d + 1)
+      if f then return f end
+    end
+  end
+  local col = find(root, 0)
+  local w, h = box.T.w, box.T.h
+  if col and col.children and #col.children > 0 then
+    local top, bot = math.huge, -math.huge
+    for _, ch in ipairs(col.children) do
+      if ch.T then
+        top = math.min(top, ch.T.y)
+        bot = math.max(bot, ch.T.y + ch.T.h)
+      end
+    end
+    if bot > top then h = bot - top end
+  end
+  return w, h
+end
+
+function H.built_k(box)
+  local d = box and box.definition
+  return d and d.config and d.config.hud_scale or 1
+end
+
+function H.shift()
+  local k = H.k()
+  if k <= 1.001 then return 0 end
+  local b = G.HUD
+  local d = b and b.T and b.definition
+  if d and d.config and not d.config.portrait_hud then H.base_w_l = b.T.w / H.built_k(b) end
+  return (H.base_w_l or 0) * (k - 1)
+end
+
+function H.target()
+  local extra = G.UI_SIZE_EXTRA or 1
+  local box = G.HUD
+  if extra <= 1.001 or not (box and box.UIRoot and G.window_prev and G.TILESIZE and ui_size_fit) then return 1 end
+  local bk = H.built_k(box)
+  local w, h = content(box)
+  if not (w and h and w > 0 and h > 0) then return 1 end
+  local w1, h1 = w / bk, h / bk
+  local sw, sh = love.graphics.getDimensions()
+  local unit = G.TILESIZE * ui_size_fit(sw, sh) * (G.UI_SIZE or 1)
+  local uw, uh = sw / unit, sh / unit
+  local m = H.MARGIN
+  local fit
+  if PORTRAIT and PORTRAIT.on() then
+    fit = math.min((uw - 2 * m) / w1, H.PORTRAIT_MAX_H * uh / h1)
+  else
+    local rx = G.ROOM_UNZOOMED and G.ROOM_UNZOOMED.x or (G.ROOM and G.ROOM.T.x) or 0
+    local right = rx - 0.7 + w1
+    fit = math.min((uh - 2 * m) / h1, (right - m) / w1)
+  end
+  local k = math.min(extra, fit)
+  return math.max(1, math.floor(k * 100) / 100)
+end
+
+function H.rebuild_blind()
+  local old = G.HUD_blind
+  if not (old and not old.REMOVED and old.UIRoot and G.HUD and create_UIBox_HUD_blind) then return end
+  local row = G.HUD:get_UIE_by_ID('row_blind')
+  if not row then return end
+  local off = old.alignment and old.alignment.offset or {x = 0, y = -10}
+  local vis = old.states and old.states.visible
+  local ok, box = pcall(function()
+    return UIBox{definition = create_UIBox_HUD_blind(), config = {major = row, align = 'cm', offset = {x = off.x or 0, y = off.y or 0}, bond = 'Weak'}}
+  end)
+  if not ok then
+    print('[HUD_SCALE] blind rebuild failed: ' .. tostring(box))
+    return
+  end
+  local function detach(n, d)
+    if not n or d > 20 then return end
+    if n.config and n.config.object == G.GAME.blind then n.config.object = nil end
+    for _, ch in ipairs(n.children or {}) do detach(ch, d + 1) end
+  end
+  detach(old.UIRoot, 0)
+  local list = G.I and G.I.UIBOX or {}
+  local old_i
+  for i, v in ipairs(list) do if v == old then old_i = i break end end
+  old:remove()
+  if old_i then
+    for i = #list, 1, -1 do if list[i] == box then table.remove(list, i) break end end
+    table.insert(list, math.min(old_i, #list + 1), box)
+  end
+  G.HUD_blind = box
+  if vis == false then box.states.visible = false end
+  if type(G.hand_text_area) == 'table' then
+    G.hand_text_area.blind_chips = box:get_UIE_by_ID('HUD_blind_count')
+    if G.hand_text_area.blind_chips and G.FUNCS.blind_chip_UI_scale then G.FUNCS.blind_chip_UI_scale(G.hand_text_area.blind_chips) end
+  end
+  box:recalculate()
+  for _, b in ipairs({G.SHOP_SIGN, G.blind_prompt_box}) do
+    if type(b) == 'table' and b.role and not b.REMOVED then
+      b.role.major = row
+      if b.alignment then b.alignment.prev_type = nil end
+      if b.align_to_major then b:align_to_major() end
+    end
+  end
+end
+
+function H.place()
+  local box = G.HUD
+  if not (box and box.alignment and box.alignment.offset) then return end
+  if (PORTRAIT and PORTRAIT.on()) or H.built_k(box) <= 1.001 then return end
+  local x = -0.7 - H.shift()
+  if math.abs(box.alignment.offset.x - x) > 0.001 then
+    box.alignment.offset.x = x
+    box.alignment.prev_type = nil
+    if box.align_to_major then box:align_to_major() end
+    box:hard_set_VT()
+  end
+end
+
+function H.check()
+  if H.busy or not (G and G.STAGE == G.STAGES.RUN and G.HUD and G.HUD.UIRoot and G.HUD_blind) then return end
+  if G.CONTROLLER and G.CONTROLLER.dragging and G.CONTROLLER.dragging.target then return end
+  H.busy = true
+  local ok, err = pcall(function()
+    local k = H.target()
+    G.HUD_SCALE = k
+    if math.abs(k - H.built_k(G.HUD)) > 0.005 and PORTRAIT and PORTRAIT.rebuild_hud then
+      PORTRAIT.rebuild_hud()
+      H.rebuild_blind()
+      if PORTRAIT.on() and PORTRAIT.layout_run then PORTRAIT.layout_run() end
+    end
+    H.place()
+  end)
+  H.busy = false
+  H._seen = G.HUD
+  if not ok then print('[HUD_SCALE] ' .. tostring(err)) end
+end
+
+function H.tick()
+  if G and G.STAGE == G.STAGES.RUN and G.HUD and G.HUD ~= H._seen and G.HUD_blind then H.check() end
+end
+
+local raw_update = Game and Game.update
+if raw_update then
+r 9 2449 %20%20 -
+l 4
+    raw_update(self, dt)
+    H.tick()
+  end
+end
+end

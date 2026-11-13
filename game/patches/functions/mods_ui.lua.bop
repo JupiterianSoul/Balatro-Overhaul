@@ -1,0 +1,1305 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 74
+local MODS_PAGE_SIZE = 5
+local ROW_W = 11.4
+local function port() return rawget(_G, 'UIK') ~= nil and UIK.portrait() or false end
+local GAP_W = 0.2
+local uses_picker
+local NORMAL_FUNCS = {
+  setup_run = true,
+  start_run = true,
+  your_collection = true,
+  open_achievements_menu = true,
+  open_tavern_hub = true,
+  open_multiplayer_menu = true,
+  open_progression_screen = true,
+}
+
+G.MODS_MENU = G.MODS_MENU or {page = 1, icons = {}}
+
+local function loader()
+  return rawget(_G, "MODLOADER")
+end
+
+local function smods_mod(entry)
+  local S = rawget(_G, "SMODS")
+  if not (entry.loaded and entry.id and S and S.Mods) then return nil end
+  return S.Mods[entry.id]
+end
+
+local function config_func(entry)
+  local m = smods_mod(entry)
+  if m and type(m.config_tab) == "function" then return m end
+end
+
+local function icon_atlas(entry)
+  local smod = smods_mod(entry)
+  if smod and smod.prefix then
+    local a = G.ASSET_ATLAS[smod.prefix .. "_modicon"]
+    if a and a.image then return a end
+  end
+  local key = "mods_menu_icon_" .. entry.folder
+  if G.MODS_MENU.icons[key] ~= nil then return G.MODS_MENU.icons[key] or nil end
+  G.MODS_MENU.icons[key] = false
+  local names = {}
+  if entry.icon_path then names[#names + 1] = entry.icon_path end
+  if entry.prefix then names[#names + 1] = entry.prefix .. "_icon.png" end
+  names[#names + 1] = "icon.png"
+  names[#names + 1] = "modicon.png"
+  local scale = (G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.texture_scaling) or 1
+  for _, name in ipairs(names) do
+    for _, s in ipairs({scale, 1}) do
+      local path = entry.dir .. "/assets/" .. s .. "x/" .. name
+      if love.filesystem.getInfo(path, "file") then
+        local ok, img = pcall(love.graphics.newImage, path, {mipmaps = true, dpiscale = s})
+        if ok and img then
+          local w, h = img:getDimensions()
+          local px = entry.icon_width and entry.icon_width < w and entry.icon_width or w
+          local atlas = {name = key, image = img, px = px, py = h, type = "asset_atli"}
+          G.ASSET_ATLAS[key] = atlas
+          G.MODS_MENU.icons[key] = atlas
+          return atlas
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function icon_node(entry)
+  local atlas = icon_atlas(entry)
+  if not atlas then
+    return {n=G.UIT.C, config={align = "cm", minw = 0.8, minh = 0.8}, nodes={}}
+  end
+  local sprite = Sprite(0, 0, 0.8, 0.8, atlas, {x = 0, y = 0})
+  sprite.states.drag.can = false
+  sprite:define_draw_steps({
+r 15 662 %20%20%20%20 -
+r 4 505 %20%20%20%20 -
+l 17
+  })
+  return {n=G.UIT.C, config={align = "cm", minw = 0.8, minh = 0.8}, nodes={
+    {n=G.UIT.O, config={object = sprite}},
+  }}
+end
+
+local function with_ref(button, ref)
+  button.nodes[1].config.ref_table = ref
+  return button
+end
+
+local function sentence(s)
+  s = tostring(s or "")
+  return s:sub(1, 1):upper() .. s:sub(2) .. (s:match("[%.!?]$") and "" or ".")
+end
+
+local function rebuild()
+r 1 112 %20%20 -
+l 206
+    blockable = false,
+    blocking = false,
+    func = function()
+      if G.OVERLAY_MENU then G.FUNCS.overlay_menu({definition = create_UIBox_mods_menu(), key = 'mods_menu'}) end
+      return true
+    end
+  }))
+end
+
+local function workshop()
+  return rawget(_G, "ModWorkshop")
+end
+
+local function wloc(s)
+  local W = workshop()
+  return W and W.loc(s) or mod_loc(s)
+end
+
+local function load_problem(entry, status)
+  if not (entry.enabled and status.active and not entry.loaded and not entry.refused) then return nil end
+  local S = rawget(_G, "SMODS")
+  local m = S and S.Mods and entry.id and S.Mods[entry.id]
+  local issues = m and m.load_issues
+  if type(issues) == "table" then
+    local parts = {}
+    local function names(list)
+      local out = {}
+      for _, v in ipairs(list or {}) do out[#out + 1] = tostring(v) end
+      return table.concat(out, ", ")
+    end
+    if type(issues.dependencies) == "table" and #issues.dependencies > 0 then parts[#parts + 1] = wloc("Needs") .. " " .. names(issues.dependencies) end
+    if type(issues.conflicts) == "table" and #issues.conflicts > 0 then parts[#parts + 1] = wloc("Conflicts with") .. " " .. names(issues.conflicts) end
+    if issues.outdated then parts[#parts + 1] = wloc("Outdated") end
+    if issues.main_file_not_found then parts[#parts + 1] = wloc("Main file missing") end
+    if #parts > 0 then return table.concat(parts, ". ") end
+  end
+  return wloc("Not loaded")
+end
+
+local function workshop_map()
+  local W = workshop()
+  if not W then return {} end
+  local ok = pcall(W.load_index)
+  if not ok then return {} end
+  W.invalidate_local()
+  local map = {}
+  for _, e in ipairs(W.index.mods) do
+    local lm = W.find_local(e)
+    if lm and not map[lm.folder] then map[lm.folder] = e end
+  end
+  return map
+end
+
+local HAND_OK = "mods/.hand_ok.txt"
+
+local function hand_key(entry)
+  return (tostring(entry.folder) .. "@" .. tostring(entry.version or "")):gsub("[\r\n]", "")
+end
+
+local function hand_seen()
+  local seen = {}
+  for line in tostring(love.filesystem.read(HAND_OK) or ""):gmatch("[^\r\n]+") do seen[line] = true end
+  return seen
+end
+
+local function hand_mod_unseen(entry)
+  if not entry or not entry.folder then return false end
+  local W = workshop()
+  if W and W.from_workshop and W.from_workshop(entry.folder) then return false end
+  return not hand_seen()[hand_key(entry)]
+end
+
+G.FUNCS.mods_menu_hand_warn = function(entry)
+  G.MODS_MENU.hand_warn = {folder = entry.folder, version = entry.version, name = entry.name}
+  local w = port() and 6.4 or 9
+  local lines = {}
+  local words, line = {}, ""
+  for word in tostring(mod_loc("This mod was added by hand. It can change your game and your saves. Only turn it on if you trust where it came from.")):gmatch("%S+") do words[#words + 1] = word end
+  local max_chars = port() and 34 or 52
+  for _, word in ipairs(words) do
+    if line ~= "" and #line + 1 + #word > max_chars then
+      lines[#lines + 1] = line
+      line = word
+    else
+      line = line == "" and word or (line .. " " .. word)
+    end
+  end
+  if line ~= "" then lines[#lines + 1] = line end
+  local rows = {
+    {n=G.UIT.R, config={align = "cm", padding = 0.06}, nodes={
+      {n=G.UIT.T, config={text = tostring(entry.name), scale = 0.5, colour = G.C.WHITE, shadow = true, maxw = w}},
+    }},
+    {n=G.UIT.R, config={align = "cm", padding = 0.04}, nodes={
+      {n=G.UIT.T, config={text = mod_loc("Not from the Workshop"), scale = 0.42, colour = G.C.ORANGE, shadow = true, maxw = w}},
+    }},
+  }
+  for _, l in ipairs(lines) do
+    rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.01}, nodes={
+      {n=G.UIT.T, config={text = l, scale = 0.34, colour = G.C.UI.TEXT_LIGHT, shadow = true, maxw = w}},
+    }}
+  end
+  rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.12}, nodes={
+    UIBox_button({button = 'mods_menu_hand_on', label = {mod_loc("Turn on")}, colour = G.C.ORANGE, minw = 3, minh = 0.7, scale = 0.5}),
+  }}
+  local def = create_UIBox_generic_options({
+    back_func = 'mods_menu_back',
+    contents = rows,
+  })
+  if def.config then def.config.mods_hand_warn = true end
+  G.FUNCS.overlay_menu({key = 'mods_menu', definition = def})
+end
+
+G.FUNCS.mods_menu_hand_on = function(e)
+  local ref = G.MODS_MENU.hand_warn
+  G.MODS_MENU.hand_warn = nil
+  if ref then
+    love.filesystem.append(HAND_OK, hand_key(ref) .. "\n")
+    local L = loader()
+    if L and L.set_enabled then L.set_enabled(ref.folder, true) end
+  end
+  G.FUNCS.overlay_menu({definition = create_UIBox_mods_menu(), key = 'mods_menu'})
+end
+
+local function mod_row(entry, status, wmap)
+  local ls = UIK.touch() and 0.37 or 0.3
+  local info = {
+    {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+      {n=G.UIT.T, config={text = entry.name, scale = 0.45, colour = G.C.WHITE, shadow = true, maxw = 3.3}},
+      entry.version and {n=G.UIT.T, config={text = "  v" .. tostring(entry.version), scale = UIK.touch() and 0.37 or 0.32, colour = G.C.GOLD, shadow = true, maxw = 1.6}} or nil,
+    }},
+  }
+  if entry.author then
+    info[#info + 1] = {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+      {n=G.UIT.T, config={text = wloc("by") .. " " .. entry.author, scale = ls, colour = G.C.UI.TEXT_LIGHT, maxw = 5.2}},
+    }}
+  end
+  local problem = (entry.enabled and entry.refused and sentence(entry.refused)) or load_problem(entry, status)
+  if problem then
+    local pw = port() and ROW_W - 1.45 or 5.5
+    local lines = UIK.wrap(sentence(problem), ls, pw)
+    if not port() and #lines > 2 then
+      local last = table.concat(lines, " ", 2)
+      while #last > 1 and ui_text_width(last .. "...", ls) > pw do
+        local cut = last:gsub("[%z\1-\127\194-\244][\128-\191]*$", "")
+        if #cut >= #last then break end
+        last = cut
+      end
+      lines = {lines[1], (last:gsub("[%s,;:.(]+$", "")) .. "..."}
+    end
+    for _, line in ipairs(lines) do
+      info[#info + 1] = {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+        {n=G.UIT.T, config={text = line, scale = ls, colour = G.C.RED, maxw = pw}},
+      }}
+    end
+  end
+  local W = workshop()
+  local wentry = wmap and wmap[entry.folder]
+  local update = W and wentry and W.entry_status(wentry) == "update" and wentry or nil
+  if update then
+    info[#info + 1] = {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+      {n=G.UIT.T, config={text = wloc("Update available") .. ": v" .. tostring(update.version):gsub("^[vV]", ""), scale = ls, colour = G.C.ORANGE, maxw = 5.2}},
+    }}
+  end
+
+  local state = {on = entry.enabled}
+  local toggle = create_toggle({
+    label = "", w = 0, col = true,
+    ref_table = state, ref_value = "on",
+    callback = function(val)
+      local L = loader()
+      if val and hand_mod_unseen(entry) then
+        state.on = false
+        return G.FUNCS.mods_menu_hand_warn(entry)
+      end
+      if val and W and wentry and W.enable_entry then
+        W.enable_entry(wentry, true)
+      elseif L and L.set_enabled then
+        L.set_enabled(entry.folder, val)
+      end
+      rebuild()
+    end,
+  })
+
+  local mid_btn
+  if update then
+    mid_btn = with_ref(UIBox_button({
+      button = 'mods_menu_update', label = {wloc("Update")}, colour = G.C.ORANGE,
+      minw = 1.5, minh = _G._IS_DESKTOP and 0.55 or 0.8, scale = 0.38, col = true,
+    }), {key = update.key})
+  elseif config_func(entry) then
+    mid_btn = with_ref(UIBox_button({
+      button = 'mods_menu_config', label = {mod_loc("Config")}, colour = G.C.BLUE,
+      minw = 1.5, minh = _G._IS_DESKTOP and 0.55 or 0.8, scale = 0.38, col = true,
+    }), {folder = entry.folder, id = entry.id})
+  else
+    mid_btn = {n=G.UIT.C, config={align = "cm", minw = 1.5}, nodes={}}
+  end
+
+  local remove_btn = with_ref(UIBox_button({
+    button = 'mods_menu_remove', label = {mod_loc("Remove")}, colour = G.C.RED,
+    minw = 1.5, minh = _G._IS_DESKTOP and 0.55 or 0.8, scale = 0.38, col = true,
+  }), {folder = entry.folder, name = entry.name})
+
+  if port() then
+    return {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+      {n=G.UIT.C, config={align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = ROW_W}, nodes={
+r 15 392 %20%20%20%20%20%20%20%20 -
+l 35
+          icon_node(entry),
+          {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+          {n=G.UIT.C, config={align = "cl", minw = ROW_W - 1.25, maxw = ROW_W - 1.25}, nodes=info},
+        }},
+        {n=G.UIT.R, config={align = "cr", padding = 0.02}, nodes={
+          toggle,
+          {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+          mid_btn,
+          {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+          remove_btn,
+        }},
+      }},
+    }}
+  end
+  return {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+    {n=G.UIT.R, config={align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = ROW_W, minh = 1}, nodes={
+      icon_node(entry),
+      {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+      {n=G.UIT.C, config={align = "cl", minw = 5.6, maxw = 5.6}, nodes=info},
+      toggle,
+      {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+      mid_btn,
+      {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}},
+      remove_btn,
+    }},
+  }}
+end
+
+local zip_strings
+
+local function mods_note(text)
+  if G.MODS_MENU.install_note and love.timer.getTime() < G.MODS_MENU.install_note then return end
+  G.MODS_MENU.install_note = love.timer.getTime() + 3
+  local args = {text = mod_loc(text), scale = 0.9, hold = 2, backdrop_colour = G.C.RED, align = 'cm', major = G.ROOM_ATTACH, offset = {x = 0, y = 0}}
+  attention_text(args)
+r 1 112 %20%20 -
+l 67
+    blockable = false,
+    blocking = false,
+    func = function()
+      if not args.AT then return false end
+      args.AT.over_overlay = true
+      return true
+    end
+  }))
+end
+
+local function ticked_count(status)
+  local n = 0
+  for _, m in ipairs(status and status.mods or {}) do
+    if m.enabled then n = n + 1 end
+  end
+  return n
+end
+
+local function switch_want(status)
+  local L = loader()
+  local running = L and L.modded and true or false
+  local ticked = ticked_count(status)
+  local want = G.MODS_MENU.want
+  if ticked == 0 then
+    G.MODS_MENU.want = nil
+    want = nil
+    if running then want = false end
+  end
+  if want == running then want = nil end
+  return want, running, ticked
+end
+
+local function switch_lines(want, running, restart)
+  if want == true then return {"Restart to turn mods on.", "Modded saves are kept apart."} end
+  if want == false then return {"Restart to turn mods off.", "Back to your normal saves."} end
+  if restart then return {"Restart to load your changes."} end
+  if running then return {"Mods are on. Online: private rooms only."} end
+  return {"Mods are off. Normal game and saves."}
+end
+
+local function switch_row(want, running, ticked, installed)
+  local on = running
+  if want ~= nil then on = want end
+  local state = {on = on}
+  local toggle = create_toggle({
+    label = "", w = 0, col = true,
+    ref_table = state, ref_value = "on",
+    callback = function(val)
+      if val and ticked == 0 then
+        state.on = false
+        G.MODS_MENU.want = nil
+        G.MODS_MENU.note = installed and "Tick at least one mod first" or "Install a mod first"
+        return rebuild()
+      end
+      G.MODS_MENU.want = val
+      rebuild()
+    end,
+  })
+  local label = {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+    {n=G.UIT.T, config={text = mod_loc("Mods"), scale = 0.5, colour = G.C.WHITE, shadow = true}},
+  }}
+  local icon = {n=G.UIT.C, config={align = "cm", minw = 0.8, minh = 0.5}, nodes={}}
+  local function gap() return {n=G.UIT.C, config={align = "cm", minw = 0.15}, nodes={}} end
+  local function slot() return {n=G.UIT.C, config={align = "cm", minw = 1.5}, nodes={}} end
+  if port() then
+    return {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+      {n=G.UIT.C, config={id = 'mods_menu_switch', align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = ROW_W}, nodes={
+r 15 392 %20%20%20%20%20%20%20%20 -
+l 98
+          icon,
+          gap(),
+          {n=G.UIT.C, config={align = "cl", minw = ROW_W - 1.25, maxw = ROW_W - 1.25}, nodes={label}},
+        }},
+        {n=G.UIT.R, config={align = "cr", padding = 0.02}, nodes={
+          toggle,
+          gap(),
+          slot(),
+          gap(),
+          slot(),
+        }},
+      }},
+    }}
+  end
+  return {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+    {n=G.UIT.R, config={id = 'mods_menu_switch', align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = ROW_W, minh = 1}, nodes={
+      icon,
+      gap(),
+      {n=G.UIT.C, config={align = "cl", minw = 5.6, maxw = 5.6}, nodes={label}},
+      toggle,
+      gap(),
+      slot(),
+      gap(),
+      slot(),
+    }},
+  }}
+end
+
+local function switch_reason(lines, colour)
+  local ls = port() and 0.3 or 0.37
+  if not port() and #lines > 1 then
+    local parts = {}
+    for i, line in ipairs(lines) do parts[i] = mod_loc(line) end
+    lines = {table.concat(parts, " ")}
+  end
+  local rows = {}
+  for i, line in ipairs(lines) do
+    rows[i] = {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={
+      {n=G.UIT.T, config={text = mod_loc(line), scale = ls, colour = colour or G.C.UI.TEXT_LIGHT, maxw = ROW_W}},
+    }}
+  end
+  return {n=G.UIT.R, config={align = "cm", minw = ROW_W, minh = port() and 0.78 or nil}, nodes={
+    {n=G.UIT.C, config={align = "cm"}, nodes=rows},
+  }}
+end
+
+local function installed_tab()
+  zip_strings()
+  ROW_W = port() and 7.5 or 11.4
+  local L = loader()
+  local status = L and L.status and L.status() or {mods = {}, restart = false}
+  G.MODS_MENU.status = status
+  local mods = status.mods
+  local pages = math.max(1, math.ceil(#mods / MODS_PAGE_SIZE))
+  G.MODS_MENU.page = math.min(math.max(1, G.MODS_MENU.page or 1), pages)
+  local wmap = #mods > 0 and workshop_map() or {}
+
+  local rows = {}
+  if #mods == 0 then
+    rows[1] = {n=G.UIT.R, config={align = "cm", padding = 0.3}, nodes={
+      {n=G.UIT.T, config={text = mod_loc("No mods installed"), scale = 0.4, colour = G.C.UI.TEXT_INACTIVE}},
+    }}
+  else
+    local first = (G.MODS_MENU.page - 1) * MODS_PAGE_SIZE
+    for i = first + 1, math.min(first + MODS_PAGE_SIZE, #mods) do
+      rows[#rows + 1] = mod_row(mods[i], status, wmap)
+    end
+  end
+
+  local S = rawget(_G, "SMODS")
+  local changed = status.restart or (S and S.full_restart and S.full_restart ~= 0) or false
+  local want, running, ticked = nil, status.modded and true or false, 0
+  if not G.MODS_MENU.mp_only then want, running, ticked = switch_want(status) end
+  local restart = changed or want ~= nil
+  local note = G.MODS_MENU.note
+  G.MODS_MENU.note = nil
+
+  local page_options = {}
+  for i = 1, pages do page_options[i] = localize('k_page') .. ' ' .. i .. '/' .. pages end
+
+  local W = workshop()
+  if W and W.layout then W.layout() end
+  return {n=G.UIT.ROOT, config={align = "tm", colour = G.C.CLEAR, minw = W and W.TAB_W or ROW_W + 0.2, minh = W and W.TAB_H or nil}, nodes={
+    G.MODS_MENU.mp_only and {n=G.UIT.R, config={align = "cm"}, nodes={}} or switch_row(want, running, ticked, #mods > 0),
+    (G.MODS_MENU.mp_only and not changed) and {n=G.UIT.R, config={align = "cm"}, nodes={}} or switch_reason(note and {note} or switch_lines(want, running, changed), note and G.C.RED or nil),
+    {n=G.UIT.R, config={align = "tm", minw = ROW_W + 0.2, minh = MODS_PAGE_SIZE * 1.1}, nodes={
+      {n=G.UIT.C, config={align = "tm"}, nodes=rows},
+    }},
+    pages > 1 and {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+      create_option_cycle({
+        options = page_options, w = 3.5, h = 0.35, scale = 0.8, cycle_shoulders = true,
+        opt_callback = 'mods_menu_page', current_option = G.MODS_MENU.page,
+        colour = G.C.RED, no_pips = true, focus_args = {snap_to = true},
+      }),
+    }} or nil,
+    (restart and port()) and {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+      UIBox_button({id = 'mods_menu_restart', button = 'mods_menu_restart', label = {mod_loc("Restart now")}, colour = G.C.GREEN, minw = 3, minh = 0.7, scale = 0.5, col = true}),
+    }} or nil,
+r 15 71 %20%20%20%20 -
+l 7
+      (restart and not port()) and UIBox_button({id = 'mods_menu_restart', button = 'mods_menu_restart', label = {mod_loc("Restart now")}, colour = G.C.GREEN, minw = 3, minh = 0.7, scale = 0.5, col = true}) or nil,
+      (restart and not port()) and {n=G.UIT.C, config={align = "cm", minw = GAP_W}, nodes={}} or nil,
+      UIBox_button({button = 'mods_menu_zips', label = {mod_loc("Add a mod from a zip")}, colour = G.C.BLUE, minw = 5.2, minh = 0.7, scale = 0.45, col = true}),
+      uses_picker() and {n=G.UIT.C, config={align = "cm", minw = GAP_W}, nodes={}} or nil,
+      uses_picker() and UIBox_button({button = 'mods_menu_export', label = {mod_loc("Save mods as a zip")}, colour = G.C.GREEN, minw = 4.6, minh = 0.7, scale = 0.45, col = true}) or nil,
+    }},
+    uses_picker() and {n=G.UIT.R, config={align = "cm", padding = 0.08}, nodes={
+r 15 629 %20%20%20%20%20%20 -
+l 334
+        {n=G.UIT.C, config={minw = 0.26 * (port() and 0.27 or 0.32), padding = 0}, nodes={}},
+        {n=G.UIT.T, config={text = mod_loc("Your game folder is in the file picker under Balatro Overhaul"), scale = port() and 0.3 or 0.37, colour = G.C.UI.TEXT_LIGHT, maxw = ROW_W}},
+      }},
+    }} or nil,
+  }}
+end
+
+local ZIPS_PAGE_SIZE = 4
+
+function zip_strings()
+  if G.MODS_MENU.zip_strings or not rawget(_G, "mod_loc_register") then return end
+  G.MODS_MENU.zip_strings = true
+  mod_loc_register{
+    fr = {
+      ["Not from the Workshop"] = "Ne vient pas de l'atelier",
+      ["Turn on"] = "Activer",
+      ["This mod was added by hand. It can change your game and your saves. Only turn it on if you trust where it came from."] = "Ce mod a été ajouté à la main. Il peut modifier votre jeu et vos sauvegardes. Ne l'activez que si vous faites confiance à sa source.",
+      ["Add a mod from a zip"] = "Ajouter un mod depuis un zip",
+      ["ADD A MOD FROM A ZIP"] = "AJOUTER UN MOD DEPUIS UN ZIP",
+      ["Mod zips found in your Downloads folder."] = "Zips de mods trouvés dans vos Téléchargements.",
+      ["Nothing is installed until you pick one."] = "Rien n'est installé tant que vous n'en choisissez pas un.",
+      ["Your files are never moved or deleted."] = "Vos fichiers ne sont jamais déplacés ni supprimés.",
+      ["No mod zip found in your Downloads folder."] = "Aucun zip de mod dans vos Téléchargements.",
+      ["The game can't read your Downloads folder here."] = "Le jeu ne peut pas lire vos Téléchargements ici.",
+      ["Save mods as a zip"] = "Enregistrer les mods en zip",
+      ["Mods saved as a zip"] = "Mods enregistrés en zip",
+      ["Making the zip..."] = "Création du zip...",
+      ["No mods to save."] = "Aucun mod à enregistrer.",
+      ["The mods are too big to save as one zip."] = "Les mods sont trop gros pour un seul zip.",
+      ["That collection page failed to open"] = "Cette page de collection n'a pas pu s'ouvrir",
+      ["Install"] = "Installer", ["Replace"] = "Remplacer", ["Not needed"] = "Inutile",
+      ["Steamodded is already built in."] = "Steamodded est déjà intégré.",
+      ["Replaces the installed version"] = "Remplace la version installée",
+      ["in Downloads"] = "dans Téléchargements", ["in the mods folder"] = "dans le dossier mods",
+      ["REPLACE THIS MOD?"] = "REMPLACER CE MOD ?",
+      ["The installed copy is deleted and replaced by the zip."] = "La copie installée est supprimée et remplacée par le zip.",
+      ["Keep mine"] = "Garder le mien",
+      ["Installed. Turn it on in the list."] = "Installé. Activez-le dans la liste.",
+      ["Could not install this zip."] = "Impossible d'installer ce zip.",
+      ["The zip you picked."] = "Le zip que vous avez choisi.",
+      ["No mod found in that zip."] = "Aucun mod trouvé dans ce zip.",
+      ["That file is not a zip."] = "Ce fichier n'est pas un zip.",
+      ["Could not read that file."] = "Impossible de lire ce fichier.",
+      ["The file picker needs the newest version of the app."] = "Le choix de fichier demande la dernière version de l'application.",
+      ["Press REBUILD THE APP in the Overhaul Launcher to use the file picker."] = "Appuyez sur RECRÉER L'APP dans l'Overhaul Launcher pour utiliser le choix de fichier.",
+      ["Your game folder is in the file picker under Balatro Overhaul"] = "Le dossier du jeu est dans le sélecteur de fichiers, sous Balatro Overhaul",
+      ["Mods are off. Normal game and saves."] = "Mods désactivés. Jeu et sauvegardes normaux.",
+      ["Mods are on. Online: private rooms only."] = "Mods activés. En ligne : salons privés uniquement.",
+      ["Restart to turn mods on."] = "Redémarrez pour activer les mods.",
+      ["Restart to turn mods off."] = "Redémarrez pour désactiver les mods.",
+      ["Restart to load your changes."] = "Redémarrez pour charger vos changements.",
+      ["Modded saves are kept apart."] = "Les sauvegardes moddées sont à part.",
+      ["Back to your normal saves."] = "Retour à vos sauvegardes normales.",
+      ["Tick at least one mod first"] = "Cochez d'abord au moins un mod",
+      ["Restart now"] = "Redémarrer",
+    },
+    es = {
+      ["Not from the Workshop"] = "No viene del taller",
+      ["Turn on"] = "Activar",
+      ["This mod was added by hand. It can change your game and your saves. Only turn it on if you trust where it came from."] = "Este mod se añadió a mano. Puede cambiar tu juego y tus partidas. Actívalo solo si confías en su origen.",
+      ["Add a mod from a zip"] = "Añadir un mod desde un zip",
+      ["Save mods as a zip"] = "Guardar los mods en zip",
+      ["ADD A MOD FROM A ZIP"] = "AÑADIR UN MOD DESDE UN ZIP",
+      ["Mod zips found in your Downloads folder."] = "Zips de mods encontrados en tus Descargas.",
+      ["Nothing is installed until you pick one."] = "No se instala nada hasta que elijas uno.",
+      ["Your files are never moved or deleted."] = "Tus archivos nunca se mueven ni se borran.",
+      ["No mod zip found in your Downloads folder."] = "No hay ningún zip de mod en tus Descargas.",
+      ["The game can't read your Downloads folder here."] = "El juego no puede leer tus Descargas aquí.",
+      ["Install"] = "Instalar", ["Replace"] = "Reemplazar", ["Not needed"] = "No hace falta",
+      ["Steamodded is already built in."] = "Steamodded ya viene incluido.",
+      ["Replaces the installed version"] = "Reemplaza la versión instalada",
+      ["in Downloads"] = "en Descargas", ["in the mods folder"] = "en la carpeta mods",
+      ["REPLACE THIS MOD?"] = "¿REEMPLAZAR ESTE MOD?",
+      ["The installed copy is deleted and replaced by the zip."] = "La copia instalada se borra y se reemplaza por el zip.",
+      ["Keep mine"] = "Conservar el mío",
+      ["Installed. Turn it on in the list."] = "Instalado. Actívalo en la lista.",
+      ["Could not install this zip."] = "No se pudo instalar este zip.",
+      ["The zip you picked."] = "El zip que elegiste.",
+      ["No mod found in that zip."] = "No hay ningún mod en ese zip.",
+      ["That file is not a zip."] = "Ese archivo no es un zip.",
+      ["Could not read that file."] = "No se pudo leer ese archivo.",
+      ["The file picker needs the newest version of the app."] = "El selector de archivos necesita la última versión de la aplicación.",
+      ["Press REBUILD THE APP in the Overhaul Launcher to use the file picker."] = "Pulsa RECREAR LA APP en el Overhaul Launcher para elegir archivos.",
+      ["Your game folder is in the file picker under Balatro Overhaul"] = "La carpeta del juego está en el selector de archivos, en Balatro Overhaul",
+      ["Mods are off. Normal game and saves."] = "Mods desactivados. Juego y partidas normales.",
+      ["Mods are on. Online: private rooms only."] = "Mods activados. En línea: solo salas privadas.",
+      ["Restart to turn mods on."] = "Reinicia para activar los mods.",
+      ["Restart to turn mods off."] = "Reinicia para desactivar los mods.",
+      ["Restart to load your changes."] = "Reinicia para cargar tus cambios.",
+      ["Modded saves are kept apart."] = "Las partidas con mods van aparte.",
+      ["Back to your normal saves."] = "Vuelves a tus partidas normales.",
+      ["Tick at least one mod first"] = "Marca primero al menos un mod",
+      ["Restart now"] = "Reiniciar",
+    },
+  }
+end
+
+uses_picker = function()
+  local L = loader()
+  return (L and L.uses_picker and L.uses_picker()) == true
+end
+
+local function zip_size(n)
+  n = tonumber(n) or 0
+  if n >= 1048576 then return string.format("%.1f MB", n / 1048576) end
+  return string.format("%d KB", math.max(1, math.floor(n / 1024 + 0.5)))
+end
+
+local function zip_title(c)
+  if c.builtin then return "Steamodded" end
+  local names = {}
+  for _, m in ipairs(c.mods) do names[#names + 1] = tostring(m.name) end
+  return table.concat(names, ", ")
+end
+
+local function zip_replaces(c)
+  for _, m in ipairs(c.mods) do if m.exists then return true end end
+  return false
+end
+
+local function zip_row(c, w)
+  local version = #c.mods == 1 and c.mods[1].version or nil
+  local replaces = zip_replaces(c)
+  local info_w = w - 2.1
+  local info = {
+    {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+      {n=G.UIT.T, config={text = zip_title(c), scale = 0.42, colour = G.C.WHITE, shadow = true, maxw = info_w - 1.4}},
+      version and {n=G.UIT.T, config={text = "  v" .. tostring(version):gsub("^[vV]", ""), scale = 0.32, colour = G.C.GOLD, shadow = true, maxw = 1.3}} or nil,
+    }},
+    {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+      {n=G.UIT.T, config={text = c.name .. "  " .. zip_size(c.size) .. (c.where == "picked" and "" or (", " .. mod_loc(c.where == "mods" and "in the mods folder" or "in Downloads"))), scale = 0.3, colour = G.C.UI.TEXT_LIGHT, maxw = info_w}},
+    }},
+  }
+  if c.builtin or replaces then
+    info[#info + 1] = {n=G.UIT.R, config={align = "cl", padding = 0.01}, nodes={
+      {n=G.UIT.T, config={text = mod_loc(c.builtin and "Steamodded is already built in." or "Replaces the installed version"), scale = 0.3, colour = c.builtin and G.C.UI.TEXT_INACTIVE or G.C.ORANGE, maxw = info_w}},
+    }}
+  end
+  local action
+  if c.builtin then
+    action = {n=G.UIT.C, config={align = "cm", minw = 1.8}, nodes={
+      {n=G.UIT.T, config={text = mod_loc("Not needed"), scale = 0.32, colour = G.C.UI.TEXT_INACTIVE, maxw = 1.7}},
+    }}
+  else
+    action = with_ref(UIBox_button({
+      button = 'mods_menu_zip_pick', label = {mod_loc(replaces and "Replace" or "Install")}, colour = replaces and G.C.ORANGE or G.C.GREEN,
+      minw = 1.8, minh = _G._IS_DESKTOP and 0.6 or 0.8, scale = 0.4, col = true,
+    }), c)
+  end
+  return {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+    {n=G.UIT.R, config={align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.1, minw = w, minh = 1}, nodes={
+      {n=G.UIT.C, config={align = "cl", minw = info_w, maxw = info_w}, nodes=info},
+      action,
+    }},
+  }}
+end
+
+local function zips_window()
+  zip_strings()
+  local Z = G.MODS_MENU.zips or {list = {}, info = {readable = false}}
+  local w = port() and 7.5 or 9.4
+  local list = Z.list
+  local pages = math.max(1, math.ceil(#list / ZIPS_PAGE_SIZE))
+  Z.page = math.min(math.max(1, Z.page or 1), pages)
+  local rows = {}
+  local picked = uses_picker()
+  if #list == 0 and not picked then
+    rows[1] = {n=G.UIT.R, config={align = "cm", padding = 0.3}, nodes={
+      {n=G.UIT.T, config={text = mod_loc(Z.info.readable and "No mod zip found in your Downloads folder." or "The game can't read your Downloads folder here."), scale = 0.4, colour = G.C.UI.TEXT_INACTIVE, maxw = w}},
+    }}
+  elseif #list > 0 then
+    local first = (Z.page - 1) * ZIPS_PAGE_SIZE
+    for i = first + 1, math.min(first + ZIPS_PAGE_SIZE, #list) do rows[#rows + 1] = zip_row(list[i], w) end
+  end
+  local page_options = {}
+  for i = 1, pages do page_options[i] = localize('k_page') .. ' ' .. i .. '/' .. pages end
+  local function line(s, colour, scale)
+    return {n=G.UIT.R, config={align = "cm", padding = 0.02}, nodes={{n=G.UIT.T, config={text = s, scale = scale or 0.34, colour = colour or G.C.UI.TEXT_LIGHT, maxw = w}}}}
+  end
+  return create_UIBox_generic_options({
+    back_func = 'mods_menu_back',
+    contents = {
+      {n=G.UIT.R, config={align = "cm", padding = 0.08}, nodes={{n=G.UIT.T, config={text = mod_loc("ADD A MOD FROM A ZIP"), scale = 0.55, colour = G.C.GOLD, shadow = true, maxw = w}}}},
+      line(mod_loc(picked and "The zip you picked." or "Mod zips found in your Downloads folder.")),
+      line(mod_loc("Nothing is installed until you pick one.")),
+      line(mod_loc("Your files are never moved or deleted.")),
+      Z.message and line(Z.message, Z.message_bad and G.C.RED or G.C.GREEN, 0.38) or nil,
+      {n=G.UIT.R, config={align = "tm", minw = w + 0.2, minh = ZIPS_PAGE_SIZE * 1.1}, nodes={
+        {n=G.UIT.C, config={align = "tm"}, nodes=rows},
+      }},
+      pages > 1 and {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={
+        create_option_cycle({
+          options = page_options, w = 3.5, h = 0.35, scale = 0.8, cycle_shoulders = true,
+          opt_callback = 'mods_menu_zip_page', current_option = Z.page,
+          colour = G.C.RED, no_pips = true, focus_args = {snap_to = true},
+        }),
+      }} or nil,
+    },
+  })
+end
+
+local function zips_load(message, bad)
+  local L = loader()
+  local list, info = {}, {readable = false}
+  if L and L.find_zips then list, info = L.find_zips() end
+  G.MODS_MENU.zips = {list = list or {}, info = info or {readable = false}, page = 1, message = message, message_bad = bad}
+  return G.MODS_MENU.zips
+end
+
+local function zips_scan(message, bad)
+  zips_load(message, bad)
+  G.FUNCS.overlay_menu({definition = zips_window(), key = 'mods_menu'})
+end
+
+local function zips_picked(res)
+  if res.status == "cancel" then
+    if #zips_load().list > 0 then G.FUNCS.overlay_menu({definition = zips_window(), key = 'mods_menu'}) end
+    return
+  end
+  if #res.added == 0 then
+    return zips_scan(mod_loc(#res.wrong > 0 and "That file is not a zip." or "Could not read that file."), true)
+  end
+  local Z = zips_load()
+  local found = false
+  for _, c in ipairs(Z.list) do if c.where == "picked" then found = true end end
+  if not found then
+    Z.message, Z.message_bad = mod_loc("No mod found in that zip."), true
+    local L = loader()
+    if L and L.pick_dir then L.pick_dir(true) end
+  end
+  G.FUNCS.overlay_menu({definition = zips_window(), key = 'mods_menu'})
+end
+
+local function zips_pick()
+  zip_strings()
+  local L = loader()
+  local ok, P = pcall(require, "functions/file_picker")
+  local dir = L and L.pick_dir and L.pick_dir(true)
+  if not (ok and type(P) == "table" and dir and P.pick("zip", dir, "zip", 0, zips_picked)) then
+    zips_scan(mod_loc(require("functions/file_picker").missing_text()), true)
+  end
+end
+
+local EXPORT_LIMIT = 400 * 1024 * 1024
+
+local function mods_zip_list()
+  local fs, list, total = love.filesystem, {}, 0
+  local function walk(dir, rel)
+    for _, item in ipairs(fs.getDirectoryItems(dir)) do
+      local path = dir .. "/" .. item
+      local info = fs.getInfo(path)
+      if info and item:sub(1, 1) ~= "." then
+        if info.type == "directory" then
+          walk(path, rel .. item .. "/")
+        elseif info.type == "file" then
+          total = total + (info.size or 0)
+          list[#list + 1] = rel .. item .. "\t" .. path
+        end
+      end
+    end
+  end
+  for _, name in ipairs(fs.getDirectoryItems("mods")) do
+    local dir = "mods/" .. name
+    if name:sub(1, 1) ~= "." and name ~= "lovely" and fs.getInfo(dir, "directory") then walk(dir, name .. "/") end
+  end
+  if #list == 0 then return nil, "empty" end
+  if total > EXPORT_LIMIT then return nil, "big" end
+  return table.concat(list, "\n"), total
+end
+
+local export_notes = {}
+local function export_note(text, bad, hold)
+  for _, n in ipairs(export_notes) do
+    if n.AT then
+      if type(n.text) == "table" and n.text.pop_out then n.text:pop_out(8) end
+      if n.backdrop_colour then n.backdrop_colour[4] = 0 end
+    end
+  end
+  export_notes = {}
+  local s = mod_loc(text)
+  local maxw = ((G.ROOM and G.ROOM.T and G.ROOM.T.w) or 20)*0.9
+  local scale, lines = 0.7, {s}
+  if UIK and UIK.text_w and UIK.text_w(s, scale) > maxw then
+    scale, lines = 0.55, {}
+    local cur = ""
+    for word in s:gmatch("%S+") do
+      local try = cur == "" and word or (cur .. " " .. word)
+      if cur ~= "" and UIK.text_w(try, scale) > maxw then
+        lines[#lines + 1] = cur
+        cur = word
+      else
+        cur = try
+      end
+    end
+    if cur ~= "" then lines[#lines + 1] = cur end
+  end
+  for i, l in ipairs(lines) do
+    local n = {text = l, scale = scale, hold = (hold or 2.5) + (#lines - 1), backdrop_colour = bad and G.C.RED or G.C.GREEN, align = 'cm', major = G.ROOM_ATTACH, offset = {x = 0, y = (i - (#lines + 1)/2)*scale*1.5}}
+    export_notes[#export_notes + 1] = n
+    attention_text(n)
+  end
+end
+
+local function export_saved(P, rel)
+  local name = rel:match("([^/]+)$")
+  local started = P.save(love.filesystem.getSaveDirectory() .. "/" .. rel, name, function(res)
+    love.filesystem.remove(rel)
+    if res.status == "ok" then export_note("Mods saved as a zip")
+    elseif res.status ~= "cancel" then export_note("Android could not save the file", true) end
+  end)
+  if not started then
+    love.filesystem.remove(rel)
+    export_note(require("functions/file_picker").missing_text(), true)
+  end
+end
+
+G.FUNCS.mods_menu_export = function(e)
+  zip_strings()
+  if G.MODS_MENU.exporting then return end
+  local ok, P = pcall(require, "functions/file_picker")
+  if not (ok and type(P) == "table" and P.available()) then return export_note(require("functions/file_picker").missing_text(), true) end
+  local list, why = mods_zip_list()
+  if not list then return export_note(why == "big" and "The mods are too big to save as one zip." or "No mods to save.", true) end
+  local SIO = require("functions/save_io")
+  love.filesystem.createDirectory("exports")
+  local rel = "exports/Overhaul-mods-" .. SIO.stamp() .. ".zip"
+  local chan_name = "mods_export_" .. tostring(math.random(100000, 999999))
+  local okt, th = pcall(love.thread.newThread, "functions/mods_export_thread.lua")
+  if not okt or not th then return export_note("Could not write the file", true) end
+  G.MODS_MENU.exporting = true
+  th:start(list, rel, chan_name)
+  export_note("Making the zip...", false, 1.5)
+  local chan = love.thread.getChannel(chan_name)
+  local shown = love.timer.getTime()
+r 1 112 %20%20 -
+l 80
+    blocking = false, blockable = false, no_delete = true, pause_force = true, timer = 'REAL',
+    func = function()
+      local terr = th:getError()
+      local msg = chan:pop()
+      while chan:getCount() > 0 do msg = chan:pop() end
+      if terr then
+        G.MODS_MENU.exporting = nil
+        print("[mods] export failed: " .. tostring(terr))
+        export_note("Could not write the file", true)
+        return true
+      end
+      if not msg then return false end
+      if msg:sub(1, 2) == "p " then
+        local i, n = msg:match("^p (%d+) (%d+)")
+        if love.timer.getTime() - shown > 1.6 and i then
+          shown = love.timer.getTime()
+          export_note(mod_loc("Making the zip...") .. " " .. math.floor(100 * tonumber(i) / math.max(1, tonumber(n))) .. "%", false, 1.5)
+        end
+        return false
+      end
+      G.MODS_MENU.exporting = nil
+      if msg:sub(1, 3) == "ok " then
+        export_saved(P, rel)
+      else
+        print("[mods] export failed: " .. msg)
+        love.filesystem.remove(rel)
+        export_note("Could not write the file", true)
+      end
+      return true
+    end
+  }))
+end
+
+G.FUNCS.mods_menu_zips = function(e)
+  if uses_picker() then zips_pick() else zips_scan() end
+end
+
+G.FUNCS.mods_menu_zip_page = function(args)
+  if not args or not args.cycle_config or not G.MODS_MENU.zips then return end
+  G.MODS_MENU.zips.page = args.cycle_config.current_option
+  G.FUNCS.overlay_menu({definition = zips_window(), key = 'mods_menu'})
+end
+
+local function zip_install(c)
+  local L = loader()
+  local mods = L and L.install_zip_choice and L.install_zip_choice(c)
+  local W = workshop()
+  if W and W.invalidate_local then pcall(W.invalidate_local) end
+  if mods then
+    zips_scan(mod_loc("Installed. Turn it on in the list."))
+  else
+    zips_scan(mod_loc("Could not install this zip."), true)
+  end
+end
+
+G.FUNCS.mods_menu_zip_pick = function(e)
+  local c = e and e.config and e.config.ref_table
+  if type(c) ~= "table" or c.builtin then return end
+  if not zip_replaces(c) then return zip_install(c) end
+  G.MODS_MENU.zip_pending = c
+  local status = (loader() and loader().status and loader().status()) or {mods = {}}
+  local have = {}
+  for _, m in ipairs(status.mods or {}) do have[m.folder] = m end
+  local rows = {}
+  for _, m in ipairs(c.mods) do
+    if m.exists then
+      local old = have[m.folder]
+      local from = old and old.version and ("v" .. tostring(old.version):gsub("^[vV]", "")) or "?"
+      local to = m.version and ("v" .. tostring(m.version):gsub("^[vV]", "")) or "?"
+      rows[#rows + 1] = {n=G.UIT.R, config={align = "cm", padding = 0.03}, nodes={
+        {n=G.UIT.T, config={text = tostring(old and old.name or m.name) .. "  " .. from .. " > " .. to, scale = 0.42, colour = G.C.WHITE, shadow = true, maxw = 7}},
+      }}
+    end
+  end
+  G.FUNCS.overlay_menu({key = 'mods_menu', definition = create_UIBox_generic_options({
+    back_func = 'mods_menu_zip_keep', no_back = true,
+    contents = {
+      {n=G.UIT.R, config={align = "cm", padding = 0.1}, nodes={{n=G.UIT.T, config={text = mod_loc("REPLACE THIS MOD?"), scale = 0.55, colour = G.C.GOLD, shadow = true}}}},
+      {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={{n=G.UIT.C, config={align = "cm", r = 0.1, colour = G.C.BLACK, emboss = 0.05, padding = 0.15, minw = 7.2}, nodes=rows}}},
+      {n=G.UIT.R, config={align = "cm", padding = 0.05}, nodes={{n=G.UIT.T, config={text = mod_loc("The installed copy is deleted and replaced by the zip."), scale = 0.34, colour = G.C.UI.TEXT_LIGHT, maxw = 7.2}}}},
+r 15 723 %20%20%20%20%20%20 -
+l 82
+        UIBox_button({button = 'mods_menu_zip_keep', label = {mod_loc("Keep mine")}, colour = G.C.GREEN, minw = 3, minh = 0.75, scale = 0.45, col = true, focus_args = {snap_to = true}}),
+        {n=G.UIT.C, config={align = "cm", minw = 0.3}, nodes={}},
+        UIBox_button({button = 'mods_menu_zip_replace', label = {mod_loc("Replace")}, colour = G.C.RED, minw = 3, minh = 0.75, scale = 0.45, col = true}),
+      }},
+    },
+  })})
+end
+
+G.FUNCS.mods_menu_zip_keep = function(e)
+  G.MODS_MENU.zip_pending = nil
+  G.FUNCS.overlay_menu({definition = zips_window(), key = 'mods_menu'})
+end
+
+G.FUNCS.mods_menu_zip_replace = function(e)
+  local c = G.MODS_MENU.zip_pending
+  G.MODS_MENU.zip_pending = nil
+  if c then zip_install(c) end
+end
+
+function create_UIBox_mods_menu()
+  local W = workshop()
+  local tab = G.MODS_MENU.tab or "installed"
+  if not W then return create_UIBox_generic_options({contents = {{n=G.UIT.R, config={align = "cm"}, nodes={{n=G.UIT.O, config={object = UIBox{definition = installed_tab(), config = {offset = {x = 0, y = 0}}}}}}}}}) end
+  local mp = G.MODS_MENU.mp_only and rawget(_G, "mpm_mods")
+  local tabs_node = create_tabs({
+        snap_to_nav = true,
+        tabs = {
+          {label = wloc("Installed"), chosen = tab == "installed", tab_definition_function = function()
+            G.MODS_MENU.tab = "installed"
+            return installed_tab()
+          end},
+          {label = wloc("Workshop"), chosen = tab == "workshop", tab_definition_function = function()
+            G.MODS_MENU.tab = "workshop"
+            return W.workshop_tab()
+          end},
+          rawget(_G, "JokerForge") and {label = mod_loc("Forged"), chosen = tab == "forge", tab_definition_function = function()
+            G.MODS_MENU.tab = "forge"
+            return JokerForge.mods_tab()
+          end} or nil,
+        },
+      })
+  return create_UIBox_generic_options({
+    back_func = mp and 'mpm_mods_back' or nil,
+    contents = mp and {mp.header(), tabs_node} or {tabs_node},
+  })
+end
+
+G.FUNCS.mods_button = function(e)
+  G.MODS_MENU.page = 1
+  G.MODS_MENU.want = nil
+  G.MODS_MENU.tab = G.MODS_MENU.tab or "installed"
+  G.FUNCS.overlay_menu({definition = create_UIBox_mods_menu(), key = 'mods_menu'})
+end
+
+G.FUNCS.mods_menu_update = function(e)
+  local ref = e and e.config and e.config.ref_table
+  local W = workshop()
+  if not (ref and W) then return end
+  local entry = W.load_index().by_key[ref.key]
+  if not entry then return end
+  G.MODS_MENU.tab = "workshop"
+  W.request_install(entry)
+  W.show(W.mod_page(entry))
+end
+
+G.FUNCS.mods_menu_page = function(args)
+  if not (args and args.cycle_config) then return end
+  G.MODS_MENU.page = args.cycle_config.current_option
+  rebuild()
+end
+
+local function switch_saved(modded, after)
+  local L = loader()
+  if not (L and L.switch) then return end
+  local S = rawget(_G, "SMODS")
+  if S and S.save_all_config then pcall(S.save_all_config) end
+  if L.restarting or G.MODS_MENU.switching then return end
+  G.MODS_MENU.switching = true
+  local sent = G.FILE_HANDLER and G.FILE_HANDLER.last_sent_time
+  pcall(function()
+    G:save_settings()
+    G:save_progress()
+r 15 5391 %20%20%20%20 -
+l 2
+  end)
+  local deadline = love.timer.getTime() + 1
+r 1 112 %20%20 -
+l 40
+    blockable = false,
+    blocking = false,
+    no_delete = true,
+    pause_force = true,
+    func = function()
+      local done = not (G.FILE_HANDLER and G.FILE_HANDLER.update_queued) or G.FILE_HANDLER.last_sent_time ~= sent
+      if not done and love.timer.getTime() < deadline then return false end
+      G.MODS_MENU.switching = nil
+      L.switch(modded, after)
+      return true
+    end
+  }))
+end
+
+G.FUNCS.mods_menu_restart = function(e)
+  local S = rawget(_G, "SMODS")
+  if S and S.save_all_config then pcall(S.save_all_config) end
+  local L = loader()
+  if L and L.switch then
+    local status = L.status and L.status() or {}
+    local target = L.modded and true or false
+    if not G.MODS_MENU.mp_only then
+      local want, running = switch_want(status)
+      target = running
+      if want ~= nil then target = want end
+    end
+    target = target and ticked_count(status) > 0
+    G.MODS_MENU.want = nil
+    if L.modded or target then return switch_saved(target) end
+  end
+  if L and L.restart then L.restart() end
+end
+
+G.FUNCS.mods_menu_remove = function(e)
+  local ref = e and e.config and e.config.ref_table
+  if not ref then return end
+  G.MODS_MENU.removing = ref
+  G.FUNCS.overlay_menu({key = 'mods_menu', definition = create_UIBox_generic_options({
+    back_func = 'mods_menu_back',
+    contents = {
+r 15 723 %20%20%20%20%20%20 -
+l 2
+        {n=G.UIT.T, config={text = mod_loc("Remove") .. " " .. tostring(ref.name) .. "?", scale = 0.5, colour = G.C.WHITE, shadow = true}},
+      }},
+r 15 723 %20%20%20%20%20%20 -
+l 53
+        UIBox_button({button = 'mods_menu_remove_confirm', label = {mod_loc("Remove")}, colour = G.C.RED, minw = 3, minh = 0.7, scale = 0.5}),
+      }},
+    },
+  })})
+end
+
+G.FUNCS.mods_menu_remove_confirm = function(e)
+  local ref = G.MODS_MENU.removing
+  G.MODS_MENU.removing = nil
+  local L = loader()
+  if ref and L and L.remove_mod then L.remove_mod(ref.folder) end
+  local W = workshop()
+  if ref and W and W.forget_folder then pcall(W.forget_folder, ref.folder) end
+  G.MODS_MENU.icons["mods_menu_icon_" .. tostring(ref and ref.folder)] = nil
+  G.FUNCS.overlay_menu({definition = create_UIBox_mods_menu(), key = 'mods_menu'})
+end
+
+G.FUNCS.mods_menu_back = function(e)
+  G.ACTIVE_MOD_UI = nil
+  if G.MODS_MENU.zips then
+    G.MODS_MENU.zips = nil
+    local L = loader()
+    if L and L.uses_picker and L.uses_picker() and L.pick_dir then L.pick_dir(true) end
+  end
+  G.FUNCS.overlay_menu({definition = create_UIBox_mods_menu(), key = 'mods_menu'})
+end
+
+G.FUNCS.mods_menu_config_back = function(e)
+  local S = rawget(_G, "SMODS")
+  if S and S.save_all_config then pcall(S.save_all_config) end
+  G.FUNCS.mods_menu_back(e)
+end
+
+G.FUNCS.mods_menu_config = function(e)
+  local ref = e and e.config and e.config.ref_table
+  local S = rawget(_G, "SMODS")
+  local mod = ref and S and S.Mods and S.Mods[ref.id]
+  if not (mod and type(mod.config_tab) == "function") then
+    print("[mods] no config page for " .. tostring(ref and ref.id))
+    return
+  end
+  G.ACTIVE_MOD_UI = mod
+  local ok, def = pcall(mod.config_tab)
+  if not ok or type(def) ~= "table" then
+    print("[mods] config page of " .. tostring(ref.id) .. " failed: " .. tostring(def))
+    G.ACTIVE_MOD_UI = nil
+    return
+  end
+  local ui = mod.ui_config or {}
+  G.FUNCS.overlay_menu({key = 'mods_menu', definition = create_UIBox_generic_options({
+    back_func = 'mods_menu_config_back',
+    colour = ui.colour, bg_colour = ui.bg_colour, back_colour = ui.back_colour, outline_colour = ui.outline_colour,
+    contents = {
+r 15 723 %20%20%20%20%20%20 -
+l 2
+        {n=G.UIT.T, config={text = mod.display_name or mod.name or mod.id, scale = 0.6, colour = G.C.GOLD, shadow = true}},
+      }},
+r 6 297 %20%20%20%20%20%20 -
+l 35
+        {n=G.UIT.O, config={object = UIBox{definition = def, config = {offset = {x = 0, y = 0}}}}},
+      }},
+    },
+  })})
+end
+
+local function mods_installed()
+  local L = loader()
+  local status = L and L.status and L.status() or {}
+  return status.mods and #status.mods > 0 or false
+end
+MODS_INSTALLED = mods_installed
+
+G.FUNCS.mods_normal_game = function(e)
+  switch_saved(false)
+end
+
+G.FUNCS.mods_modded_game = function(e)
+  if not mods_installed() then return mods_note("Install a mod first") end
+  local L = loader()
+  if not (L and L.bare_ok and L.bare_ok()) and ticked_count(L and L.status and L.status()) == 0 then return mods_note("Tick at least one mod first") end
+  switch_saved(true)
+end
+
+local switch_menu_once = false
+local class_main_menu = Game.main_menu
+function Game:main_menu(change_context, ...)
+  if switch_menu_once then
+    switch_menu_once = false
+    change_context = 'switch'
+  end
+  return class_main_menu(self, change_context, ...)
+end
+
+local splash_screen = Game.splash_screen
+r 9 1373 - -
+l 28
+  local L = loader()
+  if type(G.GAME) == "table" and G.GAME.pseudorandom == nil then G.GAME.pseudorandom = {} end
+  if L and L.fast_boot then
+    L.fast_boot = nil
+    local skip = G.SETTINGS.skip_splash
+    G.SETTINGS.skip_splash = 'Yes'
+    switch_menu_once = true
+    local ok, err = xpcall(function() return splash_screen(self) end, function(e)
+      if type(e) ~= "string" then return e end
+      return e .. "\n\nFast boot stack:" .. debug.traceback("", 2)
+    end)
+    switch_menu_once = false
+    G.SETTINGS.skip_splash = skip
+    if not ok then error(err, 0) end
+    return
+  end
+  return splash_screen(self)
+end
+
+local collection_guarded = setmetatable({}, {__mode = "k"})
+
+local collection_live = {open = false}
+
+local function collection_failed(where, err)
+  print("[mods] collection screen " .. tostring(where) .. " failed: " .. tostring(err))
+  collection_live.open = false
+  collection_live.grace = 120
+  pcall(function()
+r 13 1825 %20%20%20%20 -
+l 10
+    attention_text({text = mod_loc("That collection page failed to open"), scale = 0.7, hold = 2.5, backdrop_colour = G.C.RED, align = 'cm', major = G.ROOM_ATTACH, offset = {x = 0, y = 0}})
+  end)
+end
+
+local function collection_in_view()
+  if (collection_live.grace or 0) > 0 then
+    collection_live.grace = collection_live.grace - 1
+    return true
+  end
+  if not collection_live.open then return false end
+r 3 349 %20%20 -
+l 77
+    collection_live.open = false
+    return false
+  end
+  return true
+end
+
+local function guard_frame_calls()
+  if collection_live.hooked then return end
+  collection_live.hooked = true
+  local EM = rawget(_G, "EventManager")
+  if EM and EM.add_event then
+    local add_event = EM.add_event
+    EM.add_event = function(self, event, ...)
+      if collection_in_view() and type(event) == "table" and type(event.func) == "function" then
+        local func = event.func
+        event.func = function(...)
+          local res = {pcall(func, ...)}
+          if res[1] then return unpack(res, 2) end
+          collection_failed("event", res[2])
+          return true
+        end
+      end
+      return add_event(self, event, ...)
+    end
+  end
+  for _, key in ipairs({"update", "draw", "mousepressed", "mousereleased", "mousemoved", "wheelmoved", "keypressed", "keyreleased", "touchpressed", "touchreleased", "touchmoved", "gamepadpressed", "gamepadreleased", "gamepadaxis"}) do
+    local fn = love[key]
+    if type(fn) == "function" then
+      love[key] = function(...)
+        if not collection_in_view() then return fn(...) end
+        local res = {pcall(fn, ...)}
+        if res[1] then return unpack(res, 2) end
+        if key == "draw" then
+          pcall(love.graphics.setCanvas)
+          pcall(function() for _ = 1, 64 do love.graphics.pop() end end)
+          pcall(love.graphics.origin)
+          pcall(love.graphics.setColor, 1, 1, 1, 1)
+        end
+        collection_failed(key, res[2])
+      end
+    end
+  end
+end
+
+local function guard_collections()
+  pcall(guard_frame_calls)
+  local names = {}
+  for name, fn in pairs(G.FUNCS) do
+    if type(name) == "string" and name:sub(1, 15) == "your_collection" and type(fn) == "function" and not collection_guarded[fn] then
+      names[#names + 1] = name
+    end
+  end
+  for _, name in ipairs(names) do
+    local fn = G.FUNCS[name]
+    local wrapped = function(...)
+      local res = {pcall(fn, ...)}
+      if res[1] then
+        collection_live.open = true
+        return unpack(res, 2)
+      end
+      collection_failed(name, res[2])
+    end
+    collection_guarded[fn] = true
+    collection_guarded[wrapped] = true
+    G.FUNCS[name] = wrapped
+  end
+end
+
+local main_menu_ui = set_main_menu_UI
+function set_main_menu_UI(...)
+  main_menu_ui(...)
+  pcall(guard_collections)
+  local L = loader()
+  local after = L and L.after_boot
+  if not after then return end
+  L.after_boot = nil
+  if (NORMAL_FUNCS[after] or after == "profile_select") and G.FUNCS[after] then
+r 1 112 %20%20%20%20 -
+l 11
+      blockable = false,
+      blocking = false,
+      func = function()
+        if G.STAGE ~= G.STAGES.MAIN_MENU then return true end
+        if G.OVERLAY_MENU then return false end
+        G.FUNCS[after]({config = {}})
+        return true
+      end
+    }))
+  end
+end
+end

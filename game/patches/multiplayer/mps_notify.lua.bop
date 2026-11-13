@@ -1,0 +1,369 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 194
+local T = require("multiplayer.mps_state")
+local N = {}
+
+local L = T.L
+local S = T.S
+
+local function touch() return UIK.touch() end
+local function bh() return touch() and 0.62 or 0.5 end
+local function rh() return touch() and 0.72 or 0.6 end
+local function per_page() return UIK.portrait() and 7 or touch() and 5 or 6 end
+
+N.page = 1
+
+local GROUPS = {
+    {key = "friends", label = "Friends", kinds = {friend_request = true, friend_accepted = true, friend_activity = true, gift = true}},
+    {key = "games", label = "Games", kinds = {invite = true}},
+    {key = "ranked", label = "Ranked", kinds = {game_info = true, match_voided = true, match_contested = true}},
+    {key = "errors", label = "Errors", kinds = {error = true}},
+}
+
+local function group_of(kind)
+    for i, g in ipairs(GROUPS) do
+        if g.kinds[kind] then return i end
+    end
+    return 4
+end
+
+function N.is_open()
+    return G.OVERLAY_MENU and UIK and UIK._win and UIK._win.id == "mps_notify" and G.OVERLAY_MENU:get_UIE_by_ID("uik_body") and true or false
+end
+
+local function rank_text(d)
+    local name
+    pcall(function()
+        if bom_ranked and bom_ranked.rank_name then name = bom_ranked.rank_name(d.rank, d.tier) end
+    end)
+    return name or tostring(d.rank or "?")
+end
+
+function N.text(it)
+    local d = type(it.data) == "table" and it.data or {}
+    local who = tostring(d.name or "?")
+    local k = it.kind
+    if k == "friend_request" then return T.fill("{name} wants to be your friend.", {name = who}) end
+    if k == "friend_accepted" then return T.fill("{name} accepted your friend request.", {name = who}) end
+    if k == "invite" then
+        if d.party then return T.fill("{name} invites you to their party.", {name = who}) end
+        return T.fill("{name} invites you to their lobby.", {name = who})
+    end
+    if k == "game_info" then
+        if d.what == "rank_up" then return T.fill("You reached {rank}.", {rank = rank_text(d)}) end
+        if d.what == "reward" then return T.fill("New reward unlocked: {name}.", {name = tostring(d.name or d.item or "?")}) end
+        if d.what == "season_end" then return T.fill("Season {season} is over. Your rewards are in your profile.", {season = tostring(d.season or "")}) end
+        return L("Something new happened in ranked.")
+    end
+    if k == "match_contested" then return L("A ranked match is on hold for review.") end
+    if k == "match_voided" then return L("A ranked match was voided after review.") end
+    if k == "error" then return tostring(d.text or L("Something went wrong.")) end
+    if k == "friend_activity" then
+        local sx = rawget(_G, "social_more")
+        if sx and sx.activity_text then return sx.activity_text(d) end
+    end
+    if k == "gift" then
+        local sg = rawget(_G, "social_gifts")
+        if sg and sg.text then return sg.text(d) end
+    end
+    return L("New notification")
+end
+
+local function icon(kind)
+    local size = touch() and 0.5 or 0.42
+    local node
+    local g = group_of(kind)
+    pcall(function()
+        if g == 1 and G.ASSET_ATLAS and G.ASSET_ATLAS["Joker"] then
+            local spr = Sprite(0, 0, size * 0.75, size, G.ASSET_ATLAS["Joker"], {x = 0, y = 0})
+            spr.states.drag.can = false
+            spr.states.collide.can = false
+            node = {n = G.UIT.O, config = {object = spr, can_collide = false}}
+        elseif g == 2 then
+            node = bom_kit.blind_icon("bl_small", size)
+        elseif g == 3 then
+            node = bom_kit.chip_icon(size)
+        end
+    end)
+    if not node then
+        node = {n = G.UIT.C, config = {align = "cm", minw = size, minh = size, r = size / 2, colour = G.C.RED}, nodes = {
+            bom_kit.text("!", {scale = bom_kit.dims().scale}),
+        }}
+    end
+    return bom_kit.cell({node}, {w = 0.62, h = rh()})
+end
+
+local function sorted()
+    local list = {}
+    for _, it in ipairs(S.notify.items or {}) do list[#list + 1] = it end
+    table.sort(list, function(a, b)
+        local ga, gb = group_of(a.kind), group_of(b.kind)
+        if ga ~= gb then return ga < gb end
+        return (tonumber(a.at) or 0) > (tonumber(b.at) or 0)
+    end)
+    return list
+end
+
+local W = 14.2
+local TEXT_W = 7.4
+
+local function port_row(it, d)
+    local w = UIK.W - 0.3
+    local tw = w - 0.3 - 0.62 - 2 * d.gap - 0.2
+    local sc = 0.42
+    local lines = T.wrap(N.text(it), tw - 0.2, sc)
+    if #lines > 2 then
+        lines = {lines[1], select(1, bom_kit.fit(table.concat(lines, " ", 2), tw - 0.2, sc, sc))}
+    end
+    local tl = {}
+    for _, l in ipairs(lines) do
+        tl[#tl + 1] = {n = G.UIT.R, config = {align = "cl", padding = 0.01}, nodes = {bom_kit.text(l, {scale = sc, colour = it.read and bom_kit.colour("muted") or G.C.UI.TEXT_LIGHT})}}
+    end
+    local bw, h = 1.9, 0.72
+    return {n = G.UIT.R, config = {align = "cm", minw = w, padding = 0.04, r = 0.1, colour = {0, 0, 0, 0.12}}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {
+        bom_kit.row({
+            T.dot(it.read and G.C.CLEAR or G.C.RED, {h = h}),
+            icon(it.kind),
+            {n = G.UIT.C, config = {align = "cl", minw = tw, maxw = tw, minh = h, r = 0.1, button = "mps_n_open", ref_table = {id = it.id}, hover = true, padding = 0.04}, nodes = {
+                {n = G.UIT.C, config = {align = "cl", padding = 0}, nodes = tl},
+            }},
+        }, {w = w - 0.08, h = h, plain = true, padding = 0}),
+        {n = G.UIT.R, config = {minh = 0.06, padding = 0}, nodes = {}},
+        bom_kit.row({
+            T.label(T.ago(it.at), w - 0.08 - 2 * bw - 2 * d.gap, {h = h, colour = bom_kit.colour("muted"), scale = 0.38, align = "cl"}),
+            it.read and bom_kit.cell({}, {w = bw, h = h}) or T.btn{label = L("Read"), button = "mps_n_read", ref_table = {id = it.id}, colour = G.C.BLUE, w = bw, h = h, scale = 0.42},
+            T.btn{label = L("Clear"), button = "mps_n_clear", ref_table = {id = it.id}, colour = G.C.RED, w = bw, h = h, scale = 0.42},
+        }, {w = w - 0.08, h = h, plain = true, padding = 0}),
+    }}}}
+end
+
+local function item_row(it)
+    local d = bom_kit.dims()
+    if UIK.portrait() then return port_row(it, d) end
+    local s, sc = bom_kit.fit(N.text(it), TEXT_W - 0.2, d.small, d.min_scale)
+    return bom_kit.row({
+        T.dot(it.read and G.C.CLEAR or G.C.RED, {h = rh()}),
+        icon(it.kind),
+        {n = G.UIT.C, config = {align = "cl", minw = TEXT_W, maxw = TEXT_W, minh = rh(), r = 0.1, button = "mps_n_open", ref_table = {id = it.id},
+            hover = true, colour = {0, 0, 0, 0.12}, padding = 0.04}, nodes = {
+            bom_kit.text(s, {scale = sc, colour = it.read and bom_kit.colour("muted") or G.C.UI.TEXT_LIGHT}),
+        }},
+        T.label(T.ago(it.at), 1.7, {h = rh(), colour = bom_kit.colour("muted"), scale = d.small}),
+        it.read and bom_kit.cell({}, {w = 1.5, h = bh()}) or T.btn{label = L("Read"), button = "mps_n_read", ref_table = {id = it.id}, colour = G.C.BLUE, w = 1.5, h = bh()},
+        T.btn{label = L("Clear"), button = "mps_n_clear", ref_table = {id = it.id}, colour = G.C.RED, w = 1.5, h = bh()},
+    }, {w = W, h = rh()})
+end
+
+local function header(label)
+    local p = UIK.portrait()
+    return {n = G.UIT.R, config = {align = "cl", minw = p and UIK.W or W, minh = p and 0.55 or 0.4, padding = 0.02}, nodes = {
+        {n = G.UIT.C, config = {minw = 0.2}, nodes = {}},
+        bom_kit.text(L(label), {scale = p and 0.42 or bom_kit.dims().small, colour = G.C.GOLD}),
+    }}
+end
+
+local function body()
+    local W = UIK.portrait() and UIK.W or W
+    local list = sorted()
+    local n = math.max(1, math.ceil(#list / per_page()))
+    N.page = math.max(1, math.min(N.page, n))
+    local rows = {}
+    if #list == 0 then
+        rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", minw = W, minh = 1}, nodes = {
+            bom_kit.text(L("No notifications."), {colour = bom_kit.colour("muted")}),
+        }}
+    end
+    local last
+    for i = (N.page - 1) * per_page() + 1, math.min(#list, N.page * per_page()) do
+        local g = group_of(list[i].kind)
+        if g ~= last then
+            rows[#rows + 1] = header(GROUPS[g].label)
+            last = g
+        end
+        rows[#rows + 1] = item_row(list[i])
+    end
+    local h = UIK.H - UIK.TOP - 0.1
+    local out = {
+        {n = G.UIT.R, config = {align = "tm", minw = W, minh = h - 1.0, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", minw = W}, nodes = rows}}},
+    }
+    if n > 1 then
+        out[#out + 1] = UIK.pager{w = W, prev = "mps_n_page", next = "mps_n_page", prev_ref = {d = -1}, next_ref = {d = 1},
+            text = tostring(N.page) .. " / " .. tostring(n), prev_disabled = N.page <= 1, next_disabled = N.page >= n}
+    end
+    return {n = G.UIT.R, config = {align = "tm", minw = W, minh = h, padding = 0}, nodes = {{n = G.UIT.C, config = {align = "tm", minw = W}, nodes = out}}}
+end
+
+local function show()
+r 13 1381 %20%20%20%20 -
+l 167
+    local has = #(S.notify.items or {}) > 0
+    G.FUNCS.overlay_menu{definition = UIK.window{
+        id = "mps_notify",
+        title = L("NOTIFICATIONS"),
+        tabs = {{key = "all", label = L("NOTIFICATIONS"), build = body}},
+        footer = {
+            UIK.button{label = L("READ ALL"), button = "mps_n_read_all", colour = G.C.BLUE, disabled = (tonumber(S.notify.unread) or 0) <= 0, id = "mps_n_read_all"},
+            UIK.button{label = L("CLEAR ALL"), button = "mps_n_clear_all", colour = G.C.RED, disabled = not has, id = "mps_n_clear_all"},
+        },
+        back_func = "social_back",
+    }}
+end
+
+function N.open(from)
+    local B = T.social()
+    if B and B.S and from then B.S.from = from end
+    N.page = 1
+    show()
+    if B and B.ensure_online then B.ensure_online() end
+    if T.connected() and B and B.S and B.S.hello then bom_core.send({type = "notify_list"}) end
+end
+
+local function reopen()
+    if not N.is_open() then return end
+    if T.typing() then return end
+    show()
+end
+
+local function find(id)
+    for i, it in ipairs(S.notify.items or {}) do
+        if it.id == id then return it, i end
+    end
+    return nil
+end
+
+local function mark_read(it)
+    if not it or it.read then return end
+    it.read = true
+    S.notify.unread = math.max(0, (tonumber(S.notify.unread) or 0) - 1)
+    T.set_bell()
+    T.send({type = "notify_read", id = it.id})
+end
+
+local function go(it)
+    local d = type(it.data) == "table" and it.data or {}
+    local k = it.kind
+    if k == "invite" and type(d.room) == "string" then
+        T.send({type = "notify_clear", id = it.id})
+        local F = require("multiplayer.mps_friends")
+        F.join_room(d.room)
+        return true
+    end
+    if k == "friend_request" or k == "friend_accepted" then
+        local F = require("multiplayer.mps_friends")
+        F.open(k == "friend_request" and "inbox" or "friends")
+        return true
+    end
+    if k == "friend_activity" then
+        local sx = rawget(_G, "social_more")
+        if sx and sx.activity_go then return sx.activity_go(d) end
+    end
+    if k == "gift" then
+        local sg = rawget(_G, "social_gifts")
+        if sg and sg.claim then
+            sg.claim(it)
+            local list = S.notify.items or {}
+            for i = #list, 1, -1 do if list[i].id == it.id then table.remove(list, i) end end
+        end
+        return false
+    end
+    local prof = rawget(_G, "mpm_profile")
+    if prof and prof.open then
+        if k == "match_voided" or k == "match_contested" then pcall(prof.open, "history") return true end
+        if k == "game_info" and d.what == "reward" then pcall(prof.open, "cosmetics") return true end
+        if k == "game_info" and G.FUNCS.mp_open_ranked then pcall(G.FUNCS.mp_open_ranked) return true end
+    end
+    return false
+end
+
+local function ref(e) return e and e.config and e.config.ref_table or {} end
+
+local function register_funcs()
+    G.FUNCS.mps_n_page = function(e)
+        N.page = N.page + (ref(e).d or 0)
+        UIK.refresh()
+    end
+    G.FUNCS.mps_n_open = function(e)
+        local it = find(ref(e).id)
+        if not it then return end
+        mark_read(it)
+        if not go(it) then reopen() end
+    end
+    G.FUNCS.mps_n_read = function(e)
+        mark_read(find(ref(e).id))
+        reopen()
+    end
+    G.FUNCS.mps_n_clear = function(e)
+        local it, i = find(ref(e).id)
+        if not it then return end
+        if not it.read then
+            S.notify.unread = math.max(0, (tonumber(S.notify.unread) or 0) - 1)
+            T.set_bell()
+        end
+        table.remove(S.notify.items, i)
+        T.send({type = "notify_clear", id = it.id})
+        reopen()
+    end
+    G.FUNCS.mps_n_read_all = function()
+        for _, it in ipairs(S.notify.items or {}) do it.read = true end
+        S.notify.unread = 0
+        T.set_bell()
+        T.send({type = "notify_read", all = true})
+        reopen()
+    end
+    G.FUNCS.mps_n_clear_all = function()
+        S.notify.items = {}
+        S.notify.unread = 0
+        T.set_bell()
+        T.send({type = "notify_clear", all = true})
+        reopen()
+    end
+end
+
+local function on_change(what)
+    if what == "notify" and N.is_open() then reopen() end
+end
+
+local STRINGS = {
+    fr = {
+        ["Friends"] = "Amis", ["Games"] = "Parties", ["Ranked"] = "Classé", ["Errors"] = "Erreurs",
+        ["{name} wants to be your friend."] = "{name} veut devenir votre ami.",
+        ["{name} accepted your friend request."] = "{name} a accepté votre demande d'ami.",
+        ["{name} invites you to their party."] = "{name} vous invite dans son groupe.",
+        ["{name} invites you to their lobby."] = "{name} vous invite dans son salon.",
+        ["You reached {rank}."] = "Vous avez atteint {rank}.", ["New reward unlocked: {name}."] = "Nouvelle récompense débloquée : {name}.",
+        ["Season {season} is over. Your rewards are in your profile."] = "La saison {season} est terminée. Vos récompenses sont dans votre profil.",
+        ["Something new happened in ranked."] = "Du nouveau en classé.",
+        ["A ranked match is on hold for review."] = "Un match classé est suspendu pour examen.",
+        ["A ranked match was voided after review."] = "Un match classé a été annulé après examen.",
+        ["Something went wrong."] = "Un problème est survenu.", ["New notification"] = "Nouvelle notification",
+        ["Read"] = "Lu", ["No notifications."] = "Aucune notification.",
+        ["NOTIFICATIONS"] = "NOTIFICATIONS", ["READ ALL"] = "TOUT LIRE", ["CLEAR ALL"] = "TOUT EFFACER",
+    },
+    es = {
+        ["Friends"] = "Amigos", ["Games"] = "Partidas", ["Ranked"] = "Clasificatoria", ["Errors"] = "Errores",
+        ["{name} wants to be your friend."] = "{name} quiere ser tu amigo.",
+        ["{name} accepted your friend request."] = "{name} aceptó tu solicitud de amistad.",
+        ["{name} invites you to their party."] = "{name} te invita a su grupo.",
+        ["{name} invites you to their lobby."] = "{name} te invita a su sala.",
+        ["You reached {rank}."] = "Has llegado a {rank}.", ["New reward unlocked: {name}."] = "Nueva recompensa desbloqueada: {name}.",
+        ["Season {season} is over. Your rewards are in your profile."] = "La temporada {season} ha terminado. Tus recompensas están en tu perfil.",
+        ["Something new happened in ranked."] = "Hay novedades en clasificatoria.",
+        ["A ranked match is on hold for review."] = "Una partida clasificatoria está en revisión.",
+        ["A ranked match was voided after review."] = "Una partida clasificatoria se anuló tras la revisión.",
+        ["Something went wrong."] = "Algo salió mal.", ["New notification"] = "Nueva notificación",
+        ["Read"] = "Leído", ["No notifications."] = "No hay notificaciones.",
+        ["NOTIFICATIONS"] = "NOTIFICACIONES", ["READ ALL"] = "LEER TODO", ["CLEAR ALL"] = "BORRAR TODO",
+    },
+}
+
+function N.init()
+    register_funcs()
+    T.listen(on_change)
+    if mod_loc_register then mod_loc_register(STRINGS) end
+end
+
+return N
+end

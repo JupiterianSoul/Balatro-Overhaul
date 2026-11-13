@@ -1,0 +1,828 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 85
+
+local M = {}
+
+function M.init(bom_ui)
+
+
+    function bom_ui.build_opponent_panel(opponent_data)
+        if not G then return end
+        if not G.GAME then return end
+        if not opponent_data then return end
+
+        local starting_lives = 4
+        pcall(function()
+            if bom_match and bom_match.get_settings then
+                starting_lives = bom_match.get_settings().starting_lives or 4
+            end
+        end)
+
+        G.GAME.mp_opponent_panel = {
+            name = opponent_data.name or "Opponent",
+            title = opponent_data.equipped_title or "",
+            rank = opponent_data.rank or 1,
+            lives = starting_lives,
+            score = 0,
+            score_text = "0",
+            highest_score = bom_insane_int and bom_insane_int.empty and bom_insane_int.empty() or 0,
+            hands_used = 0,
+            hands_left = 0,
+            location = "...",
+        }
+    end
+
+    function bom_ui.update_opponent_score(score)
+        if not G then return end
+        if not G.GAME then return end
+        if not G.GAME.mp_opponent_panel then return end
+
+        local panel = G.GAME.mp_opponent_panel
+        panel.score = score or 0
+
+        if bom_insane_int and bom_insane_int.to_string then
+            panel.score_text = bom_insane_int.to_string(score or 0)
+            panel.highest_score = panel.highest_score or bom_insane_int.empty()
+            if bom_insane_int.greater_than(panel.score, panel.highest_score) then
+                panel.highest_score = bom_insane_int.from_string(panel.score)
+            end
+        else
+            panel.score_text = tostring(score or 0)
+        end
+
+        pcall(function()
+            if bom_pvp_hud and bom_pvp_hud.juice_up_pvp_hud then
+                bom_pvp_hud.juice_up_pvp_hud()
+            end
+        end)
+    end
+
+    function bom_ui.update_opponent_panel(data)
+        if not G then return end
+        if not G.GAME then return end
+        if not data then return end
+
+        local panel = G.GAME.mp_opponent_panel
+        if not panel then return end
+
+        if data.score ~= nil then bom_ui.update_opponent_score(data.score) end
+        if data.lives ~= nil then panel.lives = data.lives end
+        if data.status ~= nil then panel.status = data.status end
+        if data.blind_finished ~= nil then panel.blind_finished = data.blind_finished end
+        if data.hands_used ~= nil then
+            panel.hands_used = data.hands_used
+            local total_hands = nil
+            pcall(function()
+                if G.GAME.current_round then
+                    total_hands = (G.GAME.current_round.hands_left or 0) + (G.GAME.current_round.hands_played or 0)
+                end
+            end)
+            if total_hands then
+                panel.hands_left = math.max(0, total_hands - data.hands_used)
+            end
+        end
+    end
+
+
+    function bom_ui.animate_life_loss()
+r 1 112 %20%20%20%20%20%20%20%20 -
+r 2 398 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 26
+            blocking = false,
+            blockable = false,
+            func = function()
+                local lives_left = 0
+                pcall(function() lives_left = G.GAME.mp_lives or 0 end)
+
+                if G.BOM_LIFE_TOAST and not G.BOM_LIFE_TOAST.REMOVED then pcall(function() G.BOM_LIFE_TOAST:remove() end) end
+                local overlay = UIBox({
+                    definition = {
+                        n = G.UIT.ROOT,
+                        config = { align = "cm", colour = G.C.CLEAR, padding = 0.2 },
+                        nodes = {
+                            { n = G.UIT.C, config = { align = "cm", colour = { 0.3, 0, 0, 0.8 }, r = 0.1, padding = 0.3, minw = 4, minh = 1.5 }, nodes = {
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.1 }, nodes = {
+                                    { n = G.UIT.T, config = { text = mod_loc("Life Lost!"), scale = 0.55, colour = G.C.RED, shadow = true } },
+                                }},
+                                { n = G.UIT.R, config = { align = "cm", padding = 0.1 }, nodes = {
+                                    { n = G.UIT.T, config = { text = tostring(lives_left) .. " " .. mod_loc("remaining"), scale = 0.4, colour = G.C.UI.TEXT_LIGHT, shadow = true } },
+                                }},
+                            }},
+                        },
+                    },
+                    config = { align = "cm", offset = { x = 0, y = 0 }, major = G.ROOM_ATTACH, type = 'cm' },
+                })
+                G.BOM_LIFE_TOAST = overlay
+
+r 1 112 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
+l 706
+                    trigger = 'after',
+                    delay = 1.5,
+                    func = function()
+                        pcall(function() if not overlay.REMOVED then overlay:remove() end end) if G.BOM_LIFE_TOAST == overlay then G.BOM_LIFE_TOAST = nil end
+                        return true
+                    end,
+                }))
+                return true
+            end,
+        }))
+    end
+
+
+    function bom_ui.create_match_hud()
+    end
+
+
+    function bom_ui.destroy_match_hud()
+        if G and G.MP_HUD then
+            pcall(function() G.MP_HUD:remove() end)
+            G.MP_HUD = nil
+        end
+    end
+
+    function bom_ui.refresh_match_hud()
+        if not G or not G.GAME or not G.GAME.multiplayer then
+            bom_ui.destroy_match_hud()
+        end
+    end
+
+    local function L(s) return mod_loc and mod_loc(s) or s end
+    local function kit() return rawget(_G, "bom_kit") end
+
+    local function num(v)
+        if type(v) == "number" then return v end
+        if type(v) == "string" then return tonumber((v:gsub("[,%s]", ""))) end
+        if type(v) == "table" and bom_insane_int and bom_insane_int.to_number_if_safe then
+            local ok, n = pcall(bom_insane_int.to_number_if_safe, v)
+            if ok then return n end
+        end
+        return nil
+    end
+
+    local function score_text(v)
+        if v == nil then return "0" end
+        if type(v) == "table" and bom_insane_int and bom_insane_int.to_string then
+            local ok, s = pcall(bom_insane_int.to_string, v)
+            if ok and s then return s end
+        end
+        local n = num(v)
+        if n and number_format then
+            local ok, s = pcall(number_format, n)
+            if ok and s then return s end
+        end
+        return tostring(v)
+    end
+    bom_ui.score_text = score_text
+
+    local function greater(a, b)
+        local na, nb = num(a), num(b)
+        if na and nb then return na > nb end
+        if bom_insane_int and bom_insane_int.greater_than then
+            local ok, r = pcall(bom_insane_int.greater_than, a or 0, b or 0)
+            if ok then return r == true end
+        end
+        return (na or 0) > (nb or 0)
+    end
+
+    bom_ui._locs = bom_ui._locs or {}
+
+    local function match_state()
+        local st = {}
+        pcall(function() st = bom_match.get_state() or {} end)
+        return st
+    end
+
+    local function identity(pid)
+        local st = match_state()
+        if pid == nil or type(st.roster) ~= "table" then return {} end
+        for _, p in ipairs(st.roster) do
+            if type(p) == "table" and p.pid == pid then return p end
+        end
+        return {}
+    end
+
+    local function pick(a, b)
+        if a ~= nil then return a end
+        return b
+    end
+
+    local function my_rank()
+        local p = bom_ranked and bom_ranked.S and bom_ranked.S.profile
+        if type(p) == "table" and p.rank ~= nil then return {rank = p.rank, tier = p.tier} end
+        return nil
+    end
+
+    function bom_ui.in_party_run()
+        return bom_party ~= nil and bom_party.active ~= nil and bom_party.active() and bom_party.S ~= nil and bom_party.S.ps ~= nil
+    end
+
+    local function in_blind_now()
+        local g = G and G.GAME
+        return g ~= nil and g.facing_blind == true and g.blind ~= nil
+    end
+    bom_ui.in_blind_now = in_blind_now
+
+    local function pvp_now()
+        return bom_match and bom_match.is_pvp_blind and bom_match.is_pvp_blind() and in_blind_now() and not (G.GAME.blind and G.GAME.blind.mp_pvp_over) or false
+    end
+
+    local function apply_local(row)
+        if not in_blind_now() then return end
+        local g = G.GAME
+        local cr = g.current_round or {}
+        row.hands, row.discards, row.live_score = cr.hands_left, cr.discards_left, g.chips
+        if pvp_now() then row.score, row.fight = g.chips, true
+        elseif row.score == nil and bom_match and bom_match.is_pvp_blind and bom_match.is_pvp_blind() then row.score, row.fight = g.chips, true end
+    end
+
+    local function in_fight(ps, lv)
+        if type(lv) ~= "table" or lv.where ~= "blind" or ps.pvpAnte == nil then return false end
+        if tonumber(lv.ante) ~= tonumber(ps.pvpAnte) then return false end
+        return ps.pvpBlind == nil or lv.blind == ps.pvpBlind
+    end
+
+    function bom_ui.roster()
+        local out = {}
+        local st = match_state()
+        if bom_ui.in_party_run() then
+            local S = bom_party.S
+            local host = S.room and S.room.hostId
+            for _, p in ipairs(S.ps.players or {}) do
+                local id = identity(p.pid)
+                local lives = tonumber(p.lives)
+                local lv = type(p.live) == "table" and p.live or nil
+                local blind = lv ~= nil and lv.where == "blind"
+                local fight = in_fight(S.ps, lv)
+                local row = {
+                    pid = p.pid, name = p.name or id.name or "?",
+                    is_bot = pick(p.is_bot, pick(id.is_bot, p.bot == true)), bot = p.bot, bot_level = p.bot_level or id.bot_level,
+                    rank = p.rank or id.rank, dev = pick(p.dev, id.dev), lives = lives,
+                    hands = p.hands_left or p.hands or (blind and lv.hands or nil), discards = blind and lv.discards or nil,
+                    score = p.score ~= nil and p.score or (fight and lv.score or nil), live_score = blind and lv.score or nil,
+                    fight = p.score ~= nil or fight,
+                    mine = p.pid == S.me, host = host ~= nil and p.pid == host, skips = p.skips,
+                    location = bom_ui._locs[p.pid] or (p.pid == S.me and st.my_location) or p.location,
+                    connected = p.connected ~= false, alive = p.alive ~= false and (lives == nil or lives > 0),
+                    left = p.left == true or p.gone == true, team = p.team,
+                    role = p.role, finished = p.finished, placement = p.placement, live = lv,
+                }
+                if row.mine then apply_local(row) end
+                out[#out + 1] = row
+            end
+            return out
+        end
+        local me_pid = st.server_player_id
+        local opp_pid = me_pid ~= nil and (1 - me_pid) or nil
+        local my_id, opp_id = identity(me_pid), identity(opp_pid)
+        local panel = (G and G.GAME and G.GAME.mp_opponent_panel) or {}
+        local my_lives = tonumber(G and G.GAME and G.GAME.mp_lives) or tonumber(st.my_lives) or 0
+        local opp_lives = tonumber(panel.lives) or tonumber(st.opp_lives) or 0
+        out[1] = {
+            pid = me_pid, name = my_id.name or st.my_name or "Player", rank = my_id.rank or my_rank(), dev = my_id.dev,
+            lives = my_lives,
+            mine = true, host = st.is_host == true, skips = G and G.GAME and G.GAME.skips or 0,
+            location = st.my_location, connected = true, alive = my_lives > 0,
+        }
+        apply_local(out[1])
+        local away = bom_rejoin and bom_rejoin.opp_away
+        local seen = (panel.seq or 0) > (panel.over_seq or 0)
+        if not seen and (panel.seq or 0) > 0 and in_blind_now() and panel.over_token ~= nil and bom_pvp_hud and bom_pvp_hud.blind_token then
+            seen = bom_pvp_hud.blind_token() == panel.over_token
+        end
+        out[2] = {
+            pid = opp_pid, name = opp_id.name or panel.name or st.opp_name or "Opponent",
+            is_bot = pick(opp_id.is_bot, st.opp_bot == true), bot_level = opp_id.bot_level or st.opp_bot_level, rank = opp_id.rank, dev = opp_id.dev,
+            lives = opp_lives, hands = seen and panel.hands_left or nil, discards = seen and panel.discards_left or nil,
+            score = seen and (panel.score or 0) or nil, live_score = seen and panel.score or nil, fight = seen,
+            mine = false, host = st.is_host ~= true, skips = panel.skips or 0,
+            location = bom_ui._locs[opp_pid] or st.opp_location, connected = not away, away_until = away and away.deadline or nil,
+            alive = opp_lives > 0, left = st.opp_status == "left" or st.opp_status == "disconnected",
+        }
+        return out
+    end
+
+    function bom_ui.is_ranked_match()
+        local st = match_state()
+        if st.ranked == true then return true end
+        if type(st.ruleset) == "table" and st.ruleset.locked == true then return true end
+        local s = st.settings or {}
+        return s.ranked == true
+    end
+
+    function bom_ui.opp_score_hidden()
+        if not (bom_match and bom_match.is_pvp_blind and bom_match.is_pvp_blind()) then return false end
+        local s = (bom_match.get_settings and bom_match.get_settings()) or {}
+        local on = s.hide_opp_score
+        if on == nil then on = bom_ui.is_ranked_match() end
+        if on ~= true then return false end
+        local cr = G and G.GAME and G.GAME.current_round
+        return cr ~= nil and (tonumber(cr.hands_played) or 0) == 0
+    end
+
+    function bom_ui.player_status(p)
+        if type(p) ~= "table" then return {text = "..."} end
+        if p.left then return {text = L("Left"), colour = G.C.UI.BACKGROUND_INACTIVE} end
+        if p.connected == false then
+            local left = p.away_until and love and love.timer and math.max(0, math.ceil(p.away_until - love.timer.getTime())) or nil
+            local text = L("Reconnecting")
+            if left then text = text .. " " .. string.format("%d:%02d", math.floor(left / 60), left % 60) end
+            return {text = text, colour = G.C.ORANGE}
+        end
+        if p.alive == false then return {text = L("Out"), colour = G.C.UI.BACKGROUND_INACTIVE} end
+        local st = bom_match.status_of and bom_match.status_of(p.location) or {text = "..."}
+        return st
+    end
+
+    local BOARD = {box = nil, sig = nil, models = {}, t = 0, w = 0, h = 0}
+    bom_ui._board = BOARD
+
+    local function board_target()
+        if not (G and G.HUD_blind) then return nil end
+        local root = G.HUD_blind:get_UIE_by_ID("HUD_blind")
+        return root and root.children and root.children[2] or nil
+    end
+
+    local function ordered(list)
+        local hidden = bom_ui.opp_score_hidden()
+        local idx = {}
+        for i, p in ipairs(list) do idx[p] = i end
+        table.sort(list, function(a, b)
+            if hidden then
+                if a.mine ~= b.mine then return a.mine == true end
+                return idx[a] < idx[b]
+            end
+            if (a.alive ~= false) ~= (b.alive ~= false) then return a.alive ~= false end
+            if greater(a.score, b.score) then return true end
+            if greater(b.score, a.score) then return false end
+            return idx[a] < idx[b]
+        end)
+        return list
+    end
+
+    local function fill(m, p, place, hidden)
+        m.place = "#" .. tostring(place)
+        m.lives = tostring(tonumber(p.lives) or 0)
+        local hands = p.fight ~= false and p.hands or nil
+        m.hands = hands ~= nil and tostring(hands) or "-"
+        local discards = p.fight ~= false and p.discards or nil
+        m.discards = discards ~= nil and tostring(discards) or "-"
+        m.score = (hidden and not p.mine) and "???" or score_text(p.score)
+    end
+
+    local function board_kind()
+        return bom_standings and bom_standings.board_kind and bom_standings.board_kind() or nil
+    end
+
+    local function signature(list)
+        local parts = {}
+        for i, p in ipairs(list) do parts[i] = tostring(p.pid) .. ":" .. tostring(p.alive ~= false) .. ":" .. tostring(p.connected) .. (#list <= 2 and (":" .. tostring(tonumber(p.lives) or 0)) or "") end
+        local kind = board_kind()
+        local extra = kind and bom_standings.board_sig(kind, list) or ""
+        return table.concat(parts, ",") .. "|" .. tostring(#list > 2) .. "|" .. tostring(kind) .. extra
+    end
+
+    local function board_fill(list, hidden)
+        for i, p in ipairs(list) do
+            local m = BOARD.models[i]
+            if m then fill(m, p, i, hidden) end
+        end
+        local kind = board_kind()
+        if kind then pcall(bom_standings.board_fill, kind, list) end
+    end
+
+    local function board_rows(list, w, h)
+        local k = kit()
+        local d = k.dims()
+        local hidden = bom_ui.opp_score_hidden()
+        local iw = w - 0.12
+        local gap = 0.05
+        local rows = {}
+        BOARD.models = {}
+        local kind = board_kind()
+        if kind then
+            for i, p in ipairs(list) do
+                local m = {}
+                fill(m, p, i, hidden)
+                BOARD.models[i] = m
+            end
+            local ok, custom = pcall(bom_standings.board_rows, kind, list, BOARD.models, iw, h - 0.14)
+            if ok and custom then return custom end
+        end
+        if #list <= 2 then
+            local h1, h2 = 0.36, 0.46
+            local fw = iw - 0.06
+            local badge_w, stat_w, lives_w = 0.9, 0.55, 1.1
+            local dc = bom_badges and bom_badges.any_dev(list)
+            if dc then badge_w = math.max(badge_w, bom_badges.dev_col_w({h = h2 * 0.8}) + 0.04) end
+            local score_w = fw - badge_w - 3 * stat_w - 4 * gap
+            for i, p in ipairs(list) do
+                local m = {}
+                fill(m, p, i, hidden)
+                BOARD.models[i] = m
+                local out = p.alive == false
+                local bar_col = out and k.colour("out") or (p.mine and k.colour("gold") or k.colour("name"))
+                local bar_text = p.mine and k.colour("dark_text") or k.colour("light_text")
+                local name_w = fw - d.place_w - lives_w - 2 * gap
+                local block = {n = G.UIT.R, config = {align = "cm", padding = 0.03, r = 0.1, colour = p.mine and k.colour("row_mine") or G.C.CLEAR,
+                    outline = p.mine and 1 or nil, outline_colour = p.mine and k.colour("mine_outline") or nil, id = p.pid ~= nil and ("bom_emote_pid_" .. tostring(p.pid)) or nil}, nodes = {
+                    k.row({k.place_tag(i, {h = h1, scale = 0.34}), k.name_bar(p.name, {w = name_w, h = h1, scale = 0.34, colour = bar_col, text_colour = bar_text, shadow = not p.mine}),
+                        k.lives_pill(p.lives, {w = lives_w, h = h1, scale = 0.32})},
+                        {h = h1, gap = gap, plain = true, padding = 0}),
+                    {n = G.UIT.R, config = {minh = 0.04}},
+                    k.row({
+                        k.badge_slot(bom_badges and bom_badges.for_player(p, {h = h2 * 0.8, dev_col = dc}) or nil, {w = badge_w, h = h2}),
+                        k.stat_box({ref_table = m, ref_value = "hands", w = stat_w, h = h2, colour = out and k.colour("out") or k.colour("hands"), scale = 0.38}),
+                        k.stat_box({ref_table = m, ref_value = "discards", w = stat_w, h = h2, colour = out and k.colour("out") or k.colour("discards"), scale = 0.38}),
+                        k.score_pill({ref_table = m, ref_value = "score", w = score_w, h = h2, scale = 0.4, chip = 0.36}),
+                    }, {h = h2, gap = gap, plain = true, padding = 0}),
+                }}
+                if i > 1 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.1}} end
+                rows[#rows + 1] = block
+            end
+            return rows
+        end
+        local n = math.min(#list, 8)
+        local rh = math.min(0.34, (h - 0.14 - (n - 1) * 0.04) / n)
+        local sc = math.min(0.3, rh * 0.9)
+        local place_w, badge_w, stat_w, score_w = 0.36, 0.62, 0.4, 1.15
+        local dc = bom_badges and bom_badges.any_dev(list)
+        if dc then badge_w = math.max(badge_w, bom_badges.dev_col_w({h = rh, size = rh})) end
+        local name_w = iw - place_w - badge_w - 2 * stat_w - score_w - 5 * gap
+        for i = 1, n do
+            local p = list[i]
+            local m = {}
+            fill(m, p, i, hidden)
+            BOARD.models[i] = m
+            local out = p.alive == false
+            local bar_col = out and k.colour("out") or (p.mine and k.colour("gold") or k.colour("name"))
+            if i > 1 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = 0.04}} end
+            rows[#rows + 1] = k.row({
+                k.place_tag(i, {w = place_w, h = rh, scale = sc}),
+                k.badge_slot(bom_badges and bom_badges.for_player(p, {h = rh, size = rh, dev_col = dc}) or nil, {w = badge_w, h = rh}),
+                k.name_bar(p.name, {w = name_w, h = rh, scale = sc, min_scale = math.min(sc, 0.2), colour = bar_col, text_colour = p.mine and k.colour("dark_text") or k.colour("light_text"), shadow = not p.mine}),
+                k.stat_box({ref_table = m, ref_value = "lives", w = stat_w, h = rh, scale = sc, colour = out and k.colour("out") or k.colour("lives")}),
+                k.stat_box({ref_table = m, ref_value = "hands", w = stat_w, h = rh, scale = sc, colour = out and k.colour("out") or k.colour("hands")}),
+                k.score_pill({ref_table = m, ref_value = "score", w = score_w, h = rh, scale = sc, chip = rh * 0.8}),
+            }, {w = iw, h = rh, gap = gap, mine = p.mine, padding = 0, plain = not p.mine, id = p.pid ~= nil and ("bom_emote_pid_" .. tostring(p.pid)) or nil})
+        end
+        return rows
+    end
+
+    function bom_ui.board_def(list, w, h, room)
+        return {n = G.UIT.ROOT, config = {align = "cm", minw = w, minh = h, r = 0.1, padding = 0.06, colour = G.C.DYN_UI.DARK, func = "bom_board_tick"}, nodes = {
+            {n = G.UIT.C, config = {align = "cm"}, nodes = board_rows(list, w, room or h)},
+        }}
+    end
+
+    function bom_ui.board_hide()
+        if BOARD.box then pcall(function() BOARD.box:remove() end) end
+        BOARD.box, BOARD.sig, BOARD.models, BOARD.pending = nil, nil, {}, nil
+    end
+
+    function bom_ui.board_build(list, w, h, major)
+        local room = h
+        local box
+        for _ = 1, 4 do
+            box = UIBox({definition = bom_ui.board_def(list, w, h, room), config = {align = "cm", offset = {x = 0, y = 0}, major = major, bond = "Strong"}})
+            local bw, bh = box.T.w or w, box.T.h or h
+            if bh <= h + 0.005 and bw <= w + 0.005 then break end
+            pcall(function() box:remove() end)
+            if bh > h + 0.005 then room = room - (bh - h) - 0.01 end
+            if bw > w + 0.005 then room = room * (w / bw) * 0.97 end
+            box = nil
+        end
+        if not box then
+            box = UIBox({definition = bom_ui.board_def(list, w, h, room), config = {align = "cm", offset = {x = 0, y = 0}, major = major, bond = "Strong"}})
+        end
+        BOARD.room = room
+        return box
+    end
+
+    function bom_ui.board_show()
+        if not (bom_match and bom_match.is_pvp_blind and bom_match.is_pvp_blind()) then return bom_ui.board_hide() end
+        if not kit() then return end
+        local target = board_target()
+        if not target or not target.T then return end
+        local list = ordered(bom_ui.roster())
+        if #list == 0 then return bom_ui.board_hide() end
+        bom_ui.board_hide()
+        local w, h = target.T.w, target.T.h
+        BOARD.w, BOARD.h = w, h
+        BOARD.sig = signature(list)
+        BOARD.box = bom_ui.board_build(list, w, h, target)
+        BOARD.target = target
+    end
+
+    function bom_ui.board_refresh()
+        if not BOARD.box then return end
+        local list = ordered(bom_ui.roster())
+        local hidden = bom_ui.opp_score_hidden()
+        if signature(list) ~= BOARD.sig or #list ~= #BOARD.models then return bom_ui.board_show() end
+        board_fill(list, hidden)
+    end
+
+    local function board_later(fn)
+        if BOARD.pending then return end
+        BOARD.pending = true
+        G.E_MANAGER:add_event(Event({trigger = "immediate", blocking = false, blockable = false, func = function()
+            BOARD.pending = nil
+            pcall(fn)
+            return true
+        end}))
+    end
+
+    local function board_tick(e)
+        local box = BOARD.box
+        if not box or box.REMOVED or BOARD.pending then return end
+        if not (bom_match and bom_match.is_pvp_blind and bom_match.is_pvp_blind()) or not G.HUD_blind then
+            return board_later(bom_ui.board_hide)
+        end
+        local target = BOARD.target
+        if not target or target.REMOVED or target ~= board_target() then return board_later(bom_ui.board_show) end
+        if math.abs((target.T.w or 0) - BOARD.w) > 0.02 or math.abs((target.T.h or 0) - BOARD.h) > 0.02 then return board_later(bom_ui.board_show) end
+        local now = G.TIMERS and G.TIMERS.REAL or 0
+        if now - BOARD.t < 0.15 then return end
+        BOARD.t = now
+        local list = ordered(bom_ui.roster())
+        if signature(list) ~= BOARD.sig then return board_later(bom_ui.board_show) end
+        board_fill(list, bom_ui.opp_score_hidden())
+    end
+
+    local function hud_cell(node, w, h)
+        if node.n == G.UIT.R then node.n = G.UIT.C end
+        node.config = node.config or {}
+        node.config.minh = h
+        if w then node.config.minw = w end
+        return node
+    end
+
+    function bom_ui.mp_hud_grid(buttons, round)
+        if type(buttons) ~= "table" or type(round) ~= "table" or #buttons < 3 or not round[1] or not round[3] or not round[5] then return nil end
+        local H, gap, bw = 1.2, 0.13, 1.5
+        for _, b in ipairs(buttons) do hud_cell(b, bw, H) end
+        local function fit_right(r)
+            for _, c in ipairs(r.nodes or {}) do
+                if c.n == G.UIT.C and c.config and (c.config.colour or c.config.minw and c.config.minw > 0.5) then c.config.minh = H end
+            end
+            return {n = G.UIT.C, config = {align = "cm"}, nodes = {r}}
+        end
+        local rights = {fit_right(round[1]), fit_right(round[3]), fit_right(round[5])}
+        local rows = {}
+        for i = 1, 3 do
+            if i > 1 then rows[#rows + 1] = {n = G.UIT.R, config = {minh = gap}, nodes = {}} end
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {buttons[i], {n = G.UIT.C, config = {minw = gap}, nodes = {}}, rights[i]}}
+        end
+        for i = 4, #buttons do
+            rows[#rows + 1] = {n = G.UIT.R, config = {minh = gap}, nodes = {}}
+            rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {buttons[i]}}
+        end
+        return {{n = G.UIT.C, config = {align = "cm", minw = 4.93, id = "button_area"}, nodes = rows}}
+    end
+
+    local RESULT = {box = nil}
+
+    function bom_ui.hide_pvp_result_popup()
+        if RESULT.box then
+            pcall(function() RESULT.box:remove() end)
+            RESULT.gap_until = G and G.TIMERS and (G.TIMERS.REAL + ((mp_config and mp_config.PVP_RESULT_GAP) or 0.35)) or nil
+        end
+        RESULT.box, RESULT.hide_at = nil, nil
+    end
+
+    function bom_ui.pvp_result_tick()
+        if not RESULT.box then return end
+        local over = RESULT.hide_at and G.TIMERS.REAL >= RESULT.hide_at
+        if over or (G.round_eval and not G.round_eval.REMOVED) then bom_ui.hide_pvp_result_popup() end
+    end
+
+    function bom_ui.pvp_result_holding()
+        bom_ui.pvp_result_tick()
+        if RESULT.box and not RESULT.box.REMOVED then return true end
+        return RESULT.gap_until ~= nil and G.TIMERS.REAL < RESULT.gap_until
+    end
+
+    local function result_close()
+        bom_ui.hide_pvp_result_popup()
+    end
+
+    function bom_ui.pvp_result_popup(a)
+        a = a or {}
+        local k = kit()
+        if not (k and G and G.ROOM_ATTACH) then return end
+        bom_ui.hide_pvp_result_popup()
+        local d = k.dims()
+        local res = a.result or "draw"
+        local head = a.title or (res == "win" and L("You won the PvP") or (res == "lose" and L("You lost a life") or L("Draw")))
+        local head_col = res == "win" and G.C.GOLD or (res == "lose" and G.C.RED or G.C.UI.TEXT_LIGHT)
+        local col_w, ph = 3.0, d.row_h + 0.04
+        local function side(name, score, mine)
+            return {n = G.UIT.C, config = {align = "cm", padding = 0.05}, nodes = {
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {k.name_bar(name, {w = col_w, h = ph, colour = mine and k.colour("gold") or k.colour("name"),
+                    text_colour = mine and k.colour("dark_text") or k.colour("light_text"), shadow = not mine})}},
+                {n = G.UIT.R, config = {minh = 0.06}},
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {k.score_pill({text = score_text(score), w = col_w, h = ph + 0.08, scale = d.scale + 0.06})}},
+            }}
+        end
+        local body = {}
+        body[#body + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+            {n = G.UIT.O, config = {object = DynaText({string = {head}, colours = {head_col}, shadow = true, bump = true, pop_in = 0, scale = 0.7, silent = true})}},
+        }}
+        if a.lines then
+            for _, line in ipairs(a.lines) do
+                body[#body + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {k.text(line, {scale = d.scale, colour = G.C.UI.TEXT_LIGHT})}}
+            end
+        else
+            body[#body + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.06}, nodes = {
+                side(a.my_name or L("You"), a.my_score, true),
+                {n = G.UIT.C, config = {align = "cm", minw = 0.7}, nodes = {k.text(L("vs"), {scale = d.scale, colour = G.C.UI.TEXT_INACTIVE})}},
+                side(a.opp_name or L("Opponent"), a.opp_score, false),
+            }}
+        end
+        local change = nil
+        if a.lives_before ~= nil and a.lives_after ~= nil and a.lives_before ~= a.lives_after then
+            change = {L("Lives"), tostring(a.lives_before), tostring(a.lives_after), a.lives_after < a.lives_before and G.C.RED or G.C.GREEN}
+        elseif a.place_before ~= nil and a.place_after ~= nil and a.place_before ~= a.place_after then
+            change = {L("Place"), "#" .. tostring(a.place_before), "#" .. tostring(a.place_after), a.place_after < a.place_before and G.C.GREEN or G.C.RED}
+        end
+        if change then
+            RESULT.change = {text = change[2]}
+            body[#body + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+                k.text(change[1] .. ": ", {scale = d.scale + 0.04, colour = G.C.UI.TEXT_LIGHT}),
+                k.cell({k.text(nil, {ref_table = RESULT.change, ref_value = "text", scale = d.scale + 0.08, colour = G.C.WHITE})}, {w = 0.9, h = ph, r = 0.1, colour = change[4], id = "bom_pvp_change"}),
+            }}
+            RESULT.after = change[3]
+        end
+        body[#body + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.03}, nodes = {k.text(L("Tap to continue"), {scale = d.small, colour = G.C.UI.TEXT_INACTIVE, shadow = false})}}
+        local panel = {n = G.UIT.C, config = {align = "cm", padding = 0.18, r = 0.15, colour = G.C.BLACK, emboss = 0.05, outline = 1.5, outline_colour = head_col,
+            minw = 7.6, button = "bom_pvp_result_close", hover = false}, nodes = body}
+        local box = UIBox({
+            definition = {n = G.UIT.ROOT, config = {align = "cm", colour = G.C.CLEAR, padding = 0}, nodes = {panel}},
+            config = {align = "cm", offset = {x = 0, y = -0.6}, major = G.ROOM_ATTACH, type = "cm"},
+        })
+        RESULT.box = box
+        RESULT.hide_at = G.TIMERS.REAL + ((mp_config and mp_config.PVP_RESULT_HOLD) or 2.2)
+        pcall(function() play_sound(res == "win" and "chips2" or (res == "lose" and "cancel" or "generic1"), 1, 0.6) end)
+        if change then
+            G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.6, timer = "REAL", blocking = false, blockable = false, func = function()
+                if RESULT.box ~= box then return true end
+                RESULT.change.text = RESULT.after
+                pcall(function()
+                    local e = box:get_UIE_by_ID("bom_pvp_change")
+                    if e then e:juice_up(0.6, 0.4) end
+                    play_sound(res == "lose" and "slice1" or "coin3", 0.9, 0.6)
+                end)
+                return true
+            end}))
+        end
+        return box
+    end
+
+    local function later(fn)
+        if not (G and G.E_MANAGER) then return end
+        G.E_MANAGER:add_event(Event({trigger = "immediate", blocking = false, blockable = false, func = function() pcall(fn) return true end}))
+    end
+
+    local function is_roster(list)
+        return type(list) == "table" and type(list[1]) == "table" and list[1].pid ~= nil
+    end
+
+    local function capture(d)
+        if type(d) ~= "table" then return end
+        local st = match_state()
+        if d.match_id ~= nil then st.match_id = d.match_id end
+        if is_roster(d.players) then st.roster = d.players end
+        if d.ranked ~= nil then st.ranked = d.ranked == true or nil end
+        if type(d.ruleset) == "table" then st.ruleset = d.ruleset end
+    end
+
+    local function on_result_id(d)
+        capture(d)
+        later(function() capture(d) end)
+    end
+
+    local function on_match_start(d)
+        local st = match_state()
+        st.roster = is_roster(d.players) and d.players or nil
+        st.match_id = d.match_id
+        st.ranked = d.ranked == true or nil
+        st.ruleset = type(d.ruleset) == "table" and d.ruleset or nil
+        if st.roster then
+            for _, p in ipairs(st.roster) do
+                if type(p) == "table" and p.pid ~= nil and p.pid ~= d.playerId and p.is_bot then st.opp_bot_level = p.bot_level end
+            end
+        end
+        bom_ui._locs = {}
+    end
+
+    local function on_party_location(d)
+        if d and d.pid ~= nil and type(d.location) == "string" then bom_ui._locs[d.pid] = d.location end
+        later(bom_ui.board_refresh)
+        return true
+    end
+
+    local function on_location(d)
+        if d and d.pid ~= nil and type(d.location) == "string" then bom_ui._locs[d.pid] = d.location end
+        later(bom_ui.board_refresh)
+    end
+
+    local function on_live()
+        later(bom_ui.board_refresh)
+    end
+
+    function bom_ui.inrun_init()
+        G.FUNCS.bom_board_tick = board_tick
+        G.FUNCS.bom_pvp_result_close = result_close
+        if mod_loc_register then mod_loc_register({fr = bom_ui.L4_FR, es = bom_ui.L4_ES}) end
+        if mod_loc_register then mod_loc_register({fr = bom_ui.G4_FR, es = bom_ui.G4_ES}) end
+        if not (bom_events and bom_events.register) then return end
+        bom_events.register("match_start", on_match_start)
+        for _, t in ipairs({"match_ended", "end_game_data", "ranked_result", "match_state_update", "pvp_resolved", "room_joined", "rejoin_ok", "rejoin_status"}) do bom_events.register(t, on_result_id) end
+        bom_events.register("party_location", on_party_location)
+        bom_events.register("pvp_resolved", function() bom_ui._lives_before = G and G.GAME and G.GAME.mp_lives or nil end)
+        bom_events.register("pvp_resolved", function(d)
+            local panel = G and G.GAME and G.GAME.mp_opponent_panel
+            if panel and not (d and d.party) then
+                panel.over_seq = panel.seq or 0
+                panel.over_token = bom_pvp_hud and bom_pvp_hud.blind_token and bom_pvp_hud.blind_token() or nil
+            end
+        end)
+        bom_events.register("set_location", on_location)
+        for _, t in ipairs({"enemy_info", "party_state", "opponent_disconnected", "opponent_reconnected", "party_notice", "live_stat"}) do bom_events.register(t, on_live) end
+        if bom_ui.register_contest_events then pcall(bom_ui.register_contest_events) end
+    end
+
+    local HT = {active = false, hud = nil, val = {secs = ""}}
+
+    local function hud_label(node, text)
+        if not (node and node.config and node.config.text ~= nil) or node.config.text == text then return end
+        node.config.text = text
+        if node.config.text_drawable then node.config.text_drawable:set(text) end
+    end
+
+    function bom_ui.hud_timer_info(t, now)
+        if not t then return nil end
+        local left = t.paused and (t.left or 0) or math.max(0, (t.ends_at or 0) - (now or 0))
+        local mine = t.target == "me"
+        return {
+            text = tostring(math.ceil(left)),
+            label = mine and L("Timer") or L("Opp. timer"),
+            colour = t.paused and G.C.UI.TEXT_INACTIVE or (mine and G.C.RED or G.C.UI.TEXT_LIGHT),
+        }
+    end
+
+    function bom_ui.hud_timer_set(info)
+        if not (G and G.HUD and G.HUD.get_UIE_by_ID) then return false end
+        local row = G.HUD:get_UIE_by_ID("row_round_text")
+        local elem = G.HUD:get_UIE_by_ID("round_UI_count")
+        local dyna = elem and elem.config and elem.config.object
+        local part = dyna and dyna.config and dyna.config.string and dyna.config.string[1]
+        if not (row and type(part) == "table") then return false end
+        if HT.hud ~= G.HUD then HT.hud, HT.active = G.HUD, false end
+        local cell = row.parent
+        local label = cell and cell.children and cell.children[1] and cell.children[1].children and cell.children[1].children[1]
+        if info then
+            HT.val.secs = info.text
+            if part.ref_table ~= HT.val then part.ref_table, part.ref_value = HT.val, "secs" end
+            dyna.colours = {info.colour}
+            hud_label(label, info.label)
+            if not HT.active then
+                HT.active = true
+                G.HUD:recalculate()
+            end
+        elseif HT.active or part.ref_table == HT.val then
+            part.ref_table, part.ref_value = G.GAME, "round"
+            dyna.colours = {G.C.IMPORTANT}
+            hud_label(label, localize("k_round"))
+            HT.active = false
+            G.HUD:recalculate()
+        end
+        return true
+    end
+
+    function bom_ui.hud_timer_active()
+        return HT.active and HT.hud == (G and G.HUD) or false
+    end
+
+    bom_ui.G4_FR = {["Timer"] = "Chrono", ["Opp. timer"] = "Chrono adv."}
+    bom_ui.G4_ES = {["Timer"] = "Tiempo", ["Opp. timer"] = "Tiempo rival"}
+
+    bom_ui.L4_FR = {
+        ["Selecting blind"] = "Choisit sa blinde", ["Shopping before"] = "Boutique avant", ["In a pack"] = "Ouvre un paquet",
+        ["Ready for PvP"] = "Prêt pour le JcJ", ["Waiting for the result"] = "Attend le résultat", ["In the shop"] = "Dans la boutique",
+        ["Reconnecting"] = "Reconnexion", ["Left"] = "Parti", ["You won the PvP"] = "Vous gagnez le JcJ", ["You lost a life"] = "Vous perdez une vie",
+        ["Tap to continue"] = "Touchez pour continuer", ["Lives"] = "Vies", ["Place"] = "Place",
+    }
+    bom_ui.L4_ES = {
+        ["Selecting blind"] = "Elige su ciega", ["Shopping before"] = "Tienda antes de", ["In a pack"] = "Abre un sobre",
+        ["Ready for PvP"] = "Listo para el JcJ", ["Waiting for the result"] = "Espera el resultado", ["In the shop"] = "En la tienda",
+        ["Reconnecting"] = "Reconectando", ["Left"] = "Se fue", ["You won the PvP"] = "Ganas el JcJ", ["You lost a life"] = "Pierdes una vida",
+        ["Tap to continue"] = "Toca para continuar", ["Lives"] = "Vidas", ["Place"] = "Puesto",
+    }
+
+end
+
+return M
+end

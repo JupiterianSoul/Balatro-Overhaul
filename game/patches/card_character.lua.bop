@@ -1,0 +1,43 @@
+BOP 1
+eol lf
+final 1
+base 5
+c 3
+l 11
+local function scale_def(node, s)
+    local c = node.config
+    if c then
+        for _, k in ipairs({'scale', 'minw', 'minh', 'maxw', 'padding'}) do
+            if c[k] then c[k] = c[k]*s end
+        end
+    end
+    for _, n in ipairs(node.nodes or {}) do scale_def(n, s) end
+    return node
+end
+
+c 2
+s 1
+l 2
+    local s = args.scale or 1
+    Moveable.init(self,args.x or 1, args.y or 1, args.w or G.CARD_W*1.1*s, args.h or G.CARD_H*1.1*s)
+c 5
+l 2
+    local card_w, card_h = G.CARD_W, G.CARD_H
+    G.CARD_W, G.CARD_H = card_w*s, card_h*s
+c 1
+l 1
+    G.CARD_W, G.CARD_H = card_w, card_h
+c 55
+l 2
+    local def = create_UIBox_character_button({button = button, func = func, colour = colour, update_func = update_func, maxw = 3})
+    if self.config.args.scale then scale_def(def, self.config.args.scale) end
+c 1
+s 1
+l 1
+        definition = def,
+c 10
+s 1
+l 1
+        definition = self.config.args.scale and scale_def(G.UIDEF.speech_bubble(text_key, loc_vars), self.config.args.scale) or G.UIDEF.speech_bubble(text_key, loc_vars),
+c 84
+end

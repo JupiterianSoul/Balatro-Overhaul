@@ -1,0 +1,638 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 508
+Town = Town or {}
+local T = Town
+
+T.info = T.info or {name = "", line = "", doors = "", net = ""}
+T.nodes = T.nodes or {}
+
+local function L(s) return mod_loc(s) end
+local function touch() return UIK.touch() end
+local function has(name) return type(G.FUNCS[name]) == "function" end
+
+local function moving()
+  local g = G.SETTINGS and G.SETTINGS.GRAPHICS
+  local v = g and g.perf_bg_anims
+  if v == nil then v = true end
+  return v and not (G.SETTINGS and G.SETTINGS.reduced_motion)
+end
+
+local function list(...)
+  local out = {}
+  for i = 1, select("#", ...) do
+    local v = select(i, ...)
+    if v then out[#out + 1] = v end
+  end
+  return out
+end
+
+local function label_of(node)
+  if type(node) ~= "table" then return nil end
+  local cfg = node.config
+  if node.n == G.UIT.T and cfg and type(cfg.text) == "string" then return cfg.text end
+  for _, c in ipairs(node.nodes or {}) do
+    local s = label_of(c)
+    if s then return s end
+  end
+end
+
+local function hub_label(mod, fallback)
+  local m = rawget(_G, mod)
+  if not (m and type(m.tavern_button) == "function") then return nil end
+  local ok, node = pcall(m.tavern_button)
+  if not ok or not node then return nil end
+  return label_of(node) or fallback
+end
+
+local function door(label, button, ref, colour)
+  if not (label and has(button)) then return nil end
+  return {label = label, button = button, ref = ref, colour = colour}
+end
+
+T.PLACES = {
+  {key = "tavern", name = "TAVERN", line = "Quests and your past runs", center = "j_drunkard", colour = "BLUE",
+    doors = function()
+      return list(door(L("QUESTS"), "open_quest_menu", nil, G.C.BLUE),
+        door(L("RUN HISTORY"), "open_run_history", {from = "open_tavern_hub"}, G.C.RED))
+    end},
+  {key = "market", name = "MARKET", line = "Cosmetics for your Balacoin", center = "v_overstock_norm", colour = "MONEY",
+    doors = function() return list(door(L("SHOP"), "open_shop_menu", nil, G.C.MONEY)) end},
+  {key = "tailor", name = "TAILOR", line = "Dress your deck and your profile", center = "b_painted", colour = "GREEN",
+    doors = function()
+      return list(door(L("CUSTOMIZATION"), has("tavern_custom") and "tavern_custom" or "open_profile_menu", nil, G.C.GREEN))
+    end},
+  {key = "forge", name = "THE FORGE", line = "Make your own cards and decks", center = "c_immolate", colour = "RED", sparks = true,
+    doors = function()
+      return list(door(hub_label("JokerForge", L("JOKER FORGE")), "open_joker_forge", nil, G.C.RED),
+        door(L("DECK CREATOR"), "open_deck_creator", nil, G.C.PURPLE))
+    end},
+  {key = "library", name = "LIBRARY", line = "Seeds worth playing again", center = "c_high_priestess", colour = "Spectral",
+    doors = function() return list(door(L("SEED LIBRARY"), "open_seed_library", nil, G.C.SECONDARY_SET.Spectral)) end},
+  {key = "training", name = "TRAINING GROUNDS", line = "Fight any boss you have met", center = "j_matador", colour = "PURPLE",
+    doors = function() return list(door(L("BOSS PRACTICE"), "open_boss_practice", {from = "open_tavern_hub"}, G.C.RED)) end},
+  {key = "arcade", name = "ARCADE", line = "Quick games for a break", center = "j_8_ball", colour = "Tarot",
+    doors = function() return list(door(hub_label("Minigames", L("MINIGAMES")), "open_minigames", nil, G.C.RED)) end},
+  {key = "racetrack", name = "RACETRACK", line = "Speedrun times, yours and online", center = "j_runner", colour = "Planet", online = true,
+    doors = function() return list(door(hub_label("SpeedrunBoard", L("SPEEDRUNS")), "open_speedrun_board", nil, G.C.SECONDARY_SET.Planet)) end},
+}
+
+local function colour_of(p)
+  return G.C[p.colour] or G.C.SECONDARY_SET[p.colour] or G.C.BLUE
+end
+
+local function online()
+  local so = rawget(_G, "SpeedrunOnline")
+  if so and type(so.connected) == "function" then
+    local ok, v = pcall(so.connected)
+    return ok and v
+  end
+  local c = rawget(_G, "bom_core")
+  if c and type(c.is_connected) == "function" then
+    local ok, v = pcall(c.is_connected)
+    return ok and v
+  end
+  return false
+end
+
+function T.shown()
+  local out = {}
+  for _, p in ipairs(T.PLACES) do
+    local ok, ds = pcall(p.doors)
+    if ok and ds and #ds > 0 then out[#out + 1] = {place = p, doors = ds} end
+  end
+  return out
+end
+
+local SET_ATLAS = {Joker = "Joker", Tarot = "Tarot", Planet = "Tarot", Spectral = "Tarot", Voucher = "Voucher", Back = "centers"}
+
+local function card_sprite(key, w, h)
+  local c = G.P_CENTERS and G.P_CENTERS[key]
+  if not c then return nil end
+  local atlas = G.ASSET_ATLAS[c.atlas or SET_ATLAS[c.set] or "Joker"]
+  if not atlas then return nil end
+  local s = Sprite(0, 0, w, h, atlas, c.pos)
+  s:define_draw_steps({{shader = "dissolve", shadow_height = 0.05}, {shader = "dissolve"}})
+  s.states.collide.can = false
+  s.states.hover.can = false
+  s.states.click.can = false
+  s.states.drag.can = false
+  s:tilt_on_touch()
+  s.hover_tilt = 0
+  return s
+end
+
+local function portrait() return UIK.H > UIK.W end
+
+local function dims(n)
+  local d = {}
+  d.portrait = portrait()
+  d.strip_h = d.portrait and 1.9 or touch() and 1.05 or 0.9
+  d.plate_h = touch() and 0.5 or 0.42
+  d.plate_scale = touch() and 0.4 or 0.36
+  d.gap = 0.12
+  d.street = touch() and 0.62 or 0.56
+  d.board_w = UIK.W
+  d.board_h = UIK.H - UIK.TOP - d.strip_h - d.gap
+  local long = math.ceil(n / 2)
+  if d.portrait then
+    d.slot_w = (d.board_w - d.street - 0.2) / 2
+    d.slot_h = (d.board_h - 0.2) / (long + 0.5)
+  else
+    d.slot_w = (d.board_w - 0.2) / (long + 0.5)
+    d.slot_h = (d.board_h - d.street - 0.2) / 2
+  end
+  d.card_h = math.min(d.slot_h - d.plate_h - 0.3, (d.slot_w - 0.4) * G.CARD_H / G.CARD_W)
+  d.card_w = d.card_h * G.CARD_W / G.CARD_H
+  d.plate_w = math.min(d.slot_w - 0.2, 3.1)
+  return d
+end
+
+local SLOT_ALIGN = {top = "bm", bottom = "tm", left = "cr", right = "cl"}
+
+local function tile(entry, i, d, side)
+  local p = entry.place
+  local spr = card_sprite(p.center, d.card_w, d.card_h)
+  entry.sprite = spr
+  entry.side = side
+  entry.phase = i * 1.7
+  entry.order = i
+  entry.deal_at = T.deal and (G.TIMERS.REAL + 0.25 + i * 0.07) or nil
+  if spr and entry.deal_at then spr.states.visible = false end
+  local art = {n = G.UIT.R, config = {align = "cm", padding = 0.04}, nodes = {
+    spr and {n = G.UIT.O, config = {object = spr}} or {n = G.UIT.B, config = {w = d.card_w, h = d.card_h}},
+  }}
+  local plate = {n = G.UIT.R, config = {align = "cm", minw = d.plate_w, minh = d.plate_h, r = 0.08, colour = colour_of(p), shadow = true, emboss = 0.04}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", maxw = d.plate_w - 0.2}, nodes = {
+      {n = G.UIT.T, config = {text = L(p.name), scale = d.plate_scale, colour = G.C.UI.TEXT_LIGHT, shadow = true}},
+    }},
+  }}
+  local inner = side == "bottom" and {plate, art} or {art, plate}
+  return {n = G.UIT.C, config = {align = SLOT_ALIGN[side], minw = d.slot_w, minh = d.slot_h, padding = 0}, nodes = {
+    {n = G.UIT.C, config = {id = "town_place_" .. p.key, align = "cm", padding = 0.06, r = 0.12, colour = G.C.CLEAR,
+      button = "town_enter", ref_table = {key = p.key}, hover = true, func = "town_tile", focus_args = {snap_to = (T.focus == p.key)}}, nodes = inner},
+  }}
+end
+
+local function spacer(w, h) return {n = G.UIT.C, config = {minw = w, minh = h}, nodes = {}} end
+
+local function board(shown, d)
+  local a, b = {}, {}
+  local s1, s2 = d.portrait and "left" or "top", d.portrait and "right" or "bottom"
+  for i, e in ipairs(shown) do
+    if i % 2 == 1 then a[#a + 1] = tile(e, i, d, s1) else b[#b + 1] = tile(e, i, d, s2) end
+  end
+  local street = {n = G.UIT.C, config = {minw = d.portrait and d.street or d.board_w - 0.2, minh = d.portrait and d.board_h - 0.2 or d.street, func = "town_street"}, nodes = {}}
+  local inner
+  if d.portrait then
+    local function col(nodes, lead)
+      local rows = {}
+      if lead then rows[1] = {n = G.UIT.R, config = {minw = d.slot_w, minh = d.slot_h / 2}, nodes = {}} end
+      for _, t in ipairs(nodes) do rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = {t}} end
+      if not lead then rows[#rows + 1] = {n = G.UIT.R, config = {minw = d.slot_w, minh = d.slot_h / 2}, nodes = {}} end
+      return {n = G.UIT.C, config = {align = "tm"}, nodes = rows}
+    end
+    inner = {n = G.UIT.R, config = {align = "cm"}, nodes = {col(a, false), street, col(b, true)}}
+  else
+    a[#a + 1] = spacer(d.slot_w / 2, d.slot_h)
+    table.insert(b, 1, spacer(d.slot_w / 2, d.slot_h))
+    inner = {n = G.UIT.C, config = {align = "cm"}, nodes = {
+      {n = G.UIT.R, config = {align = "cm"}, nodes = a},
+      {n = G.UIT.R, config = {align = "cm"}, nodes = {street}},
+      {n = G.UIT.R, config = {align = "cm"}, nodes = b},
+    }}
+  end
+  return {n = G.UIT.R, config = {id = "town_board", align = "cm", minw = d.board_w, minh = d.board_h, r = 0.15,
+    colour = UIK.C.section, func = "town_board"}, nodes = {inner}}
+end
+
+local function strip(d)
+  local name_w = touch() and 4.4 or 4.0
+  local body_w = d.board_w - name_w - 0.5
+  local s = touch() and 1.1 or 1
+  if d.portrait then
+    local w = d.board_w - 0.3
+    return {n = G.UIT.R, config = {align = "cm", minw = d.board_w, minh = d.strip_h, r = 0.12, colour = UIK.C.section, padding = 0.08}, nodes = {
+      {n = G.UIT.C, config = {align = "cm", minw = w}, nodes = {
+        {n = G.UIT.R, config = {align = "cm", maxw = w}, nodes = {
+          {n = G.UIT.T, config = {ref_table = T.info, ref_value = "name", scale = 0.5 * s, colour = UIK.C.title, shadow = true}},
+        }},
+        {n = G.UIT.R, config = {align = "cm", maxw = w, padding = 0.03}, nodes = {
+          {n = G.UIT.T, config = {ref_table = T.info, ref_value = "line", scale = 0.38 * s, colour = UIK.C.text, shadow = true}},
+        }},
+        {n = G.UIT.R, config = {align = "cm", maxw = w}, nodes = {
+          {n = G.UIT.T, config = {ref_table = T.info, ref_value = "doors", scale = 0.32 * s, colour = UIK.C.muted}},
+        }},
+        {n = G.UIT.R, config = {align = "cm", maxw = w}, nodes = {
+          {n = G.UIT.T, config = {ref_table = T.info, ref_value = "net", scale = 0.3 * s, colour = G.C.ORANGE}},
+        }},
+      }},
+    }}
+  end
+  return {n = G.UIT.R, config = {align = "cm", minw = d.board_w, minh = d.strip_h, r = 0.12, colour = UIK.C.section, padding = 0.06}, nodes = {
+    {n = G.UIT.C, config = {align = "cm", minw = name_w, maxw = name_w}, nodes = {
+      {n = G.UIT.T, config = {ref_table = T.info, ref_value = "name", scale = 0.5 * s, colour = UIK.C.title, shadow = true}},
+    }},
+    {n = G.UIT.C, config = {align = "cm", minw = 0.06, minh = d.strip_h - 0.24, r = 0.03, colour = {1, 1, 1, 0.12}}, nodes = {}},
+    {n = G.UIT.C, config = {align = "cm", minw = body_w}, nodes = {
+      {n = G.UIT.R, config = {align = "cm", maxw = body_w - 0.2}, nodes = {
+        {n = G.UIT.T, config = {ref_table = T.info, ref_value = "line", scale = 0.4 * s, colour = UIK.C.text, shadow = true}},
+      }},
+      {n = G.UIT.R, config = {align = "cm", maxw = body_w - 0.2, padding = 0.02}, nodes = {
+        {n = G.UIT.T, config = {ref_table = T.info, ref_value = "doors", scale = 0.32 * s, colour = UIK.C.muted}},
+        {n = G.UIT.T, config = {ref_table = T.info, ref_value = "net", scale = 0.32 * s, colour = G.C.ORANGE}},
+      }},
+    }},
+  }}
+end
+
+function T.set_focus(key)
+  local entry = T.by_key and T.by_key[key]
+  if not entry then return end
+  T.focus = key
+  local p = entry.place
+  local names = {}
+  for _, dd in ipairs(entry.doors) do names[#names + 1] = dd.label end
+  T.info.name = L(p.name)
+  T.info.line = L(p.line)
+  T.info.doors = table.concat(names, ",  ")
+  local net = (p.online and not online()) and L("Online part needs a connection") or ""
+  T.info.net = (net ~= "" and not portrait()) and ("   " .. net) or net
+end
+
+function T.map_def()
+  local shown = T.shown()
+  T.list, T.by_key, T.nodes, T.street = shown, {}, {}, nil
+  for _, e in ipairs(shown) do T.by_key[e.place.key] = e end
+  if not (T.focus and T.by_key[T.focus]) then T.focus = shown[1] and shown[1].place.key end
+  if T.last and T.by_key[T.last] then T.focus = T.last end
+  if T.focus then T.set_focus(T.focus) end
+  local d = dims(#shown)
+  T.dims = d
+  return UIK.window{
+    id = "town",
+    title = L("THE CASINO"),
+    build = function()
+      return {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {
+        {n = G.UIT.C, config = {align = "tm", padding = 0}, nodes = {
+          board(shown, d),
+          {n = G.UIT.R, config = {minh = d.gap, minw = 0.1}, nodes = {}},
+          strip(d),
+        }},
+      }}
+    end,
+  }
+end
+
+G.FUNCS.town_street = function(e) T.street = e end
+
+local function lit(dist, light) return math.max(0, 1 - math.abs(dist - light) / 1.1) end
+
+local function dot(x, y, size, glow, gold)
+  love.graphics.setColor(1 - (1 - gold[1]) * glow, 1 - (1 - gold[2]) * glow, 1 - (1 - gold[3]) * glow, 0.2 + 0.6 * glow)
+  love.graphics.rectangle("fill", x - size / 2, y - size / 2, size, size, size * 0.3, size * 0.3)
+end
+
+function T.draw_road(b)
+  local st = T.street
+  if not st or st.REMOVED or not T.list then return end
+  local d = T.dims
+  local ox, oy = b.VT.x, b.VT.y
+  local sx, sy, sw, sh = st.VT.x - ox, st.VT.y - oy, st.VT.w, st.VT.h
+  local vertical = d.portrait
+  local bed = 0.16
+  local gold = G.C.GOLD
+  local size, step = 0.085, 0.26
+  local len = vertical and sh or sw
+  local light = moving() and ((G.TIMERS.REAL * 2.4) % (len + 3) - 1.5) or -100
+  prep_draw(b, 1)
+  love.graphics.setColor(0, 0, 0, 0.24)
+  if vertical then
+    love.graphics.rectangle("fill", sx + bed, sy, sw - 2 * bed, sh, 0.12, 0.12)
+  else
+    love.graphics.rectangle("fill", sx, sy + bed / 2, sw, sh - bed, 0.12, 0.12)
+  end
+  local drives = {}
+  for _, e in ipairs(T.list) do
+    local n = T.nodes[e.place.key]
+    if n and not n.REMOVED then
+      local x, y, w, h = n.VT.x - ox, n.VT.y - oy, n.VT.w, n.VT.h
+      local dw = 0.34
+      local r
+      if e.side == "top" then r = {x + w / 2 - dw / 2, y + h - 0.06, dw, sy + bed / 2 - (y + h - 0.06), x + w / 2}
+      elseif e.side == "bottom" then r = {x + w / 2 - dw / 2, sy + sh - bed / 2, dw, y + 0.06 - (sy + sh - bed / 2), x + w / 2}
+      elseif e.side == "left" then r = {x + w - 0.06, y + h / 2 - dw / 2, sx + bed - (x + w - 0.06), dw, y + h / 2}
+      else r = {sx + sw - bed, y + h / 2 - dw / 2, x + 0.06 - (sx + sw - bed), dw, y + h / 2} end
+      if r[3] > 0 and r[4] > 0 then
+        love.graphics.setColor(0, 0, 0, 0.24)
+        love.graphics.rectangle("fill", r[1], r[2], r[3], r[4], 0.06, 0.06)
+        drives[#drives + 1] = r
+      end
+    end
+  end
+  local f_node = T.focus and T.by_key[T.focus] and T.by_key[T.focus].sprite
+  if f_node and not f_node.REMOVED and f_node.states.visible then
+    local pulse = moving() and 0.03 * math.sin(3 * G.TIMERS.REAL) or 0
+    local fx, fy = f_node.T.x + f_node.T.w / 2 - ox, f_node.T.y + f_node.T.h / 2 - oy
+    love.graphics.setColor(gold[1], gold[2], gold[3], 0.08 + pulse)
+    love.graphics.ellipse("fill", fx, fy, d.card_w * 0.8, d.card_h * 0.64)
+    love.graphics.setColor(gold[1], gold[2], gold[3], 0.12 + pulse)
+    love.graphics.ellipse("fill", fx, fy, d.card_w * 0.66, d.card_h * 0.55)
+  end
+  local n = math.floor((len - 0.3) / step)
+  for k = 0, n do
+    local t = 0.15 + k * step
+    local g = lit(t, light)
+    if vertical then dot(sx + sw / 2, sy + t, size, g, gold) else dot(sx + t, sy + sh / 2, size, g, gold) end
+  end
+  for _, r in ipairs(drives) do
+    local along = vertical and (r[5] - sy) or (r[5] - sx)
+    local g = lit(along, light) * 0.8
+    if vertical then
+      local m = math.max(1, math.floor(r[3] / step))
+      for k = 1, m do dot(r[1] + r[3] * (k - 0.5) / m, r[5], size * 0.8, g, gold) end
+    else
+      local m = math.max(1, math.floor(r[4] / step))
+      for k = 1, m do dot(r[5], r[2] + r[4] * (k - 0.5) / m, size * 0.8, g, gold) end
+    end
+  end
+  love.graphics.pop()
+end
+
+local function idle_wiggle()
+  if not moving() or T.opening then return end
+  local now = G.TIMERS.REAL
+  if not T.next_wiggle then T.next_wiggle = now + 1.5 return end
+  if now < T.next_wiggle then return end
+  T.next_wiggle = now + 1.6 + math.random() * 1.8
+  local pool = {}
+  for _, e in ipairs(T.list or {}) do
+    if e.sprite and e.place.key ~= T.focus then pool[#pool + 1] = e end
+  end
+  local e = pool[math.random(math.max(1, #pool))]
+  if e then e.sprite:juice_up(0.04, 0.04) end
+end
+
+G.FUNCS.town_board = function(e)
+  idle_wiggle()
+  if e.town_road then return end
+  e.town_road = true
+  local base = e.draw_self
+  e.draw_self = function(self, ...)
+    base(self, ...)
+    local ok, err = pcall(T.draw_road, self)
+    if not ok and not T.road_err then T.road_err = true print("[TOWN] road: " .. tostring(err)) end
+  end
+end
+
+local function sparks(entry)
+  if entry.sparks or not entry.sprite or not entry.place.sparks then return end
+  if G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.perf_particles == false then return end
+  entry.sparks = Particles(0, 0, 0, 0, {timer = 0.09, scale = 0.22, speed = 0.9, lifespan = 1.4, attach = entry.sprite, fill = true,
+    colours = {G.C.ORANGE, G.C.RED, G.C.GOLD}, padding = 0.25})
+  entry.sparks.T.h = entry.sprite.T.h * 0.45
+end
+
+G.FUNCS.town_tile = function(e)
+  local key = e.config.ref_table and e.config.ref_table.key
+  local entry = key and T.by_key and T.by_key[key]
+  if not entry then return end
+  T.nodes[key] = e
+  local spr = entry.sprite
+  local c = G.CONTROLLER
+  local hot = e.states.hover.is or (c and c.focused and c.focused.target == e)
+  if hot and T.focus ~= key and not T.opening then
+    T.set_focus(key)
+    if spr then spr:juice_up(0.05, 0.03) end
+    play_sound("paper1", 0.95 + math.random() * 0.1, 0.35)
+  end
+  if not spr then return end
+  if entry.deal_at then
+    if G.TIMERS.REAL < entry.deal_at then return end
+    entry.deal_at = nil
+    spr.states.visible = true
+    if spr.role and spr.role.offset then spr.role.offset.y = -0.45 end
+    spr:juice_up(0.12, 0.08)
+    play_sound("card1", 0.9 + 0.03 * (entry.order or 1), 0.35)
+  end
+  sparks(entry)
+  local want = 0
+  if T.opening == key then want = -0.3 elseif T.opening then want = 0.1 elseif hot then want = -0.12 end
+  if moving() then want = want + 0.035 * math.sin(1.3 * G.TIMERS.REAL + entry.phase) end
+  local off = spr.role and spr.role.offset
+  if off then off.y = off.y + (want - off.y) * math.min(1, (G.real_dt or 0.016) * 12) end
+  spr.states.collide.is = hot and true or false
+  spr.hover_tilt = hot and 1 or 0
+end
+
+function T.go(key)
+  local entry = T.by_key and T.by_key[key]
+  if not entry then return end
+  local ds = entry.doors
+  if #ds == 1 then
+    local dd = ds[1]
+    G.FUNCS[dd.button]({config = {ref_table = dd.ref or {}, button = dd.button}, UIBox = G.OVERLAY_MENU})
+  else
+    T.open_place(key)
+  end
+end
+
+G.FUNCS.open_town_place = function(e)
+  local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if key then T.go(key) end
+end
+
+G.FUNCS.town_enter = function(e)
+  local key = e and e.config and e.config.ref_table and e.config.ref_table.key
+  if not key or T.opening then return end
+  local entry = T.by_key and T.by_key[key]
+  if not entry then return end
+  T.last = key
+  T.set_focus(key)
+  T.opening = key
+  if entry.sprite then entry.sprite:juice_up(0.3, 0.2) end
+  play_sound("cardSlide1", 1.15, 0.55)
+  play_sound("whoosh2", 1.1, 0.3)
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.22, timer = "REAL", blocking = false, blockable = false, func = function()
+    local still = T.opening == key
+    T.opening = nil
+    if still then
+      local ok, err = pcall(G.FUNCS.open_town_place, {config = {ref_table = {key = key}}})
+      if not ok then print("[TOWN] open " .. key .. ": " .. tostring(err)) end
+    end
+    return true
+  end}))
+end
+
+function T.place_def(key)
+  local entry = T.by_key[key]
+  local p = entry.place
+  local h = touch() and 3.3 or 3.0
+  local spr = card_sprite(p.center, h * G.CARD_W / G.CARD_H, h)
+  T.place_sprite = spr
+  local bw = touch() and 4.4 or 4.0
+  local buttons = {}
+  for i, dd in ipairs(entry.doors) do
+    buttons[#buttons + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.08}, nodes = {
+      UIK.button{id = "town_door_" .. i, label = dd.label, button = "town_door", ref_table = {key = key, i = i}, colour = dd.colour, w = bw, h = touch() and 0.95 or 0.85},
+    }}
+  end
+  local right = {
+    {n = G.UIT.R, config = {align = "cm", padding = 0.06, maxw = bw + 0.4}, nodes = {UIK.text(L(p.line), {scale = touch() and 0.4 or 0.36, colour = UIK.C.text})}},
+    {n = G.UIT.R, config = {minh = 0.15, minw = 0.1}, nodes = {}},
+  }
+  for _, b in ipairs(buttons) do right[#right + 1] = b end
+  return UIK.window{
+    id = "town_place",
+    title = L(p.name),
+    compact = true,
+    w = math.min(9.2, UIK.W - 0.4),
+    keep_w = true,
+    back_func = "town_back",
+    build = function()
+      local art = spr and {n = G.UIT.O, config = {object = spr}} or {n = G.UIT.B, config = {w = 2, h = h}}
+      if portrait() then
+        return {n = G.UIT.R, config = {align = "cm", padding = 0.15}, nodes = {
+          {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = {
+            {n = G.UIT.R, config = {align = "cm", padding = 0.1}, nodes = {art}},
+            {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = {{n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = right}}},
+          }},
+        }}
+      end
+      return {n = G.UIT.R, config = {align = "cm", padding = 0.15}, nodes = {
+        {n = G.UIT.C, config = {align = "cm", padding = 0.1}, nodes = {art}},
+        {n = G.UIT.C, config = {align = "cm", minw = 0.3}, nodes = {}},
+        {n = G.UIT.C, config = {align = "cm", padding = 0}, nodes = right},
+      }}
+    end,
+  }
+end
+
+function T.open_place(key)
+r 13 1381 %20%20 -
+l 43
+  G.FUNCS.overlay_menu{definition = T.place_def(key)}
+  if T.place_sprite then T.place_sprite:juice_up(0.2, 0.2) end
+  T.snap("town_door_1")
+end
+
+local function skip_place_in_history()
+  local q = rawget(_G, "QOL")
+  local nb = q and q.modules and q.modules.nav_back
+  local nav = nb and nb.nav
+  if not (nav and nav.cur and nav.cur.name == "open_town_place" and type(nav.stack) == "table" and #nav.stack > 0) then return end
+  nav.cur = table.remove(nav.stack)
+end
+
+G.FUNCS.town_door = function(e)
+  local r = e and e.config and e.config.ref_table
+  local entry = r and T.by_key and T.by_key[r.key]
+  local dd = entry and entry.doors[r.i]
+  if not dd then return end
+  T.last = r.key
+  pcall(skip_place_in_history)
+  G.FUNCS[dd.button]({config = {ref_table = dd.ref or {}, button = dd.button}, UIBox = G.OVERLAY_MENU})
+end
+
+G.FUNCS.town_back = function()
+  T.open()
+end
+
+function T.snap(id)
+  G.E_MANAGER:add_event(Event({trigger = "after", delay = 0.05, timer = "REAL", blocking = false, blockable = false, func = function()
+    local c = G.CONTROLLER
+    if not (c and c.HID and c.HID.controller and G.OVERLAY_MENU) then return true end
+    local n = G.OVERLAY_MENU:get_UIE_by_ID(id)
+    if not n then
+      local key = id:match("^town_place_(.+)$")
+      n = key and T.nodes[key]
+    end
+    if n then c:snap_to{node = n} end
+    return true
+  end}))
+end
+
+function T.open()
+  T.deal = not G.OVERLAY_MENU and moving()
+r 13 1381 %20%20 -
+l 77
+  T.opening = nil
+  local ok, err = pcall(function() G.FUNCS.overlay_menu{definition = T.map_def()} end)
+  if not ok then
+    print("[TOWN] map failed: " .. tostring(err))
+    if T.classic_open then return T.classic_open() end
+    return
+  end
+  if T.focus then T.snap("town_place_" .. T.focus) end
+  pcall(function()
+    if G.FUNCS.trigger_sub_showcase_tavern then
+      T.intro_text()
+      G.FUNCS.trigger_sub_showcase_tavern()
+    end
+  end)
+end
+
+T.INTRO = {
+  en = {"Welcome to {C:blue}The Casino{}!", "Walk the floor to a place:", "{C:attention}Quests{}, the {C:money}Market{}, the {C:attention}Tailor{},", "{C:attention}The Forge{}, the {C:attention}Library{} and more!"},
+  fr = {"Bienvenue au {C:blue}Casino{} !", "Parcours la salle jusqu'à un lieu :", "les {C:attention}Quêtes{}, le {C:money}Marché{}, le {C:attention}Tailleur{},", "{C:attention}La Forge{}, la {C:attention}Bibliothèque{} et plus !"},
+  es = {"¡Bienvenido al {C:blue}Casino{}!", "Recorre la sala hasta un lugar:", "las {C:attention}Misiones{}, el {C:money}Mercado{}, el {C:attention}Sastre{},", "¡{C:attention}La Forja{}, la {C:attention}Biblioteca{} y más!"},
+}
+
+function T.intro_text()
+  local tut = G.localization and G.localization.misc and G.localization.misc.tutorial
+  if not tut then return end
+  local lang = tostring(G.SETTINGS.language or "en-us")
+  local key = lang:sub(1, 2)
+  local lines = T.INTRO[key] or (lang:find("^en") and T.INTRO.en)
+  if not lines then return end
+  tut.sc_sub_tavern_intro = lines
+  local parsed = G.localization.tutorial_parsed
+  if parsed and loc_parse_string then
+    local t = {multi_line = true}
+    for i, v in ipairs(lines) do t[i] = loc_parse_string(v) end
+    parsed.sc_sub_tavern_intro = t
+  end
+end
+
+if G and G.FUNCS then
+  T.classic_open = T.classic_open or G.FUNCS.open_tavern_hub
+  G.FUNCS.open_tavern_hub = function(e)
+    T.open()
+  end
+end
+
+mod_loc_register{
+  fr = {
+    ["THE CASINO"] = "LE CASINO", ["The Casino"] = "Le Casino",
+    ["TAVERN"] = "TAVERNE", ["MARKET"] = "MARCHÉ", ["TAILOR"] = "TAILLEUR", ["THE FORGE"] = "LA FORGE",
+    ["LIBRARY"] = "BIBLIOTHÈQUE", ["TRAINING GROUNDS"] = "ENTRAÎNEMENT", ["ARCADE"] = "SALLE D'ARCADE", ["RACETRACK"] = "CIRCUIT",
+    ["Quests and your past runs"] = "Les quêtes et vos parties passées",
+    ["Cosmetics for your Balacoin"] = "Des cosmétiques contre vos Balacoins",
+    ["Dress your deck and your profile"] = "Habillez votre jeu et votre profil",
+    ["Make your own cards and decks"] = "Créez vos propres cartes et jeux",
+    ["Seeds worth playing again"] = "Des seeds à rejouer",
+    ["Fight any boss you have met"] = "Affronte un boss déjà rencontré",
+    ["Quick games for a break"] = "Des mini-jeux pour souffler",
+    ["Speedrun times, yours and online"] = "Les temps de speedrun, les tiens et en ligne",
+    ["Online part needs a connection"] = "Le classement en ligne demande une connexion",
+  },
+  es = {
+    ["THE CASINO"] = "EL CASINO", ["The Casino"] = "El Casino",
+    ["TAVERN"] = "TABERNA", ["MARKET"] = "MERCADO", ["TAILOR"] = "SASTRE", ["THE FORGE"] = "LA FORJA",
+    ["LIBRARY"] = "BIBLIOTECA", ["TRAINING GROUNDS"] = "ENTRENAMIENTO", ["ARCADE"] = "SALÓN RECREATIVO", ["RACETRACK"] = "CIRCUITO",
+    ["Quests and your past runs"] = "Las misiones y tus partidas pasadas",
+    ["Cosmetics for your Balacoin"] = "Cosméticos a cambio de Balacoin",
+    ["Dress your deck and your profile"] = "Viste tu baraja y tu perfil",
+    ["Make your own cards and decks"] = "Crea tus propias cartas y barajas",
+    ["Seeds worth playing again"] = "Códigos para volver a jugar",
+    ["Fight any boss you have met"] = "Enfréntate a un jefe que ya viste",
+    ["Quick games for a break"] = "Minijuegos para un descanso",
+    ["Speedrun times, yours and online"] = "Tiempos de speedrun, tuyos y en línea",
+    ["Online part needs a connection"] = "La tabla en línea necesita conexión",
+  },
+}
+
+return T
+end

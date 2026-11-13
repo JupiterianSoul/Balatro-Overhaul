@@ -1,0 +1,107 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 54
+local X = Extras
+local KEY = "safe_sell"
+local M = X.feature(KEY, {})
+local L = function(s) return mod_loc(s) end
+
+M.CONFIRM_S = 2.5
+
+function M.valuable(card)
+    if type(card) ~= "table" or not card.ability or card.ability.set ~= "Joker" then return false end
+    if card.edition then return true end
+    local r = card.config and card.config.center and card.config.center.rarity
+    if type(r) == "number" then return r >= 3 end
+    return type(r) == "string"
+end
+
+local function real_press(e)
+    if type(e) ~= "table" or type(e.is) ~= "function" or not UIElement then return false end
+    local ok, is = pcall(e.is, e, UIElement)
+    return ok and is
+end
+
+local function find_text(node, text, depth)
+    if type(node) ~= "table" or (depth or 0) > 6 then return nil end
+    if node.config and node.config.text == text and node.config.text_drawable then return node end
+    for _, c in ipairs(node.children or {}) do
+        local hit = find_text(c, text, (depth or 0) + 1)
+        if hit then return hit end
+    end
+end
+
+function M.mark(e, armed)
+    local sell, sure = localize("b_sell"), L("SURE?")
+    local t = find_text(e, armed and sell or sure)
+    if armed and not t then return end
+    e.safe_sell_armed = armed or nil
+    if not t then return end
+    t.config.text = armed and sure or sell
+    t.config.text_drawable:set(t.config.text)
+    t.config.text_drawable_text = t.config.text
+    if e.UIBox then e.UIBox:recalculate() end
+end
+
+function M.blocks(e)
+    if not X.on(KEY) or not real_press(e) then return false end
+    local card = e.config and e.config.ref_table
+    if not M.valuable(card) then return false end
+    local pb = rawget(_G, "bom_playback")
+    if pb and pb.active and pb.active() then return false end
+    local now = G.TIMERS.REAL
+    if card.safe_sell_at and now - card.safe_sell_at <= M.CONFIRM_S then
+        card.safe_sell_at = nil
+        return false
+    end
+    card.safe_sell_at = now
+r 13 2165 %20%20%20%20 -
+l 45
+    pcall(M.mark, e, true)
+    pcall(function() card:juice_up(0.3, 0.3) end)
+    pcall(play_sound, "cancel", 1, 0.5)
+    return true
+end
+
+function M.refresh(e)
+    local card = e.config and e.config.ref_table
+    if card and card.safe_sell_at and G.TIMERS.REAL - card.safe_sell_at <= M.CONFIRM_S then
+        if not e.safe_sell_armed then M.mark(e, true) end
+        if e.config.button then e.config.colour = G.C.RED end
+        return
+    end
+    if card then card.safe_sell_at = nil end
+    M.mark(e, false)
+end
+
+function M.init()
+    if M._wrapped or type(G.FUNCS.sell_card) ~= "function" then return end
+    M._wrapped = true
+    local orig = G.FUNCS.sell_card
+    G.FUNCS.sell_card = function(e, ...)
+        local ok, stop = pcall(M.blocks, e)
+        if ok and stop then return end
+        return orig(e, ...)
+    end
+    local can = G.FUNCS.can_sell_card
+    if type(can) == "function" then
+        G.FUNCS.can_sell_card = function(e, ...)
+            local r = can(e, ...)
+            local card = type(e) == "table" and type(e.config) == "table" and e.config.ref_table
+            if type(e) == "table" and (e.safe_sell_armed or type(card) == "table" and card.safe_sell_at) then pcall(M.refresh, e) end
+            return r
+        end
+    end
+end
+
+mod_loc_register{
+    fr = {["Safe sell"] = "Vente sûre", ["Valuable jokers need two presses to sell"] = "Jokers précieux : vendre en 2 appuis",
+        ["SURE?"] = "SÛR ?"},
+    es = {["Safe sell"] = "Venta segura", ["Valuable jokers need two presses to sell"] = "Comodines valiosos: vender en 2 toques",
+        ["SURE?"] = "¿SEGURO?"},
+}
+
+return M
+end

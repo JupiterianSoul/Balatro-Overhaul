@@ -1,0 +1,466 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 120
+BOT = BOT or {}
+BOT.brains = BOT.brains or {}
+local D = {}
+BOT.difficulty = D
+
+local function L(s)
+    if mod_loc then return mod_loc(s) end
+    return s
+end
+
+D.LEVELS = {"easy", "normal", "hard", "expert"}
+local BEST_PLAY = "Plays its best game."
+D.LEVEL_TEXT = {
+    easy = "Makes mistakes on purpose.",
+    normal = BEST_PLAY,
+    hard = BEST_PLAY,
+    expert = BEST_PLAY,
+}
+D.PERSONALITIES = {"careful", "greedy", "gambler", "collector", "speedrunner", "custom"}
+D.STYLES = {
+    careful = {reserve_add = 5},
+    greedy = {reserve_max = 25, econ_bonus = 2},
+    gambler = {reserve_add = -10, max_rerolls = 5, reroll_margin = 5, max_packs = 2},
+    collector = {edition_bonus = 2},
+    speedrunner = {skip_blinds = true, skip_until_ante = 4},
+    custom = {},
+}
+D.HANDICAPS = {
+    {key = "fewer_hands", label = "One hand less"},
+    {key = "fewer_discards", label = "One discard less"},
+    {key = "smaller_hand", label = "Hand size -1"},
+    {key = "no_rerolls", label = "No rerolls"},
+    {key = "hidden_deck", label = "Hide the deck"},
+    {key = "slow", label = "Slow thinker"},
+}
+
+local function cap(s) return s:sub(1, 1):upper() .. s:sub(2) end
+
+BOT.brains.easy = function(state, ctx)
+    local rng = ctx.rng or math.random
+    if state.phase == "play" and rng() < 0.3 then
+        local res = BOT_ENGINE and BOT_ENGINE.results
+        local plays = res and res.plays
+        if plays and #plays > 1 then
+            local p = plays[math.min(#plays, 2 + math.floor(rng() * (#plays - 1)))]
+            local ids = {}
+            local inhand = {}
+            for _, c in ipairs(G.hand and G.hand.cards or {}) do inhand[c] = true end
+            for _, c in ipairs(p.cards or {}) do if inhand[c] and #ids < 5 then ids[#ids + 1] = c.sort_id end end
+            for _, l in ipairs(state.legal or {}) do
+                if l.type == "play" and #ids > 0 then return {type = "play", cards = ids}, "a careless " .. tostring(p.hand_name or "play") end
+            end
+        end
+        for _, l in ipairs(state.legal or {}) do
+            if l.type == "play" then return BOT.fill_action(l, state, rng), "a careless play" end
+        end
+    end
+    if state.phase == "shop" then
+        if rng() < 0.4 then
+            local buys = {}
+            for _, l in ipairs(state.legal or {}) do
+                if l.type == "buy" or l.type == "open" then buys[#buys + 1] = l end
+            end
+            if #buys > 0 and (ctx.shop_turns or 0) < 4 then
+                local l = buys[math.floor(rng() * #buys) + 1]
+                return {type = l.type, card = l.card}, "this looks fun"
+            end
+        end
+        local a, why = BOT.brains.rules(state, ctx)
+        if a and a.type == "reroll" then return {type = "leave"}, "done shopping" end
+        return a, why
+    end
+    return BOT.brains.rules(state, ctx)
+end
+
+function D.level()
+    local lv = BOT.config.get("difficulty")
+    for _, x in ipairs(D.LEVELS) do if x == lv then return lv end end
+    return "normal"
+end
+
+function D.brain_for(provider)
+    local lv = D.level()
+    local base = BOT.brain_for(provider)
+    if lv == "easy" then return "easy" end
+    if BOT.sim and BOT.sim.KINDS[base] then return base end
+    if base == "llm" or base == "hybrid" then return base end
+    return "rules"
+end
+
+function D.brain_for_versus(brain)
+    return D.brain_for(BOT.config.get("provider")) or brain
+end
+
+function D.handicap(key)
+    local h = BOT.config.get("handicaps") or {}
+    return h[key] and true or false
+end
+
+function D.state_filter(state, ctx)
+    if D.handicap("no_rerolls") and state.legal then
+        local keep = {}
+        for _, l in ipairs(state.legal) do
+            if l.type ~= "reroll" and l.type ~= "reroll_boss" then keep[#keep + 1] = l end
+        end
+        state.legal = keep
+    end
+    if D.handicap("hidden_deck") then state.deck = nil end
+    if G.GAME and G.STAGE == G.STAGES.RUN and D.applied_game ~= G.GAME and state.phase == "blind_select" then
+        D.applied_game = G.GAME
+        local rr = G.GAME.round_resets
+        if D.handicap("fewer_hands") and rr and (rr.hands or 1) > 1 then
+            rr.hands = rr.hands - 1
+            BOT.note("handicap", "one hand less")
+        end
+        if D.handicap("fewer_discards") and rr and (rr.discards or 0) > 0 then
+            rr.discards = rr.discards - 1
+            BOT.note("handicap", "one discard less")
+        end
+        if D.handicap("smaller_hand") and G.hand and G.hand.config.card_limit > 1 then
+r 2 188 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 338
+            BOT.note("handicap", "hand size -1")
+        end
+    end
+end
+
+function D.prepare(opts)
+    local v = BOT.config.values or BOT.config.load()
+    opts.brain = D.brain_for(v.provider)
+    if D.handicap("slow") then opts.delay = (opts.delay or 0.6) + 1 end
+    return opts
+end
+
+function D.after_start()
+    local v = BOT.config.values or BOT.config.load()
+    BOT.ctx.style = D.STYLES[v.personality] or {}
+    BOT.state_filter = D.state_filter
+    D.run_started = love.timer.getTime()
+    D.stats_at_start = {actions = 0, refused = 0, tokens_in = 0, tokens_out = 0, cost = 0}
+end
+
+local function read_history()
+    if not love.filesystem.getInfo("bot/history.lua") then return {} end
+    local src = love.filesystem.read("bot/history.lua")
+    local fn = src and loadstring(src)
+    if not fn then return {} end
+    setfenv(fn, {})
+    local ok, t = pcall(fn)
+    return (ok and type(t) == "table") and t or {}
+end
+D.read_history = read_history
+
+function D.record(phase, state)
+    local v = BOT.config.values or BOT.config.load()
+    local st = BOT.stats or {}
+    local g = G.GAME or {}
+    local best = g.round_scores and g.round_scores.hand and g.round_scores.hand.amt
+    local e = {
+        time = os.time(),
+        result = phase == "win" and "win" or "loss",
+        ante = state and state.run and state.run.ante or (g.round_resets and g.round_resets.ante),
+        round = g.round,
+        best_hand = type(best) == "number" and math.floor(best) or tostring(best or 0),
+        money = g.dollars,
+        actions = st.actions or 0,
+        refused = st.refused or 0,
+        tokens_in = st.tokens_in or 0,
+        tokens_out = st.tokens_out or 0,
+        cost = st.cost or 0,
+        seconds = math.floor(love.timer.getTime() - (D.run_started or love.timer.getTime())),
+        provider = v.provider,
+        model = v.model,
+        difficulty = D.level(),
+        personality = v.personality,
+        deck = g.selected_back and g.selected_back.name,
+        stake = g.stake,
+    }
+    local h = read_history()
+    table.insert(h, 1, e)
+    while #h > 50 do table.remove(h) end
+    love.filesystem.createDirectory("bot")
+    require("functions/fast_fs").write("bot/history.lua", "return " .. BOT.config.serialize(h) .. "\n")
+    D.last = e
+    return e
+end
+
+function D.summary_lines(e)
+    if not e then return {} end
+    local out = {
+        string.format("%s  %s %s", e.result == "win" and L("WON") or L("LOST"), L("ante"), tostring(e.ante)),
+        string.format("%s %s", L("Best hand"), tostring(e.best_hand)),
+        string.format("%s %d  %s %d", L("Actions"), e.actions, L("Refused"), e.refused),
+        string.format("%s %ds", L("Time"), e.seconds),
+    }
+    if (e.tokens_in or 0) > 0 then
+        out[#out + 1] = string.format("%s %d / %d", L("Tokens"), e.tokens_in, e.tokens_out)
+        out[#out + 1] = string.format("%s $%.4f", L("Cost"), e.cost or 0)
+    end
+    out[#out + 1] = string.format("%s, %s", L(cap(e.difficulty or "normal")), L(cap(e.personality or "careful")))
+    return out
+end
+
+local DECK_KEYS
+local function decks()
+    if DECK_KEYS then return DECK_KEYS end
+    DECK_KEYS = {}
+    for k, c in pairs(G.P_CENTERS or {}) do
+        if type(c) == "table" and c.set == "Back" and not c.omit then DECK_KEYS[#DECK_KEYS + 1] = k end
+    end
+    table.sort(DECK_KEYS, function(a, b)
+        local oa, ob = G.P_CENTERS[a].order or 99, G.P_CENTERS[b].order or 99
+        if oa ~= ob then return oa < ob end
+        return a < b
+    end)
+    return DECK_KEYS
+end
+
+local function deck_name(k)
+    local d = G.localization and G.localization.descriptions and G.localization.descriptions.Back and G.localization.descriptions.Back[k]
+    return (d and d.name) or (G.P_CENTERS[k] and G.P_CENTERS[k].name) or k
+end
+
+local function stake_count()
+    return (G.P_CENTER_POOLS and G.P_CENTER_POOLS.Stake and #G.P_CENTER_POOLS.Stake) or 8
+end
+
+local function idx(list, val)
+    for i, x in ipairs(list) do if x == val then return i end end
+    return 1
+end
+
+local function col(node)
+    return {n = G.UIT.C, config = {align = "tm", padding = 0.02}, nodes = {node}}
+end
+
+local function trow(text, scale, colour)
+    if BOT.ui and BOT.ui.text_row then return BOT.ui.text_row(text, scale, colour) end
+    return {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+        {n = G.UIT.T, config = {text = text, scale = scale or 0.28, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}},
+    }}
+end
+
+function D.game_rows()
+    local v = BOT.config.values or BOT.config.load()
+    local rows = {}
+    local lv_labels = {}
+    for i, x in ipairs(D.LEVELS) do lv_labels[i] = L(cap(x)) end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+        col(create_option_cycle({label = L("Difficulty"), options = lv_labels, current_option = idx(D.LEVELS, D.level()),
+            opt_callback = "bot_set_difficulty", w = 2.8, scale = 0.7, colour = G.C.RED})),
+    }}
+    rows[#rows + 1] = trow(L(D.LEVEL_TEXT[D.level()]), 0.26, G.C.UI.TEXT_LIGHT)
+    rows[#rows + 1] = trow(L("Handicaps make the bot weaker."), 0.26, G.C.UI.TEXT_LIGHT)
+    local dk = decks()
+    local dnames = {}
+    for i, k in ipairs(dk) do dnames[i] = deck_name(k) end
+    local stakes = {}
+    for i = 1, stake_count() do stakes[i] = tostring(i) end
+    rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0.02}, nodes = {
+        col(create_option_cycle({label = L("Deck"), options = dnames, current_option = idx(dk, v.deck), opt_callback = "bot_set_deck",
+            w = 3.2, scale = 0.7, colour = G.C.BLUE, no_pips = true})),
+        col(create_option_cycle({label = L("Stake"), options = stakes, current_option = math.max(1, math.min(#stakes, v.stake or 1)),
+            opt_callback = "bot_set_stake", w = 1.8, scale = 0.7, colour = G.C.BLUE})),
+    }}
+    rows[#rows + 1] = trow(L("Handicaps"), 0.3, G.C.GOLD)
+    local h = v.handicaps
+    local hcols = {}
+    for i, hc in ipairs(D.HANDICAPS) do
+        local j = (i - 1) % 3 + 1
+        hcols[j] = hcols[j] or {}
+        hcols[j][#hcols[j] + 1] = {label = L(hc.label), ref_table = h, ref_value = hc.key, callback = G.FUNCS.bot_save_settings, w = 2.6, label_scale = 0.36, scale = 0.8}
+    end
+    local hrow = {}
+    for j = 1, #hcols do
+        hrow[#hrow + 1] = {n = G.UIT.C, config = {align = "tm", padding = 0.02, minw = 3.6}, nodes = {
+            {n = G.UIT.R, config = {align = "cm"}, nodes = {create_toggle_group(hcols[j])}},
+        }}
+    end
+    if #hrow > 0 then rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm"}, nodes = hrow} end
+    return rows
+end
+
+local function results()
+    if BOT.results == nil then
+        local ok, t = pcall(function() return love.filesystem.load("bot/results.lua")() end)
+        BOT.results = ok and type(t) == "table" and t or false
+    end
+    return BOT.results or nil
+end
+
+local function cell(nodes, w, h, colour)
+    return {n = G.UIT.C, config = {align = "cm", minw = w, minh = h, r = 0.06, colour = colour or G.C.BLACK, padding = 0.03}, nodes = nodes}
+end
+
+local function t_node(text, scale, colour)
+    return {n = G.UIT.T, config = {text = text, scale = scale, colour = colour or G.C.UI.TEXT_LIGHT, shadow = true}}
+end
+
+local function bar(frac, w, colour)
+    local fw = math.max(0.02, math.min(1, frac)) * w
+    return {n = G.UIT.C, config = {align = "cl", minw = w, minh = 0.1, r = 0.03, colour = G.C.UI.BACKGROUND_DARK}, nodes = {
+        {n = G.UIT.C, config = {minw = fw, minh = 0.1, r = 0.03, colour = colour}, nodes = {}},
+    }}
+end
+
+D.results = results
+
+function D.results_rows()
+    local R = results()
+    local rows = {}
+    if not R then
+        rows[#rows + 1] = trow(L("No training results in this build."), 0.28, G.C.UI.TEXT_INACTIVE)
+        return rows
+    end
+    local g = R.gold or {}
+    rows[#rows + 1] = trow(string.format("%s %s", L("Trained bot"), tostring(R.version)), 0.36, G.C.GOLD)
+    rows[#rows + 1] = trow(string.format(L("Gold Stake, every deck: %d wins in %d games, %.2f%%"), g.wins or 0, g.games or 0, g.rate or 0), 0.3, G.C.UI.TEXT_LIGHT)
+    if R.sim then
+        rows[#rows + 1] = trow(L("Measured in the simulator, no time limit per move."), 0.25, G.C.UI.TEXT_INACTIVE)
+    end
+    if g.prev and g.prev ~= "" then
+        rows[#rows + 1] = trow(string.format(L("Same seeds: %s won %d. Fair play only: no seed reading, one try per seed."), g.prev, g.prev_wins or 0), 0.25, G.C.UI.TEXT_INACTIVE)
+    end
+    local best = 0
+    for _, d in ipairs(R.decks or {}) do best = math.max(best, d.rate or 0) end
+    local port = rawget(_G, "PORTRAIT") and PORTRAIT.on()
+    local bw = (BOT.ui and BOT.ui.box_w and BOT.ui.box_w() or 12) - 0.5
+    local per = port and 2 or 4
+    local w = bw / per - 0.06
+    local ts = 0.34
+    local tw = function(t) return UIK and UIK.text_w and UIK.text_w(t, ts) or #t * ts * 0.5 end
+    local nw, rw = 0, tw("00.0%") + 0.1
+    for _, d in ipairs(R.decks or {}) do nw = math.max(nw, tw(L(d.deck)) + 0.1) end
+    nw = math.min(nw, w - rw - 0.5)
+    local barw = math.max(0.3, w - nw - rw - 0.2)
+    local grid = {}
+    for i, d in ipairs(R.decks or {}) do
+        local r = math.floor((i - 1) / per) + 1
+        grid[r] = grid[r] or {}
+        grid[r][#grid[r] + 1] = {n = G.UIT.C, config = {align = "cm", padding = 0.025}, nodes = {
+            cell({
+                {n = G.UIT.C, config = {align = "cl", minw = nw, maxw = nw}, nodes = {t_node(L(d.deck), ts)}},
+                bar((d.rate or 0) / math.max(best, 1e-9), barw, G.C.GREEN),
+                {n = G.UIT.C, config = {align = "cr", minw = rw}, nodes = {t_node(string.format("%.1f%%", d.rate or 0), ts, G.C.GREEN)}},
+            }, w, 0.42),
+        }}
+    end
+    for _, r in ipairs(grid) do rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = r} end
+    rows[#rows + 1] = trow(string.format(L("Every stake, %s Deck"), L(R.ladder_deck or "Red")), 0.28, G.C.GOLD)
+    local lper = port and 4 or 8
+    local lw = bw / lper - 0.06
+    local lad = {}
+    for i, st in ipairs(R.ladder or {}) do
+        local r = math.floor((i - 1) / lper) + 1
+        lad[r] = lad[r] or {}
+        lad[r][#lad[r] + 1] = {n = G.UIT.C, config = {align = "cm", padding = 0.025}, nodes = {
+            {n = G.UIT.C, config = {align = "cm", minw = lw, maxw = lw, minh = 0.7, r = 0.06, colour = G.C.BLACK, padding = 0.03}, nodes = {
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {t_node(L(st.stake), 0.34, G.C.UI.TEXT_INACTIVE)}},
+                {n = G.UIT.R, config = {align = "cm"}, nodes = {t_node(string.format("%.1f%%", st.rate or 0), 0.36, G.C.GREEN)}},
+            }},
+        }}
+    end
+    for _, r in ipairs(lad) do rows[#rows + 1] = {n = G.UIT.R, config = {align = "cm", padding = 0}, nodes = r} end
+    if R.train and R.train.games then
+        rows[#rows + 1] = trow(string.format(L("Net trained on %d games of %s (%d decisions)."), R.train.games, tostring(R.train.from), R.train.decisions or 0), 0.25, G.C.UI.TEXT_INACTIVE)
+    end
+    return rows
+end
+
+function D.stats_rows()
+    local rows = D.results_rows()
+    local hist = read_history()
+    local wins, best = 0, 0
+    for _, e in ipairs(hist) do
+        if e.result == "win" then wins = wins + 1 end
+        if (tonumber(e.ante) or 0) > best then best = tonumber(e.ante) end
+    end
+    if #hist == 0 then
+        rows[#rows + 1] = trow(L("Your Bot-latro games show up here once you start one."), 0.26, G.C.UI.TEXT_INACTIVE)
+    else
+        rows[#rows + 1] = trow(string.format("%s: %s %d  %s %d  %s %d  %s %d", L("Your games"), L("Games"), #hist, L("Won"), wins, L("Lost"), #hist - wins, L("Best ante"), best), 0.27, G.C.UI.TEXT_LIGHT)
+    end
+    return rows
+end
+
+G.FUNCS.bot_set_difficulty = function(args)
+    BOT.config.set("difficulty", D.LEVELS[args.to_key] or "normal")
+    if BOT.ui then BOT.ui.refresh_settings() end
+end
+
+G.FUNCS.bot_set_personality = function(args)
+    BOT.config.set("personality", D.PERSONALITIES[args.to_key] or "careful")
+    if BOT.ui then BOT.ui.refresh_settings() end
+end
+
+G.FUNCS.bot_set_deck = function(args)
+    local dk = decks()
+    if dk[args.to_key] then BOT.config.set("deck", dk[args.to_key]) end
+end
+
+G.FUNCS.bot_set_stake = function(args)
+    BOT.config.set("stake", args.to_key)
+end
+
+G.FUNCS.bot_paste_personality = function()
+    local ok, s = pcall(function()
+        return G.F_LOCAL_CLIPBOARD and (G.CLIPBOARD or "") or (love.system.getClipboardText() or "")
+    end)
+    s = ok and s or ""
+    s = s:gsub("%s+", " "):sub(1, 400)
+    BOT.config.set("custom_personality", s)
+    if BOT.ui then BOT.ui.refresh_settings() end
+end
+
+if BOT.ui then
+    BOT.ui.game_rows = D.game_rows
+    BOT.ui.stats_rows = D.stats_rows
+end
+
+if mod_loc_register then
+    mod_loc_register({
+        fr = {
+            ["No training results in this build."] = "Pas de résultats d'entraînement dans cette version.",
+            ["Trained bot"] = "Bot entraîné",
+            ["Gold Stake, every deck: %d wins in %d games, %.2f%%"] = "Mise Or, tous les decks : %d victoires en %d parties, %.2f %%",
+            ["Same seeds: %s won %d. Fair play only: no seed reading, one try per seed."] = "Mêmes graines : %s en a gagné %d. Jeu loyal : pas de lecture de graine, un essai par graine.",
+            ["Measured in the simulator, no time limit per move."] = "Mesuré dans le simulateur, sans limite de temps par coup.",
+            ["Every stake, %s Deck"] = "Toutes les mises, deck %s",
+            ["Net trained on %d games of %s (%d decisions)."] = "Réseau entraîné sur %d parties de %s (%d décisions).",
+            ["Your Bot-latro games show up here once you start one."] = "Tes parties Bot-latro apparaissent ici dès que tu en lances une.",
+            ["Your games"] = "Tes parties",
+            ["Bot"] = "Bot", ["Thinking time"] = "Temps de réflexion",
+            ["Our trained bot. Plays fair: sees only what you see, one try per seed."] = "Notre bot entraîné. Joue loyal : voit seulement ce que tu vois, un essai par graine.",
+            ["A hand solver plays the cards, a neural net and rollouts pick shops, packs and skips."] = "Un solveur joue les cartes, un réseau neuronal et des simulations choisissent boutique, paquets et sauts.",
+            ["Reads the seed: knows every future draw, shop and pack."] = "Lit la graine : connaît chaque pioche, boutique et paquet à venir.",
+            ["It cheats on purpose, so its games are kept apart from Fair's."] = "Il triche exprès, ses parties sont comptées à part.",
+            ["Normal is the version measured in the Stats tab. Fast thinks less, Deep thinks more."] = "Normal est la version mesurée dans l'onglet Stats. Rapide réfléchit moins, Profond plus.",
+            ["Seer (cheats)"] = "Voyant (triche)", ["Fair"] = "Loyal",
+        },
+        es = {
+            ["No training results in this build."] = "No hay resultados de entrenamiento en esta versión.",
+            ["Trained bot"] = "Bot entrenado",
+            ["Gold Stake, every deck: %d wins in %d games, %.2f%%"] = "Apuesta Oro, todas las barajas: %d victorias en %d partidas, %.2f %%",
+            ["Same seeds: %s won %d. Fair play only: no seed reading, one try per seed."] = "Mismas semillas: %s ganó %d. Juego limpio: sin leer la semilla, un intento por semilla.",
+            ["Measured in the simulator, no time limit per move."] = "Medido en el simulador, sin límite de tiempo por jugada.",
+            ["Every stake, %s Deck"] = "Todas las apuestas, baraja %s",
+            ["Net trained on %d games of %s (%d decisions)."] = "Red entrenada con %d partidas de %s (%d decisiones).",
+            ["Your Bot-latro games show up here once you start one."] = "Tus partidas de Bot-latro aparecen aquí cuando empiezas una.",
+            ["Your games"] = "Tus partidas",
+            ["Bot"] = "Bot", ["Thinking time"] = "Tiempo de reflexión",
+            ["Our trained bot. Plays fair: sees only what you see, one try per seed."] = "Nuestro bot entrenado. Juega limpio: ve solo lo que tú ves, un intento por semilla.",
+            ["A hand solver plays the cards, a neural net and rollouts pick shops, packs and skips."] = "Un solucionador juega las cartas; una red neuronal y simulaciones eligen tienda, sobres y saltos.",
+            ["Reads the seed: knows every future draw, shop and pack."] = "Lee la semilla: conoce cada robo, tienda y sobre futuros.",
+            ["It cheats on purpose, so its games are kept apart from Fair's."] = "Hace trampa a propósito, así que sus partidas se cuentan aparte.",
+            ["Normal is the version measured in the Stats tab. Fast thinks less, Deep thinks more."] = "Normal es la versión medida en la pestaña Stats. Rápido piensa menos, Profundo más.",
+            ["Seer (cheats)"] = "Vidente (trampa)", ["Fair"] = "Limpio",
+        },
+    })
+end
+end

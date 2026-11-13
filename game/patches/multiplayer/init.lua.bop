@@ -1,0 +1,230 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 162
+﻿local MP = {}
+local function try_require(path)
+    local ok, result = pcall(require, path)
+    if not ok then
+        error("FAILED TO LOAD: " .. path .. "\nReason: " .. tostring(result))
+    end
+    if type(result) ~= "table" then
+        error("BAD RETURN from: " .. path .. "\nGot type: " .. type(result))
+    end
+    return result
+end
+
+mp_config = try_require("multiplayer.mp_config")
+mp_log    = try_require("multiplayer.mp_log")
+mp_log.set_level(mp_config.LOG_LEVEL)
+
+local aws = try_require("multiplayer.android_ws")
+AndroidWS = aws
+AndroidWS.init()
+MP.core       = try_require("multiplayer.bom_core")
+MP.insane_int = try_require("multiplayer.bom_insane_int")
+MP.gamemodes  = try_require("multiplayer.bom_gamemodes")
+MP.match      = try_require("multiplayer.bom_match")
+MP.layers     = try_require("multiplayer.bom_layers")
+MP.rulesets   = try_require("multiplayer.bom_rulesets")
+MP.fair       = try_require("functions.mp.fair_play")
+bom_layers     = MP.layers
+bom_rulesets   = MP.rulesets
+MP.events     = try_require("multiplayer.bom_events")
+MP.room       = try_require("multiplayer.bom_room")
+MP.sync       = try_require("multiplayer.bom_sync")
+MP.nemesis    = try_require("multiplayer.bom_nemesis")
+MP.pvp_hud    = try_require("multiplayer.bom_pvp_hud")
+MP.custom_objects = try_require("multiplayer.bom_custom_objects")
+MP.reworks    = try_require("multiplayer.bom_reworks")
+MP.decks      = try_require("multiplayer.bom_decks")
+MP.joker_art  = try_require("multiplayer.bom_joker_art")
+MP.stakes     = try_require("multiplayer.bom_stakes")
+MP.ui         = try_require("multiplayer.bom_ui")
+MP.lobby_settings = try_require("multiplayer.bom_lobby_settings")
+MP.traps      = try_require("multiplayer.bom_traps")
+MP.sabotage   = MP.traps
+bom_traps      = MP.traps
+MP.draft      = try_require("multiplayer.bom_draft")
+bom_draft      = MP.draft
+MP.pick       = try_require("multiplayer.bom_pick")
+bom_pick       = MP.pick
+MP.race       = try_require("multiplayer.bom_race")
+bom_race       = MP.race
+MP.party_extras = try_require("multiplayer.bom_party_extras")
+bom_party_extras = MP.party_extras
+MP.rewards    = try_require("multiplayer.bom_rewards")
+MP.daily      = try_require("multiplayer.bom_daily")
+MP.rejoin     = try_require("multiplayer.bom_rejoin")
+MP.browse     = try_require("multiplayer.bom_browse")
+MP.forge      = try_require("multiplayer.bom_forge")
+MP.party      = try_require("multiplayer.bom_party")
+MP.party_run  = try_require("multiplayer.bom_party_run")
+MP.spectate   = try_require("multiplayer.bom_spectate")
+MP.replay     = try_require("multiplayer.bom_replay")
+MP.playback   = try_require("multiplayer.bom_playback")
+bom_replay     = MP.replay
+bom_playback   = MP.playback
+MP.ranked     = try_require("multiplayer.bom_ranked")
+bom_ranked     = MP.ranked
+MP.ranked_ui  = try_require("multiplayer.bom_ranked_ui")
+MP.social     = try_require("multiplayer.bom_social")
+bom_social     = MP.social
+MP.kit        = try_require("multiplayer.bom_kit")
+bom_kit        = MP.kit
+MP.badges     = try_require("multiplayer.bom_badges")
+bom_badges     = MP.badges
+MP.standings  = try_require("multiplayer.bom_standings")
+bom_standings  = MP.standings
+MP.menu       = try_require("multiplayer.mpm_menu")
+mpm_menu       = MP.menu
+MP.profile    = try_require("multiplayer.mpm_profile")
+mpm_profile    = MP.profile
+MP.collection = try_require("multiplayer.mpm_collection")
+mpm_collection = MP.collection
+MP.mods       = try_require("multiplayer.mpm_mods")
+mpm_mods       = MP.mods
+bom_ranked_ui  = MP.ranked_ui
+MP.emotes     = try_require("multiplayer.bom_emotes")
+bom_emotes     = MP.emotes
+MP.mode_content = try_require("functions.modes.mode_content")
+bom_mode_content = MP.mode_content
+MP.swap_mode = try_require("functions.modes.swap_mode")
+bom_swap = MP.swap_mode
+bom_core       = MP.core
+bom_insane_int = MP.insane_int
+bom_gamemodes  = MP.gamemodes
+bom_match      = MP.match
+bom_events     = MP.events
+bom_room       = MP.room
+bom_sync       = MP.sync
+bom_nemesis    = MP.nemesis
+bom_pvp_hud    = MP.pvp_hud
+bom_custom_objects = MP.custom_objects
+bom_reworks    = MP.reworks
+bom_decks      = MP.decks
+bom_joker_art  = MP.joker_art
+bom_stakes     = MP.stakes
+bom_ui         = MP.ui
+bom_lobby_settings = MP.lobby_settings
+bom_sabotage   = MP.sabotage
+bom_rewards    = MP.rewards
+bom_daily      = MP.daily
+bom_rejoin     = MP.rejoin
+bom_browse     = MP.browse
+bom_forge      = MP.forge
+if bom_forge and bom_forge.register then pcall(bom_forge.register) end
+bom_party      = MP.party
+bom_party_run  = MP.party_run
+bom_spectate   = MP.spectate
+function MP.init()
+    if MP.daily and MP.daily.load then MP.daily.load() end
+
+
+    if MP.nemesis and MP.nemesis.init then MP.nemesis.init() end
+    if MP.pvp_hud and MP.pvp_hud.init then MP.pvp_hud.init() end
+    if MP.custom_objects and MP.custom_objects.init then MP.custom_objects.init() end
+    if MP.reworks and MP.reworks.init then pcall(MP.reworks.init) end
+    if MP.decks and MP.decks.init then pcall(MP.decks.init) end
+    if MP.stakes and MP.stakes.init then pcall(MP.stakes.init) end
+    if MP.room and MP.room.init then pcall(MP.room.init) end
+
+    if MP.ui and MP.ui.register_funcs then MP.ui.register_funcs() end
+    if MP.spectate and MP.spectate.register_funcs then MP.spectate.register_funcs() end
+    if MP.rejoin and MP.rejoin.init then pcall(MP.rejoin.init) end
+    if MP.browse and MP.browse.init then pcall(MP.browse.init) end
+    if MP.party and MP.party.init then pcall(MP.party.init) end
+    if MP.party_run and MP.party_run.init then pcall(MP.party_run.init) end
+    if MP.ranked and MP.ranked.init then pcall(MP.ranked.init) end
+    if MP.ranked_ui and MP.ranked_ui.register then pcall(MP.ranked_ui.register) end
+    if MP.fair and MP.fair.init then pcall(MP.fair.init) end
+    for _, m in ipairs({MP.ranked_ui, MP.replay, MP.playback, MP.spectate}) do
+        if m and m.register_strings then pcall(m.register_strings) end
+    end
+    if MP.social and MP.social.init then pcall(MP.social.init) end
+    if MP.kit and MP.kit.init then pcall(MP.kit.init) end
+    if MP.badges and MP.badges.init then pcall(MP.badges.init) end
+    if MP.standings and MP.standings.init then pcall(MP.standings.init) end
+    if MP.rulesets and MP.rulesets.init then pcall(MP.rulesets.init) end
+    if MP.emotes and MP.emotes.init then pcall(MP.emotes.init) end
+    if MP.traps and MP.traps.init then pcall(MP.traps.init) end
+    if MP.pick and MP.pick.init then pcall(MP.pick.init) end
+    if MP.draft and MP.draft.init then pcall(MP.draft.init) end
+    if MP.race and MP.race.init then pcall(MP.race.init) end
+    if MP.party_extras and MP.party_extras.init then pcall(MP.party_extras.init) end
+    if MP.mode_content and MP.mode_content.init then pcall(MP.mode_content.init) end
+    if MP.swap_mode and MP.swap_mode.init then pcall(MP.swap_mode.init) end
+    if MP.ui and MP.ui.inrun_init then pcall(MP.ui.inrun_init) end
+    if MP.menu and MP.menu.init then pcall(MP.menu.init) end
+    if MP.profile and MP.profile.init then pcall(MP.profile.init) end
+    if MP.collection and MP.collection.init then pcall(MP.collection.init) end
+    if MP.mods and MP.mods.init then pcall(MP.mods.init) end
+
+
+    pcall(function()
+        if G.FUNCS and G.FUNCS.go_to_menu then
+            local _original_go_to_menu = G.FUNCS.go_to_menu
+r 13 2981 %20%20%20%20%20%20%20%20%20%20%20%20 -
+l 60
+                pcall(function()
+                    if G and G.GAME and G.GAME.multiplayer and bom_rejoin and bom_rejoin.on_quit_to_menu
+                        and bom_rejoin.on_quit_to_menu() then
+                        return
+                    end
+                    if G and G.GAME and G.GAME.multiplayer then
+                        if bom_core and bom_core.send then
+                            bom_core.send({ type = "return_to_menu" })
+                        end
+                        if bom_ui then bom_ui.destroy_match_hud() end
+                        G.GAME.multiplayer = nil
+                        if bom_core and bom_core.disconnect then bom_core.disconnect() end
+                        if bom_match and bom_match.reset then bom_match.reset() end
+                    end
+                end)
+                return _original_go_to_menu(e)
+            end
+        end
+    end)
+
+    if MP.spectate and MP.spectate.live_init then pcall(MP.spectate.live_init) end
+    if MP.replay and MP.replay.init then pcall(MP.replay.init) end
+    if MP.playback and MP.playback.init then pcall(MP.playback.init) end
+
+end
+function MP.update(dt)
+    if AndroidWS then AndroidWS.poll() end
+    if MP.core and MP.core.update then MP.core.update(dt) end
+    if MP.ranked and MP.ranked.update then pcall(MP.ranked.update, dt) end
+    if MP.social and MP.social.update then pcall(MP.social.update) end
+    if MP.emotes and MP.emotes.update then pcall(MP.emotes.update) end
+    if MP.ui and MP.ui.pvp_result_tick then pcall(MP.ui.pvp_result_tick) end
+    if MP.rejoin and MP.rejoin.update then MP.rejoin.update(dt) end
+    if MP.sync and MP.sync.update then MP.sync.update(dt) end
+    if MP.custom_objects and MP.custom_objects.update then MP.custom_objects.update(dt) end
+    if MP.mode_content and MP.mode_content.update then pcall(MP.mode_content.update) end
+    if MP.swap_mode and MP.swap_mode.update then pcall(MP.swap_mode.update) end
+    if MP.spectate and MP.spectate.update then pcall(MP.spectate.update) end
+    if MP.decks and MP.decks.update then MP.decks.update(dt) end
+    if MP.pvp_hud and MP.pvp_hud.ensure_for_current_blind then MP.pvp_hud.ensure_for_current_blind() end
+    if MP.party and MP.party.update then pcall(MP.party.update) end
+    if MP.replay and MP.replay.update then pcall(MP.replay.update) end
+    if MP.replay and MP.replay.tick_after_leave then pcall(MP.replay.tick_after_leave) end
+    if MP.playback and MP.playback.update then pcall(MP.playback.update, dt) end
+    if MP.match and MP.match.enforce_speed then pcall(MP.match.enforce_speed) end
+    if MP.fair and MP.fair.update then pcall(MP.fair.update) end
+    if MP.traps and MP.traps.update then pcall(MP.traps.update) end
+    if MP.draft and MP.draft.update then pcall(MP.draft.update) end
+    if MP.pick and MP.pick.update then pcall(MP.pick.update) end
+    if MP.race and MP.race.update then pcall(MP.race.update) end
+end
+function MP.draw()
+    if MP.ui and MP.ui.draw then MP.ui.draw() end
+end
+function MP.shutdown()
+    if MP.rejoin and MP.rejoin.on_shutdown then MP.rejoin.on_shutdown() end
+    if MP.core and MP.core.disconnect then MP.core.disconnect() end
+    if AndroidWS then AndroidWS.shutdown() end
+end
+return MP
+end
