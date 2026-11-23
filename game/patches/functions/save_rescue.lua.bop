@@ -1,0 +1,291 @@
+BOP 1
+eol lf
+final 1
+base 0
+l 166
+SaveRescue = SaveRescue or {}
+local R = SaveRescue
+local SIO = require("functions/save_io")
+
+R.DIR = "backups"
+R.STATE = "backups/rescue.txt"
+R.KEEP = 6
+R.SCAN = 10
+R.MIN_ROUNDS = 10
+
+local fs = love.filesystem
+
+local function L(s)
+  return mod_loc and mod_loc(s) or s
+end
+
+local function keep_settings(name)
+  return SIO.skip(name) and not SIO.SKIP_FILES[name]
+end
+
+function R.read_state()
+  local st = {since = 0, declined = {}}
+  local raw = fs.read(R.STATE) or ""
+  for line in raw:gmatch("[^\r\n]+") do
+    local k, v = line:match("^(%S+)%s+(.+)$")
+    if k == "since" then st.since = math.max(st.since, tonumber(v) or 0)
+    elseif k == "declined" then st.declined[v] = true end
+  end
+  return st
+end
+
+local function append_state(line)
+  fs.createDirectory(R.DIR)
+  local raw = fs.read(R.STATE) or ""
+  fs.write(R.STATE, raw .. line .. "\n")
+end
+
+function R.mark_reset(when)
+  pcall(append_state, "since " .. tostring(when or os.time()))
+end
+
+function R.decline(name)
+  pcall(append_state, "declined " .. tostring(name))
+end
+
+function R.score_of(p)
+  if type(p) ~= "table" or p.deleted then return {rounds = 0, wins = 0, level = 0} end
+  local cs = type(p.career_stats) == "table" and p.career_stats or {}
+  local pr = type(p.progression) == "table" and p.progression or {}
+  return {rounds = tonumber(cs.c_rounds) or 0, wins = tonumber(cs.c_wins) or 0, level = tonumber(pr.level) or 0}
+end
+
+function R.lost(now, back)
+  if back.rounds < R.MIN_ROUNDS then return false end
+  if now.rounds * 2 > back.rounds then return false end
+  return back.level >= now.level
+end
+
+function R.auto_name(when)
+  return R.DIR .. "/auto-" .. os.date("%Y-%m-%d", when or os.time()) .. ".zip"
+end
+
+function R.prune()
+  local autos = {}
+  for _, name in ipairs(fs.getDirectoryItems(R.DIR)) do
+    if name:match("^auto%-%d+%-%d+%-%d+%.zip$") then autos[#autos + 1] = name end
+  end
+  table.sort(autos, function(a, b) return a > b end)
+  for i = R.KEEP + 1, #autos do fs.remove(R.DIR .. "/" .. autos[i]) end
+end
+
+function R.snapshot(slot, when)
+  local now = R.score_of(G.PROFILES and G.PROFILES[slot])
+  if now.rounds <= 0 then return nil end
+  local name = R.auto_name(when)
+  if fs.getInfo(name) then return nil end
+  local files = SIO.collect(fs, "", keep_settings)
+  if not next(files) then return nil end
+  fs.createDirectory(R.DIR)
+  local data = SIO.zip(SIO.entries(files))
+  if not fs.write(name, data) then return nil end
+  R.prune()
+  return name
+end
+
+function R.backups()
+  local out = {}
+  for _, name in ipairs(fs.getDirectoryItems(R.DIR)) do
+    local rel = R.DIR .. "/" .. name
+    local info = fs.getInfo(rel)
+    if name:lower():match("%.zip$") and info and info.type == "file" then
+      out[#out + 1] = {rel = rel, name = name, time = info.modtime or 0}
+    end
+  end
+  table.sort(out, function(a, b)
+    if a.time ~= b.time then return a.time > b.time end
+    return a.name > b.name
+  end)
+  return out
+end
+
+function R.find(slot)
+  local st = R.read_state()
+  local now = R.score_of(G.PROFILES and G.PROFILES[slot])
+  local best
+  for i, e in ipairs(R.backups()) do
+    if i > R.SCAN then break end
+    if not st.declined[e.name] and e.time >= st.since then
+      local files = SaveTransfer and SaveTransfer.read(fs.read(e.rel) or "", e.name)
+      local p = files and SIO.read_jkr(files[slot .. "/profile.jkr"])
+      if p then
+        local back = R.score_of(p)
+        if R.lost(now, back) and (not best or back.rounds > best.score.rounds) then
+          best = {name = e.name, rel = e.rel, time = e.time, files = files, score = back}
+        end
+      end
+    end
+  end
+  if best then best.now, best.slot = now, slot end
+  return best
+end
+
+function R.restore_files(found)
+  local slot = tostring(found.slot)
+  local out = {}
+  for name, data in pairs(found.files) do
+    if SIO.slot_of(name) == slot then out[name] = data end
+  end
+  for _, pair in ipairs(SIO.MODDED) do
+    if pair[1] == slot then
+      for _, f in ipairs({"profile.jkr", "meta.jkr"}) do
+        local cur = fs.read(pair[2] .. "/" .. f)
+        if cur and cur ~= "" then out[pair[2] .. "/" .. f] = cur end
+      end
+    end
+  end
+  return out
+end
+
+local function score_text(s)
+  return string.format(L("Level %d, %d rounds, %d wins"), math.max(1, s.level), s.rounds, s.wins)
+end
+
+function R.window(found)
+  local w = UIK.portrait() and 7.2 or 8.6
+  return UIK.window{
+    id = 'save_rescue', title = L("RESTORE YOUR PROGRESS?"), compact = true, w = w + 0.6,
+    back_func = 'save_rescue_later',
+    build = function()
+      local rows = {
+        UIK.note({L("Your profile has much less progress than a copy the game made earlier."), L("This can happen when the game closes while saving.")}, {w = w}),
+        UIK.value{label = L("Now"), value = score_text(found.now), w = w, vw = w - 2},
+        UIK.value{label = L("Copy"), value = score_text(found.score), info = os.date("%Y-%m-%d %H:%M", found.time), w = w, vw = w - 2},
+        UIK.note({L("Your current profile is backed up first. The game restarts to load the copy.")}, {w = w}),
+      }
+      return UIK.stack(rows, {w = w})
+    end,
+    footer = {
+      UIK.button{label = L("RESTORE"), button = 'save_rescue_restore', ref_table = found, colour = UIK.C.ok, w = 3},
+      UIK.button{label = L("KEEP THIS ONE"), button = 'save_rescue_keep', ref_table = found, colour = UIK.C.accent, w = 3},
+    },
+  }
+end
+
+function R.offer(found)
+  R.found = found
+r 32 1381 %20%20 -
+l 27
+  G.FUNCS.overlay_menu{definition = R.window(found)}
+end
+
+local function menu_ready()
+  if not (G.STAGES and G.STAGE == G.STAGES.MAIN_MENU and G.MAIN_MENU_UI) then return false end
+  if G.OVERLAY_MENU or G.OVERLAY_TUTORIAL then return false end
+  local S = G.SETTINGS
+  if not S or not S.language_chosen then return false end
+  return true
+end
+
+function R.check()
+  local slot = G.SETTINGS and G.SETTINGS.profile
+  if not slot or not G.PROFILES then return end
+  local found = R.find(slot)
+  if found then
+    print(string.format("[SAVES] rescue: profile %s has %d rounds, %s has %d", tostring(slot), found.now.rounds, found.name, found.score.rounds))
+    R.offer(found)
+    return found
+  end
+  R.snapshot(slot)
+end
+
+function R.watch()
+  if R.watching or R.checked then return end
+  R.watching = true
+  local started = G.TIMERS.REAL
+r 1 112 %20%20 -
+l 19
+    blocking = false, blockable = false, no_delete = true, timer = 'REAL',
+    func = function()
+      if R.checked then R.watching = false return true end
+      if G.TIMERS.REAL - started > 600 then R.watching = false return true end
+      if G.TIMERS.REAL - started < 1.5 or not menu_ready() then return false end
+      R.checked, R.watching = true, false
+      local ok, err = pcall(R.check)
+      if not ok then print("[SAVES] rescue check failed: " .. tostring(err)) end
+      return true
+    end,
+  }))
+end
+
+G.FUNCS.save_rescue_restore = function(e)
+  local found = e and e.config and e.config.ref_table or R.found
+  if not found then return end
+  local files = R.restore_files(found)
+  if SaveTransfer and SaveTransfer.load({files = files, name = found.name}) then return end
+  R.decline(found.name)
+r 32 1375 %20%20 -
+l 5
+end
+
+G.FUNCS.save_rescue_keep = function(e)
+  local found = e and e.config and e.config.ref_table or R.found
+  if found then R.decline(found.name) end
+r 32 1375 %20%20 -
+l 3
+end
+
+G.FUNCS.save_rescue_later = function()
+r 32 1375 %20%20 -
+l 55
+end
+
+if not R.hooked then
+  R.hooked = true
+  local main_menu_ui = set_main_menu_UI
+  function set_main_menu_UI(...)
+    local ret = {main_menu_ui(...)}
+    pcall(R.watch)
+    return unpack(ret)
+  end
+  local delete_profile = G.FUNCS.delete_profile
+  if delete_profile then
+    G.FUNCS.delete_profile = function(...)
+      R.mark_reset()
+      return delete_profile(...)
+    end
+  end
+  if Game and Game.empty_profile then
+    local empty_profile = Game.empty_profile
+    function Game:empty_profile(...)
+      R.mark_reset()
+      return empty_profile(self, ...)
+    end
+  end
+  if SaveTransfer and SaveTransfer.just_imported then R.mark_reset() end
+end
+
+if mod_loc_register then
+  mod_loc_register{
+    fr = {
+      ["RESTORE YOUR PROGRESS?"] = "RESTAURER VOTRE PROGRESSION ?",
+      ["Your profile has much less progress than a copy the game made earlier."] = "Votre profil a beaucoup moins de progression qu'une copie faite plus tôt par le jeu.",
+      ["This can happen when the game closes while saving."] = "Cela peut arriver quand le jeu se ferme pendant une sauvegarde.",
+      ["Now"] = "Maintenant",
+      ["Copy"] = "Copie",
+      ["Level %d, %d rounds, %d wins"] = "Niveau %d, %d manches, %d victoires",
+      ["Your current profile is backed up first. The game restarts to load the copy."] = "Votre profil actuel est d'abord sauvegardé. Le jeu redémarre pour charger la copie.",
+      ["RESTORE"] = "RESTAURER",
+      ["KEEP THIS ONE"] = "GARDER CELUI-CI",
+    },
+    es = {
+      ["RESTORE YOUR PROGRESS?"] = "¿RESTAURAR TU PROGRESO?",
+      ["Your profile has much less progress than a copy the game made earlier."] = "Tu perfil tiene mucho menos progreso que una copia que el juego hizo antes.",
+      ["This can happen when the game closes while saving."] = "Puede pasar cuando el juego se cierra mientras guarda.",
+      ["Now"] = "Ahora",
+      ["Copy"] = "Copia",
+      ["Level %d, %d rounds, %d wins"] = "Nivel %d, %d rondas, %d victorias",
+      ["Your current profile is backed up first. The game restarts to load the copy."] = "Primero se guarda una copia de tu perfil actual. El juego se reinicia para cargar la copia.",
+      ["RESTORE"] = "RESTAURAR",
+      ["KEEP THIS ONE"] = "QUEDARME CON ESTE",
+    },
+  }
+end
+
+return R
+end

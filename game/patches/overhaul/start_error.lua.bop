@@ -8,7 +8,7 @@ local M = {}
 M.FONT = "resources/fonts/m6x11plus.ttf"
 M.DISCORD = "https://discord.gg/uu4pu8NySP"
 M.TITLE = "Balatro Overhaul ran into an error"
-M.HELP = "Copy the error and send it to us on Discord so we can fix it."
+M.HELP = "Copy the error and send it to me on Discord so I can fix it."
 M.BUTTONS = {"Copy error", "Open Discord", "Quit"}
 
 function M.version()
@@ -137,7 +137,7 @@ l 46
 			if e == "touchreleased" then pick = M.hit(buttons, b, c) end
 			if pick == 1 and love.system and love.system.setClipboardText then
 				pcall(love.system.setClipboardText, text)
-				note = "Error copied. Paste it in a message to us on Discord."
+				note = "Error copied. Paste it in a message to me on Discord."
 			elseif pick == 2 and love.system and love.system.openURL then
 				pcall(love.system.openURL, M.DISCORD)
 			elseif pick == 3 then

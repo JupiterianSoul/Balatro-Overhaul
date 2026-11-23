@@ -46,7 +46,7 @@ function P.cat(Cat, n)
   add(Cat.EFFECTS.use, je)
   for _, e in ipairs(Cat.EFFECTS.spectral or {}) do if e.id == "joker_edition" then e.v = "jedition" end end
   local run = {
-    {id = "balance", label = "Balance Chips and Mult", line = "Balances {C:chips}Chips{} and {C:mult}Mult{} on every played hand", run = true, new = true, need = P.V},
+    {id = "balance", label = "Balance Chips and Mult", line = "Balances {C:chips}Chips{} and {C:mult}Mult{} on every played hand", run = true, simple = true, new = true, need = P.V},
   }
   for _, k in ipairs(P.RUN_KINDS) do for _, e in ipairs(run) do add(Cat.EFFECTS[k], e) end end
   add(Cat.EFFECTS.deck, {id = "erratic", label = "Random ranks and suits", line = "Every card in the deck has a random {C:attention}rank{} and {C:attention}suit{}",

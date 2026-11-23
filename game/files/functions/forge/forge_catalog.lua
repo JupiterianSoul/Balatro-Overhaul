@@ -423,7 +423,7 @@ Cat.EFFECTS.challenge = {
 for _, e in ipairs(Cat.EFFECTS.challenge) do e.new, e.need, e.ch = true, 16, true end
 merge(Cat.EFFECTS.challenge, Cat.RUN)
 Cat.PACKS[#Cat.PACKS + 1] = "Chosen"
-Cat.PACK_MAX = 10
+Cat.PACK_MAX = 50
 Cat.EFFECTS.sticker = {
   {id = "times", label = "Joker scores more", num = n(0.5, 10, 2, 0.5, "x"), line = "This Joker scores {C:attention}%s{}", args = {"n"}, simple = true},
   {id = "mult", label = "+Mult", num = n(-1e6, 1e6, 4), line = "{C:mult}%s{} Mult", args = {"n"}, sign = true, simple = true},

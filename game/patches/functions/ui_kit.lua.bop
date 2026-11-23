@@ -413,7 +413,7 @@ local function checkbox(o, disabled)
   local check = Sprite(0, 0, 0.5 * s, 0.5 * s, G.ASSET_ATLAS["icons"], {x = 1, y = 0})
 r 30 1916 %20%20 -
 r 30 1917 %20%20 -
-l 699
+l 187
   return {n = G.UIT.C, config = {align = 'cm', r = 0.1, colour = G.C.BLACK}, nodes = {
     {n = G.UIT.C, config = {align = 'cm', r = 0.1, padding = 0.03, minw = 0.4 * s, minh = 0.4 * s, outline_colour = disabled and G.C.UI.TEXT_INACTIVE or G.C.WHITE, outline = 1.2 * s, line_emboss = 0.5 * s,
       ref_table = args, colour = args.inactive_colour, func = 'toggle',
@@ -566,14 +566,58 @@ function UIK.value(o)
   return tag(row(o, {label_line(o, w), control, info_line(o, w)}), 'value', o)
 end
 
+UIK.PASTE_W = 1.15
+
+local function find_text_input(node, depth)
+  if type(node) ~= 'table' or depth > 8 then return nil end
+  if node.config and node.config.id == 'text_input' then return node end
+  for _, ch in ipairs(node.children or {}) do
+    local f = find_text_input(ch, depth + 1)
+    if f then return f end
+  end
+end
+
+function UIK.paste_button(max, h)
+  return UIBox_button({label = localize('ml_paste_seed'), minw = 1, minh = h or 0.6, button = 'uik_paste_input', ref_table = {max = max or 8}, colour = G.C.BLUE, scale = 0.3, col = true})
+end
+
+function UIK.clean_paste(raw, max)
+  return (tostring(raw or ''):gsub('[^%w]', '')):upper():sub(1, max or 8)
+end
+
+G.FUNCS.uik_paste_input = function(e)
+  local p, input = e, nil
+  for _ = 1, 4 do
+    p = p and p.parent
+    input = p and find_text_input(p, 0)
+    if input then break end
+  end
+  if not (input and input.children and input.children[1] and input.children[1].children) then return end
+  local max = e.config.ref_table and e.config.ref_table.max or 8
+  local raw = (G.F_LOCAL_CLIPBOARD and G.CLIPBOARD) or (love.system.getClipboardText and love.system.getClipboardText()) or ''
+  local text = UIK.clean_paste(raw, max)
+  if text == '' then return end
+  G.CONTROLLER.text_input_hook = input.children[1].children[1]
+  for _ = 1, max do G.FUNCS.text_input_key({key = 'right'}) end
+  for _ = 1, max do G.FUNCS.text_input_key({key = 'backspace'}) end
+  for i = 1, #text do G.FUNCS.text_input_key({key = text:sub(i, i)}) end
+r 32 945 %20%20 -
+l 554
+end
+
 function UIK.input(o)
   o = o or {}
   local w = o.w or UIK.row_w(3)
-  local iw = math.min(o.iw or 3.4, w - 0.2)
+  local iw = math.min(o.iw or 3.4, w - 0.2 - (o.paste and UIK.PASTE_W or 0))
   local ih = touch() and 0.7 or 0.6
   if o.ref_table and o.ref_table[o.ref_value] == nil then o.ref_table[o.ref_value] = '' end
   local control = create_text_input({ref_table = o.ref_table, ref_value = o.ref_value, max_length = o.max_length or 16, w = iw, h = ih, text_scale = 0.4, prompt_text = o.prompt, all_caps = o.all_caps, extended_corpus = o.extended_corpus, colour = o.colour, callback = o.callback})
-  return tag(row(o, {label_line(o, w), line({control}, w, ih + 0.2), info_line(o, w)}), 'input', o)
+  local nodes = {control}
+  if o.paste then
+    nodes[#nodes + 1] = {n = G.UIT.C, config = {minw = UIK.PASTE_W - 1, padding = 0}, nodes = {}}
+    nodes[#nodes + 1] = UIK.paste_button(o.max_length or 16, ih)
+  end
+  return tag(row(o, {label_line(o, w), line(nodes, w, ih + 0.2), info_line(o, w)}), 'input', o)
 end
 
 local function item_h(it) return (it.uik_h or 1) + UIK.PAD end

@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 280
+l 281
 [manifest]
 version = "1.0.0"
 priority = 0
@@ -172,6 +172,7 @@ require "functions/deck_creator_gui";
 require "functions/mods_ui";
 require "functions/mods_profile";
 require "functions/save_transfer";
+require "functions/save_rescue";
 require "functions/title_tagline";
 require "functions/art/title_fx";
 require "functions/art/suit_palettes";

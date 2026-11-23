@@ -24,7 +24,7 @@
 .end method
 
 .method public static apply(Landroid/app/Activity;)V
-    .locals 12
+    .locals 13
 
     const-string v0, "HighRefreshRate"
 
@@ -60,11 +60,11 @@
     move-result-object v4
     invoke-static {v0, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
+    invoke-virtual {v2}, Landroid/view/Display;->getMode()Landroid/view/Display$Mode;
+    move-result-object v12   # currentMode
+
     invoke-virtual {v2}, Landroid/view/Display;->getSupportedModes()[Landroid/view/Display$Mode;
     move-result-object v4
-
-    const/4 v5, 0x0         # bestHz = 0.0f
-    const/4 v6, -0x1        # bestModeId = -1
 
     array-length v7, v4
     const/4 v8, 0x0          # i = 0
@@ -103,17 +103,19 @@
     move-result-object v3
     invoke-static {v0, v3}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    cmpg-float v3, v11, v5
-    if-lez v3, :cond_not_best
-
-    move v5, v11          # bestHz = modeHz
-    move v6, v10          # bestModeId = modeId
-
-    :cond_not_best
     add-int/lit8 v8, v8, 0x1
     goto :loop_start
 
     :loop_end
+
+    invoke-static {v12, v4}, Lorg/love2d/android/HighRefreshRate;->pickMode(Landroid/view/Display$Mode;[Landroid/view/Display$Mode;)Landroid/view/Display$Mode;
+    move-result-object v12
+    if-eqz v12, :cond_no_high_hz
+
+    invoke-virtual {v12}, Landroid/view/Display$Mode;->getModeId()I
+    move-result v6          # bestModeId
+    invoke-virtual {v12}, Landroid/view/Display$Mode;->getRefreshRate()F
+    move-result v5          # bestHz
 
     const/high16 v2, 0x42700000    # 60.0f
     cmpg-float v3, v5, v2
@@ -169,6 +171,51 @@
     invoke-static {v0, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     return-void
+.end method
+
+.method public static pickMode(Landroid/view/Display$Mode;[Landroid/view/Display$Mode;)Landroid/view/Display$Mode;
+    .locals 8
+    .param p0, "currentMode"    # Landroid/view/Display$Mode;
+    .param p1, "supportedModes"    # [Landroid/view/Display$Mode;
+
+    const/4 v0, 0x0          # bestMode = null
+    const/4 v1, 0x0          # bestRefreshRate = 0.0f
+
+    invoke-virtual {p0}, Landroid/view/Display$Mode;->getPhysicalWidth()I
+    move-result v6           # currentWidth
+    invoke-virtual {p0}, Landroid/view/Display$Mode;->getPhysicalHeight()I
+    move-result v7           # currentHeight
+
+    array-length v2, p1      # modeCount
+    const/4 v3, 0x0          # modeIndex = 0
+
+    :pick_loop
+    if-ge v3, v2, :pick_end
+
+    aget-object v4, p1, v3   # mode
+
+    invoke-virtual {v4}, Landroid/view/Display$Mode;->getPhysicalWidth()I
+    move-result v5           # comparison scratch: width, height, then refresh rate
+    if-ne v5, v6, :pick_next
+    invoke-virtual {v4}, Landroid/view/Display$Mode;->getPhysicalHeight()I
+    move-result v5
+    if-ne v5, v7, :pick_next
+
+    invoke-virtual {v4}, Landroid/view/Display$Mode;->getRefreshRate()F
+    move-result v5
+    cmpg-float v5, v5, v1
+    if-lez v5, :pick_next
+
+    move-object v0, v4       # bestMode = mode
+    invoke-virtual {v4}, Landroid/view/Display$Mode;->getRefreshRate()F
+    move-result v1           # bestRefreshRate
+
+    :pick_next
+    add-int/lit8 v3, v3, 0x1
+    goto :pick_loop
+
+    :pick_end
+    return-object v0
 .end method
 
 .method public static applySurface(Landroid/view/Surface;)V

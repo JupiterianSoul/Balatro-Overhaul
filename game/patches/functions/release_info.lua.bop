@@ -202,7 +202,7 @@ function RI.card_node(key, w)
   local card = Card(0, 0, w, h, G.P_CARDS.empty, center, {bypass_discovery_center = true, bypass_discovery_ui = true, bypass_lock = true})
 r 5 220 %20%20 -
 r 5 219 %20%20 -
-l 319
+l 320
   area:emplace(card)
   return {n = G.UIT.O, config = {object = area}}
 end
@@ -227,6 +227,7 @@ RI.LICENCES = {
   {"Cryptid", "Some of the Deck Creator's random-value logic follows Cryptid, by MathIsFun_ and the Cryptid team.", "GNU GPL 3.0"},
   {"Balatro Multiplayer", "Based on Balatro Multiplayer by Virtualized and the BMP team: the multiplayer in this mod builds on their work. Thank you.", "GNU GPL 3.0"},
   {"iPhone and iPad", "The iPhone and iPad version was made by JohnG210. Thank you!", "GNU GPL 3.0"},
+  {"Android fixes", "Dylan-Weber fixed the Android system keyboard and the game closing in the background on 120 Hz phones. Thank you!", "GNU GPL 3.0"},
   {"Play while you wait", "Playing solo while you wait for a multiplayer match was OkiMaSha's idea, and he found the bug that deleted the solo Continue. Thank you!", "GNU GPL 3.0"},
   {"Fonts", "m6x11plus by Daniel Linssen, Noto Sans and Go Noto (SIL Open Font Licence). They come from your copy of Balatro.", "From your copy"},
   {"Music and sounds", "Balatro's soundtrack by LouisF and its sounds come from your copy of Balatro. The public release ships no one else's music.", "From your copy"},
@@ -238,7 +239,7 @@ RI.PRIVACY = {
   {"Chat and reports", {"Chat messages go through the server and a word filter. Reports from players are kept so they can be checked."}},
   {"Crash reports", {"Send crash reports is on unless you turn it off (Settings > Account).", "A crash sends the error, the game version, your system and graphics card, where you were in the game, your last clicks, the end of the log and your mod list.", "It also sends a random number for this install, to count players. Your name and folders are removed first."}},
   {"AI bots", {"If you let Bot-latro use an online AI service with your own key, it sends the run's state to that service. Your key stays on this device."}},
-  {"What we never do", {"No ads, no tracking, nothing is sold. The server is run by the Overhaul's developer, not by LocalThunk or Playstack."}},
+  {"What I never do", {"No ads, no tracking, nothing is sold. The server is run by the Overhaul's developer, not by LocalThunk or Playstack."}},
   {"Your data", {"To have your account and its data deleted, ask on the Overhaul's GitHub page. Online play with chat is meant for players aged 13 and over."}},
 }
 
@@ -762,7 +763,7 @@ function RI.open_whats_new(from)
   RI._wn_from = from
   UIK._pages.whats_new = 1
 r 32 1381 %20%20 -
-l 314
+l 318
   G.FUNCS.overlay_menu{definition = RI.whats_new_def(e)}
   return true
 end
@@ -955,7 +956,7 @@ mod_loc_register{
     ["It also sends a random number for this install, to count players. Your name and folders are removed first."] = "Il envoie aussi un numéro tiré au hasard pour cette installation, pour compter les joueurs. Votre nom et vos dossiers sont retirés avant l'envoi.",
     ["AI bots"] = "Bots IA",
     ["If you let Bot-latro use an online AI service with your own key, it sends the run's state to that service. Your key stays on this device."] = "Si vous laissez Bot-latro utiliser un service d'IA en ligne avec votre propre clé, il envoie l'état de la partie à ce service. Votre clé reste sur cet appareil.",
-    ["What we never do"] = "Ce qu'on ne fait jamais",
+    ["What I never do"] = "Ce que je ne fais jamais",
     ["No ads, no tracking, nothing is sold. The server is run by the Overhaul's developer, not by LocalThunk or Playstack."] = "Pas de pub, pas de pistage, rien n'est vendu. Le serveur est géré par le développeur de l'Overhaul, pas par LocalThunk ni Playstack.",
     ["Your data"] = "Vos données",
     ["To have your account and its data deleted, ask on the Overhaul's GitHub page. Online play with chat is meant for players aged 13 and over."] = "Pour faire supprimer votre compte et ses données, demandez-le sur la page GitHub de l'Overhaul. Le jeu en ligne avec chat est prévu pour les joueurs de 13 ans et plus.",
@@ -1006,7 +1007,7 @@ mod_loc_register{
     ["It also sends a random number for this install, to count players. Your name and folders are removed first."] = "También envía un número al azar para esta instalación, para contar jugadores. Tu nombre y tus carpetas se quitan antes del envío.",
     ["AI bots"] = "Bots de IA",
     ["If you let Bot-latro use an online AI service with your own key, it sends the run's state to that service. Your key stays on this device."] = "Si dejas que Bot-latro use un servicio de IA en línea con tu propia clave, envía el estado de la partida a ese servicio. Tu clave se queda en este dispositivo.",
-    ["What we never do"] = "Lo que nunca hacemos",
+    ["What I never do"] = "Lo que nunca hago",
     ["No ads, no tracking, nothing is sold. The server is run by the Overhaul's developer, not by LocalThunk or Playstack."] = "Sin anuncios, sin rastreo, no se vende nada. El servidor lo gestiona el desarrollador del Overhaul, no LocalThunk ni Playstack.",
     ["Your data"] = "Tus datos",
     ["To have your account and its data deleted, ask on the Overhaul's GitHub page. Online play with chat is meant for players aged 13 and over."] = "Para borrar tu cuenta y sus datos, pídelo en la página de GitHub del Overhaul. El juego en línea con chat es para jugadores de 13 años o más.",
@@ -1042,6 +1043,8 @@ mod_loc_register{
     ["Special thanks"] = "Remerciements",
     ["iPhone and iPad"] = "iPhone et iPad",
     ["The iPhone and iPad version was made by JohnG210. Thank you!"] = "La version iPhone et iPad a été faite par JohnG210. Merci !",
+    ["Android fixes"] = "Corrections Android",
+    ["Dylan-Weber fixed the Android system keyboard and the game closing in the background on 120 Hz phones. Thank you!"] = "Dylan-Weber a corrigé le clavier système Android et le jeu qui se fermait en arrière-plan sur les téléphones 120 Hz. Merci !",
     ["Play while you wait"] = "Jouer en attendant",
     ["Playing solo while you wait for a multiplayer match was OkiMaSha's idea, and he found the bug that deleted the solo Continue. Thank you!"] =
       "Jouer en solo en attendant une partie multijoueur est une idée d'OkiMaSha, et c'est lui qui a trouvé le bug qui supprimait la partie solo à continuer. Merci !",
@@ -1070,6 +1073,8 @@ mod_loc_register{
     ["Special thanks"] = "Agradecimientos especiales",
     ["iPhone and iPad"] = "iPhone y iPad",
     ["The iPhone and iPad version was made by JohnG210. Thank you!"] = "La versión para iPhone y iPad la hizo JohnG210. ¡Gracias!",
+    ["Android fixes"] = "Correcciones de Android",
+    ["Dylan-Weber fixed the Android system keyboard and the game closing in the background on 120 Hz phones. Thank you!"] = "Dylan-Weber arregló el teclado del sistema de Android y el juego que se cerraba en segundo plano en móviles de 120 Hz. ¡Gracias!",
     ["Play while you wait"] = "Jugar mientras esperas",
     ["Playing solo while you wait for a multiplayer match was OkiMaSha's idea, and he found the bug that deleted the solo Continue. Thank you!"] =
       "Jugar en solitario mientras esperas una partida multijugador fue idea de OkiMaSha, y él encontró el error que borraba la partida en solitario para continuar. ¡Gracias!",

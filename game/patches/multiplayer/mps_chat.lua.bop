@@ -92,7 +92,7 @@ local function optin_body()
         line(L("Messages are filtered. You can mute and report players."), bom_kit.colour("muted"))
         if c.allowed == nil then
             line(L("Enter your birth year once to turn it on."), bom_kit.colour("muted"))
-            line(L("We only keep whether chat is allowed, never the year."), bom_kit.colour("muted"))
+            line(L("I only keep whether chat is allowed, never the year."), bom_kit.colour("muted"))
             rows[#rows + 1] = UIK.stepper{label = L("Birth year"), ref_table = c, ref_value = "year", min = 1900, max = tonumber(os.date("%Y")) or 2026,
                 step = 1, big_step = 10, w = w, wrap = false}
         end
@@ -483,7 +483,7 @@ local STRINGS = {
         ["Chat lets you talk with friends and players in your lobby."] = "Le chat permet de parler avec vos amis et les joueurs de votre salon.",
         ["Messages are filtered. You can mute and report players."] = "Les messages sont filtrés. Vous pouvez mettre des joueurs en sourdine et les signaler.",
         ["Enter your birth year once to turn it on."] = "Indiquez une fois votre année de naissance pour l'activer.",
-        ["We only keep whether chat is allowed, never the year."] = "Nous gardons seulement si le chat est autorisé, jamais l'année.",
+        ["I only keep whether chat is allowed, never the year."] = "Je garde seulement si le chat est autorisé, jamais l'année.",
         ["Birth year"] = "Année de naissance", ["Turn on chat"] = "Activer le chat", ["TEXT CHAT"] = "CHAT", ["Chat"] = "Chat",
         ["Not now"] = "Pas maintenant", ["You"] = "Vous", ["No messages yet. Say hi!"] = "Pas encore de message. Dites bonjour !",
         ["Players"] = "Joueurs", ["Players who talk show up here."] = "Les joueurs qui parlent apparaissent ici.",
@@ -499,7 +499,7 @@ local STRINGS = {
         ["Chat lets you talk with friends and players in your lobby."] = "El chat te permite hablar con amigos y con los jugadores de tu sala.",
         ["Messages are filtered. You can mute and report players."] = "Los mensajes se filtran. Puedes silenciar y denunciar jugadores.",
         ["Enter your birth year once to turn it on."] = "Indica tu año de nacimiento una vez para activarlo.",
-        ["We only keep whether chat is allowed, never the year."] = "Solo guardamos si el chat está permitido, nunca el año.",
+        ["I only keep whether chat is allowed, never the year."] = "Solo guardo si el chat está permitido, nunca el año.",
         ["Birth year"] = "Año de nacimiento", ["Turn on chat"] = "Activar chat", ["TEXT CHAT"] = "CHAT", ["Chat"] = "Chat",
         ["Not now"] = "Ahora no", ["You"] = "Tú", ["No messages yet. Say hi!"] = "Aún no hay mensajes. ¡Saluda!",
         ["Players"] = "Jugadores", ["Players who talk show up here."] = "Aquí aparecen los jugadores que hablan.",

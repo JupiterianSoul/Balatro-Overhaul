@@ -437,7 +437,7 @@ local function mp_row(d, s, disabled)
         W.seed.seed = bom_match.clean_seed(s.custom_seed) or ""
         W.seed_live = true
         base.ref_table, base.ref_value = W.seed, "seed"
-        base.max_length, base.all_caps, base.prompt = 8, true, L("Random (seed)")
+        base.max_length, base.all_caps, base.prompt, base.paste = 8, true, L("Random (seed)"), true
         return UIK.input(base)
     end
 end

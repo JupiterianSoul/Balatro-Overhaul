@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 197
+l 198
 
 DeckCreatorHooks = {}
 
@@ -168,6 +168,7 @@ function Back:apply_to_run(...)
         end
         if config.chips_dollar_cap then G.GAME.modifiers.chips_dollar_cap = true end
         if config.debuff_played_cards then G.GAME.modifiers.debuff_played_cards = true end
+        if config.balance_chips_mult then G.GAME.forge_balance = true end
         if config.flipped_cards > 0 then G.GAME.modifiers.flipped_cards = config.flipped_cards end
         if config.minus_hand_size_per_X_dollar > 0 then G.GAME.modifiers.minus_hand_size_per_X_dollar = config.minus_hand_size_per_X_dollar end
 

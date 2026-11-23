@@ -39,17 +39,29 @@ Hooks.wrap("G.FUNCS", "text_input", function(orig) return function(e, ...)
     if c and c.HID then c.HID.controller = ctl end
     if C then C.screen_keyboard = sk end
     if T then T.osk = osk end
-    if not on and c then
-        if c.text_input_hook == e and K.sys ~= e then
-            K.sys = e
-            system_keys(true)
-        elseif K.sys == e and c.text_input_hook ~= e then
-            K.sys = nil
-            if not c.text_input_hook then system_keys(false) end
-        end
+    if not on and c and c.text_input_hook == e and K.sys ~= e then
+        K.sys = e
+        system_keys(true)
     end
     if not r[1] then error(r[2], 0) end
     return select(2, Hooks.unpack(r))
 end end, {id = "overhaul.ingame_keyboard"})
+
+Hooks.wrap("G.FUNCS", "select_text_input", function(original) return function(element, ...)
+    local results = Hooks.pack(original(element, ...))
+    local controller = G.CONTROLLER
+    if K.sys and controller and controller.text_input_hook == K.sys and not K.on() then system_keys(true) end
+    return Hooks.unpack(results)
+end end, {id = "overhaul.ingame_keyboard.select"})
+
+Hooks.wrap("love", "update", function(original) return function(delta_time, ...)
+    local results = Hooks.pack(original(delta_time, ...))
+    local controller = G and G.CONTROLLER
+    if K.sys and (not controller or controller.text_input_hook ~= K.sys or K.on()) then
+        K.sys = nil
+        if not (controller and controller.text_input_hook) or K.on() then system_keys(false) end
+    end
+    return Hooks.unpack(results)
+end end, {id = "overhaul.ingame_keyboard.update"})
 
 return K

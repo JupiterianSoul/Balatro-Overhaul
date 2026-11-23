@@ -100,6 +100,7 @@ DeckCreatorData.SCHEMA = {
     {key = "mult_reduction_percent", tab = "twists", default = 0, min = 0, max = 90, step = 10, fmt = "off_pct", label = "Mult penalty", info = "Each hand scores less mult"},
     {key = "chips_dollar_cap", tab = "twists", default = false, label = "Chips capped by money", info = "A hand's chips cannot exceed your money"},
     {key = "debuff_played_cards", tab = "twists", default = false, label = "Played cards wear out", info = "Cards you play are debuffed for good"},
+    {key = "balance_chips_mult", tab = "twists", default = false, label = "Balance Chips and Mult", info = "Like the Plasma Deck, on every played hand"},
     {tab = "twists", header = "Cards"},
     {key = "flipped_cards", tab = "twists", default = 0, min = 0, max = 8, fmt = "one_in", label = "Face down draws", info = "Chance a drawn card is face down"},
     {key = "chance_to_increase_drawn_cards_rank", tab = "twists", default = 0, min = 0, max = 100, step = 10, fmt = "off_pct", label = "Rank up on draw", info = "Drawn cards can go up one rank"},

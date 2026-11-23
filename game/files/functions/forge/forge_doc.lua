@@ -448,7 +448,9 @@ local function plain_lines(d, l)
       for _, v in ipairs(Cat.pack_cards(d)) do
         if not (G and G.P_CENTERS) or R.card_usable(v) then names[#names + 1] = "{C:attention}" .. Cat.value_label("card", v) .. "{}" end
       end
-      for i = 1, #names, 3 do add(table.concat(names, ", ", i, math.min(#names, i + 2))) end
+      local cut = #names > 9 and 9 or #names
+      for i = 1, cut, 3 do add(table.concat(names, ", ", i, math.min(cut, i + 2))) end
+      if #names > cut then add((string.format(mod_loc(" and %d more"), #names - cut):gsub("^ ", ""))) end
     else
       if R.own_id("ctype", f.pack) then
         add(string.format(mod_loc("Choose {C:attention}%d{} of up to {C:attention}%d{} {C:attention}%s{}"), choose or 1, shown or 3, Cat.value_label("ctype", f.pack)))

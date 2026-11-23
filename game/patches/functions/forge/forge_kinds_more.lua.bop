@@ -1552,7 +1552,7 @@ l 74
     local r, r2 = orig(self, context)
     if context and context.first_hand_drawn and not self.debuff and self.ability and self.ability.name == "Certificate" then
 r 3 617 %20%20%20%20%20%20 -
-l 157
+l 178
         local c = G.playing_cards and G.playing_cards[#G.playing_cards]
         local pick = c and c.area == G.hand and M.roll_seal("certsl_forge")
         if pick then c:set_seal(pick, true) end
@@ -1581,6 +1581,27 @@ l 157
     if was and not from_debuff and self.edition and self.edition.forge_slot and not self.edition.negative and G.jokers then slot_change(self, -1) end
     return r
   end end)
+  local function with_free_slot(card, fn, ...)
+    local ed = card and card.edition
+    if not (ed and ed.forge_slot and not ed.negative) then return fn(card, ...) end
+    local ab = card.ability
+    local lim = ab and ab.card_limit
+    ed.negative = true
+    if type(lim) == "number" then ab.card_limit = lim + 1 end
+    local ok, r = pcall(fn, card, ...)
+    ed.negative = nil
+    if type(lim) == "number" then ab.card_limit = lim end
+    if not ok then error(r, 0) end
+    return r
+  end
+  Hooks.wrap("G.FUNCS", "check_for_buy_space", function(orig) return function(card, ...)
+    return with_free_slot(card, orig, ...)
+  end end, {id = "forge.slot_buy_space"})
+  Hooks.wrap("G.FUNCS", "can_select_card", function(orig) return function(e, ...)
+    local card = e and e.config and e.config.ref_table
+    if not (card and card.edition and card.edition.forge_slot) then return orig(e, ...) end
+    return with_free_slot(card, function() return orig(e) end)
+  end end, {id = "forge.slot_select"})
   Hooks.wrap(_G, "poll_edition", function(orig) return function(_key, _mod, _no_neg, _guaranteed, ...)
     local r = orig(_key, _mod, _no_neg, _guaranteed, ...)
     if r == nil and not _guaranteed then

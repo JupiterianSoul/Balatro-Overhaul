@@ -136,5 +136,11 @@ check("pack art: share format stays 16", Cat.need_v(runes2) == 16, Cat.need_v(ru
 local old = Store.clean_item({id = "runes3", kind = "ctype", name = "Runes", fields = {colour = "TEAL"}})
 check("pack art: older type without art loads", old and old.art == nil and Cat.need_v(old) == 16)
 
+local Tx = require("functions/forge/forge_text")
+local ctext = Tx.give_text({id = "create", v = own}, "en", {}, "hand_played")
+check("text: create names the forged type", ctext:find("Runes", 1, true) ~= nil and ctext:find("Tarot", 1, true) == nil, ctext)
+check("text: create Planet unchanged", Tx.give_text({id = "create", v = "Planet"}, "en", {}, "hand_played"):find("Planet", 1, true) ~= nil)
+check("text: create fr names the type", Tx.give_text({id = "create", v = own}, "fr", {}, "hand_played"):find("Runes", 1, true) ~= nil)
+
 print(string.format("forge types2: %d checks, %d failed", total, fails))
 if fails > 0 then os.exit(1) end

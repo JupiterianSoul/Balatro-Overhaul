@@ -116,7 +116,7 @@ local EXPANDED = {"j_hanging_chad", "j_bloodstone", "m_glass", "j_ticket", "j_se
 local NO_JUSTICE = {consumables = {"c_justice"}}
 R.BALANCED_REWORKS, R.EXPANDED_REWORKS = BALANCED, EXPANDED
 
-local D_CLASSIC = "Our standard MP rules, no reworks"
+local D_CLASSIC = "My standard MP rules, no reworks"
 local D_BALANCED = "MP balance reworks, Justice banned"
 local D_SMALL = "Only a quarter of the cards exist, duplicates allowed"
 
@@ -578,7 +578,7 @@ local function wrap_reset()
 end
 
 R.FR = {
-    ["Classic"] = "Classique", ["Our standard MP rules, no reworks"] = "Nos règles MP standard, sans refontes",
+    ["Classic"] = "Classique", ["My standard MP rules, no reworks"] = "Mes règles MP standard, sans refontes",
     ["Balanced"] = "Équilibré", ["MP balance reworks, Justice banned"] = "Refontes d'équilibrage MP, Justice interdite",
     ["Scarcity"] = "Pénurie", ["Only a quarter of the cards exist, duplicates allowed"] = "Seul un quart des cartes existe, doublons permis",
     ["Vanilla"] = "Vanilla", ["Plain Balatro cards, no MP jokers or reworks"] = "Cartes Balatro d'origine, sans jokers MP ni refontes",
@@ -601,7 +601,7 @@ R.FR = {
 }
 
 R.ES = {
-    ["Classic"] = "Clásico", ["Our standard MP rules, no reworks"] = "Nuestras reglas MP estándar, sin cambios",
+    ["Classic"] = "Clásico", ["My standard MP rules, no reworks"] = "Mis reglas MP estándar, sin cambios",
     ["Balanced"] = "Equilibrado", ["MP balance reworks, Justice banned"] = "Cambios de equilibrio MP, Justicia vetada",
     ["Scarcity"] = "Escasez", ["Only a quarter of the cards exist, duplicates allowed"] = "Solo existe un cuarto de las cartas, se permiten repetidas",
     ["Vanilla"] = "Vanilla", ["Plain Balatro cards, no MP jokers or reworks"] = "Cartas de Balatro originales, sin comodines MP ni cambios",

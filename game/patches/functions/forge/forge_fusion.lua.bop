@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 345
+l 361
 local Store = require("functions/forge/forge_store")
 
 local Fu = {}
@@ -146,6 +146,16 @@ end
 
 function Fu.best_edition(x, y) return Fu.best_edition_of({x, y}) end
 
+function Fu.edition_arg(list)
+  local best = Fu.best_edition_of(list)
+  if not best then return nil end
+  for _, c in ipairs(list) do
+    local e = c and c.edition
+    if type(e) == "table" and e.forge and (e[best] or e.type == best) then return {forge = e.forge} end
+  end
+  return {[best] = true}
+end
+
 function Fu.victim(picked)
   local skip = {}
   for _, c in ipairs(picked) do skip[c] = true end
@@ -235,7 +245,7 @@ end
 function Fu.fuse(card)
   local ok, r, _, picked = Fu.can(card)
   if not ok then return nil end
-  local ed = Fu.best_edition_of(picked)
+  local ed = Fu.edition_arg(picked)
   local victim = r.sacrifice and Fu.victim(picked) or nil
   if r.cost > 0 then ease_dollars(-r.cost) end
   local gone = {}
@@ -249,7 +259,13 @@ function Fu.fuse(card)
   local area = area_for(r)
   local center = G.P_CENTERS[r.out]
   local made = create_card(r.on == "Consumables" and (center and center.set or "Tarot") or "Joker", area, nil, nil, nil, nil, r.out, "forge_fuse")
-  if ed then made:set_edition({[ed] = true}, true, true) else made:set_edition(nil, true, true) end
+  if center and center.forge_start_ed then
+    require("functions/forge/forge_always").apply(made)
+  elseif ed then
+    made:set_edition(ed, true, true)
+  else
+    made:set_edition(nil, true, true)
+  end
   if r.keep then Fu.keep(made, picked) end
   made:add_to_deck()
   area:emplace(made)

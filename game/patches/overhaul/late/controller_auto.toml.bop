@@ -52,7 +52,7 @@ payload = '''
 ${pre}        if self.HID.touch ~= (HID_type == 'touch') then 
 r 17 147 %20%20%20%20%20%20%20%20%20%20%20%20 -
 r 5 662 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 169
+l 171
                 v:set_ranks()
             end
         end
@@ -67,7 +67,9 @@ target = "engine/controller.lua"
 pattern = '''^(?<pre>)(?<post>[\t ]*function Controller:update\(dt\)\n)'''
 position = "at"
 payload = '''
-${pre}local function held_time(c)
+${pre}local TOUCH_TAP_MAX = 0.4
+
+local function held_time(c)
     return c.cursor_up.time - c.cursor_down.time
 end
 
@@ -109,7 +111,7 @@ local function touch_release(c)
         target = button_at(c) or target
     end
     local button = target.config and target.config.button and not (Card and target:is(Card))
-    if still and ((down.duration or 0) < 0.2 or button) then
+    if still and ((down.duration or 0) < TOUCH_TAP_MAX or button) then
         if target.states.click.can and not tc.l_press.target then
             tc.s_tap.target, tc.s_tap.time, tc.s_tap.handled = target, held_time(c), false
         end
@@ -125,7 +127,7 @@ local function touch_track_focus(c)
     if focus and (focus == G.ROOM or (not c.is_cursor_down and focus ~= c.finger_cursor)) then
         c.finger_focus, focus = nil, nil
     end
-    if focus and c.is_cursor_down and focus:can_long_press() and c.cursor_down.duration > 0.2
+    if focus and c.is_cursor_down and focus:can_long_press() and c.cursor_down.duration > TOUCH_TAP_MAX
         and not tc.l_press.target and not tc.l_pressed then
         tc.l_press.target, tc.l_press.handled = focus, false
     end

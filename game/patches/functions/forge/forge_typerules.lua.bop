@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 246
+l 251
 local X = {}
 
 X.WHENS = {"type_used", "type_bought", "type_sold"}
@@ -114,6 +114,11 @@ function X.rules(R)
     end
     if not context.consumeable and c then return c.ability ~= nil and c.ability.set == o.v end
     return base_used(o, context, ...)
+  end
+  local base_create_text = R.TEXT_GIVE.create
+  R.TEXT_GIVE.create = function(g, s, lang, ...)
+    if own(g.v) then return string.format(s.create, "attention", name(g.v)) end
+    if base_create_text then return base_create_text(g, s, lang, ...) end
   end
   local base_text = R.TEXT_ONLY.used_kind
   R.TEXT_ONLY.used_kind = function(o, s, lang)

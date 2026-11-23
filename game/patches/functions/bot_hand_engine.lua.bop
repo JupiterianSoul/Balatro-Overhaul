@@ -1555,7 +1555,7 @@ function BOT_ENGINE.analyze_pack()
         results.header = 'Joker Pack'
         local lineup = { chips = 0, mult = 0, xmult = 0, econ = 0, retrigger = 0, utility = 0, total = 0 }
 r 31 2531 %20%20%20%20%20%20%20%20 -
-l 1064
+l 1179
             for _, j in ipairs(G.jokers.cards) do
                 local cat = classify_joker(j)
                 lineup[cat] = (lineup[cat] or 0) + 1
@@ -1788,26 +1788,130 @@ local function hyper_hit_n(outs, deck_size, draws, need)
     return math.max(0, math.min(1, 1 - cum))
 end
 
-local function estimate_discard_ev(kept_cards, n_draws, unseen, ev_map)
-    if not kept_cards or #kept_cards < 1 or n_draws < 1 then
-        local kr = (#kept_cards >= 1) and sim_score(kept_cards) or nil
-        return { ev = kr and kr.score or 0, keep_score = kr and kr.score or 0,
-                 keep_hand = kr and kr.hand_name or 'High Card', targets = {}, best_target = nil }
-    end
+local function card_rank(c) return c.base and c.base.id or 0 end
+local function card_suit(c) return c.base and c.base.suit or '' end
 
-    local kr = sim_score(kept_cards)
-    local keep_score = kr and kr.score or 0
-    local keep_hand  = kr and kr.hand_name or 'High Card'
+local function discard_limit()
+    local l = G and G.hand and G.hand.config and tonumber(G.hand.config.highlighted_limit) or 5
+    return math.max(1, l)
+end
+
+local function pick_outs(unseen, used, pred, n)
+    if n <= 0 then return {} end
+    local m = {}
+    for _, uc in ipairs(unseen) do
+        if not used[uc] and pred(uc) then m[#m + 1] = uc end
+    end
+    if #m < n then return nil end
+    table.sort(m, function(a, b)
+        local x, y = card_rank(a), card_rank(b)
+        if x ~= y then return x < y end
+        return (a.sort_id or 0) < (b.sort_id or 0)
+    end)
+    local out = {}
+    local start = math.floor((#m - n) / 2) + 1
+    for i = start, start + n - 1 do
+        out[#out + 1] = m[i]
+        used[m[i]] = true
+    end
+    return out
+end
+
+local function made_value(core, fill, ctx)
+    if not core or not fill or not ctx then return nil end
+    local sel = {}
+    for _, c in ipairs(core) do sel[#sel + 1] = c end
+    for _, c in ipairs(fill) do sel[#sel + 1] = c end
+    if #sel < 1 or #sel > 5 then return nil end
+    local ids = {}
+    for i, c in ipairs(sel) do ids[i] = tostring(c.sort_id or i) end
+    table.sort(ids)
+    local key = table.concat(ids, ',')
+    local hit = ctx.cache[key]
+    if hit ~= nil then return hit or nil end
+    if ctx.runs >= ctx.max_runs then return nil end
+    ctx.runs = ctx.runs + 1
+    local v = false
+    if PREVIEW and PREVIEW.compute then
+        local ok, res = pcall(PREVIEW.compute, sel)
+        if ok and res and res.lo then v = (res.lo + (res.hi or res.lo)) / 2 end
+    end
+    ctx.cache[key] = v
+    return v or nil
+end
+
+local function complete_run(run, need, cards_of, unseen, suit)
+    local lo, hi = run[1], run[#run]
+    for a = need, 0, -1 do
+        local ranks = {}
+        local okr = true
+        for k = 1, a do
+            local r = lo - k
+            if r < 1 then okr = false break end
+            ranks[#ranks + 1] = r == 1 and 14 or r
+        end
+        for k = 1, need - a do
+            local r = hi + k
+            if r > 14 then okr = false break end
+            ranks[#ranks + 1] = r
+        end
+        if okr then
+            local used, fill = {}, {}
+            for _, r in ipairs(ranks) do
+                local got = pick_outs(unseen, used, function(uc)
+                    return card_rank(uc) == r and (not suit or card_suit(uc) == suit)
+                end, 1)
+                if not got then fill = nil break end
+                fill[#fill + 1] = got[1]
+            end
+            if fill then
+                local core = {}
+                for _, r in ipairs(run) do
+                    local c = cards_of(r == 1 and 14 or r)
+                    if c then core[#core + 1] = c end
+                end
+                return core, fill
+            end
+        end
+    end
+    return nil
+end
+
+local function estimate_discard_ev(kept_cards, n_draws, unseen, ev_map, ctx)
+    ctx = ctx or {cache = {}, runs = 0, max_runs = 0, plays = {}}
+    local kept_set = {}
+    for _, c in ipairs(kept_cards or {}) do kept_set[c] = true end
+
+    local keep_score, keep_hand = nil, 'High Card'
+    for _, p in ipairs(ctx.plays or {}) do
+        local inside = p.cards and #p.cards > 0
+        for _, c in ipairs(p.cards or {}) do
+            if not kept_set[c] then inside = false break end
+        end
+        if inside and (not keep_score or p.score > keep_score) then keep_score, keep_hand = p.score, p.hand_name or keep_hand end
+    end
+    if not keep_score and kept_cards and #kept_cards >= 1 and #kept_cards <= 5 then
+        local kr = sim_score(kept_cards)
+        if kr then keep_score, keep_hand = kr.score, kr.hand_name or keep_hand end
+    end
+    keep_score = keep_score or 0
+
+    if not kept_cards or #kept_cards < 1 or n_draws < 1 or #unseen < 1 then
+        return { ev = keep_score, keep_score = keep_score, keep_hand = keep_hand, targets = {}, best_target = nil }
+    end
 
     local by_rank, by_suit, id_set = analyze_hand_patterns(kept_cards)
     local total_unseen = #unseen
-    if total_unseen < 1 then
-        return { ev = keep_score, keep_score = keep_score, keep_hand = keep_hand,
-                 targets = {}, best_target = nil }
-    end
-
     local targets = {}
-    local post_draw_total = #kept_cards + n_draws
+
+    local function value(core, fill, fallback)
+        local v = core and fill and made_value(core, fill, ctx)
+        if v then return v end
+        return fallback
+    end
+    local function add(hand, prob, ref)
+        if prob and prob > 0.005 and ref then targets[#targets + 1] = { hand = hand, prob = prob, ref_score = ref } end
+    end
 
     for suit, suited_cards in pairs(by_suit) do
         local have = #suited_cards
@@ -1815,41 +1919,42 @@ local function estimate_discard_ev(kept_cards, n_draws, unseen, ev_map)
         if need > 0 and need <= n_draws and have >= 2 then
             local suited_outs = 0
             for _, uc in ipairs(unseen) do
-                if (uc.base and uc.base.suit or '') == suit then suited_outs = suited_outs + 1 end
+                if card_suit(uc) == suit then suited_outs = suited_outs + 1 end
             end
             local prob = hyper_hit_n(suited_outs, total_unseen, n_draws, need)
             if prob > 0.005 then
-                local ref = ev_map['Flush'] or (keep_score * 3)
-                targets[#targets + 1] = { hand = 'Flush', prob = prob, ref_score = ref }
+                local fill = pick_outs(unseen, {}, function(uc) return card_suit(uc) == suit end, need)
+                add('Flush', prob, value(suited_cards, fill, ev_map['Flush'] or (keep_score * 3)))
             end
             if have >= 3 then
-                local suited_ids = {}
+                local suited_ids, by_id = {}, {}
                 for _, c in ipairs(suited_cards) do
-                    suited_ids[#suited_ids + 1] = c.base and c.base.id or 0
+                    local id = card_rank(c)
+                    if not by_id[id] then
+                        by_id[id] = c
+                        suited_ids[#suited_ids + 1] = id
+                    end
                 end
                 table.sort(suited_ids)
-                local sf_runs = find_runs(suited_ids, nil, 3)
-                for _, run in ipairs(sf_runs) do
+                for _, run in ipairs(find_runs(suited_ids, nil, 3)) do
                     local sf_need = 5 - #run
                     if sf_need > 0 and sf_need <= n_draws then
-                        local sf_needed_ranks = {}
+                        local need_r = {}
                         local lo = run[1] == 1 and 14 or run[1]
                         local hi = run[#run] == 1 and 14 or run[#run]
                         for ext = 1, sf_need do
-                            if lo - ext >= 2 then sf_needed_ranks[lo - ext] = true end
-                            if hi + ext <= 14 then sf_needed_ranks[hi + ext] = true end
+                            if lo - ext >= 2 then need_r[lo - ext] = true end
+                            if hi + ext <= 14 then need_r[hi + ext] = true end
                         end
                         local sf_outs = 0
                         for _, uc in ipairs(unseen) do
-                            if (uc.base and uc.base.suit or '') == suit
-                               and sf_needed_ranks[uc.base and uc.base.id or 0] then
-                                sf_outs = sf_outs + 1
-                            end
+                            if card_suit(uc) == suit and need_r[card_rank(uc)] then sf_outs = sf_outs + 1 end
                         end
                         local sf_prob = hyper_hit_n(sf_outs, total_unseen, n_draws, sf_need)
                         if sf_prob > 0.001 then
-                            local ref = ev_map['Straight Flush'] or (keep_score * 10)
-                            targets[#targets + 1] = { hand = 'Straight Flush', prob = sf_prob, ref_score = ref }
+                            local core, fill = complete_run(run, sf_need, function(r) return by_id[r] end, unseen, suit)
+                            local ref = value(core, fill, ev_map['Straight Flush'] or (keep_score * 10))
+                            if ref then targets[#targets + 1] = { hand = 'Straight Flush', prob = sf_prob, ref_score = ref } end
                         end
                     end
                 end
@@ -1857,100 +1962,132 @@ local function estimate_discard_ev(kept_cards, n_draws, unseen, ev_map)
         end
     end
 
-    local runs = find_runs(id_set, by_rank, 3)
-    for _, run in ipairs(runs) do
+    for _, run in ipairs(find_runs(id_set, by_rank, 3)) do
         local str_need = 5 - #run
         if str_need > 0 and str_need <= n_draws then
-            local needed_ranks = {}
+            local need_r = {}
             local lo = run[1] == 1 and 14 or run[1]
             local hi = run[#run] == 1 and 14 or run[#run]
             for ext = 1, str_need do
-                if lo - ext >= 2 then needed_ranks[lo - ext] = true end
-                if hi + ext <= 14 then needed_ranks[hi + ext] = true end
+                if lo - ext >= 2 then need_r[lo - ext] = true end
+                if hi + ext <= 14 then need_r[hi + ext] = true end
             end
             local str_outs = 0
             for _, uc in ipairs(unseen) do
-                if needed_ranks[uc.base and uc.base.id or 0] then str_outs = str_outs + 1 end
+                if need_r[card_rank(uc)] then str_outs = str_outs + 1 end
             end
             local str_prob = hyper_hit_n(str_outs, total_unseen, n_draws, str_need)
             if str_prob > 0.005 then
-                local ref = ev_map['Straight'] or (keep_score * 2)
-                targets[#targets + 1] = { hand = 'Straight', prob = str_prob, ref_score = ref }
+                local core, fill = complete_run(run, str_need, function(r) return by_rank[r] and by_rank[r][1] end, unseen, nil)
+                add('Straight', str_prob, value(core, fill, ev_map['Straight'] or (keep_score * 2)))
             end
         end
     end
 
-    local best_rank_count, best_rank_id = 0, nil
-    for id, cards in pairs(by_rank) do
-        if #cards > best_rank_count then best_rank_count, best_rank_id = #cards, id end
+    local function rank_outs(id)
+        local n = 0
+        for _, uc in ipairs(unseen) do
+            if card_rank(uc) == id then n = n + 1 end
+        end
+        return n
     end
-    if best_rank_id then
-        local upgrades = {
-            { from = 1, to = 2, hand = 'Pair' },
-            { from = 2, to = 3, hand = 'Three of a Kind' },
-            { from = 3, to = 4, hand = 'Four of a Kind' },
-        }
-        for _, u in ipairs(upgrades) do
-            if best_rank_count == u.from then
-                local rank_outs = 0
-                for _, uc in ipairs(unseen) do
-                    if (uc.base and uc.base.id or 0) == best_rank_id then rank_outs = rank_outs + 1 end
-                end
-                local prob = hyper_hit(rank_outs, total_unseen, n_draws)
-                if prob > 0.005 then
-                    local ref = ev_map[u.hand] or (keep_score * 1.5)
-                    targets[#targets + 1] = { hand = u.hand, prob = prob, ref_score = ref }
-                end
-            end
+    local function same_rank_fill(id)
+        return pick_outs(unseen, {}, function(uc) return card_rank(uc) == id end, 1)
+    end
+    local function best_single(skip)
+        local best
+        for id, cards in pairs(by_rank) do
+            if #cards == 1 and not skip[id] and rank_outs(id) > 0 and (not best or id > best) then best = id end
         end
-        if best_rank_count >= 3 then
-            local pair_outs = 0
-            for id, cards in pairs(by_rank) do
-                if id ~= best_rank_id then
-                    for _, uc in ipairs(unseen) do
-                        if (uc.base and uc.base.id or 0) == id then pair_outs = pair_outs + 1 end
-                    end
-                end
-            end
-            local prob = hyper_hit(pair_outs, total_unseen, n_draws)
-            if prob > 0.01 then
-                local ref = ev_map['Full House'] or (keep_score * 2.5)
-                targets[#targets + 1] = { hand = 'Full House', prob = prob, ref_score = ref }
-            end
-        end
+        return best
     end
 
+    local groups = {}
+    for id, cards in pairs(by_rank) do groups[#groups + 1] = {id = id, cards = cards} end
+    table.sort(groups, function(a, b)
+        if #a.cards ~= #b.cards then return #a.cards > #b.cards end
+        return a.id > b.id
+    end)
+    local top = groups[1]
     local pair_count = 0
-    for _, cards in pairs(by_rank) do
-        if #cards >= 2 then pair_count = pair_count + 1 end
+    for _, g in ipairs(groups) do
+        if #g.cards >= 2 then pair_count = pair_count + 1 end
     end
-    if pair_count == 1 and n_draws >= 1 then
+
+    if top then
+        local upgrades = {
+            [1] = 'Pair',
+            [2] = 'Three of a Kind',
+            [3] = 'Four of a Kind',
+        }
+        local hand = upgrades[#top.cards]
+        if hand then
+            local prob = hyper_hit(rank_outs(top.id), total_unseen, n_draws)
+            if prob > 0.005 then
+                local core = {}
+                for _, c in ipairs(top.cards) do core[#core + 1] = c end
+                add(hand, prob, value(core, same_rank_fill(top.id), ev_map[hand] or (keep_score * 1.5)))
+            end
+        end
+        if #top.cards >= 3 then
+            local outs = 0
+            for _, g in ipairs(groups) do
+                if g.id ~= top.id then outs = outs + rank_outs(g.id) end
+            end
+            local prob = hyper_hit(outs, total_unseen, n_draws)
+            if prob > 0.01 then
+                local core = {top.cards[1], top.cards[2], top.cards[3]}
+                local s = best_single({[top.id] = true})
+                local fill
+                if s then
+                    core[4] = by_rank[s][1]
+                    fill = same_rank_fill(s)
+                end
+                add('Full House', prob, value(fill and core, fill, ev_map['Full House'] or (keep_score * 2.5)))
+            end
+        elseif pair_count >= 2 then
+            local second = groups[2]
+            local prob = hyper_hit(rank_outs(top.id) + rank_outs(second.id), total_unseen, n_draws)
+            if prob > 0.01 then
+                local core = {top.cards[1], top.cards[2], second.cards[1], second.cards[2]}
+                add('Full House', prob, value(core, same_rank_fill(top.id) or same_rank_fill(second.id), ev_map['Full House'] or (keep_score * 2.5)))
+            end
+        end
+    end
+
+    if pair_count == 1 and top and #top.cards == 2 then
         local single_outs = 0
         for id, cards in pairs(by_rank) do
-            if #cards == 1 then
-                for _, uc in ipairs(unseen) do
-                    if (uc.base and uc.base.id or 0) == id then single_outs = single_outs + 1 end
-                end
-            end
+            if #cards == 1 then single_outs = single_outs + rank_outs(id) end
         end
         local prob = hyper_hit(single_outs, total_unseen, n_draws)
         if prob > 0.01 then
-            local ref = ev_map['Two Pair'] or (keep_score * 1.4)
-            targets[#targets + 1] = { hand = 'Two Pair', prob = prob, ref_score = ref }
+            local s = best_single({})
+            local core, fill
+            if s then
+                core = {top.cards[1], top.cards[2], by_rank[s][1]}
+                fill = same_rank_fill(s)
+            end
+            add('Two Pair', prob, value(core, fill, ev_map['Two Pair'] or (keep_score * 1.4)))
         end
     end
 
+    table.sort(targets, function(a, b) return a.ref_score > b.ref_score end)
     local ev = keep_score
-    local best_target = nil
-    local best_uplift = 0
+    local covered = 0
+    local best_target, best_uplift = nil, 0
     for _, t in ipairs(targets) do
-        local uplift = t.prob * math.max(0, t.ref_score - keep_score)
-        if uplift > best_uplift then
-            best_uplift = uplift
-            best_target = t
+        local gain = math.max(0, t.ref_score - keep_score)
+        local p = math.max(0, math.min(1, t.prob) - covered)
+        if gain > 0 and p > 0 then
+            ev = ev + p * gain
+            covered = covered + p
+            if t.prob * gain > best_uplift then
+                best_uplift = t.prob * gain
+                best_target = t
+            end
         end
     end
-    ev = keep_score + best_uplift
 
     return {
         ev = ev, keep_score = keep_score, keep_hand = keep_hand,
@@ -1960,20 +2097,44 @@ end
 
 local function evaluate_discards(hand_cards, plays)
     if not hand_cards or #hand_cards < 1 then return {} end
-
     local discards_left = G.GAME and G.GAME.current_round and G.GAME.current_round.discards_left or 0
     if discards_left <= 0 then return {} end
 
     local n = #hand_cards
+    local limit = discard_limit()
     local ev_map = build_hand_type_ev_map(plays)
     local unseen = get_unseen_cards()
     local by_rank, by_suit, id_set = analyze_hand_patterns(hand_cards)
+    local perf = BOT_ENGINE.perf or 2
+    local ctx = {cache = {}, runs = 0, max_runs = perf == 1 and 12 or (perf == 3 and 48 or 24), plays = plays or {}}
+
+    local card_usage = {}
+    for _, c in ipairs(hand_cards) do card_usage[c] = 0 end
+    for i = 1, math.min(#plays, 5) do
+        for _, c in ipairs((plays[i] and plays[i].cards) or {}) do
+            card_usage[c] = (card_usage[c] or 0) + 1
+        end
+    end
+    local function worst_first(a, b)
+        local ua, ub = card_usage[a] or 0, card_usage[b] or 0
+        if ua ~= ub then return ua < ub end
+        local ra, rb = card_rank(a), card_rank(b)
+        if ra ~= rb then return ra < rb end
+        return (a.sort_id or 0) < (b.sort_id or 0)
+    end
 
     local candidates = {}
     local seen_keys = {}
 
     local function add_candidate(discard_cards, label)
-        if #discard_cards < 1 or #discard_cards > math.min(5, discards_left) then return end
+        if #discard_cards < 1 then return end
+        if #discard_cards > limit then
+            local trimmed = {}
+            for _, c in ipairs(discard_cards) do trimmed[#trimmed + 1] = c end
+            table.sort(trimmed, worst_first)
+            discard_cards = {}
+            for i = 1, limit do discard_cards[i] = trimmed[i] end
+        end
         local ids = {}
         for _, c in ipairs(discard_cards) do ids[#ids + 1] = tostring(c.sort_id or 0) end
         table.sort(ids)
@@ -1983,66 +2144,18 @@ local function evaluate_discards(hand_cards, plays)
         candidates[#candidates + 1] = { cards = discard_cards, label = label }
     end
 
-
-    for suit, suited_cards in pairs(by_suit) do
-        if #suited_cards >= 4 then
-            local suited_ids, suited_by_id = {}, {}
-            for _, c in ipairs(suited_cards) do
-                local id = c.base and c.base.id or 0
-                if not suited_by_id[id] then
-                    suited_by_id[id] = c
-                    suited_ids[#suited_ids + 1] = id
-                end
-            end
-            table.sort(suited_ids)
-            local sf_runs = find_runs(suited_ids, nil, 4)
-            for _, run in ipairs(sf_runs) do
-                local run_set = {}
-                for _, rid in ipairs(run) do run_set[rid == 1 and 14 or rid] = true end
-                local non_run = {}
-                for _, c in ipairs(hand_cards) do
-                    local id = c.base and c.base.id or 0
-                    if not (run_set[id] and suited_by_id[id] == c) then
-                        non_run[#non_run + 1] = c
-                    end
-                end
-                if #non_run > 0 then add_candidate(non_run, '4-to-SF') end
-            end
-        end
-    end
-
-    for suit, suited_cards in pairs(by_suit) do
-        if #suited_cards >= 4 and n >= 5 then
-            local suit_set = {}
-            local sorted_suited = {}
-            for _, c in ipairs(suited_cards) do sorted_suited[#sorted_suited + 1] = c end
-            table.sort(sorted_suited, function(a, b)
-                return (a.base and a.base.id or 0) > (b.base and b.base.id or 0)
-            end)
-            for i = 1, math.min(4, #sorted_suited) do suit_set[sorted_suited[i]] = true end
-            local to_discard = {}
-            for _, c in ipairs(hand_cards) do
-                if not suit_set[c] then to_discard[#to_discard + 1] = c end
-            end
-            if #to_discard > 0 then add_candidate(to_discard, '4-to-flush') end
-        end
-    end
-
-    local runs4 = find_runs(id_set, nil, 4)
-    for _, run in ipairs(runs4) do
-        local run_id_set = {}
-        for _, rid in ipairs(run) do run_id_set[rid == 1 and 14 or rid] = true end
-        local kept_count = 0
-        local non_run = {}
+    local function discard_all_but(keep_set, label)
+        local d = {}
         for _, c in ipairs(hand_cards) do
-            local id = c.base and c.base.id or 0
-            if run_id_set[id] and kept_count < 4 then
-                kept_count = kept_count + 1
-            else
-                non_run[#non_run + 1] = c
-            end
+            if not keep_set[c] then d[#d + 1] = c end
         end
-        if #non_run > 0 then add_candidate(non_run, '4-to-straight') end
+        add_candidate(d, label)
+    end
+
+    if plays and plays[1] and plays[1].cards then
+        local keep_set = {}
+        for _, c in ipairs(plays[1].cards) do keep_set[c] = true end
+        discard_all_but(keep_set, 'keep-best-play')
     end
 
     local rank_groups = {}
@@ -2053,37 +2166,65 @@ local function evaluate_discards(hand_cards, plays)
     end
     table.sort(rank_groups, function(a, b) return a.count > b.count or (a.count == b.count and a.id > b.id) end)
     if #rank_groups > 0 then
-        local best_group = rank_groups[1]
         local keep_set = {}
-        for _, c in ipairs(best_group.cards) do keep_set[c] = true end
-        local to_discard = {}
-        for _, c in ipairs(hand_cards) do
-            if not keep_set[c] then to_discard[#to_discard + 1] = c end
-        end
-        if #to_discard > 0 and #to_discard <= 5 then
-            add_candidate(to_discard, 'keep-' .. best_group.count .. '-of-a-kind')
+        for _, c in ipairs(rank_groups[1].cards) do keep_set[c] = true end
+        discard_all_but(keep_set, 'keep-' .. rank_groups[1].count .. '-of-a-kind')
+        if rank_groups[2] then
+            for _, c in ipairs(rank_groups[2].cards) do keep_set[c] = true end
+            discard_all_but(keep_set, 'keep-two-groups')
         end
     end
 
-    local card_usage = {}
-    for _, c in ipairs(hand_cards) do card_usage[c] = 0 end
-    for i = 1, math.min(#plays, 5) do
-        for _, c in ipairs((plays[i] and plays[i].cards) or {}) do
-            card_usage[c] = (card_usage[c] or 0) + 1
+    for suit, suited_cards in pairs(by_suit) do
+        if #suited_cards >= 4 then
+            local suited_ids, suited_by_id = {}, {}
+            for _, c in ipairs(suited_cards) do
+                local id = card_rank(c)
+                if not suited_by_id[id] then
+                    suited_by_id[id] = c
+                    suited_ids[#suited_ids + 1] = id
+                end
+            end
+            table.sort(suited_ids)
+            for _, run in ipairs(find_runs(suited_ids, nil, 4)) do
+                local keep_set = {}
+                for _, rid in ipairs(run) do keep_set[suited_by_id[rid == 1 and 14 or rid]] = true end
+                discard_all_but(keep_set, '4-to-SF')
+            end
         end
     end
+
+    for suit, suited_cards in pairs(by_suit) do
+        if #suited_cards >= 4 and n >= 5 then
+            local sorted_suited = {}
+            for _, c in ipairs(suited_cards) do sorted_suited[#sorted_suited + 1] = c end
+            table.sort(sorted_suited, function(a, b) return card_rank(a) > card_rank(b) end)
+            local keep_set = {}
+            for i = 1, math.min(4, #sorted_suited) do keep_set[sorted_suited[i]] = true end
+            discard_all_but(keep_set, '4-to-flush')
+        end
+    end
+
+    for _, run in ipairs(find_runs(id_set, nil, 4)) do
+        local keep_set = {}
+        for _, rid in ipairs(run) do
+            local g = by_rank[rid == 1 and 14 or rid]
+            if g and g[1] then keep_set[g[1]] = true end
+        end
+        discard_all_but(keep_set, '4-to-straight')
+    end
+
     local by_usage = {}
     for _, c in ipairs(hand_cards) do by_usage[#by_usage + 1] = c end
-    table.sort(by_usage, function(a, b) return (card_usage[a] or 0) < (card_usage[b] or 0) end)
-
-    for sz = 1, math.min(3, #by_usage, discards_left) do
+    table.sort(by_usage, worst_first)
+    for sz = 1, math.min(3, #by_usage - 1, limit) do
         local d = {}
         for i = 1, sz do d[#d + 1] = by_usage[i] end
-        if #d > 0 then add_candidate(d, 'dead-' .. sz) end
+        add_candidate(d, 'dead-' .. sz)
     end
 
     local results = {}
-    local max_candidates = 10
+    local max_candidates = 12
     for i = 1, math.min(#candidates, max_candidates) do
         local cand = candidates[i]
         local discard_set = {}
@@ -2093,7 +2234,7 @@ local function evaluate_discards(hand_cards, plays)
             if not discard_set[c] then kept[#kept + 1] = c end
         end
         if #kept >= 1 then
-            local ok, ev_data = pcall(estimate_discard_ev, kept, #cand.cards, unseen, ev_map)
+            local ok, ev_data = pcall(estimate_discard_ev, kept, #cand.cards, unseen, ev_map, ctx)
             if ok and ev_data then
                 local target_hand = ev_data.best_target and ev_data.best_target.hand or ev_data.keep_hand
                 local conf_parts = { cand.label }
@@ -2107,6 +2248,7 @@ local function evaluate_discards(hand_cards, plays)
                     draw_count    = #cand.cards,
                     target_hand   = target_hand,
                     ev            = ev_data.ev,
+                    chain_ev      = ev_data.ev,
                     confidence    = table.concat(conf_parts, ' | '),
                     keep_score    = ev_data.keep_score,
                     keep_hand     = ev_data.keep_hand,
@@ -2117,32 +2259,10 @@ local function evaluate_discards(hand_cards, plays)
         end
     end
 
-    table.sort(results, function(a, b) return a.ev > b.ev end)
-
-    if discards_left >= 2 and #results > 0 then
-        local remaining = discards_left - 1
-        local unseen_after = math.max(1, #unseen - 5)
-        for _, dr in ipairs(results) do
-            local base_play = (plays and #plays > 0) and plays[1].score or dr.keep_score
-            if base_play > 0 and dr.ev > base_play then
-                local improvement = dr.ev / base_play - 1
-                local chain_bonus = 0
-                local decay = 0.7
-                for step = 1, math.min(remaining, 3) do
-                    chain_bonus = chain_bonus + improvement * math.pow(decay, step)
-                end
-                dr.chain_ev       = dr.ev * (1 + chain_bonus)
-                dr.chain_steps    = math.min(remaining, 3)
-                dr.chain_bonus_pct = chain_bonus * 100
-            else
-                dr.chain_ev       = dr.ev
-                dr.chain_steps    = 0
-                dr.chain_bonus_pct = 0
-            end
-        end
-        table.sort(results, function(a, b) return (a.chain_ev or a.ev) > (b.chain_ev or b.ev) end)
-    end
-
+    table.sort(results, function(a, b)
+        if a.ev ~= b.ev then return a.ev > b.ev end
+        return a.draw_count > b.draw_count
+    end)
     return results
 end
 
@@ -2478,6 +2598,7 @@ function BOT_ENGINE.analyze()
     if hands_left >= 4 then disc_threshold = 1.05
     elseif hands_left == 3 then disc_threshold = 1.10
     elseif hands_left == 2 then disc_threshold = 1.20 end
+    if discards_left == 1 and hands_left >= 3 then disc_threshold = disc_threshold + 0.15 end
 
     if not has_discard then
         verdict = 'PLAY NOW'
@@ -2486,14 +2607,8 @@ function BOT_ENGINE.analyze()
         verdict = 'PLAY NOW'
         verdict_reason = mod_loc('last hand: play best available')
     elseif can_clear then
-        if best_disc_ev > best_play_score * 1.3 and hands_left >= 3 then
-            verdict = 'DISCARD FIRST'
-            verdict_reason = string.format('clears blind already, but +%.0f%% EV saves future hands',
-                (ev_ratio - 1) * 100)
-        else
-            verdict = 'PLAY NOW'
-            verdict_reason = mod_loc('current play clears blind')
-        end
+        verdict = 'PLAY NOW'
+        verdict_reason = mod_loc('current play clears blind')
     elseif best_play_score <= 0 then
         if best_disc_ev > 0 then
             verdict = 'DISCARD FIRST'

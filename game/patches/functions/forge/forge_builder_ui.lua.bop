@@ -456,7 +456,7 @@ function B.card_node(scale)
   card.forge_preview = true
 r 7 1460 %20%20 -
 r 5 219 %20%20 -
-l 1820
+l 1833
   B.preview_card = card
   return area_for(w, h, card)
 end
@@ -1759,7 +1759,20 @@ local function items_body(w)
       local items = {}
       for i, e in ipairs(list) do items[#items + 1] = button(Cat.value_label("card", e.v), "forge_b_pack_card", {slot = i}, UIK.C.accent, bw, nil, "forge_val_" .. i) end
       if adding then items[#items + 1] = button(mod_loc("+ Add a card"), "forge_b_pick_effect", {slot = #list + 1}, UIK.C.ok, bw, nil, "forge_add_effect") end
-      nodes[#nodes + 1] = UIK.grid(items, per, {w = w, padding = 0.05})
+      local size = 12
+      local pages = math.max(1, math.ceil(#items / size))
+      if B.state.fx_focus then
+        B.state.fx_page = math.ceil(B.state.fx_focus / size)
+        B.state.fx_focus = nil
+      end
+      B.fx_pages = pages
+      B.state.fx_page = math.max(1, math.min(B.state.fx_page or 1, pages))
+      local shown = {}
+      for i = (B.state.fx_page - 1) * size + 1, math.min(#items, B.state.fx_page * size) do shown[#shown + 1] = items[i] end
+      nodes[#nodes + 1] = UIK.grid(shown, per, {w = w, padding = 0.05})
+      if pages > 1 then
+        nodes[#nodes + 1] = UIK.pager{prev = "forge_b_fx_page", next = "forge_b_fx_page", prev_ref = {d = -1}, next_ref = {d = 1}, text = string.format(mod_loc("Page %d of %d"), B.state.fx_page, pages), w = w - 0.28}
+      end
       nodes[#nodes + 1] = problems_row(d, w)
       return nodes
     end

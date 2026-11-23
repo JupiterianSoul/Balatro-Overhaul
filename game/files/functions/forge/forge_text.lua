@@ -332,7 +332,10 @@ give_base = function(g, lang, vars, when)
   local s = S[lang] or S.en
   local id, n = g.id, fmt_n(g.n)
   local RB = package.loaded["functions/forge/forge_rules"]
-  if RB and RB.TEXT_GIVE[id] then return RB.TEXT_GIVE[id](g, s, lang, vars, when) end
+  if RB and RB.TEXT_GIVE[id] then
+    local t = RB.TEXT_GIVE[id](g, s, lang, vars, when)
+    if t then return t end
+  end
   if id == "level_up" and when == "discard" then return s.level_up_discard end
   if id == "copy_card" and g.v == "hand" then return s.copy_card_hand end
   if id == "var_add" then

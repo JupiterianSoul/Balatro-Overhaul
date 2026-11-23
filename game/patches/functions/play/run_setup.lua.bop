@@ -513,7 +513,7 @@ local function footer(z, step)
   local tl = L("Seeded run")
   local tgw = UIK.text_w(tl, z.v(0.44, 0.4)) + (z.v(1.15, 1)) * 0.5 + 0.06 + 0.35
   local toggle = UIK.toggle{label = tl, ref_table = P.sel, ref_value = 'seeded', w = tgw, id = 'bo_rs_seeded', callback = function() RS.refresh('bo_rs_seeded') end}
-  local seed = P.sel.seeded and UIK.input{prompt = localize('k_enter_seed'), ref_table = P.sel, ref_value = 'seed', w = 2.9, iw = 2.7, max_length = 8, all_caps = true, id = 'bo_rs_seed'} or nil
+  local seed = P.sel.seeded and UIK.input{prompt = localize('k_enter_seed'), ref_table = P.sel, ref_value = 'seed', w = 2.9 + UIK.PASTE_W, iw = 2.7, max_length = 8, all_caps = true, paste = true, id = 'bo_rs_seed'} or nil
   local mid = {C({}, {toggle}), seed and hgap(0.2) or nil, seed and C({}, {seed}) or nil}
   if z.port then
     return {

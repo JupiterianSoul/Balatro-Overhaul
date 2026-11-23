@@ -94,33 +94,50 @@ e 27 54 %20%20%20%20 - =23,+%6D%6F%64%5F,=25
 r 27 55 %20%20%20%20 -
 e 27 56 %20%20%20%20%20%20%20%20 - =25,+%6D%6F%64%5F,=22
 l 1
-        if file_string and file_string ~= '' then
-r 27 58 %20%20%20%20%20%20%20%20%20%20%20%20 %20
-l 9
-                local success = nil
-                success, file_string = pcall(love.data.decompress, 'string', 'deflate', file_string .. '\0\0\0\0\0\0\0\0')
-                if not success then return nil, true end
-            end
-            return file_string
+        if not file_string or file_string == '' then return nil, true end
+r 27 58 %20%20%20%20%20%20%20%20 %20
+l 13
+            local success = nil
+            success, file_string = pcall(love.data.decompress, 'string', 'deflate', file_string .. '\0\0\0\0\0\0\0\0')
+            if not success then return nil, true end
         end
+        return file_string
     end
 end
 
+local function loads(text)
+    if type(text) ~= 'string' or string.sub(text, 1, 6) ~= 'return' then return false end
+    return loadstring(text) ~= nil
+end
+
 r 27 53 - -
-l 8
+l 15
     local s, bad = read_packed(_file)
+    local jkr = string.sub(_file, -4) == '.jkr'
+    if jkr and s ~= nil and not loads(s) then s, bad = nil, true end
     if s == nil and bad then
-        s = read_packed(_file .. '.prev')
-        if s ~= nil then print('[SAVE] ' .. _file .. ' was cut short, using the copy written with it') end
+        local raw = love.mod_filesystem.read(_file)
+        if raw and raw ~= '' then keep_bad_copy(_file, raw) end
+        local prev = read_packed(_file .. '.prev')
+        if prev ~= nil and (not jkr or loads(prev)) then
+            s = prev
+            print('[SAVE] ' .. _file .. ' was cut short, using the copy written with it')
+        end
     end
     return s
 end
 
 r 27 68 - -
-l 5
-    local packed = compress_table_to_string(_data)
-    if string.sub(_file, -4) == '.jkr' then love.mod_filesystem.write(_file .. '.prev', packed) end
-    love.mod_filesystem.write(_file, packed)
+l 11
+    local jkr = string.sub(_file, -4) == '.jkr'
+    local text = type(_data) == 'table' and STR_PACK(_data) or _data
+    if jkr and type(text) == 'string' and string.sub(text, 1, 6) == 'return' and not loads(text) then
+        print('[SAVE] ' .. _file .. ' not written: the new data would not load back')
+        return false
+    end
+    local packed = compress_table_to_string(text)
+    if jkr then love.mod_filesystem.write(_file .. '.prev', packed) end
+    return love.mod_filesystem.write(_file, packed)
 end
 
 r 13 979 - -

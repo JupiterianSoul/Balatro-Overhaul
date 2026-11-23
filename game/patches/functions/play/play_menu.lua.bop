@@ -667,7 +667,7 @@ function PM.new_run_panel(z)
     toggles[#toggles + 1] = UIK.toggle{label = L("Cheats"), ref_table = PM.sel, ref_value = 'cheats', w = tw(L("Cheats")), id = 'bo_play_cheats', callback = function() UIK.refresh() end}
     tws = tws + 0.5 + tw(L("Cheats"))
   end
-  local seed_box = PM.sel.seeded and UIK.input{prompt = localize('k_enter_seed'), ref_table = PM.sel, ref_value = 'seed', w = 3.8, max_length = 8, all_caps = true, id = 'bo_play_seed'} or nil
+  local seed_box = PM.sel.seeded and UIK.input{prompt = localize('k_enter_seed'), ref_table = PM.sel, ref_value = 'seed', w = 3.8 + UIK.PASTE_W, max_length = 8, all_caps = true, paste = true, id = 'bo_play_seed'} or nil
   local seed_row = {}
   for i, n in ipairs(toggles) do
     if i > 1 then seed_row[#seed_row + 1] = hgap(0.5) end
@@ -715,7 +715,7 @@ function PM.new_run_panel(z)
       UIK.button{label = L("START"), button = 'bo_play_new_run', colour = UIK.C.ok, id = 'bo_play_start', w = z.iw * 0.6},
     }}
   end
-  local seed_own = seed_box and (tws + 4.5 > z.iw - 0.2)
+  local seed_own = seed_box and (tws + 4.5 + UIK.PASTE_W > z.iw - 0.2)
   if seed_box and not seed_own then
     seed_row[#seed_row + 1] = hgap(0.5)
     seed_row[#seed_row + 1] = C({}, {seed_box})

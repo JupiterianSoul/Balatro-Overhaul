@@ -650,7 +650,7 @@ end
 
 G.FUNCS.seed_lib_page = function(args)
 r 32 603 %20%20 -
-l 176
+l 178
   _seed_lib_page = args.cycle_config.current_option
   seed_lib_refresh()
 end
@@ -738,10 +738,12 @@ function create_UIBox_seed_edit(idx)
       }},
       {n=G.UIT.R, config={align="cm", padding=0.06}, nodes={
         create_text_input({
-          w=5.5, max_length=12, prompt_text=mod_loc("Enter seed..."),
+          w=5.5 - UIK.PASTE_W, max_length=12, prompt_text=mod_loc("Enter seed..."),
           ref_table=G, ref_value='_seed_edit_input',
           all_caps=true, keyboard_offset=1
-        })
+        }),
+        {n=G.UIT.C, config={minw=UIK.PASTE_W - 1}, nodes={}},
+        UIK.paste_button(12, 0.6),
       }},
       {n=G.UIT.R, config={align="cm", padding=0.05}, nodes={
         create_option_cycle({label=mod_loc("Deck"), options=deck_names, w=5.5,

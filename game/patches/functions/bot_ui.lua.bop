@@ -107,7 +107,7 @@ function U.ai_rows()
             opt_callback = "bot_set_provider", w = 4.5, scale = 0.75, colour = G.C.RED}),
     }}
     local desc = {
-        w14 = {"Our trained bot. Plays fair: sees only what you see, one try per seed.", "A hand solver plays the cards, a neural net and rollouts pick shops, packs and skips."},
+        w14 = {"My trained bot. Plays fair: sees only what you see, one try per seed.", "A hand solver plays the cards, a neural net and rollouts pick shops, packs and skips."},
         seer = {"Reads the seed: knows every future draw, shop and pack.", "It cheats on purpose, so its games are kept apart from Fair's."},
     }
     for i, line in ipairs(desc[p.key] or {}) do
