@@ -1670,7 +1670,7 @@ payload = '''
 ${pre}  end
 
 r 32 2112 %20%20 -
-l 323
+l 325
     return G.FUNCS.select_button_check(e)
   end
 
@@ -1845,6 +1845,7 @@ pattern = '''^(?<pre>)(?<post>[\t ]*\n[\t ]*G\.FUNCS\.select_blind = function\(e
 position = "at"
 payload = '''
 ${pre}  function blind_choice_off_deck(e)
+    if G.blind_select and G.bo_blind_picked == G.blind_select then return true end
     local on_deck = G.GAME and G.GAME.blind_on_deck
     local box = e and e.UIBox
     if not (box and on_deck and G.blind_select_opts) then return false end
@@ -1864,6 +1865,7 @@ pattern = '''^(?<pre>[\t ]*G\.FUNCS\.select_blind = function\(e\)\n)(?<post>)'''
 position = "at"
 payload = '''
 ${pre}    if blind_choice_off_deck(e) then return end
+    G.bo_blind_picked = G.blind_select
 ${post}'''
 times = 1
 

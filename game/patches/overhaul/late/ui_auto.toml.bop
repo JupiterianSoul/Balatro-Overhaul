@@ -536,7 +536,7 @@ ${pre}            if v.children[1] and v.children[1].config.chosen then return v
         local c = chosen(self, 0)
         if c then return c:put_focused_cursor() end
 r 29 1004 %20%20%20%20%20%20%20%20 -
-l 81
+l 92
 ${post}'''
 times = 1
 
@@ -583,6 +583,17 @@ end
 function UIElement:set_created_on_pause(state, recursive)
   ui_set_recursive(self, recursive, function(n) n.created_on_pause = state end)
 end
+${post}'''
+times = 1
+
+[[patches]]
+[patches.regex]
+id = "auto.ui.032"
+target = "engine/ui.lua"
+pattern = '''^(?<pre>[\t ]*function UIElement:click\(\)\n)(?<post>)'''
+position = "at"
+payload = '''
+${pre}    if (self.config.button == 'select_blind' or self.config.button == 'skip_blind') and G.GAME and (G.GAME.STOP_USE or 0) > 0 then return end
 ${post}'''
 times = 1
 

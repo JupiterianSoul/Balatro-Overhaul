@@ -662,8 +662,8 @@ return {
       kind = "patch",
       patch = "patches/functions/deck_creator_hooks.lua.bop",
       path = "functions/deck_creator_hooks.lua",
-      sha256 = "03a3246dd2349bd17984cd8331aa0c283e838cc22a914f741f4cf8faaef2cb0f",
-      size = 32857,
+      sha256 = "e768dcc3ab2b27053da0e09742bc6a186afe17af97edadb6cb96406d84cc9792",
+      size = 32952,
     },
     {
       file = "files/functions/deck_creator_locale.lua",
@@ -3042,7 +3042,7 @@ return {
       file = "files/overhaul/version.lua",
       kind = "own",
       path = "overhaul/version.lua",
-      sha256 = "4886e530dba932477cedf4257ad680a01a632a2cdc4a95c1e4c8461164969c91",
+      sha256 = "99f6d85aa3c90db046cd336d94a7d858baddc1ce2c1458f8bbc714c34436abb0",
       size = 148,
     },
     {
@@ -3084,8 +3084,8 @@ return {
       kind = "patch",
       patch = "patches/overhaul/late/button_callbacks_auto.toml.bop",
       path = "overhaul/late/button_callbacks_auto.toml",
-      sha256 = "9bf6f7e3d5004f8897581b2c9f6b4889f0bc9110ce08e468e4ada3d894d62c7e",
-      size = 82684,
+      sha256 = "a60fe5365362f97094a39c1889c3e216715168fd73506054234ab2ec4bb515c4",
+      size = 82806,
     },
     {
       kind = "patch",
@@ -3385,8 +3385,8 @@ return {
       kind = "patch",
       patch = "patches/overhaul/late/ui_auto.toml.bop",
       path = "overhaul/late/ui_auto.toml",
-      sha256 = "85f457472d2d2ba2d77d0999f221953d970bd1a72800af5f85a43959855e3a84",
-      size = 22423,
+      sha256 = "fcb6cba7df61575439914914bf05495c93c3bb238b749a10936f08e1a2f39ac2",
+      size = 22766,
     },
     {
       kind = "patch",
@@ -6491,7 +6491,7 @@ return {
   game_version = "1.0.1o-FULL",
   name = "Balatro Overhaul",
   overhaul_name = "2.1.3",
-  overhaul_version = "84",
+  overhaul_version = "85",
   vanilla = {
     {
       lines = "lines/1.txt",

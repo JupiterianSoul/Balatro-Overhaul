@@ -577,7 +577,7 @@ function DeckCreatorHooks.init()
         if G.FUNCS.setup_run then
             local _orig_setup_run = G.FUNCS.setup_run
 r 32 1570 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 188
+l 189
                 pcall(function() DeckCreatorPersistence.refreshDeckList() end)
                 _orig_setup_run(e)
             end
@@ -665,7 +665,8 @@ create_card = function(_type, area, legendary, _rarity, skip_materialize, soulab
             _type = (area and area == G.consumeables) and (G.P_CENTER_POOLS and G.P_CENTER_POOLS.Tarot_Planet and 'Tarot_Planet' or 'Tarot') or 'Joker'
         end
     end
-    if forced_key == nil and type(_type) == 'string' and _type ~= 'Joker' and G.P_CENTER_POOLS and G.P_CENTER_POOLS[_type] == nil then
+    if forced_key == nil and type(_type) == 'string' and _type ~= 'Joker' and _type ~= 'Base' and G.P_CENTER_POOLS and G.P_CENTER_POOLS[_type] == nil
+        and not (SMODS and SMODS.ObjectTypes and SMODS.ObjectTypes[_type]) then
         print('[create_card] unknown card set ' .. _type .. ' from ' .. tostring(key_append) .. ', made a random card instead')
         _type = (area and area == G.consumeables) and 'Tarot' or 'Joker'
     end
