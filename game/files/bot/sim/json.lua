@@ -28,7 +28,7 @@ local encode
 
 local function is_array(t)
     local mt = getmetatable(t)
-    if mt == ARRAY_MT then return true end
+    if mt == ARRAY_MT then return #t > 0 or next(t) == nil end
     if mt == OBJECT_MT then return false end
     local n = #t
     if n == 0 then return next(t) == nil end

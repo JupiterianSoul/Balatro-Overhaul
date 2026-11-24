@@ -139,7 +139,7 @@ function M.install(Hooks)
             if r[1] ~= false and not c.REMOVED then
                 c.bo_buy_queued = true
 r 3 617 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 154
+l 185
                     c.bo_buy_queued = nil
                     return true
                 end}))
@@ -291,6 +291,37 @@ l 154
         if k == "j_roff_getchips" and type(r[1]) == "table" and r[1].chip_mod == nil then r[1].chip_mod = 0 end
         return Hooks.unpack(r)
     end end, {id = "overhaul.mod_guards.roffle_getchips"})
+
+    local function sticker_of(key)
+        local S = global("SMODS")
+        return type(key) == "string" and type(S) == "table" and type(S.Stickers) == "table" and S.Stickers[key] or nil
+    end
+
+    Hooks.wrap("PB_UTIL", "is_special_clip", function(orig) return function(clip, ...)
+        if type(clip) == "string" and not sticker_of(clip) then return false end
+        return orig(clip, ...)
+    end end, {id = "overhaul.mod_guards.pb_special_clip"})
+
+    Hooks.wrap("PB_UTIL", "poll_paperclip", function(orig) return function(seed, include_special, ...)
+        local PB = global("PB_UTIL")
+        local list = type(PB) == "table" and PB.Paperclips
+        if type(list) ~= "table" then return orig(seed, include_special, ...) end
+        local keep, normal = {}, 0
+        for _, k in ipairs(list) do
+            local s = sticker_of(k)
+            if s then
+                keep[#keep + 1] = k
+                if not s.special then normal = normal + 1 end
+            end
+        end
+        if #keep == #list then return orig(seed, include_special, ...) end
+        if #keep == 0 or (normal == 0 and not include_special) then return nil end
+        PB.Paperclips = keep
+        local r = Hooks.pack(pcall(orig, seed, include_special, ...))
+        PB.Paperclips = list
+        if not r[1] then error(r[2], 0) end
+        return unpack(r, 2, r.n)
+    end end, {id = "overhaul.mod_guards.pb_poll_clip"})
 end
 
 return M

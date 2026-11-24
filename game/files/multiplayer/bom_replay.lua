@@ -818,6 +818,23 @@ RP.MAKERS = {
 
 RP.HOOKED = {}
 
+local function hooks_lib()
+    local ok, H = pcall(require, "overhaul.hooks")
+    if ok and type(H) == "table" then return H end
+end
+
+local function already_wrapped(cur)
+    if RP.HOOKED[cur] then return true end
+    local H = hooks_lib()
+    return H and H.chain_has and H.chain_has(cur, RP.HOOKED) or false
+end
+
+local function mark_wrapped(w, cur)
+    RP.HOOKED[w] = true
+    local H = hooks_lib()
+    if H and H.adopt then H.adopt(w, cur) end
+end
+
 function RP.push(e)
     if not (REC.on and REC.batch) then return end
     if REC.rolls and #REC.rolls > 0 and type(e) == "table" and e.k ~= "rn" then
@@ -833,7 +850,7 @@ end
 
 local function wrap(name)
     local cur = G and G.FUNCS and G.FUNCS[name]
-    if type(cur) ~= "function" or RP.HOOKED[cur] then return end
+    if type(cur) ~= "function" or already_wrapped(cur) then return end
     local maker = RP.MAKERS[name]
     local function w(...)
         if REC.on and REC.depth == 0 and maker then
@@ -846,7 +863,7 @@ local function wrap(name)
         if not res[1] then error(res[2], 0) end
         return unpack(res, 2)
     end
-    RP.HOOKED[w] = true
+    mark_wrapped(w, cur)
     G.FUNCS[name] = w
 end
 
@@ -879,7 +896,7 @@ end
 
 local function wrap_eval()
     local cur = G and G.FUNCS and G.FUNCS.evaluate_play
-    if type(cur) ~= "function" or RP.HOOKED[cur] then return end
+    if type(cur) ~= "function" or already_wrapped(cur) then return end
     local function w(...)
         if REC.eval_depth == 0 then pcall(RP.before_eval) end
         REC.eval_depth = REC.eval_depth + 1
@@ -888,7 +905,7 @@ local function wrap_eval()
         if not res[1] then error(res[2], 0) end
         return unpack(res, 2)
     end
-    RP.HOOKED[w] = true
+    mark_wrapped(w, cur)
     G.FUNCS.evaluate_play = w
 end
 

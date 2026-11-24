@@ -347,14 +347,35 @@ function M.get_index()
     local ok, data = pcall(json.decode, f.read(M.INDEX) or "")
     if ok and type(data) == "table" then t = data end
   end
-  M.index = type(t) == "table" and type(t.mods) == "table" and t.mods or {}
+  local function plain(v)
+    local out = {}
+    if type(v) == "table" then for k, e in pairs(v) do if type(k) == "string" and type(e) == "table" then out[k] = e end end end
+    return out
+  end
+  M.index = plain(type(t) == "table" and t.mods)
+  M.by_name = plain(type(t) == "table" and t.by_name)
   return M.index
+end
+
+function M.name_key(mod)
+  if type(mod) ~= "table" then return nil end
+  local n = tostring(mod.name or ""):lower():gsub("%s+", " ")
+  if n == "" then return nil end
+  return n .. "|" .. tostring(mod.author or ""):lower():gsub("%s+", " ")
+end
+
+function M.remember(mod, e)
+  local key = M.name_key(mod)
+  if not (key and type(e) == "table") then return end
+  M.get_index()
+  M.by_name[key] = {on = e.on ~= false, mine = e.mine == true}
 end
 
 function M.save_index()
   ensure(M.DIR)
-  local ok, raw = pcall(json.encode, {v = 1, mods = M.get_index()})
-  if ok then write(M.INDEX, raw) end
+  local ok, raw = pcall(json.encode, {v = 1, mods = json.object(M.get_index()), by_name = json.object(M.by_name or {})})
+  local f = fs()
+  if ok and f then f.write(M.INDEX, raw) end
 end
 
 local function remove_art(mod_id)
@@ -417,9 +438,24 @@ local function sort_mods(list)
   end)
 end
 
+function M.looks_mine(mod, own)
+  local n = 0
+  for _, list in ipairs({mod.jokers or {}, mod.creations or {}}) do
+    for _, c in ipairs(list) do
+      if not (c.src and own[c.src]) then return false end
+      n = n + 1
+    end
+  end
+  return n > 0
+end
+
 function M.load()
   local f = fs()
   M.list = {}
+  local fixed = false
+  local own = {}
+  for _, c in ipairs(Store.all()) do own[c.id] = true end
+  for _, c in ipairs(Store.items()) do own[c.id] = true end
   if f and f.getInfo(M.DIR) then
     local idx = M.get_index()
     local names = f.getDirectoryItems(M.DIR)
@@ -431,9 +467,17 @@ function M.load()
         local raw = f.read(path)
         local mod = M.parse(raw)
         if mod and mod.id == id:lower() then
-          local e = type(idx[mod.id]) == "table" and idx[mod.id] or {}
+          local e = type(idx[mod.id]) == "table" and idx[mod.id] or nil
+          local key = M.name_key(mod)
+          if not e and key and type(M.by_name[key]) == "table" then
+            e = {on = M.by_name[key].on, mine = M.by_name[key].mine, added = os.time()}
+            idx[mod.id] = e
+            fixed = true
+          end
+          e = e or {}
           mod.on = e.on ~= false
-          mod.mine = e.mine == true
+          mod.mine = e.mine == true or M.looks_mine(mod, own)
+          if mod.mine and e.mine ~= true and idx[mod.id] then idx[mod.id].mine = true; fixed = true end
           mod.added = tonumber(e.added) or 0
           mod.file = path
           mod.hash, mod.size = M.hash(raw), #raw
@@ -446,6 +490,7 @@ function M.load()
     end
     sort_mods(M.list)
   end
+  if fixed then M.save_index() end
   M.rebuild()
   return M.list
 end
@@ -477,7 +522,11 @@ function M.install(raw, opts)
   if not write(path, raw) then return nil, "write" end
   local idx = M.get_index()
   local prev = type(idx[mod.id]) == "table" and idx[mod.id] or nil
-  idx[mod.id] = {on = not (prev and prev.on == false), mine = opts.mine or (prev and prev.mine) or false, added = prev and prev.added or os.time()}
+  local named = not prev and M.name_key(mod) and M.by_name and M.by_name[M.name_key(mod)] or nil
+  if type(named) ~= "table" then named = nil end
+  local was_off = (prev and prev.on == false) or (named and named.on == false)
+  idx[mod.id] = {on = not was_off, mine = opts.mine or (prev and prev.mine) or (named and named.mine) or false, added = prev and prev.added or os.time()}
+  M.remember(mod, idx[mod.id])
   M.save_index()
   remove_art(mod.id)
   M.extract(mod, true)
@@ -528,6 +577,7 @@ function M.set_on(id, on)
   e.on = on and true or false
   idx[id] = e
   mod.on = e.on
+  M.remember(mod, e)
   M.save_index()
   M.rebuild()
   M.refresh_game()
@@ -561,6 +611,8 @@ function M.delete(id)
   if f and mod.file and f.getInfo(mod.file) then pcall(f.remove, mod.file) end
   remove_art(id)
   M.get_index()[id] = nil
+  local key = M.name_key(mod)
+  if key and M.by_name then M.by_name[key] = nil end
   M.save_index()
   M.load()
   M.refresh_game()

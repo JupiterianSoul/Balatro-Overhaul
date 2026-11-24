@@ -178,10 +178,11 @@ end
 
 local cardarea_sort_raw = CardArea.sort
 r 5 577 - -
-l 37
+l 38
     local ok, err = pcall(cardarea_sort_raw, self, method)
     if ok then return end
-    if not tostring(err):find('invalid order function', 1, true) then error(err, 0) end
+    local why = tostring(err)
+    if not (why:find('invalid order function', 1, true) or why:find('attempt to compare', 1, true)) then error(err, 0) end
     local sort = self.config.sort
     local key
     if sort == 'desc' or sort == 'asc' then key = function(c) return c:get_nominal() end

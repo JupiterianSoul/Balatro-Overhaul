@@ -277,8 +277,8 @@ return {
       file = "files/bot/sim/json.lua",
       kind = "own",
       path = "bot/sim/json.lua",
-      sha256 = "298e0d9477165efbe17921e11180e240b1a137f73efa2fb14d36303e66471507",
-      size = 5489,
+      sha256 = "3345328018339ef36da39bf4f736066b9b0571d296d4bd570310ed1d3af302d3",
+      size = 5509,
     },
     {
       kind = "patch",
@@ -662,8 +662,8 @@ return {
       kind = "patch",
       patch = "patches/functions/deck_creator_hooks.lua.bop",
       path = "functions/deck_creator_hooks.lua",
-      sha256 = "e693c8094215c3493402e11d322deecbe9a7592c5da02f07656d0b4c85117874",
-      size = 32513,
+      sha256 = "03a3246dd2349bd17984cd8331aa0c283e838cc22a914f741f4cf8faaef2cb0f",
+      size = 32857,
     },
     {
       file = "files/functions/deck_creator_locale.lua",
@@ -1425,8 +1425,8 @@ return {
       file = "files/functions/forge/forge_mods.lua",
       kind = "own",
       path = "functions/forge/forge_mods.lua",
-      sha256 = "d74efe05d2c23d9e2d6273f3f5e0471609bef884764319c126a60199d4ab2bf2",
-      size = 22405,
+      sha256 = "b7a376732f8f341309fa9e57e6eaeb18d6efa04efe90201c7cee2510cb5aabaa",
+      size = 24371,
     },
     {
       kind = "patch",
@@ -2650,8 +2650,8 @@ return {
       file = "files/multiplayer/bom_replay.lua",
       kind = "own",
       path = "multiplayer/bom_replay.lua",
-      sha256 = "68b9e658ecb83e3ae6482242ed03d7ea07caff660928499463f377f07ba665eb",
-      size = 49821,
+      sha256 = "25e8abf8c5c47a813c28d8a3df88e524843ec1cb2fc020197b52789cbaee9b62",
+      size = 50286,
     },
     {
       file = "files/multiplayer/bom_rewards.lua",
@@ -2916,8 +2916,8 @@ return {
       file = "files/overhaul/hooks.lua",
       kind = "own",
       path = "overhaul/hooks.lua",
-      sha256 = "ab3a6b7228167cbbed64138cfd3acf3707973dec4fa07bd7624e33cdb582d3e1",
-      size = 4073,
+      sha256 = "8ec1ae7f9424f606547e865ad2bfc7e9ac4dc600108f3a90132de3fe74b35f02",
+      size = 4559,
     },
     {
       file = "files/overhaul/ingame_keyboard.lua",
@@ -2951,8 +2951,8 @@ return {
       kind = "patch",
       patch = "patches/overhaul/mod_guards.lua.bop",
       path = "overhaul/mod_guards.lua",
-      sha256 = "5dfe24a6b046078332bf63050cd077635b03754301ca7f86409ef192a7d47dd6",
-      size = 12336,
+      sha256 = "7690f6006ddecef6f2dac316112413f5b58c0b5da49c7951ba53aa985109cec9",
+      size = 13748,
     },
     {
       file = "files/overhaul/resize_guard.lua",
@@ -3042,7 +3042,7 @@ return {
       file = "files/overhaul/version.lua",
       kind = "own",
       path = "overhaul/version.lua",
-      sha256 = "f3dbe0d6f1d7ea0d384eb4cf63aa730a59198aa2df0a95e0d15f20a903d47068",
+      sha256 = "4886e530dba932477cedf4257ad680a01a632a2cdc4a95c1e4c8461164969c91",
       size = 148,
     },
     {
@@ -3105,8 +3105,8 @@ return {
       kind = "patch",
       patch = "patches/overhaul/late/cardarea_auto.toml.bop",
       path = "overhaul/late/cardarea_auto.toml",
-      sha256 = "32dfc92482b8d6acb064d1a823e79f72e5877bc051eefc70399a4fe82df6a66f",
-      size = 10822,
+      sha256 = "25556f586e7cdc15ac70bec22e2c17e919228d4c2eaa129a1e38a61f85632f31",
+      size = 10887,
     },
     {
       kind = "patch",
@@ -6491,7 +6491,7 @@ return {
   game_version = "1.0.1o-FULL",
   name = "Balatro Overhaul",
   overhaul_name = "2.1.3",
-  overhaul_version = "83",
+  overhaul_version = "84",
   vanilla = {
     {
       lines = "lines/1.txt",

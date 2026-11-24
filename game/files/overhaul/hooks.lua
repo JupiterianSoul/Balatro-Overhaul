@@ -3,6 +3,7 @@ local Hooks = {
     by_id = {},
     ours = setmetatable({}, {__mode = "k"}),
     base_of = setmetatable({}, {__mode = "k"}),
+    thru = setmetatable({}, {__mode = "k"}),
     rewraps = 0,
     fallbacks = {},
     fallbacks_run = {},
@@ -77,7 +78,24 @@ local function in_chain(f, target)
     local guard = 0
     while f ~= nil and guard < 64 do
         if f == target then return true end
-        if not Hooks.ours[f] then return false end
+        if not (Hooks.ours[f] or Hooks.thru[f]) then return false end
+        f = Hooks.base_of[f]
+        guard = guard + 1
+    end
+    return false
+end
+
+function Hooks.adopt(fn, base)
+    if type(fn) ~= "function" then return end
+    Hooks.thru[fn] = true
+    Hooks.base_of[fn] = base
+end
+
+function Hooks.chain_has(f, set)
+    local guard = 0
+    while f ~= nil and guard < 256 do
+        if set[f] then return true end
+        if not (Hooks.ours[f] or Hooks.thru[f]) then return false end
         f = Hooks.base_of[f]
         guard = guard + 1
     end
