@@ -904,7 +904,7 @@ position = "at"
 payload = '''
 ${pre}      }))
 r 1 112 %20%20%20%20 -
-l 70
+l 68
         func = (function() pcall(function() haptic_buzz(hand_chips*mult >= (G.GAME.blind.chips or 0) and 3 or 2) end) return true end)
 ${post}'''
 optional = true
@@ -968,12 +968,10 @@ optional = true
 [patches.regex]
 id = "auto.state_events.058"
 target = "functions/state_events.lua"
-pattern = '''^(?<pre>[\t ]*add_round_eval_row\(\{name = 'bottom', dollars = dollars\}\)\n)(?<post>)'''
+pattern = '''^(?<pre>)(?<post>G\.FUNCS\.tutorial_controller = function\(\)\n)'''
 position = "at"
 payload = '''
-${pre}end
-
-G.FUNCS.skip_vanilla_tutorial = function(e)
+${pre}G.FUNCS.skip_vanilla_tutorial = function(e)
     if G.SETTINGS.tutorial_complete and not G.OVERLAY_TUTORIAL then return end
 r 32 6 %20%20%20%20 -
 r 32 2355 %20%20%20%20%20%20%20%20 -
@@ -988,7 +986,7 @@ l 1
     release_tutorial_buttons()
 r 15 1212 %20%20%20%20 -
 r 15 1213 %20%20%20%20 -
-l 55
+l 57
     set_profile_flag('tutorial_complete')
     G:save_settings()
     if G.save_progress then G:save_progress() end
@@ -998,6 +996,8 @@ l 55
         set_main_menu_UI()
     end
     if G.OVERLAY_MENU and UIK and UIK.refresh then UIK.refresh() end
+end
+
 ${post}'''
 times = 1
 
