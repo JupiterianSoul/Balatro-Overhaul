@@ -503,6 +503,24 @@ local function do_make_app(safe)
     S.progress = {stage = "building", i = 0, n = 1}
     set_msg(nil)
     run_task(function()
+        if APP_MODE and P.enabled() then
+            local wait = function() coroutine.yield() end
+            local e = S.feed and S.feed.entry
+            if not e and P.latest then
+                S.progress = {stage = "checking"}
+                e = P.latest(wait)
+            end
+            if e and P.status(e) == "new" then
+                local I = require("overhaul_install")
+                local have = I.pending_update and I.pending_update()
+                if not (have and have.version == e.version) then
+                    S.progress = {stage = "downloading"}
+                    local got, derr = P.download(e, wait)
+                    print("launcher: app patch " .. tostring(e.version) .. " " .. (got and "downloaded" or ("not downloaded " .. tostring(type(derr) == "table" and derr.code or derr))))
+                end
+            end
+            S.progress = {stage = "building", i = 0, n = 1}
+        end
         return C.build_app({carry = carry, safe = safe, yield = function(i, n)
             S.progress = i and {stage = "building", i = i, n = n} or {stage = "signing"}
             coroutine.yield()

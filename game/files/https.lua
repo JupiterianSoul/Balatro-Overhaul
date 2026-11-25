@@ -25,7 +25,9 @@ do
     if ok and love and love.system and love.system.getOS then OS = love.system.getOS() end
 end
 
-local TUNNEL_PORT = tonumber(os.getenv("OVERHAUL_TUNNEL_PORT") or "") or 44380
+local TUNNEL_ENV = tonumber(os.getenv("OVERHAUL_TUNNEL_PORT") or "")
+local TUNNEL_PORTS = TUNNEL_ENV and {TUNNEL_ENV} or {44380, 44381}
+local tunnel_port
 local MAX_REDIRECTS = 8
 local METHODS = {GET = true, HEAD = true, POST = true, PUT = true, DELETE = true, PATCH = true}
 
@@ -125,8 +127,19 @@ local function tunnel_backend(url, method, headers, data)
     tcp:settimeout(8)
     local ok, err
     if scheme == "https" then
-        ok, err = tcp:connect("127.0.0.1", TUNNEL_PORT)
-        if not ok then tcp:close(); return 0, "no tls tunnel: " .. tostring(err), {} end
+        for i, p in ipairs(tunnel_port and {tunnel_port} or TUNNEL_PORTS) do
+            if i > 1 then
+                tcp = socket.tcp()
+                tcp:settimeout(8)
+            end
+            ok, err = tcp:connect("127.0.0.1", p)
+            if ok then
+                tunnel_port = p
+                break
+            end
+            tcp:close()
+        end
+        if not ok then return 0, "no tls tunnel: " .. tostring(err), {} end
         tcp:send(host .. ":" .. port .. "\n")
         tcp:settimeout(30)
         local line, e2 = tcp:receive("*l")

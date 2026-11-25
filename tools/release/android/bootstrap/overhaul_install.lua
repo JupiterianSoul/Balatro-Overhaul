@@ -250,6 +250,11 @@ function M.bundled()
 	return read_patch("patch", "bundled")
 end
 
+function M.pending_update()
+	if not check_update() then return nil end
+	return mount_update()
+end
+
 function M.choose(pick, z, yield)
 	local man = pick.man
 	local ctx = love_ctx(function(rel) return love.filesystem.read(pick.root .. "/" .. rel) end)

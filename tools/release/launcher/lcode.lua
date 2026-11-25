@@ -1,6 +1,6 @@
 local M = {}
 
-M.BUILD = 4
+M.BUILD = 5
 M.DIR = "launcher_code"
 M.STATE = M.DIR .. "/state.txt"
 M.MAX_TRIES = 2

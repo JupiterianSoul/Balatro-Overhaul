@@ -186,6 +186,10 @@ local function fetch(url, wait)
     return r
 end
 
+function P.latest(wait)
+    return P.result(fetch(P.url(), wait))
+end
+
 function P.download(e, wait)
     local fresh = P.result(fetch(P.url(), wait))
     if fresh and fresh.version == e.version then

@@ -634,17 +634,32 @@ function C.build_app(o)
             vanilla.list[#vanilla.list + 1] = e
         end
     end
-    local pick = I.bundled()
-    if not pick then
+    local bundled = I.bundled()
+    local upd = I.pending_update and I.pending_update()
+    local picks = {}
+    if upd and (not bundled or I.newer(upd.version, bundled.version)) then
+        picks[#picks + 1] = upd
+    end
+    if bundled then
+        picks[#picks + 1] = bundled
+    end
+    if #picks == 0 then
         h:close()
         return nil, {code = "app_build", file = "patch"}
     end
-    local man, ctx = I.choose(pick, z, function()
-        if o.yield then o.yield(0, 1) end
-    end)
+    local pick, man, ctx
+    for _, p in ipairs(picks) do
+        man, ctx = I.choose(p, z, function()
+            if o.yield then o.yield(0, 1) end
+        end)
+        if man then
+            pick = p
+            break
+        end
+    end
     if not man then
         h:close()
-        return nil, {code = "version", found = I.check_text(ctx, info.version), wanted = pick.man.game_version}
+        return nil, {code = "version", found = I.check_text(ctx, info.version), wanted = picks[#picks].man.game_version}
     end
     local game = {
         man = man, ctx = ctx, z = z, build = A.build,
