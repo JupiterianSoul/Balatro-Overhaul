@@ -4,8 +4,8 @@ return {
       file = "files/CHANGELOG.md",
       kind = "own",
       path = "CHANGELOG.md",
-      sha256 = "66c95e24deff2086275fc0d610350bc15fa12ba8c23ecca0c47d31323922116d",
-      size = 215196,
+      sha256 = "78233aced436a174ee5468f45bd88f9e583d6247b23ddc40ca17c3bd5b16cbc7",
+      size = 214557,
     },
     {
       file = "files/GPL-3.0.txt",
@@ -3056,7 +3056,7 @@ return {
       file = "files/overhaul/version.lua",
       kind = "own",
       path = "overhaul/version.lua",
-      sha256 = "6e09ccd1a08c730e8d8c71a0bd05222ec46758b37c8859ae1ae530322ad53786",
+      sha256 = "c006a8fc97836d88cef960aeaa81024d4add506815edbf6250bd05fde2c2c303",
       size = 148,
     },
     {
@@ -6519,7 +6519,7 @@ return {
   game_version = "1.0.1o-FULL",
   name = "Balatro Overhaul",
   overhaul_name = "2.1.4",
-  overhaul_version = "88",
+  overhaul_version = "89",
   vanilla = {
     {
       lines = "lines/1.txt",

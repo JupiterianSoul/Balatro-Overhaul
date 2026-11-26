@@ -14,7 +14,6 @@ What each version brings to players. The game shows this file in About > Changel
 + [Gameplay] Blue Stake rework toggle (Settings > Gameplay > Reworks, on by default). Off gives the base game's -1 discard. Daily runs, speedruns and multiplayer keep the standard rules, and the Blue Stake tooltip shows the rules of the run you play.
 + [The Forge] Decks and challenges that start with consumables of your own Card Type start with those cards again instead of Tarots.
 + [Phones] Modded collection pages like Tags open at normal size again.
-+ [Multiplayer] Going online now also shares your single-player level and stats, collection progress, mod list, device and performance settings. About > Privacy lists it all.
 + [Fixes] The game no longer stops at start when a language file is broken, and a Mac or Windows install no longer crashes when Steam isn't running.
 
 ### fr Overhaul 2.1.4
@@ -27,7 +26,6 @@ What each version brings to players. The game shows this file in About > Changel
 + [Jeu] Refonte de la mise bleue (Paramètres > Partie > Refontes, activée par défaut). Désactivée, c'est le -1 défausse du jeu de base. Les parties quotidiennes, speedruns et le multijoueur gardent les règles standard, et la bulle de la mise bleue montre les règles de la partie en cours.
 + [La Forge] Les jeux et défis qui commencent avec des consommables de votre propre type de carte commencent de nouveau avec ces cartes au lieu de tarots.
 + [Téléphones] Les pages de collection moddées comme les Étiquettes s'ouvrent de nouveau à taille normale.
-+ [Multijoueur] Aller en ligne partage maintenant aussi votre niveau et vos stats en solo, votre progression de collection, votre liste de mods, votre appareil et vos réglages de performance. À propos > Confidentialité détaille tout.
 + [Corrections] Le jeu ne s'arrête plus au démarrage quand un fichier de langue est cassé, et une installation Mac ou Windows ne plante plus quand Steam n'est pas lancé.
 
 ### es Overhaul 2.1.4
@@ -40,7 +38,6 @@ What each version brings to players. The game shows this file in About > Changel
 + [Jugabilidad] Cambio del Pozo Azul (Ajustes > Jugabilidad > Cambios, activado por defecto). Desactivado, da el -1 descarte del juego base. Las partidas diarias, speedruns y el multijugador mantienen las reglas estándar, y el recuadro del Pozo Azul muestra las reglas de la partida que juegas.
 + [La Forja] Las barajas y desafíos que empiezan con consumibles de tu propio tipo de carta vuelven a empezar con esas cartas en vez de tarots.
 + [Móviles] Las páginas de colección con mods como Etiquetas vuelven a abrirse a tamaño normal.
-+ [Multijugador] Jugar en línea ahora también comparte tu nivel y estadísticas en solitario, tu progreso de colección, tu lista de mods, tu dispositivo y tus ajustes de rendimiento. Acerca de > Privacidad lo detalla todo.
 + [Correcciones] El juego ya no se detiene al arrancar cuando un archivo de idioma está roto, y una instalación de Mac o Windows ya no falla cuando Steam no está abierto.
 
 ## 2.1.3 | 2026-11-19
