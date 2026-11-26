@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 113
+l 115
 PERF_OPTS = PERF_OPTS or {}
 local P = PERF_OPTS
 
@@ -18,6 +18,7 @@ P.DEFAULTS = {
     perf_canvas_caching = false,
     perf_offscreen_culling = false,
     perf_away_slow = false,
+    perf_bg_smooth = false,
     shadows = 'On',
 }
 
@@ -35,6 +36,7 @@ P.PRESET = {
 P.BG_SHADERS = {background = true, splash = true}
 P.BG_PIXELS = 700
 P.SLOW_EVERY = 3
+P.FULL_BG_HZ = 30
 P.AWAY_FPS = 15
 
 local function GR() return G and G.SETTINGS and G.SETTINGS.GRAPHICS end
@@ -118,7 +120,7 @@ function P.draw_background(spr, unzoom)
         love.graphics.push('all')
 r 12 278 %20%20%20%20%20%20%20%20 -
 r 3 4413 %20%20%20%20%20%20%20%20 -
-l 33
+l 41
         love.graphics.setColor(c[1], c[2], c[3], 1)
         love.graphics.rectangle('fill', 0, 0, cw, ch)
         love.graphics.pop()
@@ -137,8 +139,16 @@ l 33
         P.bg_canvas:setFilter('nearest', 'nearest')
         fresh = true
     end
-    local redraw = fresh or mode == 1 or P.bg_shader ~= step.shader
-    if not redraw and mode == 2 then
+    local redraw = fresh or P.bg_shader ~= step.shader
+    if mode == 1 then
+        local now = G.TIMERS and G.TIMERS.REAL or 0
+        local due = (P.bg_due or -1)
+        if redraw or now >= due - 0.002 or now < due - 1 then
+            redraw = true
+            local step_t = 1 / (g.perf_bg_smooth and 60 or P.FULL_BG_HZ)
+            P.bg_due = (now - due > 0.1 or now < due - 1) and now + step_t or due + step_t
+        end
+    elseif not redraw and mode == 2 then
         redraw = (G.FRAMES.DRAW % P.SLOW_EVERY) == 0
     elseif not redraw and mode == 3 then
         local s = sig_of(step, bw, bh)
@@ -167,7 +177,7 @@ l 11
     love.graphics.push('all')
 r 12 278 %20%20%20%20 -
 r 3 4413 %20%20%20%20 -
-l 153
+l 155
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(P.bg_canvas, 0, 0, 0, cw / bw, ch / bh)
     love.graphics.pop()
@@ -276,6 +286,7 @@ if mod_loc_register then
             ["15 FPS while in another app"] = "15 FPS dans une autre appli", ["Cleans memory in small steps"] = "Nettoyage en douceur",
             ["Faster but choppier"] = "Plus rapide, saccadé", ["Slow in Background"] = "Lent en arrière-plan",
             ["Fewer Stutters"] = "Moins d'à-coups",
+            ["Smooth Background"] = "Fond fluide", ["Swirl at 60 Hz instead of 30, costs more"] = "Tourbillon à 60 Hz au lieu de 30, plus lourd",
             ["Quick Setup"] = "Réglage rapide", ["Picture"] = "Image", ["Smoothness"] = "Fluidité",
             ["See how smooth the game runs"] = "Pour voir si le jeu tourne bien",
             ["Reset Performance"] = "Réinitialiser les performances", ["Picture Sharpness"] = "Netteté de l'image", perf_full = "Maximum", perf_half = "Moitié",
@@ -302,6 +313,7 @@ if mod_loc_register then
             ["15 FPS while in another app"] = "15 FPS en otra app", ["Cleans memory in small steps"] = "Limpieza suave",
             ["Faster but choppier"] = "Más rápido, a saltos", ["Slow in Background"] = "Lento en segundo plano",
             ["Fewer Stutters"] = "Menos tirones",
+            ["Smooth Background"] = "Fondo fluido", ["Swirl at 60 Hz instead of 30, costs more"] = "Remolino a 60 Hz en vez de 30, más pesado",
             ["Quick Setup"] = "Ajuste rápido", ["Picture"] = "Imagen", ["Smoothness"] = "Fluidez",
             ["See how smooth the game runs"] = "Para ver si el juego va fluido",
             ["Reset Performance"] = "Restablecer rendimiento", ["Picture Sharpness"] = "Nitidez de imagen", perf_full = "Al máximo", perf_half = "Mitad",

@@ -9,12 +9,20 @@ local Hooks = {
     fallbacks_run = {},
 }
 
+local path_parts = {}
+
 local function resolve(owner)
     if type(owner) ~= "string" then return owner end
+    local parts = path_parts[owner]
+    if not parts then
+        parts = {}
+        for part in owner:gmatch("[^%.]+") do parts[#parts + 1] = part end
+        path_parts[owner] = parts
+    end
     local t = _G
-    for part in owner:gmatch("[^%.]+") do
+    for i = 1, #parts do
         if type(t) ~= "table" then return nil end
-        t = t[part]
+        t = t[parts[i]]
     end
     return t
 end
@@ -149,10 +157,13 @@ function Hooks.run_fallbacks(misses)
     return n
 end
 
-Hooks.wrap("love", "update", function(orig) return function(dt, ...)
-    local r = Hooks.pack(orig(dt, ...))
+local function tick_after(dt, ...)
     pcall(Hooks.tick, dt)
-    return Hooks.unpack(r)
+    return ...
+end
+
+Hooks.wrap("love", "update", function(orig) return function(dt, ...)
+    return tick_after(dt, orig(dt, ...))
 end end, {id = "hooks.tick"})
 
 Hooks.wrap(_G, "set_main_menu_UI", function(orig) return function(...)

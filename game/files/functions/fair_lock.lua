@@ -83,9 +83,13 @@ FL.ALIASES = {
 
 local function L(s) return mod_loc and mod_loc(s) or s end
 
-local function playing_back()
+local function playback_active()
     local P = rawget(_G, "bom_playback")
-    local ok, on = pcall(function() return P and P.active and P.active() end)
+    return P and P.active and P.active()
+end
+
+local function playing_back()
+    local ok, on = pcall(playback_active)
     return ok and on and true or false
 end
 
@@ -262,6 +266,16 @@ function Game:update(dt, ...)
         FL._warned = true
         print("[FairLock] update: " .. tostring(err))
     end
+end
+
+function FL.blue_stake_rework(args)
+    if not (G and G.SETTINGS and G.SETTINGS.rework_blue_stake == false) then return true end
+    if type(args) == "table" and args.bo_daily then return true end
+    local SRm = rawget(_G, "Speedrun")
+    if SRm and (SRm.pending or SRm.starting) then return true end
+    local M = rawget(_G, "bom_match")
+    if M and M.is_in_match and M.is_in_match() then return true end
+    return false
 end
 
 return FL

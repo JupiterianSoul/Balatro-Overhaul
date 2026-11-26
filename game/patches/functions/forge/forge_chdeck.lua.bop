@@ -70,7 +70,7 @@ end
 
 local function copy_into_deck(src)
 r 3 1207 %20%20 -
-l 109
+l 110
   local c = copy_card(src, nil, nil, G.playing_card)
   c:add_to_deck()
   table.insert(G.playing_cards, c)
@@ -141,9 +141,10 @@ function X.start_effect(e)
   if e.id == "start_card" then
     for _ = 1, math.max(1, math.min(10, math.floor(n))) do if not (R and R.make_card(e.v, nil)) then break end end
   elseif e.id == "start_consumable" then
+    local set = require("functions/forge/forge_typerules").card_set(e.v)
     for _ = 1, math.max(1, math.floor(n)) do
       local joker = e.v == "Joker"
-      local card = create_card(joker and "Joker" or (e.v or "Tarot"), joker and G.jokers or G.consumeables, nil, nil, nil, nil, nil, "forge_ch")
+      local card = create_card(set, joker and G.jokers or G.consumeables, nil, nil, nil, nil, nil, "forge_ch")
       card:add_to_deck()
       if joker then G.jokers:emplace(card) else G.consumeables:emplace(card) end
     end

@@ -235,7 +235,7 @@ RI.LICENCES = {
 }
 
 RI.PRIVACY = {
-  {"Online account", {"Playing online creates an account on the Overhaul server: your player name, a random key kept on this device, friends, match results, ranked points and replays."}},
+  {"Online account", {"Playing online creates an account on the Overhaul server: your player name, a random key kept on this device, friends, match results, ranked points and replays.", "Going online also sends your single-player level, stats, achievements and collection progress, your mod list, and your device (system, graphics card, screen size, language) and performance settings, so I can see how the Overhaul runs and fix problems."}},
   {"Chat and reports", {"Chat messages go through the server and a word filter. Reports from players are kept so they can be checked."}},
   {"Crash reports", {"Send crash reports is on unless you turn it off (Settings > Account).", "A crash sends the error, the game version, your system and graphics card, where you were in the game, your last clicks, the end of the log and your mod list.", "It also sends a random number for this install, to count players. Your name and folders are removed first."}},
   {"AI bots", {"If you let Bot-latro use an online AI service with your own key, it sends the run's state to that service. Your key stays on this device."}},
@@ -763,7 +763,7 @@ function RI.open_whats_new(from)
   RI._wn_from = from
   UIK._pages.whats_new = 1
 r 32 1381 %20%20 -
-l 318
+l 320
   G.FUNCS.overlay_menu{definition = RI.whats_new_def(e)}
   return true
 end
@@ -948,6 +948,7 @@ mod_loc_register{
     ["Free to download and play"] = "Gratuit à télécharger et à jouer",
     ["Online account"] = "Compte en ligne",
     ["Playing online creates an account on the Overhaul server: your player name, a random key kept on this device, friends, match results, ranked points and replays."] = "Jouer en ligne crée un compte sur le serveur de l'Overhaul : votre pseudo, une clé aléatoire gardée sur cet appareil, vos amis, vos résultats, vos points classés et vos replays.",
+    ["Going online also sends your single-player level, stats, achievements and collection progress, your mod list, and your device (system, graphics card, screen size, language) and performance settings, so I can see how the Overhaul runs and fix problems."] = "Aller en ligne envoie aussi votre niveau, vos stats, vos succès et votre progression de collection en solo, votre liste de mods, votre appareil (système, carte graphique, taille d'écran, langue) et vos réglages de performance, pour que je voie comment tourne l'Overhaul et corrige les problèmes.",
     ["Chat and reports"] = "Chat et signalements",
     ["Chat messages go through the server and a word filter. Reports from players are kept so they can be checked."] = "Les messages du chat passent par le serveur et un filtre de mots. Les signalements des joueurs sont gardés pour être vérifiés.",
     ["Crash reports"] = "Rapports de plantage",
@@ -999,6 +1000,7 @@ mod_loc_register{
     ["Free to download and play"] = "Gratis para descargar y jugar",
     ["Online account"] = "Cuenta en línea",
     ["Playing online creates an account on the Overhaul server: your player name, a random key kept on this device, friends, match results, ranked points and replays."] = "Jugar en línea crea una cuenta en el servidor del Overhaul: tu nombre, una clave aleatoria guardada en este dispositivo, amigos, resultados, puntos de clasificatoria y repeticiones.",
+    ["Going online also sends your single-player level, stats, achievements and collection progress, your mod list, and your device (system, graphics card, screen size, language) and performance settings, so I can see how the Overhaul runs and fix problems."] = "Jugar en línea también envía tu nivel, estadísticas, logros y progreso de colección en solitario, tu lista de mods, tu dispositivo (sistema, tarjeta gráfica, tamaño de pantalla, idioma) y tus ajustes de rendimiento, para que vea cómo funciona el Overhaul y arregle problemas.",
     ["Chat and reports"] = "Chat y reportes",
     ["Chat messages go through the server and a word filter. Reports from players are kept so they can be checked."] = "Los mensajes del chat pasan por el servidor y un filtro de palabras. Los reportes de jugadores se guardan para poder revisarlos.",
     ["Crash reports"] = "Informes de errores",

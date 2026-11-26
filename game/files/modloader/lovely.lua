@@ -855,25 +855,33 @@ function Engine.find_breaker(target, code)
     local all, applied = Engine.patches, Engine.applied[target]
     local misses = Engine.misses or {}
     local nwarn, nmiss = #Engine.warnings, #misses
-    local found
-    for _, dir in ipairs(dirs) do
-        local list = {}
+    local found, count, order = {}, {}, {}
+    for i, dir in ipairs(dirs) do
+        local list, n = {}, 0
         for _, p in ipairs(all) do
-            if p.mod_dir ~= dir then list[#list + 1] = p end
+            if p.mod_dir ~= dir then
+                list[#list + 1] = p
+            elseif can_apply(p, target) then
+                n = n + 1
+            end
         end
         Engine.patches = list
         local ok, out = pcall(Engine.apply_patches, target, code)
         Engine.patches = all
         if ok and type(out) == "string" and raw_loadstring(out, "@" .. target) then
-            found = dir
-            break
+            found[#found + 1] = dir
+            count[dir], order[dir] = n, i
         end
     end
+    table.sort(found, function(a, b)
+        if count[a] ~= count[b] then return count[a] < count[b] end
+        return order[a] < order[b]
+    end)
     Engine.patches = all
     Engine.applied[target] = applied
     for i = #Engine.warnings, nwarn + 1, -1 do Engine.warnings[i] = nil end
     for i = #misses, nmiss + 1, -1 do misses[i] = nil end
-    return found
+    return found[1], found
 end
 
 function Engine.late_for(target)
@@ -961,8 +969,13 @@ function Engine.compile_patched(target, code, chunkname)
         end
         Engine.skip_late[target] = nil
     end
-    local ok, dir = pcall(Engine.find_breaker, target, code)
-    if ok and dir then
+    local ok, dir, all = pcall(Engine.find_breaker, target, code)
+    if ok and dir and all and #all > 1 then
+        local names = {}
+        for i, d in ipairs(all) do names[i] = d:match("([^/]+)$") or d end
+        local list = table.concat(names, ", ", 1, #names - 1) .. " and " .. names[#names]
+        err = "The patches of " .. list .. " clash in " .. target .. " (" .. dir .. "/lovely). Turning off any one of them fixes it, or update them. " .. tostring(err)
+    elseif ok and dir then
         local name = dir:match("([^/]+)$") or dir
         err = "The mod " .. name .. " broke " .. target .. " with one of its patches (" .. dir .. "/lovely). Turn it off or update it. " .. tostring(err)
     else

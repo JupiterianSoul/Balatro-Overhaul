@@ -326,12 +326,12 @@ const VIEW = {
     if (S.player) return playerView();
     const o = S.data.players;
     const filters = [['', 'Everyone'], ['active', 'Active 24 h'], ['new', 'New 7 d'], ['ranked', 'Played ranked'], ['gone', 'Away 7 d+']];
-    const sorts = [['last_seen', 'Last seen'], ['created', 'Joined'], ['rp', 'Rank points'], ['level', 'Level'], ['matches', 'Ranked matches'], ['wins', 'Wins'], ['streak', 'Streak'], ['name', 'Name']];
+    const sorts = [['last_seen', 'Last seen'], ['created', 'Joined'], ['rp', 'Rank points'], ['sp_level', 'Single-player level'], ['level', 'Multiplayer level'], ['matches', 'Ranked matches'], ['wins', 'Wins'], ['streak', 'Streak'], ['name', 'Name']];
     let body = '<div class="empty">Loading players...</div>';
     if (o) {
       const pages = Math.max(1, Math.ceil(o.total / o.size));
       body = '<div class="rows wide">' + (o.rows.map(p => '<button class="row" data-player="' + p.id + '"><div class="n"><i class="dot' + (p.online ? ' on' : '') + '"></i><span class="t">' + esc(p.name || 'No name') + '</span></div>' +
-        '<div class="r"><b>' + (p.level ? 'Lv ' + n(p.level) : '-') + '</b></div><div class="m">' + (p.online ? 'online now' : 'seen ' + ago(p.last_seen)) + (p.created ? ' · joined ' + day(p.created) : '') + (p.code ? ' · ' + esc(p.code) : '') + '</div>' +
+        '<div class="r"><b>SP ' + (p.sp_level ? n(p.sp_level) : '-') + ' · MP ' + (p.level ? n(p.level) : '-') + '</b></div><div class="m">' + (p.online ? 'online now' : 'seen ' + ago(p.last_seen)) + (p.created ? ' · joined ' + day(p.created) : '') + (p.code ? ' · ' + esc(p.code) : '') + '</div>' +
         '<div class="r">' + (p.matches > 0 ? esc(p.rank_name || '') + ' · ' + n(p.wins) + ' / ' + n(p.matches) : 'no ranked') + '</div></button>').join('') || '<div class="card empty">No player matches this</div>') + '</div>' +
         '<div class="pager"><button class="btn grey" data-page="-1"' + (o.page <= 0 ? ' disabled' : '') + '>Back</button><span>Page ' + (o.page + 1) + ' of ' + pages + ' · ' + n(o.total) + '</span><button class="btn grey" data-page="1"' + (o.page >= pages - 1 ? ' disabled' : '') + '>Next</button></div>';
     }
@@ -441,14 +441,30 @@ function playerView() {
   const sec = (t, c, body) => c === 0 ? '' : '<section><h2>' + t + ' <small>' + c + '</small></h2><div class="card">' + body + '</div></section>';
   const w = o.online ? where({ ...o.online, name: p.name }, []) : null;
   const friends = o.links.filter(l => l.status === 'accepted');
+  const gp = (o.game_profiles || []).filter(g => g.data && typeof g.data === 'object');
+  const sp = gp.length ? (gp.find(g => g.session === 'plain') || gp[0]).data.sp : null;
+  const mt = o.mp_totals || {};
+  const kv = obj => '<dl class="kv">' + Object.keys(obj || {}).map(k => '<dt>' + esc(k.replace(/^c_/, '').replace(/_/g, ' ')) + '</dt><dd>' + (typeof obj[k] === 'number' ? n(obj[k]) : esc(String(obj[k]))) + '</dd>').join('') + '</dl>';
+  const gpSecs = gp.map(g => {
+    const d = g.data, tag = g.session === 'modded' ? ' (modded)' : ' (plain)';
+    const dev = d.device || {};
+    return sec('Game profile' + tag, '', '<div class="m">Sent ' + ago(g.at) + ' · build ' + esc(d.build || '?') + '</div>' + kv(d.sp)) +
+      sec('Career stats' + tag, Object.keys(d.career || {}).length, kv(d.career)) +
+      sec('Decks' + tag, (d.decks || []).length, tbl(d.decks || [], [['Deck'], ['Runs', 1], ['Wins', 1]], r => [esc(r.key), n(r.used), n(r.wins)])) +
+      sec('Collection' + tag, Object.keys(d.unlocks || {}).length, tbl(Object.keys(d.unlocks || {}).map(k => ({ k, v: d.unlocks[k] })), [['Set'], ['Seen', 1], ['Unlocked', 1], ['Total', 1]], r => [esc(r.k), n(r.v.seen), n(r.v.unlocked), n(r.v.total)])) +
+      sec('Mods installed' + tag, (d.mods || []).length, tbl(d.mods || [], [['Mod'], ['Version'], ['On']], r => [esc(r.name || r.id), esc(r.version || '-'), r.on ? 'on' : 'off'])) +
+      sec('Device and settings' + tag, Object.keys(dev).length, kv(Object.fromEntries(Object.entries(dev).filter(e => typeof e[1] !== 'object'))) + (dev.perf ? kv(dev.perf) : ''));
+  }).join('');
   return back + '<div class="card hero"><div class="a">' + esc((p.name || '?').slice(0, 1).toUpperCase()) + '</div><div class="t"><b>' + esc(p.name || 'No name') + '</b><span>' +
     (o.online ? '<span class="chip green">Online</span> ' + esc(w[1]) + ' · ' + esc(o.online.version || '') + ' · for ' + span(Date.now() - o.online.since) : 'Last seen ' + ago(p.last_seen) + ' (' + stamp(p.last_seen) + ')') + '</span></div></div>' +
-    '<div class="grid" style="margin-top:10px">' + tile('Level', n(p.level), n(p.xp) + ' XP', 'blue') + tile('Rank', esc(p.rank_name || 'None'), p.matches > 0 ? n(p.rp) + ' RP · peak ' + n(p.peak_rp) : 'no ranked match', 'purple') +
+    '<div class="grid" style="margin-top:10px">' + tile('Single-player level', sp ? n(sp.level) : '-', sp ? n(sp.xp) + ' XP · ' + esc(gp[0].session) + ' · ' + ago(gp[0].at) : 'game has not sent it yet', 'blue') +
+    tile('Multiplayer level', n(p.level), n(p.xp) + ' XP · ' + n(mt.matches || 0) + ' matches, ' + n(mt.ranked || 0) + ' ranked', 'blue') + tile('Rank', esc(p.rank_name || 'None'), p.matches > 0 ? n(p.rp) + ' RP · peak ' + n(p.peak_rp) : 'no ranked match', 'purple') +
     tile('Ranked', p.matches > 0 ? n(p.wins) + ' / ' + n(p.matches) : '-', p.matches > 0 ? pct(p.wins, p.matches) + ' won · streak ' + n(p.streak) : 'wins / matches', 'gold') + tile('Friends', n(friends.length), n(o.links.length - friends.length) + ' other links', 'green') + '</div>' +
     '<div class="two">' +
     sec('Profile', '', '<dl class="kv"><dt>Joined</dt><dd>' + stamp(p.created) + '</dd><dt>Friend code</dt><dd>' + esc(p.code || '-') + '</dd><dt>Season</dt><dd>' + esc(p.season || '-') + '</dd><dt>Card packs</dt><dd>' + n(p.packs) + '</dd>' +
       (o.online && o.online.mods.length ? '<dt>Mods on now</dt><dd>' + o.online.mods.map(esc).join(', ') + '</dd>' : '') +
       o.equipped.map(e => '<dt>' + esc(e.slot) + '</dt><dd>' + esc(e.item) + '</dd>').join('') + '</dl>') +
+    gpSecs +
     sec('Matches', o.logs.length, tbl(o.logs, [['When'], ['Mode'], ['Against'], ['Time', 1]], r => [stamp(r.at), esc(r.mode || '') + (r.ranked ? ' ranked' : '') + (r.status ? ' · ' + esc(r.status) : ''), esc(r.versus || '-'), r.ended > r.at ? span(r.ended - r.at) : '-'])) +
     sec('Ranked results', o.ranked.length, tbl(o.ranked, [['When'], ['Result'], ['Ante', 1], ['RP', 1]], r => [stamp(r.at), esc(r.result || '') + ' · ' + n(r.placement) + ' of ' + n(r.players), n(r.ante), (r.rp_delta > 0 ? '+' : '') + n(r.rp_delta)])) +
     sec('Head to head', o.head_to_head.length, tbl(o.head_to_head, [['Against'], ['Won', 1], ['Lost', 1], ['Draw', 1]], r => [esc(r.name || '?'), n(r.wins), n(r.losses), n(r.draws)])) +

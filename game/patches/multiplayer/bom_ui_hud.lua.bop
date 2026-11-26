@@ -2,7 +2,8 @@ BOP 1
 eol lf
 final 1
 base 0
-l 85
+l 86
+local function hud_match_state() return bom_match.get_state() end
 
 local M = {}
 
@@ -190,9 +191,9 @@ l 706
     bom_ui._locs = bom_ui._locs or {}
 
     local function match_state()
-        local st = {}
-        pcall(function() st = bom_match.get_state() or {} end)
-        return st
+        local ok, st = pcall(hud_match_state)
+        if ok and st then return st end
+        return {}
     end
 
     local function identity(pid)

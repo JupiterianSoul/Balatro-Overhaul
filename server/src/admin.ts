@@ -83,10 +83,11 @@ const NAME = `COALESCE(NULLIF(p.name, ''), s.name, '')`;
 const SEEN = `MAX(COALESCE(p.last_seen, 0), COALESCE(s.last_seen, 0))`;
 const KEYS = `(SELECT pkey FROM players UNION SELECT pkey FROM social_players)`;
 const PLAYER_COLS = `k.pkey AS pkey, ${NAME} AS name, s.code AS code, p.rp AS rp, p.peak_rp AS peak_rp, p.level AS level, p.xp AS xp,
-  p.matches AS matches, p.wins AS wins, p.streak AS streak, p.packs AS packs, p.season AS season, p.created AS created, ${SEEN} AS last_seen`;
+  p.matches AS matches, p.wins AS wins, p.streak AS streak, p.packs AS packs, p.season AS season, p.created AS created, ${SEEN} AS last_seen,
+  (SELECT MAX(CAST(json_extract(pp.data, '$.sp.level') AS INTEGER)) FROM player_profiles pp WHERE pp.pkey = k.pkey) AS sp_level`;
 const PLAYER_FROM = `${KEYS} k LEFT JOIN players p ON p.pkey = k.pkey LEFT JOIN social_players s ON s.pkey = k.pkey`;
 const SORTS: Record<string, string> = {
-  last_seen: 'last_seen', created: 'created', rp: 'rp', level: 'xp', matches: 'matches', wins: 'wins', name: 'name COLLATE NOCASE', streak: 'streak',
+  last_seen: 'last_seen', created: 'created', rp: 'rp', level: '(COALESCE(level, 0) * 1000000 + COALESCE(xp, 0))', sp_level: 'sp_level', matches: 'matches', wins: 'wins', name: 'name COLLATE NOCASE', streak: 'streak',
 };
 
 function sha(text: string): string {
@@ -667,7 +668,7 @@ export class AdminService {
     if (!base) return { error: 'gone' };
     const live = this.deps.live().sockets.find(s => s.pkey === pkey);
     const on = `LEFT JOIN players p ON p.pkey = x.other LEFT JOIN social_players s ON s.pkey = x.other`;
-    const [ranked, logs, h2h, links, recent, runs, mods, unlocks, equipped, daily, mini, reports] = await Promise.all([
+    const [ranked, logs, h2h, links, recent, runs, mods, unlocks, equipped, daily, mini, reports, profiles, mpTotals] = await Promise.all([
       this.rows(`SELECT m.id, m.mode, m.at, m.season, mp.placement, mp.players, mp.result, mp.ante, mp.score, mp.rp_delta, mp.xp, mp.bot_factor
         FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE mp.pkey = ? ORDER BY m.at DESC LIMIT 50`, [pkey]),
       this.rows(`SELECT l.id, l.at, l.ended, l.mode, l.kind, l.ranked, l.status, l.has_replay, lp.pid, lp.item,
@@ -684,11 +685,14 @@ export class AdminService {
       this.rows('SELECT day, won, ante, round, best, at FROM daily_board WHERE pkey = ? ORDER BY day DESC LIMIT 30', [pkey]),
       this.rows('SELECT game, score, low, at FROM minigame_best WHERE pkey = ?', [pkey]),
       this.named('SELECT id, reporter, reported, kind, text, reason, match_id, at, status FROM chat_reports WHERE reporter = ? OR reported = ? ORDER BY at DESC LIMIT 50', [pkey, pkey], ['reporter', 'reported']),
+      this.rows('SELECT session, at, data FROM player_profiles WHERE pkey = ? ORDER BY at DESC', [pkey]),
+      this.one(`SELECT COUNT(*) AS matches, SUM(CASE WHEN l.ranked = 1 THEN 1 ELSE 0 END) AS ranked FROM match_log_players lp JOIN match_logs l ON l.id = lp.id WHERE lp.pkey = ?`, [pkey]),
     ]);
     return {
       at: this.now(), profile: this.shape(base),
       online: live ? { version: live.version, mods: live.mods, room: live.room, party: live.party, where: live.where, queue: live.queue, since: live.since } : null,
       ranked, logs: logs.map(l => ({ ...l, item: tryJson(l.item) })), head_to_head: h2h, links, recent, speedruns: runs, forge_mods: mods, unlocks, equipped, daily, minigames: mini, reports,
+      game_profiles: (profiles as Row[]).map(r => ({ session: r.session, at: r.at, data: tryJson(r.data) })), mp_totals: mpTotals,
     };
   }
 

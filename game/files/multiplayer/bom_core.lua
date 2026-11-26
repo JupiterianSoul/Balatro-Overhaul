@@ -318,6 +318,116 @@ function bom_core.send_hello()
     local version = R and R.game_version and R.game_version() or nil
     local mods = bom_core.mods_field and bom_core.mods_field() or nil
     bom_core.send({type = "client_hello", name = name, pkey = bom_core.player_key(), version = version, mods = mods, deck_filter = bom_core.deck_filter_field()})
+    local ok, data, session = pcall(bom_core.profile_snapshot)
+    if ok and data then bom_core.send({type = "profile_sync", session = session, data = data}) end
+end
+
+local function snap_num(v)
+    local pn = rawget(_G, "progression_number")
+    local n = type(v) == "number" and v or (pn and pn(v)) or tonumber(v)
+    if type(n) ~= "number" or n ~= n or n == math.huge or n == -math.huge then return nil end
+    if math.abs(n) > 1e15 then return n > 0 and 1e15 or -1e15 end
+    return n
+end
+
+local function snap_str(v, n)
+    if v == nil then return nil end
+    local s = tostring(v):gsub("[%c]", "")
+    return s:sub(1, n or 64)
+end
+
+function bom_core.profile_snapshot()
+    local p = G and G.PROFILES and G.SETTINGS and G.PROFILES[G.SETTINGS.profile]
+    if not p then return nil end
+    local data = {v = 1, build = snap_str(rawget(_G, "OVERHAUL_VERSION"), 16)}
+    pcall(function()
+        local pinit = rawget(_G, "progression_init")
+        if pinit then pinit() end
+        local pr = p.progression or {}
+        local ach = rawget(_G, "AchievementManager")
+        data.sp = {
+            level = snap_num(pr.level), xp = snap_num(pr.xp), total_xp = snap_num(pr.total_xp),
+            wins = snap_num(pr.total_wins), runs = snap_num(pr.total_runs), hands = snap_num(pr.total_hands_played),
+            best_score = snap_num(pr.highest_score), best_stake = snap_num(pr.highest_stake_beaten),
+            quests = snap_num(pr.total_quests_completed), balacoin = snap_num(pr.balacoin),
+            achievements = ach and ach.count_unlocked and snap_num(ach.count_unlocked()) or nil,
+            achievements_total = ach and ach.count_achievements and snap_num(ach.count_achievements()) or nil,
+        }
+    end)
+    pcall(function()
+        local career, n = {}, 0
+        for k, v in pairs(p.career_stats or {}) do
+            local num = snap_num(v)
+            if num and n < 60 then career[snap_str(k, 40)] = num n = n + 1 end
+        end
+        data.career = career
+    end)
+    pcall(function()
+        local decks = {}
+        for k, u in pairs(p.deck_usage or {}) do
+            if type(u) == "table" then
+                local wins = 0
+                for _, w in pairs(u.wins or {}) do wins = wins + (snap_num(w) or 0) end
+                decks[#decks + 1] = {key = snap_str(k, 48), used = snap_num(u.count) or 0, wins = wins}
+            end
+        end
+        table.sort(decks, function(a, b) return a.used > b.used end)
+        for i = #decks, 13, -1 do decks[i] = nil end
+        data.decks = decks
+    end)
+    pcall(function()
+        local out = {}
+        for _, set in ipairs({"Joker", "Tarot", "Planet", "Spectral", "Voucher", "Back", "Enhanced", "Booster"}) do
+            local seen, unl, total = 0, 0, 0
+            for _, c in ipairs(G.P_CENTER_POOLS[set] or {}) do
+                total = total + 1
+                if c.discovered then seen = seen + 1 end
+                if c.unlocked ~= false then unl = unl + 1 end
+            end
+            if total > 0 then out[set] = {seen = seen, unlocked = unl, total = total} end
+        end
+        for name, pool in pairs({Tag = G.P_TAGS, Blind = G.P_BLINDS}) do
+            local seen, total = 0, 0
+            for _, c in pairs(pool or {}) do
+                total = total + 1
+                if c.discovered then seen = seen + 1 end
+            end
+            if total > 0 then out[name] = {seen = seen, unlocked = total, total = total} end
+        end
+        data.unlocks = out
+    end)
+    local session = "plain"
+    pcall(function()
+        local L = rawget(_G, "MODLOADER")
+        if L and L.active then session = "modded" end
+        local st = L and L.status and L.status()
+        local mods = {}
+        for _, e in ipairs(st and st.mods or {}) do
+            if #mods >= 120 then break end
+            mods[#mods + 1] = {id = snap_str(e.id or e.folder, 48), name = snap_str(e.name, 48), version = snap_str(e.version, 24), on = e.enabled == true, loaded = e.loaded == true}
+        end
+        data.mods = mods
+    end)
+    pcall(function()
+        local w, h = love.graphics.getDimensions()
+        local rname, rver, rvendor, rdevice = love.graphics.getRendererInfo()
+        local gr = G.SETTINGS.GRAPHICS or {}
+        local perf = {}
+        for k, v in pairs(gr) do
+            if type(k) == "string" and (k:find("^perf_") or k == "fps_cap" or k == "performance_mode" or k == "shadows" or k == "crt" or k == "bloom" or k == "texture_scaling") then
+                local t = type(v)
+                if t == "number" or t == "boolean" then perf[k] = v elseif t == "string" then perf[k] = snap_str(v, 24) end
+            end
+        end
+        data.device = {
+            os = snap_str(love.system.getOS(), 24), cores = love.system.getProcessorCount(),
+            renderer = snap_str((rname or "") .. " " .. (rver or ""), 64), gpu = snap_str((rvendor or "") .. " " .. (rdevice or ""), 64),
+            screen = w .. "x" .. h, phone = rawget(_G, "_IS_DESKTOP") == false,
+            portrait = (function() local PT = rawget(_G, "PORTRAIT") return PT and PT.on and PT.on() or false end)(),
+            ui_size = snap_num(G.UI_SIZE), language = snap_str(G.SETTINGS.language, 16), perf = perf,
+        }
+    end)
+    return data, session
 end
 
 function bom_core.deck_filter_field()

@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 281
+l 283
 [manifest]
 version = "1.0.0"
 priority = 0
@@ -173,6 +173,7 @@ require "functions/mods_ui";
 require "functions/mods_profile";
 require "functions/save_transfer";
 require "functions/save_rescue";
+require "functions/loc_rescue";
 require "functions/title_tagline";
 require "functions/art/title_fx";
 require "functions/art/suit_palettes";
@@ -184,6 +185,7 @@ require "functions/mod_workshop_ui";
 require "functions/forge/forge";
 require "functions/crash_reports";
 require "functions/perf_options";
+require "functions/perf_auto";
 require "functions/minigames/registry";
 require "functions/overhaul_update";
 require "functions/launcher_update";
@@ -943,7 +945,7 @@ UI_SIZE_EDGE_W = 0.8
 function ui_size_fit(w, h)
 	local base
 r 12 330 %09 -
-l 151
+l 159
 		base = G.window_prev.orig_scale*w/G.window_prev.w
 	else
 		base = G.window_prev.orig_scale*h/G.window_prev.h
@@ -989,7 +991,15 @@ function menu_zoom_target(w, h)
 	if plain and extra <= 1 then return 1 end
 	local zr = PORTRAIT and PORTRAIT.read_check and PORTRAIT.read_check(o) or 0
 	local t = o.T
-	if t and t.w > G.TILE_W * 2 and o.UIRoot and o.UIRoot.children and o.UIRoot.children[1] then t = o.UIRoot.children[1].T end
+	local node = o
+	for _ = 1, 4 do
+		if not (t and t.w > G.TILE_W * 2 and node and node.UIRoot) then break end
+		local first = node.UIRoot.children and node.UIRoot.children[1]
+		if first then t = first.T break end
+		local inner = node.UIRoot.config and node.UIRoot.config.object
+		if not (inner and inner.T and inner.T.w > 0) then break end
+		node, t = inner, inner.T
+	end
 	if o.infotip_node == nil and o.get_UIE_by_ID then o.infotip_node = o:get_UIE_by_ID('overlay_menu_infotip') or false end
 	local tip = o.infotip_node and o.infotip_node.config.object
 	if t and tip and tip.UIRoot and tip.T and tip.T.h > 0 then t = {w = math.max(t.w, tip.T.w), h = t.h + 2 * tip.T.h} end
@@ -1126,7 +1136,7 @@ ${pre}	local _res = (G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.
 	if not (G.CANVAS and G.CANVAS:getWidth() == _cw and G.CANVAS:getHeight() == _ch) then
 r 12 386 %09%09 -
 r 12 387 %09%09 -
-l 115
+l 105
 	end
 
 	if PORTRAIT and G.ROOM then PORTRAIT.after_resize(_portrait_changed) end
@@ -1219,16 +1229,6 @@ position = "at"
 payload = '''
 ${pre}LOADING_SCREEN = LOADING_SCREEN or require("functions/loading_screen")
 ${post}'''
-optional = true
-
-[[patches]]
-[patches.regex]
-id = "auto.main.modded.008"
-target = "main.lua"
-pattern = '''^(?<pre>)[\t ]*progress = progress or 0\n(?<post>)'''
-position = "at"
-payload = '''
-${pre}${post}'''
 optional = true
 
 [[patches]]

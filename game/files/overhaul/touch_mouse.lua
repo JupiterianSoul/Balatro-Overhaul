@@ -41,10 +41,13 @@ function M.update(c)
     right_press(c, M.x, M.y)
 end
 
-Hooks.wrap(Controller, "update", function(orig) return function(self, ...)
-    local r = Hooks.pack(orig(self, ...))
+local function update_after(self, ...)
     if self == G.CONTROLLER then M.update(self) end
-    return Hooks.unpack(r)
+    return ...
+end
+
+Hooks.wrap(Controller, "update", function(orig) return function(self, ...)
+    return update_after(self, orig(self, ...))
 end end, {id = "overhaul.touch_mouse"})
 
 return M

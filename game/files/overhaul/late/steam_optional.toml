@@ -1,0 +1,42 @@
+[manifest]
+version = "1.0.0"
+priority = 100
+
+[[patches]]
+[patches.regex]
+id = "steam_optional.require"
+target = "main.lua"
+pattern = '''(?<pre>[\t ]*)st = require 'luasteam'[\t ]*\r?\n'''
+position = "at"
+payload = '''
+${pre}st = (function() local ok, m = pcall(require, 'luasteam') if ok and type(m) == 'table' then return m end print('[STEAM] not available, playing without Steam: ' .. tostring(m)) return {} end)()
+'''
+optional = true
+
+[[patches]]
+[patches.regex]
+id = "steam_optional.no_quit"
+target = "main.lua"
+pattern = '''(?<pre>[\t ]*)if not \(st\.init and st:init\(\)\) then[\t ]*\r?\n[\t ]*love\.event\.quit\(\)[\t ]*\r?\n'''
+position = "at"
+payload = '''
+${pre}if not (st.init and st:init()) then
+${pre}	st = nil
+'''
+optional = true
+
+[[patches]]
+[patches.regex]
+id = "steam_optional.inits"
+target = "main.lua"
+pattern = '''(?<pre>[\t ]*)G\.STEAM = st[\t ]*\r?\n'''
+position = "at"
+payload = '''
+${pre}G.STEAM = st
+${pre}if MP and MP.init then MP.init() end
+${pre}if Extras and Extras.init then pcall(Extras.init) end
+${pre}if Controls and Controls.init then pcall(Controls.init) end
+${pre}if QOL and QOL.init then pcall(QOL.init) end
+${pre}if DeckCreatorHooks and DeckCreatorHooks.init then pcall(DeckCreatorHooks.init) end
+'''
+optional = true

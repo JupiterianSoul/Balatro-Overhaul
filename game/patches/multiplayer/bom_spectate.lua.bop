@@ -343,7 +343,7 @@ local function new_card(e, area, fresh)
     end
 r 5 219 %20%20%20%20 -
 r 30 4154 %20%20%20%20 -
-l 471
+l 473
     card.spec_k = e.k ~= nil
     card.spec_sig = esig(e)
     if not fresh and not e.k then pcall(function() card:start_materialize(nil, true) end) end
@@ -746,10 +746,12 @@ function SP.open()
     build()
 end
 
+local function match_settings() return bom_match.get_settings() end
+
 local function settings()
-    local st = {}
-    pcall(function() st = bom_match.get_settings() or {} end)
-    return st
+    local ok, st = pcall(match_settings)
+    if ok and st then return st end
+    return {}
 end
 
 local function replaying()

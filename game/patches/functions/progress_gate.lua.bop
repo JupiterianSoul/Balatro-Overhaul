@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 439
+l 442
 Progress = Progress or {}
 local P = Progress
 
@@ -348,10 +348,13 @@ local function wrap_hook(tbl, key, before)
   end
 end
 
+local function gate_plain(fn) return gate(fn) end
+local function gate_platform(fn) return gate(fn, "platform") end
+
 function P.install()
-  for _, k in ipairs(P.GATED) do wrap_global(k, function(fn) return gate(fn) end) end
+  for _, k in ipairs(P.GATED) do wrap_global(k, gate_plain) end
   for _, k in ipairs(P.RUN_ONLY) do wrap_global(k, run_only) end
-  for _, k in ipairs(P.PLATFORM) do wrap_global(k, function(fn) return gate(fn, "platform") end) end
+  for _, k in ipairs(P.PLATFORM) do wrap_global(k, gate_platform) end
   for _, k in ipairs(P.SANDBOX_ONLY) do wrap_global(k, sandbox_gate) end
   wrap_methods(P.METHODS)
   wrap_methods(P.ONLINE_METHODS, "online")

@@ -456,7 +456,7 @@ function B.card_node(scale)
   card.forge_preview = true
 r 7 1460 %20%20 -
 r 5 219 %20%20 -
-l 1833
+l 1839
   B.preview_card = card
   return area_for(w, h, card)
 end
@@ -2288,17 +2288,19 @@ do
     end
     return orig(t, ...)
   end end, {id = "forge.text.char", allow_missing = true})
-  Hooks.wrap("Controller", "update", function(orig) return function(self, ...)
-    if self.text_input_hook == B.TEXT_HOOK and not B.text_active() then
-r 17 775 %20%20%20%20%20%20 -
-l 1088
-      if UIK.touch() and love.keyboard and love.keyboard.setTextInput then pcall(love.keyboard.setTextInput, false) end
-    end
-    local r = Hooks.pack(orig(self, ...))
+  B.text_after_update = B.text_after_update or function(...)
     local f = B.text_focused()
     if B.text_active() and f ~= B._text_was_focused then B.text_redraw() end
     B._text_was_focused = f
-    return Hooks.unpack(r)
+    return ...
+  end
+  Hooks.wrap("Controller", "update", function(orig) return function(self, ...)
+    if self.text_input_hook == B.TEXT_HOOK and not B.text_active() then
+r 17 775 %20%20%20%20%20%20 -
+l 1084
+      if UIK.touch() and love.keyboard and love.keyboard.setTextInput then pcall(love.keyboard.setTextInput, false) end
+    end
+    return B.text_after_update(orig(self, ...))
   end end, {id = "forge.text.unhook"})
 end
 

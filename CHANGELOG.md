@@ -2,6 +2,32 @@
 
 Changelog for the updates, first being the latest changes. 
 
+## 2.1.4
+
+*Overhaul 2.1.4, 2026-11-26. Auto Performance, a steadier frame rate at full quality, modded sessions about twice as fast, a Blue Stake rework toggle, and boot crash fixes.*
+
+### Performance
+- **Auto Performance.** On by default in Settings > Performance. When the game can't hold 60 FPS, it lowers effects, card shine, the background and picture sharpness one step at a time, and raises them again when there is room. It never goes above your own settings.
+- **Steadier full quality.** The background swirl redraws 30 times a second with the same picture, and the screen effect and menus do less work every frame.
+- **Smooth Background.** A new toggle in Settings > Performance brings the swirl back to 60.
+
+### Mods
+- **About twice as fast.** Steamodded's own screen shader no longer runs under the Overhaul one.
+- **Loading screen mods.** A mod that changes the Steamodded loading screen no longer crashes the start.
+- **Clearer clashes.** When several mods break the same file, the error names every mod that could fix it and turns off the one with the fewest changes there first.
+
+### Gameplay
+- **Blue Stake rework toggle.** In Settings > Gameplay > Reworks, on by default. Off gives the base game's -1 discard. Daily runs, speedruns and multiplayer keep the standard rules.
+
+### Fixes
+- Forge decks and challenges that start with consumables of your own Card Type start with those cards again, not Tarots.
+- Modded collection pages like Tags open at normal size on phones again.
+- The game no longer stops at start when a language file is broken.
+- A Mac or Windows install no longer crashes when Steam isn't running.
+
+### Privacy
+- Going online now also shares your single-player level and stats, collection progress, mod list, device and performance settings. About > Privacy lists it all.
+
 ## 2.1.3
 
 *Overhaul 2.1.3, 2026-11-19. An easier Forge, animated Jokers with souls and sounds, the last vanilla cards rebuilt exactly, and Forged online with a weekly theme, ratings and remixes.*

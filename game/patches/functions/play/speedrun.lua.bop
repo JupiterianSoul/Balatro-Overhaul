@@ -551,7 +551,7 @@ l 3
   if G.CUSTOM_RUN then G.CUSTOM_RUN.enabled = false end
   if G.SAVED_GAME ~= nil and G.SAVED_GAME.GAME and not G.SAVED_GAME.GAME.won then
 r 17 900 %20%20%20%20 -
-l 160
+l 162
     pcall(function() G:save_settings() end)
   end
   if G.GAME.viewed_back then G.GAME.viewed_back:change_to(center) else G.GAME.viewed_back = Back(center) end
@@ -573,7 +573,9 @@ function Game:start_run(args, ...)
   SR.pending = nil
   SR.finish_settings()
   SR._last, SR._last_clock = nil, nil
+  SR.starting = pending
   local r = _sr_game_start_run(self, args, ...)
+  SR.starting = nil
   local ok, err = pcall(SR.after_start, args or {}, pending)
   if not ok then print("[Speedrun] after start: " .. tostring(err)) end
   return r

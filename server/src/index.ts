@@ -66,6 +66,7 @@ interface SocketData {
   gameVersion?: string;
   name?: string;
   shownName?: string;
+  profileSyncAt?: number;
   nameKey?: string;
   partyCode?: string | null;
   pkey?: string;
@@ -1234,7 +1235,7 @@ const L5_TYPES = ['menu_info', 'name_check'];
 const ALLOWED_TYPES = new Set([
   'create_room', 'join_room', 'find_match', 'cancel_search', 'wait_status',
   'room_joined', 'ready_state',
-  'match_settings', 'match_start', 'player_name', 'client_hello',
+  'match_settings', 'match_start', 'player_name', 'client_hello', 'profile_sync',
   'blind_entered', 'blind_finished', 'game_over', 'match_finished',
   'request_state', 'boss_sync', 'rematch_vote',
   'return_to_lobby', 'leave_lobby', 'return_to_menu',
@@ -1506,7 +1507,7 @@ function handleGetEndGameJokers(ws: BunWS): void {
 function validateMessage(msg: Record<string, unknown>, byteLength: number): string | null {
   const maxBytes = !msg ? MAX_MESSAGE_BYTES
     : (msg.type === 'save_snapshot' || msg.type === 'act' || msg.type === 'swap_state' || msg.type === 'forge_publish' || msg.type === 'forge_room_put') ? MAX_FRAME_BYTES
-    : (msg.type === 'match_settings' || msg.type === 'match_start' || msg.type === 'end_game_data' || msg.type === 'act' || MODS_TYPES.has(msg.type as string)) ? MAX_SETTINGS_BYTES
+    : (msg.type === 'match_settings' || msg.type === 'match_start' || msg.type === 'end_game_data' || msg.type === 'act' || msg.type === 'profile_sync' || MODS_TYPES.has(msg.type as string)) ? MAX_SETTINGS_BYTES
     : SPEEDRUN_BIG_TYPES.includes(msg.type as string) ? SR_REPLAY_MSG_BYTES
     : MAX_MESSAGE_BYTES;
   if (byteLength > maxBytes)                   return `oversized: ${byteLength} bytes`;
@@ -2186,6 +2187,25 @@ function handleClientHello(ws: BunWS, msg: Record<string, unknown>): void {
   const pkey = typeof msg.pkey === 'string' && PKEY_RE.test(msg.pkey) ? msg.pkey : undefined;
   if (isDefaultName(name) || !nameIsClean(name) || nameHeldElsewhere(nameKey(name), ws, undefined, pkey)) return;
   claimName(ws, { name, pkey });
+}
+
+const PROFILE_MAX = 16000;
+const PROFILE_GAP_MS = 5 * 60 * 1000;
+const PROFILE_SESSIONS = new Set(['plain', 'modded']);
+
+function handleProfileSync(ws: BunWS, msg: Record<string, unknown>): void {
+  const pkey = ws.data.pkey ?? (typeof msg.pkey === 'string' && PKEY_RE.test(msg.pkey) ? msg.pkey : undefined);
+  if (!pkey) return;
+  const data = msg.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+  const now = Date.now();
+  if (now - (ws.data.profileSyncAt ?? 0) < PROFILE_GAP_MS) return;
+  let text: string;
+  try { text = JSON.stringify(data); } catch { return; }
+  if (text.length > PROFILE_MAX) return;
+  ws.data.profileSyncAt = now;
+  const session = typeof msg.session === 'string' && PROFILE_SESSIONS.has(msg.session) ? msg.session : 'plain';
+  social.extra.profileSave(pkey, session, now, text);
 }
 
 function handlePlayerName(ws: BunWS, msg: Record<string, unknown>): void {
@@ -3665,6 +3685,7 @@ const HANDLERS: Record<string, Handler> = {
   match_start:     handleMatchStart,
   player_name:     (ws, msg)     => handlePlayerName(ws, msg),
   client_hello:    (ws, msg)     => handleClientHello(ws, msg),
+  profile_sync:    (ws, msg)     => handleProfileSync(ws, msg),
   ping:            (ws, msg)     => handlePing(ws, msg),
   blind_entered:   handleBlindEntered,
   blind_finished:  (ws, msg)     => handleBlindFinished(ws, msg),

@@ -3581,7 +3581,7 @@ position = "at"
 payload = '''
 ${pre}    local prep_ok, prep_err = pcall(function()
 r 7 2024 %20%20%20%20%20%20%20%20 -
-l 122
+l 129
     end)
     if not prep_ok then
         return
@@ -3619,7 +3619,14 @@ target = "game.lua"
 pattern = '''^(?<pre>)[\t ]*if self\.GAME\.stake >= 5 then self\.GAME\.starting_params\.discards = self\.GAME\.starting_params\.discards - 1 end\n(?<post>)'''
 position = "at"
 payload = '''
-${pre}        if self.GAME.stake >= 5 then self.GAME.modifiers.ante_shop_tax = true; self.GAME.modifiers.reroll_step = 2 end
+${pre}        if self.GAME.stake >= 5 then
+            local FLk = rawget(_G, "FairLock")
+            if not (FLk and FLk.blue_stake_rework) or FLk.blue_stake_rework(args) then
+                self.GAME.modifiers.ante_shop_tax = true; self.GAME.modifiers.reroll_step = 2
+            else
+                self.GAME.starting_params.discards = self.GAME.starting_params.discards - 1
+            end
+        end
 ${post}'''
 times = 1
 
@@ -4169,7 +4176,7 @@ payload = '''
 ${pre}        end
         if self.OVERLAY_MENU then
 r 7 2795 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 145
+l 148
                 if v.attention_text and v.over_overlay and not v.REMOVED then
 ${post}'''
 times = 1
@@ -4258,8 +4265,11 @@ position = "at"
 payload = '''
 ${pre}      if _perf_shader >= 2 and G.SHADERS['CRT'] then
         local _crt = G.SETTINGS.GRAPHICS.crt * 0.3
-        G.SHADERS['CRT']:send('distortion_fac', {1.0 + 0.07*_crt/100, 1.0 + 0.1*_crt/100})
-        G.SHADERS['CRT']:send('scale_fac', {1.0 - 0.008*_crt/100, 1.0 - 0.008*_crt/100})
+        local _df, _sf = G.ARGS.crt_df or {0, 0}, G.ARGS.crt_sf or {0, 0}
+        G.ARGS.crt_df, G.ARGS.crt_sf = _df, _sf
+        _df[1], _df[2], _sf[1], _sf[2] = 1.0 + 0.07*_crt/100, 1.0 + 0.1*_crt/100, 1.0 - 0.008*_crt/100, 1.0 - 0.008*_crt/100
+        G.SHADERS['CRT']:send('distortion_fac', _df)
+        G.SHADERS['CRT']:send('scale_fac', _sf)
 ${post}'''
 optional = true
 
@@ -4811,7 +4821,7 @@ ${pre}    for k, v in pairs(self.I.DROPDOWN) do
         if v.parent == G.ROOM_ATTACH then
             love.graphics.push()
 r 7 2761 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 49
+l 52
             v:draw()
             love.graphics.pop()
         end
@@ -4859,8 +4869,11 @@ position = "at"
 payload = '''
 ${pre}      if _perf_shader >= 2 and G.SHADERS['CRT'] then
         local _crt = G.SETTINGS.GRAPHICS.crt * 0.3
-        G.SHADERS['CRT']:send('distortion_fac', {1.0 + 0.07*_crt/100, 1.0 + 0.1*_crt/100})
-        G.SHADERS['CRT']:send('scale_fac', {1.0 - 0.008*_crt/100, 1.0 - 0.008*_crt/100})
+        local _df, _sf = G.ARGS.crt_df or {0, 0}, G.ARGS.crt_sf or {0, 0}
+        G.ARGS.crt_df, G.ARGS.crt_sf = _df, _sf
+        _df[1], _df[2], _sf[1], _sf[2] = 1.0 + 0.07*_crt/100, 1.0 + 0.1*_crt/100, 1.0 - 0.008*_crt/100, 1.0 - 0.008*_crt/100
+        G.SHADERS['CRT']:send('distortion_fac', _df)
+        G.SHADERS['CRT']:send('scale_fac', _sf)
 r 7 2942 %20%20%20%20%20%20%20%20 -
 l 1
         G.SHADERS['CRT']:send('bloom_fac', (G.SETTINGS.GRAPHICS.bloom or 1) - 1)
@@ -4900,7 +4913,7 @@ position = "at"
 payload = '''
 ${pre}        love.graphics.push()
 r 7 2964 %20%20%20%20%20%20%20%20 -
-l 65
+l 77
 ${post}'''
 optional = true
 
@@ -4966,4 +4979,16 @@ payload = '''
 ${pre}                    if G.hand.config.card_limits.old_slots == nil then G.hand.config.card_limits.old_slots = G.hand.config.card_limits.total_slots or 0 end
 ${post}'''
 optional = true
+
+[[patches]]
+[patches.regex]
+id = "auto.game.modded.032"
+target = "game.lua"
+pattern = '''^(?<pre>[\t ]*)if last_canvas then\n(?<post>[\t ]*love\.graphics\.clear\{0,0,0,1\}\n)'''
+position = "at"
+payload = '''
+${pre}if last_canvas and last_canvas ~= self.CANVAS then
+${post}'''
+optional = true
+times = 1
 end

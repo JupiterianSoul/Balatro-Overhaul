@@ -41,7 +41,7 @@ l 3
             love.graphics.setFont(font)
             love.graphics.print(text, pad, pad)
 r 13 112 %20%20%20%20%20%20%20%20%20%20%20%20 -
-l 53
+l 56
             love.graphics.pop()
             local data = canvas:newImageData()
             local dpi = canvas.getDPIScale and canvas:getDPIScale() or 1
@@ -86,8 +86,11 @@ function CL.box(text, scale, font)
     return w, h, ink, vink
 end
 
+local NO_OPTS, LABEL_BG, LABEL_FG = {}, {0, 0, 0, 0.75}, {1, 1, 1, 1}
+local MODE_MODDED, MODE_PLAIN, MODE_OPTS = {0.3, 0.9, 0.55, 1}, {0.4, 0.7, 1, 1}, {}
+
 function CL.draw(text, x, y, opts)
-    opts = opts or {}
+    opts = opts or NO_OPTS
     local font = opts.font or love.graphics.getFont()
     if not font then return 0, 0 end
     CL.last_font = font
@@ -96,11 +99,11 @@ function CL.draw(text, x, y, opts)
     if opts.anchor == "tr" then x = x - w end
     love.graphics.push()
 r 12 278 %20%20%20%20 -
-l 151
-    local bg = opts.bg or {0, 0, 0, 0.75}
+l 157
+    local bg = opts.bg or LABEL_BG
     love.graphics.setColor(bg[1], bg[2], bg[3], bg[4] or 1)
     love.graphics.rectangle("fill", x, y, w, h, 4, 4)
-    local c = opts.colour or {1, 1, 1, 1}
+    local c = opts.colour or LABEL_FG
     love.graphics.setColor(c[1], c[2], c[3], c[4] or 1)
     love.graphics.print(text, x + CL.PAD_X - ink.x * scale, y + CL.PAD_Y - vink.y * scale, 0, scale, scale)
     love.graphics.setColor(1, 1, 1, 1)
@@ -161,13 +164,15 @@ function CL.draw_mode()
     CL.mode_rect = nil
     if not CL.mode_shown() then return end
     local text = CL.mode_text()
-    local colour = CL.mode_modded() and {0.3, 0.9, 0.55, 1} or {0.4, 0.7, 1, 1}
-    local scale = CL.scale()
     local font = love.graphics.getFont()
     CL.last_font = font
     local x, y, w, h = CL.mode_box()
-    CL.draw(text, x, y, {scale = scale, colour = colour, font = font})
-    CL.mode_rect = {x = x, y = y, w = w, h = h}
+    MODE_OPTS.scale, MODE_OPTS.colour, MODE_OPTS.font = CL.scale(), CL.mode_modded() and MODE_MODDED or MODE_PLAIN, font
+    CL.draw(text, x, y, MODE_OPTS)
+    local r = CL._mode_rect or {}
+    CL._mode_rect = r
+    r.x, r.y, r.w, r.h = x, y, w, h
+    CL.mode_rect = r
 end
 
 function CL.mode_hit(mx, my)
@@ -200,9 +205,13 @@ function CL.mode_release(mx, my)
     return true
 end
 
-function CL.progress_text()
+local function progress_notice()
     local P = rawget(_G, "Progress")
-    local ok, text = pcall(function() return P and P.notice and P.notice() end)
+    return P and P.notice and P.notice()
+end
+
+function CL.progress_text()
+    local ok, text = pcall(progress_notice)
     return ok and text or nil
 end
 

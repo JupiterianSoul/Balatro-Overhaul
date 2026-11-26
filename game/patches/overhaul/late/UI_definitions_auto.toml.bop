@@ -3284,10 +3284,10 @@ ${pre}function create_UIBox_your_collection_stakes()
 
   local stake_descriptions = {
     stake_white = "Base difficulty. No modifiers.",
-    stake_red = "+1 required ante to win.",
+    stake_red = "Small Blind gives no reward money.",
     stake_green = "Required score scales faster.",
     stake_black = "Shop can have Eternal jokers.",
-    stake_blue = "Shop items cost $$1 more. Rerolls go up $$2 each.",
+    stake_blue = (G.SETTINGS.rework_blue_stake == false) and "-1 discard." or "Shop items cost $$1 more. Rerolls go up $$2 each.",
     stake_purple = "Required score scales even faster.",
     stake_orange = "Shop can have Perishable jokers.",
     stake_gold = "Shop can have Rental jokers.",

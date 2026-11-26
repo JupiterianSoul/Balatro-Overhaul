@@ -15,16 +15,6 @@ times = 1
 
 [[patches]]
 [patches.regex]
-id = "auto.smods_core.002"
-target = '=[SMODS _ "src/core.lua"]'
-pattern = '''^(?<pre>)[\t ]*progress = progress or 0\n(?<post>)'''
-position = "at"
-payload = '''
-${pre}${post}'''
-times = 1
-
-[[patches]]
-[patches.regex]
 id = "auto.smods_core.003"
 target = '=[SMODS _ "src/core.lua"]'
 pattern = '''^(?<pre>)[\t ]*love\.graphics\.dis\n[\t ]*\}\n[\t ]*local realw, realh = love\.graphics\.getDimensions\(\)\n[\t ]*\n[\t ]*love\.graphics\.setCanvas\(\)\n[\t ]*love\.graphics\.push\(\)\n[\t ]*love\.graphics\.setShader\(\)\n[\t ]*love\.graphics\.clear\(0, 0, 0, 1\)\n[\t ]*love\.graphics\.setColor\(0\.6, 0\.8, 0\.9, 1\)\n[\t ]*if progress > 0 then love\.graphics\.rectangle\('fill', realw / 2 - 150, realh / 2 - 15, progress \* 300, 30, 5\) end\n[\t ]*love\.graphics\.setColor\(1, 1, 1, 1\)\n[\t ]*love\.graphics\.setLineWidth\(3\)\n[\t ]*love\.graphics\.rectangle\('line', realw / 2 - 150, realh / 2 - 15, 300, 30, 5\)\n[\t ]*if catimg then love\.graphics\.draw\(catimg, realw/2 - 264, realh/2 - 27, 0, 1, 1\); love\.graphics\.rectangle\('line', realw/2 - 264, realh/2 - 27, 96, 96, 5\) end\n[\t ]*love\.graphics\.print\("LOADING: " \.\. _next, realw / 2 - 150, realh / 2 \+ 40\)\n[\t ]*love\.graphics\.pop\(\)\n[\t ]*love\.graphics\.present\(\)\n(?<post>)'''

@@ -49,3 +49,10 @@ CREATE TABLE IF NOT EXISTS notify_items (
   expires INTEGER
 );
 CREATE INDEX IF NOT EXISTS notify_items_pkey ON notify_items (pkey, at);
+CREATE TABLE IF NOT EXISTS player_profiles (
+  pkey TEXT NOT NULL,
+  session TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  PRIMARY KEY (pkey, session)
+);

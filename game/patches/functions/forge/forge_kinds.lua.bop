@@ -612,9 +612,10 @@ l 4
       end}))
     elseif e.id == "start_consumable" then
 r 3 617 %20%20%20%20%20%20 -
-l 55
+l 56
+        local set = require("functions/forge/forge_typerules").card_set(e.v)
         for _ = 1, math.max(1, math.floor(n)) do
-          local card = create_card(e.v == "Joker" and "Joker" or (e.v or "Tarot"), e.v == "Joker" and G.jokers or G.consumeables, nil, nil, nil, nil, nil, "forge_deck")
+          local card = create_card(set, e.v == "Joker" and G.jokers or G.consumeables, nil, nil, nil, nil, nil, "forge_deck")
           card:add_to_deck()
           if e.v == "Joker" then G.jokers:emplace(card) else G.consumeables:emplace(card) end
         end

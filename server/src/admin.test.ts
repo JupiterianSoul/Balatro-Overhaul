@@ -13,6 +13,7 @@ CREATE TABLE match_log_players (id TEXT, pkey TEXT, pid INTEGER, at INTEGER, kee
 CREATE TABLE chat_reports (id TEXT PRIMARY KEY, reporter TEXT, reported TEXT, kind TEXT, msg_id TEXT, text TEXT, context TEXT, reason TEXT, match_id TEXT, at INTEGER, status TEXT);
 CREATE TABLE daily_board (day TEXT, pkey TEXT, sig TEXT, name TEXT, won INTEGER, ante INTEGER, round INTEGER, best REAL, at INTEGER, PRIMARY KEY (day, pkey));
 CREATE TABLE minigame_best (pkey TEXT, game TEXT, score INTEGER, low INTEGER, at INTEGER, PRIMARY KEY (pkey, game));
+CREATE TABLE player_profiles (pkey TEXT NOT NULL, session TEXT NOT NULL, at INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY (pkey, session));
 CREATE TABLE forge_mods (id TEXT PRIMARY KEY, owner TEXT, name TEXT, author TEXT, about TEXT, version INTEGER, summary TEXT, size INTEGER, raw TEXT, at INTEGER, updated INTEGER, downloads INTEGER, reports TEXT, hidden INTEGER);
 CREATE TABLE recent_players (pkey TEXT, other TEXT, name TEXT, mode TEXT, ranked INTEGER, at INTEGER, PRIMARY KEY (pkey, other));
 CREATE TABLE head_to_head (pkey TEXT, other TEXT, wins INTEGER, losses INTEGER, draws INTEGER, at INTEGER, PRIMARY KEY (pkey, other));
@@ -32,6 +33,7 @@ function world(opts: { env?: string | null } = {}) {
   ins.run(SECRET_KEYS[0], 'Alpha', 250, 300, '2026-Q4', 900, 5, 2, 'RECOVERY-ALPHA', T0 - 5 * 86_400_000, T0 - 60_000, 12, 8);
   ins.run(SECRET_KEYS[1], 'Beta', 40, 40, '2026-Q4', 100, 2, 0, 'RECOVERY-BETA', T0 - 3_600_000, T0 - 3 * 86_400_000, 1, 0);
   db.prepare('INSERT INTO social_players VALUES (?, ?, ?, ?)').run(SECRET_KEYS[0], 'AAAA-1111', 'Alpha', T0 - 30_000);
+  db.prepare('INSERT INTO player_profiles VALUES (?, ?, ?, ?)').run(SECRET_KEYS[0], 'modded', T0 - 20_000, JSON.stringify({ sp: { level: 17, xp: 40 }, mods: [{ id: 'Cryptid', version: '0.5.17c', on: true }] }));
   db.prepare('INSERT INTO social_players VALUES (?, ?, ?, ?)').run(SECRET_KEYS[2], 'CCCC-3333', 'Gamma_100%', T0 - 9 * 86_400_000);
   db.prepare('INSERT INTO social_links VALUES (?, ?, ?, ?)').run(SECRET_KEYS[0], SECRET_KEYS[2], 'accepted', T0);
   db.prepare('INSERT INTO social_links VALUES (?, ?, ?, ?)').run(SECRET_KEYS[2], SECRET_KEYS[0], 'accepted', T0);
@@ -174,6 +176,10 @@ describe('admin data', () => {
     expect(p.logs[0].versus).toBe('Beta');
     expect(p.links[0].name).toBe('Gamma_100%');
     expect(p.forge_mods[0].name).toBe('Mod');
+    expect(p.profile.sp_level).toBe(17);
+    expect(p.game_profiles[0].session).toBe('modded');
+    expect(p.game_profiles[0].data.mods[0].id).toBe('Cryptid');
+    expect(typeof p.mp_totals.matches).toBe('number');
     expect((await get(w.admin, '/admin/api/player?id=unknown')).body.error).toBe('expired');
   });
 });

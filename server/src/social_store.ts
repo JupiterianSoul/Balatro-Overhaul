@@ -54,6 +54,13 @@ export const SOCIAL2_SCHEMA = [
   expires INTEGER
 )`,
   'CREATE INDEX IF NOT EXISTS notify_items_pkey ON notify_items (pkey, at)',
+  `CREATE TABLE IF NOT EXISTS player_profiles (
+  pkey TEXT NOT NULL,
+  session TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  PRIMARY KEY (pkey, session)
+)`,
 ];
 
 export interface PrefsRow { chat_enabled: boolean; chat_allowed: boolean | null; rp: number | null }
@@ -64,6 +71,8 @@ export interface ReportRow {
   context: string; reason: string; match_id: string | null; at: number;
 }
 export interface NotifyRow { id: string; pkey: string; kind: string; at: number; read: boolean; data: Record<string, unknown>; expires: number | null }
+
+export interface ProfileRow { session: string; at: number; data: string }
 
 export interface SocialExtra {
   init(): Promise<void>;
@@ -88,6 +97,8 @@ export interface SocialExtra {
   notifyAdd(r: NotifyRow): void;
   notifyRead(pkey: string, id: string | null): void;
   notifyDelete(pkey: string, id: string | null): void;
+  profileSave(pkey: string, session: string, at: number, data: string): void;
+  profileGet(pkey: string): Promise<ProfileRow[]>;
 }
 
 interface MemPrefs { nameKey: string; rp: number | null; chat_enabled: boolean; chat_allowed: boolean | null }
@@ -191,6 +202,15 @@ export class MemoryExtra implements SocialExtra {
   notifyDelete(pkey: string, id: string | null): void {
     if (id === null) { this.notes.delete(pkey); return; }
     this.notes.set(pkey, (this.notes.get(pkey) ?? []).filter(n => n.id !== id));
+  }
+  profiles = new Map<string, Map<string, ProfileRow>>();
+  profileSave(pkey: string, session: string, at: number, data: string): void {
+    const m = this.profiles.get(pkey) ?? new Map<string, ProfileRow>();
+    m.set(session, { session, at, data });
+    this.profiles.set(pkey, m);
+  }
+  async profileGet(pkey: string): Promise<ProfileRow[]> {
+    return [...(this.profiles.get(pkey)?.values() ?? [])];
   }
 }
 
@@ -346,6 +366,16 @@ export class D1Extra implements SocialExtra {
   notifyDelete(pkey: string, id: string | null): void {
     if (id === null) this.d1.enqueue('DELETE FROM notify_items WHERE pkey = ?', [pkey]);
     else this.d1.enqueue('DELETE FROM notify_items WHERE pkey = ? AND id IN (?, ?)', [pkey, id, scopeNotifyId(pkey, id)]);
+  }
+
+  profileSave(pkey: string, session: string, at: number, data: string): void {
+    this.d1.enqueue(`INSERT INTO player_profiles (pkey, session, at, data) VALUES (?, ?, ?, ?)
+      ON CONFLICT (pkey, session) DO UPDATE SET at = excluded.at, data = excluded.data`, [pkey, session, at, data]);
+  }
+
+  async profileGet(pkey: string): Promise<ProfileRow[]> {
+    const rows = await this.d1.query('SELECT session, at, data FROM player_profiles WHERE pkey = ? ORDER BY at DESC', [pkey]);
+    return rows.map(r => ({ session: String(r.session), at: Number(r.at), data: String(r.data) }));
   }
 }
 

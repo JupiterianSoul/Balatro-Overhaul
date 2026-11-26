@@ -1,0 +1,26 @@
+[manifest]
+version = "1.0.0"
+priority = 0
+
+[[patches]]
+[patches.regex]
+id = "crt_perf.flicker_needs_glitch"
+target = "CRT.fs"
+pattern = '''^(?<pre>[\t ]*)if \(sin\(time \+ tc\.y\*200\.0\) > 0\.85\) \{\n'''
+position = "at"
+payload = '''
+${pre}if (glitch_intensity > 0.01 && sin(time + tc.y*200.0) > 0.85) {
+'''
+optional = true
+
+[[patches]]
+[patches.regex]
+id = "crt_perf.scanlines_need_crt"
+target = "CRT.fs"
+pattern = '''^(?<pre>)(?<body>[\t ]*MY_HIGHP_OR_MEDIUMP vec3 rgb_scanline = 1\.0\*vec3\( *\n[^\n]*\n[^\n]*\n[^\n]*\n[\t ]*\n[\t ]*rgb_result \+= crt_tex\.rgb \* rgb_scanline \* crt_intensity \* artifact_amplifier;\n)'''
+position = "at"
+payload = '''
+${pre}	if (crt_intensity > 0.0) {
+${body}	}
+'''
+optional = true

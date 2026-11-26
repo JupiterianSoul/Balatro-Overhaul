@@ -380,7 +380,7 @@ target = '=[SMODS _ "src/game_object.lua"]'
 pattern = '''^(?<pre>)[\t ]*should_apply = function\(self\) return not G\.recording_mode or G\.video_control end,\n(?<post>)'''
 position = "at"
 payload = '''
-${pre}        should_apply = function(self) return (not G.recording_mode or G.video_control) and (G.SETTINGS.GRAPHICS.perf_shader_quality or 3) >= 2 end,
+${pre}        should_apply = function(self) return false end,
 ${post}'''
 times = 1
 

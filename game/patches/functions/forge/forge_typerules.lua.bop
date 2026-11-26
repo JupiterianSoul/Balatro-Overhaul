@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 251
+l 261
 local X = {}
 
 X.WHENS = {"type_used", "type_bought", "type_sold"}
@@ -40,6 +40,16 @@ function X.set_of_value(v)
   local id = R and R.own_id("ctype", v)
   local t = id and Types().by_id[id]
   return t and t.set or nil
+end
+
+function X.card_set(v)
+  if v == "Joker" then return "Joker" end
+  v = v or "Tarot"
+  local R = Rules()
+  if not (R and R.own_id("ctype", v)) then return v end
+  local set = X.set_of_value(v)
+  if set and G.P_CENTER_POOLS[set] and #G.P_CENTER_POOLS[set] > 0 then return set end
+  return "Tarot"
 end
 
 function X.held(set)

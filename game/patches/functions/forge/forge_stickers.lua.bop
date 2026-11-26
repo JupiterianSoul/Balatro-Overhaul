@@ -457,7 +457,7 @@ function St.install_hooks()
       local r, r2 = orig(self, context, ...)
       if not St.any(self) or self.debuff or type(context) ~= "table" or context.blueprint then return r, r2 end
 r 3 2294 %20%20%20%20%20%20 -
-l 94
+l 96
         local ok, out = pcall(St.score, self, r)
         if ok then r = out end
       elseif context.end_of_round and not context.individual and not context.repetition and self.area == G.jokers then
@@ -476,10 +476,12 @@ l 94
   end
   local okh, Hooks = pcall(require, "overhaul.hooks")
   if okh and Hooks and Hooks.wrap then
-    Hooks.wrap("Card", "draw", function(orig) return function(self, layer, ...)
-      local r = {orig(self, layer, ...)}
+    local function after_draw(self, layer, ...)
       if St.any(self) or self.forge_stk_look then pcall(St.draw, self, layer) end
-      return unpack(r)
+      return ...
+    end
+    Hooks.wrap("Card", "draw", function(orig) return function(self, layer, ...)
+      return after_draw(self, layer, orig(self, layer, ...))
     end end, {id = "forge_stickers.draw"})
   elseif Card and Card.draw then
     local orig = Card.draw

@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 483
+l 491
 local S = SettingsUI
 local L = function(s) return mod_loc(s) end
 
@@ -177,6 +177,7 @@ end
 
 local function gameplay(pool)
   local St = G.SETTINGS
+  if St.rework_blue_stake == nil then St.rework_blue_stake = true end
   local mp_speed, mp_score, mp_skip = speed_rule("speed"), speed_rule("score"), speed_rule("skip")
   local speeds = S.speed_list(mp_speed)
   local scores = {1.0, 0.75, 0.5, 0.25, 0}
@@ -220,6 +221,10 @@ local function gameplay(pool)
         callback = function(v) if not v then for _, a in ipairs({G.jokers, G.consumeables}) do if a and a.unhighlight_all then a:unhighlight_all() end end end save() end} or nil,
     }},
     {title = "Run", items = run},
+    {title = "Reworks", items = {
+      UIK.toggle{id = 'set_rework_blue_stake', label = L("Blue Stake rework"), info = L("On: shop items cost $1 more and rerolls go up $2. Off: -1 discard, like the base game"),
+        ref_table = St, ref_value = 'rework_blue_stake', callback = function() save() local Lc = rawget(_G, "OverhaulLoc") if Lc and Lc.reworks then Lc.reworks() end end},
+    }},
     {title = "Main menu", items = {
       UIK.action{id = 'set_reset_icon', label = L("Profile icon position"), info = L("Put the main menu profile icon back in its corner"),
         button_label = L("Reset"), button = 'reset_profile_icon_pos', colour = UIK.C.warn},
@@ -382,6 +387,7 @@ local function performance()
   local GR, St = G.SETTINGS.GRAPHICS, G.SETTINGS
   local P = PERF_OPTS
   P.fill_defaults()
+  if GR.perf_auto == nil then GR.perf_auto = true end
   local function pick(id, label, info, options, key, default, fn)
     return UIK.cycle{id = id, label = L(label), info = L(info), options = options, current = GR[key] or default,
       callback = function(i) fn(i) save() UIK.refresh() end}
@@ -396,12 +402,14 @@ local function performance()
     {title = "Quick Setup", items = {
       UIK.toggle{id = 'set_perf', label = L("Performance Mode"), info = L("All light settings at once"), ref_table = GR, ref_value = 'performance_mode',
         callback = function() G.FUNCS.toggle_performance_mode() UIK.refresh() end},
+      UIK.toggle{id = 'set_perf_auto', label = L("Auto Performance"), info = L("Keeps 60 FPS: lowers effects and sharpness only when needed"), ref_table = GR, ref_value = 'perf_auto', callback = function() save() end},
       UIK.toggle{id = 'set_perf_fps', label = L("Show FPS Counter"), info = L("See how smooth the game runs"), ref_table = GR, ref_value = 'show_fps', callback = function() save() UIK.refresh() end},
       UIK.action{id = 'set_perf_reset', label = L("Reset Performance"), info = L("Every option back to normal"), button_label = L("Reset"), button = 'perf_reset_all', colour = UIK.C.danger},
     }},
     {title = "Picture", items = {
       pick('set_perf_resolution', "Picture Sharpness", "Lower is much faster", {L("perf_full"), "75%", L("perf_half")}, 'perf_resolution', 1, P.set_resolution),
       pick('set_perf_bg', "Background", "The swirl behind the table", {L("perf_moving"), L("perf_slow"), L("perf_still"), L("perf_plain")}, 'perf_background', 1, P.set_background),
+      flag('set_perf_bg_smooth', "Smooth Background", "Swirl at 60 Hz instead of 30, costs more", GR, 'perf_bg_smooth'),
       UIK.cycle{id = 'set_perf_shader', label = L("Card Shine"), info = L("Shine and tilt on cards"), options = {L("perf_full"), L("perf_simple"), L("perf_off")},
         current = 4 - (GR.perf_shader_quality or 3), callback = function(i) P.set_shine(4 - i) save() end},
       pick('set_perf_particles', "Particles", "Sparks and confetti", {L("perf_all"), L("perf_fewer"), L("perf_none")}, 'perf_particle_amount', 1, P.set_particles),

@@ -2,7 +2,7 @@ BOP 1
 eol lf
 final 1
 base 0
-l 6342
+l 6356
 ﻿
 local MOD_TRANSLATIONS = {}
 
@@ -433,6 +433,13 @@ MOD_TRANSLATIONS["fr"] = {
   ["Required score scales faster."] = "Le score requis augmente plus vite.",
   ["Shop can have Eternal jokers."] = "La boutique peut proposer des jokers éternels.",
   ["Shop items cost $1 more. Rerolls go up $2 each."] = "Articles de boutique +1 $. Les relances montent de 2 $.",
+  ["-1 discard."] = "-1 défausse.",
+  ["Small Blind gives no reward money."] = "La Petite Blinde ne rapporte pas d'argent.",
+  ["Reworks"] = "Refontes",
+  ["Blue Stake rework"] = "Refonte de la mise bleue",
+  ["Auto Performance"] = "Performances auto",
+  ["Keeps 60 FPS: lowers effects and sharpness only when needed"] = "Garde 60 FPS : baisse les effets et la netteté seulement si besoin",
+  ["On: shop items cost $1 more and rerolls go up $2. Off: -1 discard, like the base game"] = "Activée : articles de boutique +1 $ et relances +2 $. Désactivée : -1 défausse, comme le jeu de base",
   ["Required score scales even faster."] = "Le score requis augmente encore plus vite.",
   ["Shop can have Perishable jokers."] = "La boutique peut proposer des jokers périssables.",
   ["Shop can have Rental jokers."] = "La boutique peut proposer des jokers de location.",
@@ -3482,6 +3489,13 @@ MOD_TRANSLATIONS["es"] = {
   ["Required score scales faster."] = "La puntuación requerida sube más rápido.",
   ["Shop can have Eternal jokers."] = "La tienda puede ofrecer comodines eternos.",
   ["Shop items cost $1 more. Rerolls go up $2 each."] = "Artículos de tienda +$1. Las renovaciones suben $2.",
+  ["-1 discard."] = "-1 descarte.",
+  ["Small Blind gives no reward money."] = "La Ciega Pequeña no da dinero.",
+  ["Reworks"] = "Cambios",
+  ["Blue Stake rework"] = "Cambio del Pozo Azul",
+  ["Auto Performance"] = "Rendimiento automático",
+  ["Keeps 60 FPS: lowers effects and sharpness only when needed"] = "Mantiene 60 FPS: baja efectos y nitidez solo cuando hace falta",
+  ["On: shop items cost $1 more and rerolls go up $2. Off: -1 discard, like the base game"] = "Activado: artículos de tienda +$1 y renovaciones +$2. Desactivado: -1 descarte, como el juego base",
   ["Required score scales even faster."] = "La puntuación requerida sube aún más rápido.",
   ["Shop can have Perishable jokers."] = "La tienda puede ofrecer comodines perecederos.",
   ["Shop can have Rental jokers."] = "La tienda puede ofrecer comodines de alquiler.",

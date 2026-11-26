@@ -54,14 +54,17 @@ Hooks.wrap("G.FUNCS", "select_text_input", function(original) return function(el
     return Hooks.unpack(results)
 end end, {id = "overhaul.ingame_keyboard.select"})
 
-Hooks.wrap("love", "update", function(original) return function(delta_time, ...)
-    local results = Hooks.pack(original(delta_time, ...))
+local function update_after(...)
     local controller = G and G.CONTROLLER
     if K.sys and (not controller or controller.text_input_hook ~= K.sys or K.on()) then
         K.sys = nil
         if not (controller and controller.text_input_hook) or K.on() then system_keys(false) end
     end
-    return Hooks.unpack(results)
+    return ...
+end
+
+Hooks.wrap("love", "update", function(original) return function(delta_time, ...)
+    return update_after(original(delta_time, ...))
 end end, {id = "overhaul.ingame_keyboard.update"})
 
 return K

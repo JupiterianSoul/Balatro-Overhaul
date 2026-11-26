@@ -48,7 +48,7 @@ function create_UIBox_multiplayer_lobby()
     end
 
 r 30 2252 %20%20%20%20 -
-l 100
+l 102
         { n = G.UIT.R, config = { align = "cm", padding = 0.085 }, nodes = {
             { n = G.UIT.T, config = { text = mod_loc("MULTIPLAYER"), scale = 0.80,
                 colour = G.C.GOLD, shadow = true } },
@@ -136,14 +136,16 @@ function create_UIBox_join_room_input(opts)
     return create_UIBox_generic_options({ back_func = opts.back or "open_multiplayer_menu", contents = contents })
 end
 
-function bom_ui.register_funcs()
-    if not G or not G.FUNCS then return end
-    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
-    for _, name in ipairs({"bom_back_to_lobby", "bom_contest_cancel", "mp_browse_back", "mp_browse_reopen", "mp_cancel_connecting", "mp_cancel_room",
+local ESC_BACK_NAMES = {"bom_back_to_lobby", "bom_contest_cancel", "mp_browse_back", "mp_browse_reopen", "mp_cancel_connecting", "mp_cancel_room",
         "mp_cancel_search", "mp_cancel_waiting", "mp_decline_rematch", "mp_lobby_leave", "mpm_coll_back", "mpm_mods_back", "mp_mods_no", "mpm_open_play",
         "mpm_profile_back", "mp_name_cancel", "mp_ranked_back", "mp_ranked_coll_return", "mps_chat_back", "mps_chat_optin_back",
         "mps_chat_report_back", "mp_version_ok", "open_multiplayer_menu", "party_leave", "party_back_to_results", "social_back",
-        "social_invite_later", "spec_close"}) do
+        "social_invite_later", "spec_close"}
+
+function bom_ui.register_funcs()
+    if not G or not G.FUNCS then return end
+    G.ESC_BACK_FUNCS = G.ESC_BACK_FUNCS or {}
+    for _, name in ipairs(ESC_BACK_NAMES) do
         G.ESC_BACK_FUNCS[name] = true
     end
     if G.FUNCS.open_multiplayer_menu and G.FUNCS.mp_return_to_lobby and G.FUNCS.mp_leave_lobby then return end
@@ -302,7 +304,7 @@ l 22
             if e and e.config then
 r 32 58 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
 r 32 311 %20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20 -
-l 390
+l 399
             end
             if e and e.children then
                 for _, child in ipairs(e.children) do
@@ -423,17 +425,25 @@ local function ping_server()
     if not ok then reach.busy = false end
 end
 
+local STATUS_ONLINE, STATUS_OFFLINE, STATUS_OPTS, status_box = {0.2, 0.95, 0.35, 1}, {1, 0.25, 0.25, 1}, {}, {}
+local register_next = 0
+
+local function mp_phase_active()
+    local phase = bom_match and bom_match.get_phase and bom_match.get_phase()
+    return phase and phase ~= "" and phase ~= "idle" and phase ~= "none"
+end
+
 function bom_ui.draw()
-    pcall(function() bom_ui.register_funcs() end)
+    local now = love.timer.getTime()
+    if now >= register_next or not (G and G.FUNCS and G.FUNCS.open_multiplayer_menu) then
+        register_next = now + 1
+        pcall(bom_ui.register_funcs)
+    end
     local connected = AndroidWS and AndroidWS.isConnected and AndroidWS.isConnected()
 
     local in_mp_context = false
-    pcall(function()
-        local phase = bom_match and bom_match.get_phase and bom_match.get_phase()
-        if phase and phase ~= "" and phase ~= "idle" and phase ~= "none" then
-            in_mp_context = true
-        end
-    end)
+    local okp, active = pcall(mp_phase_active)
+    if okp and active then in_mp_context = true end
     if bom_rejoin and bom_rejoin.prompt then in_mp_context = true end
     if not in_mp_context then
         pcall(ping_server)
@@ -444,9 +454,10 @@ function bom_ui.draw()
     local show_status = not (G and G.SETTINGS and G.SETTINGS.GRAPHICS and G.SETTINGS.GRAPHICS.show_online_status == false)
     if CORNER_LABELS then CORNER_LABELS.status_box = nil end
     if show_status and CORNER_LABELS then
-        local bw, bh, bx, by = CORNER_LABELS.draw(status_text, x, y, {scale = CORNER_LABELS.scale(),
-            colour = connected and {0.2, 0.95, 0.35, 1} or {1, 0.25, 0.25, 1}})
-        CORNER_LABELS.status_box = {x = bx, y = by, w = bw, h = bh}
+        STATUS_OPTS.scale, STATUS_OPTS.colour = CORNER_LABELS.scale(), connected and STATUS_ONLINE or STATUS_OFFLINE
+        local bw, bh, bx, by = CORNER_LABELS.draw(status_text, x, y, STATUS_OPTS)
+        status_box.x, status_box.y, status_box.w, status_box.h = bx, by, bw, bh
+        CORNER_LABELS.status_box = status_box
         show_status = false
     end
     local font = show_status and love.graphics.getFont()
