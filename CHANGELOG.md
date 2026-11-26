@@ -25,9 +25,6 @@ Changelog for the updates, first being the latest changes.
 - The game no longer stops at start when a language file is broken.
 - A Mac or Windows install no longer crashes when Steam isn't running.
 
-### Privacy
-- Going online now also shares your single-player level and stats, collection progress, mod list, device and performance settings. About > Privacy lists it all.
-
 ## 2.1.3
 
 *Overhaul 2.1.3, 2026-11-19. An easier Forge, animated Jokers with souls and sounds, the last vanilla cards rebuilt exactly, and Forged online with a weekly theme, ratings and remixes.*
